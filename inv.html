@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Transferencias WMS</title>
+    <style>
+        :root {
+            --primary: #ed5224;
+            --success: #4CAF50;
+            --error: #F44336;
+            --warning: #FF9800;
+            --blocked: #9C27B0;
+            --info: #2196F3;
+            --text: #333;
+            --bg: #f7f7f7;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); }
+
+        /* LOGIN */
+        #login-screen { min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #f5f5f5, #e0e0e0); }
+        .login-card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); text-align: center; max-width: 400px; width: 90%; }
+        .login-logo { font-size: 4em; margin-bottom: 20px; }
+        .login-title { font-size: 1.8em; color: var(--primary); margin-bottom: 10px; }
+        .login-subtitle { color: #666; margin-bottom: 30px; }
+
+        /* LAYOUT */
+        .app-container { display: none; }
+        .container { display: flex; min-height: 100vh; }
+        .sidebar { width: 220px; background: linear-gradient(180deg, #2d2d2d, #1a1a1a); color: white; padding: 20px; display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+        .sidebar-header { display: flex; align-items: center; gap: 10px; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-logo { font-size: 1.8em; }
+        .sidebar-title { font-size: 1.2em; font-weight: 700; color: var(--primary); }
+        .nav-section { margin-bottom: 20px; }
+        .nav-label { font-size: 0.7em; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 10px; letter-spacing: 1px; }
+        .nav-item { padding: 12px 15px; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px; margin-bottom: 5px; font-size: 0.95em; }
+        .nav-item:hover { background: rgba(255,255,255,0.1); }
+        .nav-item.active { background: var(--primary); color: white; }
+        .sidebar-footer { margin-top: auto; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); }
+        .user-info { display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px; }
+        .user-avatar { width: 35px; height: 35px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+        .user-name { font-size: 0.85em; flex: 1; }
+        .connection-indicator { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; font-size: 0.8em; margin-bottom: 10px; }
+        .connection-indicator.online { background: rgba(76,175,80,0.2); color: var(--success); }
+        .connection-indicator.offline { background: rgba(244,67,54,0.2); color: var(--error); }
+        .connection-indicator.syncing { background: rgba(255,152,0,0.2); color: var(--warning); }
+        .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+        .bd-update-info { font-size: 0.75em; color: rgba(255,255,255,0.5); text-align: center; margin-top: 10px; }
+        .main-content { flex: 1; margin-left: 220px; padding: 25px; min-height: 100vh; }
+
+        /* BUTTONS */
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-google { background: #4285F4; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-small { padding: 8px 16px; font-size: 0.85em; }
+        .btn-large { padding: 18px 36px; font-size: 1.2em; }
+        .btn-full { width: 100%; }
+
+        /* CARDS */
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .card-title { font-size: 1.1em; font-weight: 700; color: var(--text); }
+
+        /* INPUTS */
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9em; color: #555; }
+        .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em; transition: border-color 0.2s; }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus { outline: none; border-color: var(--primary); }
+        .input-group textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+        .scanner-input { font-size: 1.4em !important; text-transform: uppercase; font-weight: 700; text-align: center; background: linear-gradient(135deg, #fff5ed, #fff) !important; border: 3px solid var(--primary) !important; }
+        .scanner-input:focus { box-shadow: 0 0 0 4px rgba(237,82,36,0.2); }
+        .scanner-input.flash-success { animation: flashSuccess 0.3s; }
+        .scanner-input.flash-warning { animation: flashWarning 0.3s; }
+        .scanner-input.flash-error { animation: flashError 0.3s; }
+        @keyframes flashSuccess { 0%, 100% { background: linear-gradient(135deg, #fff5ed, #fff); } 50% { background: #c8e6c9; border-color: var(--success); } }
+        @keyframes flashWarning { 0%, 100% { background: linear-gradient(135deg, #fff5ed, #fff); } 50% { background: #ffe0b2; border-color: var(--warning); } }
+        @keyframes flashError { 0%, 100% { background: linear-gradient(135deg, #fff5ed, #fff); } 50% { background: #ffcdd2; border-color: var(--error); } }
+
+        /* TARIMA CARD */
+        .tarima-card { background: linear-gradient(135deg, #ff7043, #ed5224); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .tarima-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        .tarima-number { font-size: 1.6em; font-weight: 800; letter-spacing: 1px; }
+        .tarima-date { font-size: 0.85em; opacity: 0.9; }
+        .tarima-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center; }
+        .tarima-stat { background: rgba(255,255,255,0.15); padding: 12px; border-radius: 8px; }
+        .tarima-stat-value { font-size: 1.8em; font-weight: 800; }
+        .tarima-stat-label { font-size: 0.75em; opacity: 0.85; text-transform: uppercase; }
+        .tarima-stat.ok { background: rgba(76,175,80,0.3); }
+        .tarima-stat.blocked { background: rgba(156,39,176,0.3); }
+        .tarima-stat.no-wms { background: rgba(244,67,54,0.3); }
+
+        /* TABS */
+        .tabs-container { display: flex; gap: 5px; margin-bottom: 20px; background: #f0f0f0; padding: 5px; border-radius: 10px; }
+        .tab-btn { flex: 1; padding: 12px 20px; border: none; background: transparent; cursor: pointer; border-radius: 8px; font-weight: 600; font-size: 0.9em; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .tab-btn:hover { background: rgba(255,255,255,0.5); }
+        .tab-btn.active { background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .tab-btn.active.ok { color: var(--success); }
+        .tab-btn.active.blocked { color: var(--blocked); }
+        .tab-btn.active.no-wms { color: var(--error); }
+        .tab-badge { background: #ddd; color: #666; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+        .tab-btn.active .tab-badge { background: currentColor; color: white; }
+
+        /* BOX LIST */
+        .box-list { max-height: 400px; overflow-y: auto; }
+        .box-item { display: flex; align-items: center; padding: 12px 15px; background: #fafafa; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid; transition: all 0.2s; }
+        .box-item:hover { background: #f0f0f0; }
+        .box-item.ok { border-color: var(--success); }
+        .box-item.blocked { border-color: var(--blocked); }
+        .box-item.no-wms { border-color: var(--error); }
+        .box-info { flex: 1; }
+        .box-code { font-weight: 700; font-size: 1.05em; margin-bottom: 4px; }
+        .box-meta { font-size: 0.85em; color: #666; }
+        .box-status { padding: 4px 12px; border-radius: 15px; font-size: 0.8em; font-weight: 600; margin-right: 10px; }
+        .box-status.ok { background: #e8f5e9; color: var(--success); }
+        .box-status.blocked { background: #f3e5f5; color: var(--blocked); }
+        .box-status.no-wms { background: #ffebee; color: var(--error); }
+        .box-delete { background: none; border: none; color: #999; cursor: pointer; font-size: 1.2em; padding: 5px; transition: color 0.2s; }
+        .box-delete:hover { color: var(--error); }
+
+        /* LAST SCANNED */
+        .last-scanned-card { background: linear-gradient(135deg, #e3f2fd, #fff); border: 2px solid var(--info); padding: 15px; border-radius: 10px; margin-bottom: 20px; display: none; }
+        .last-scanned-card.show { display: block; }
+        .last-scanned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-weight: 700; color: var(--info); }
+        .last-scanned-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+        .last-scanned-item label { font-size: 0.75em; color: #666; text-transform: uppercase; }
+        .last-scanned-item span { font-weight: 600; font-size: 1em; display: block; }
+
+        /* ALERTS */
+        .alert { padding: 15px 20px; border-radius: 10px; margin-bottom: 15px; display: flex; align-items: center; gap: 12px; }
+        .alert-icon { font-size: 1.5em; }
+        .alert-content { flex: 1; }
+        .alert-title { font-weight: 700; margin-bottom: 2px; }
+        .alert-text { font-size: 0.9em; opacity: 0.9; }
+        .alert-blocked { background: linear-gradient(135deg, #f3e5f5, #e1bee7); border: 2px solid var(--blocked); color: #4a148c; }
+
+        /* NOTIFICATIONS */
+        .notification-container { position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 380px; }
+        .notification { background: white; padding: 15px 20px; margin-bottom: 10px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-left: 4px solid; animation: slideInRight 0.3s; display: flex; align-items: center; gap: 12px; }
+        .notification.success { border-color: var(--success); }
+        .notification.error { border-color: var(--error); }
+        .notification.warning { border-color: var(--warning); }
+        .notification.info { border-color: var(--info); }
+        @keyframes slideInRight { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* CONNECTION BANNER */
+        .connection-banner { position: fixed; top: 0; left: 0; right: 0; padding: 12px; text-align: center; font-weight: 700; z-index: 10000; display: none; animation: slideDown 0.3s; }
+        .connection-banner.offline { background: var(--error); color: white; display: block; }
+        .connection-banner.online { background: var(--success); color: white; display: block; }
+        @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+
+        /* POPUPS */
+        .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .popup-content { background: white; padding: 30px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); position: relative; max-height: 90vh; overflow-y: auto; }
+        .popup-close { position: absolute; top: 15px; right: 15px; background: #f0f0f0; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 1.2em; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .popup-close:hover { background: #e0e0e0; }
+        .popup-header { font-size: 1.4em; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+        .popup-body { margin-bottom: 20px; }
+        .popup-footer { display: flex; gap: 10px; flex-wrap: wrap; }
+        .popup-footer .btn { flex: 1; min-width: 120px; }
+
+        /* DASHBOARD */
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .metric-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; }
+        .metric-icon { font-size: 2.5em; margin-bottom: 10px; }
+        .metric-value { font-size: 2.2em; font-weight: 800; color: var(--primary); margin-bottom: 5px; }
+        .metric-label { color: #666; font-size: 0.95em; }
+        .chart-container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .chart-title { font-size: 1.1em; font-weight: 700; margin-bottom: 20px; color: var(--text); }
+        .bar-chart { margin-top: 15px; }
+        .bar-item { display: flex; align-items: center; margin-bottom: 12px; }
+        .bar-label { width: 120px; font-size: 0.9em; font-weight: 600; }
+        .bar-track { flex: 1; height: 25px; background: #f0f0f0; border-radius: 12px; overflow: hidden; margin: 0 15px; }
+        .bar-fill { height: 100%; border-radius: 12px; transition: width 0.5s; }
+        .bar-fill.ok { background: linear-gradient(90deg, #66bb6a, #43a047); }
+        .bar-fill.blocked { background: linear-gradient(90deg, #ab47bc, #7b1fa2); }
+        .bar-fill.no-wms { background: linear-gradient(90deg, #ef5350, #e53935); }
+        .bar-fill.primary { background: linear-gradient(90deg, #ff7043, #ed5224); }
+        .bar-value { width: 50px; text-align: right; font-weight: 700; }
+        .filter-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .filter-btn { padding: 8px 16px; border: 2px solid #e0e0e0; background: white; border-radius: 20px; cursor: pointer; font-size: 0.9em; transition: all 0.2s; }
+        .filter-btn:hover { border-color: var(--primary); }
+        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* TABLE */
+        .table-container { overflow-x: auto; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th, .data-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        .data-table th { background: #f8f8f8; font-weight: 700; font-size: 0.9em; color: #555; }
+        .data-table tbody tr:hover { background: #fafafa; }
+        .status-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
+        .status-badge.ok { background: #e8f5e9; color: var(--success); }
+        .status-badge.blocked { background: #f3e5f5; color: var(--blocked); }
+        .status-badge.no-wms { background: #ffebee; color: var(--error); }
+
+        /* SEARCH */
+        .search-box-large { display: flex; gap: 10px; }
+        .search-box-large input { flex: 1; padding: 15px 20px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1.1em; }
+        .search-box-large input:focus { outline: none; border-color: var(--primary); }
+        .box-detail-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .box-detail-header { background: linear-gradient(135deg, #ff7043, #ed5224); color: white; padding: 20px; }
+        .box-detail-code { font-size: 1.5em; font-weight: 800; margin-bottom: 5px; }
+        .box-detail-status { display: inline-block; padding: 4px 12px; border-radius: 15px; font-size: 0.85em; font-weight: 600; }
+        .box-detail-status.ok { background: rgba(76,175,80,0.3); }
+        .box-detail-status.blocked { background: rgba(156,39,176,0.3); }
+        .box-detail-body { padding: 20px; }
+        .box-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        .box-detail-item label { display: block; font-size: 0.75em; color: #999; text-transform: uppercase; margin-bottom: 4px; }
+        .box-detail-item span { font-size: 1.1em; font-weight: 600; }
+
+        /* EMPTY STATE */
+        .empty-state { text-align: center; padding: 60px 20px; }
+        .empty-state-icon { font-size: 4em; margin-bottom: 20px; opacity: 0.4; }
+        .empty-state-title { font-size: 1.3em; font-weight: 700; margin-bottom: 10px; color: #555; }
+        .empty-state-text { color: #888; margin-bottom: 25px; }
+
+        /* CONFIRM PANEL */
+        .confirm-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .confirm-stat { text-align: center; padding: 15px; background: white; border-radius: 10px; }
+        .confirm-stat-value { font-size: 2em; font-weight: 800; }
+        .confirm-stat-label { font-size: 0.85em; color: #666; }
+        .confirm-stat.ok .confirm-stat-value { color: var(--success); }
+        .confirm-stat.blocked .confirm-stat-value { color: var(--blocked); }
+        .confirm-stat.no-wms .confirm-stat-value { color: var(--error); }
+
+        .section { display: none; }
+        .section.active { display: block; }
+
+        @media (max-width: 768px) {
+            .sidebar { position: fixed; left: -250px; width: 250px; z-index: 999; transition: left 0.3s; }
+            .sidebar.open { left: 0; }
+            .main-content { margin-left: 0; }
+            .tarima-stats { grid-template-columns: repeat(2, 1fr); }
+            .confirm-summary { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-banner" id="connection-banner"></div>
+    <div class="notification-container" id="notifications"></div>
+
+    <!-- LOGIN -->
+    <div id="login-screen">
+        <div class="login-card">
+            <div class="login-logo">📦</div>
+            <h1 class="login-title">Transferencias WMS</h1>
+            <p class="login-subtitle">Sistema de Control de Movimientos de Cajas</p>
+            <button class="btn btn-google btn-full btn-large" onclick="handleGoogleLogin()">🔗 Iniciar sesión con Google</button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="app-container" id="app-container">
+        <div class="container">
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <span class="sidebar-logo">📦</span>
+                    <span class="sidebar-title">WMS Transfer</span>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-label">Principal</div>
+                    <div class="nav-item active" data-section="transfers" onclick="showSection('transfers')">🔄 Transferencias</div>
+                    <div class="nav-item" data-section="dashboard" onclick="showSection('dashboard')">📊 Dashboard</div>
+                    <div class="nav-item" data-section="history" onclick="showSection('history')">📋 Historial</div>
+                    <div class="nav-item" data-section="search" onclick="showSection('search')">🔍 Buscar Caja</div>
+                </div>
+                <div class="sidebar-footer">
+                    <div class="connection-indicator online" id="connection-status">
+                        <span class="connection-dot"></span>
+                        <span id="connection-text">Conectado</span>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-avatar" id="user-avatar">U</div>
+                        <div class="user-name" id="user-name">Usuario</div>
+                    </div>
+                    <button class="btn btn-secondary btn-small btn-full" onclick="exportToCSV()" style="margin-bottom:8px">📥 Exportar CSV</button>
+                    <button class="btn btn-danger btn-small btn-full" onclick="handleLogout()">🚪 Cerrar Sesión</button>
+                    <div class="bd-update-info" id="bd-update-info">Última actualización: --</div>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <!-- TRANSFERS SECTION -->
+                <section id="section-transfers" class="section active">
+                    <h1 style="color:var(--primary);margin-bottom:20px">🔄 Transferencias de Cajas</h1>
+                    <div id="no-tarima-state" class="card">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <div class="empty-state-title">No hay tarima activa</div>
+                            <div class="empty-state-text">Crea una nueva tarima para comenzar</div>
+                            <button class="btn btn-primary btn-large" onclick="createNewTarima()">➕ Nueva Tarima</button>
+                        </div>
+                    </div>
+                    <div id="active-tarima-container" style="display:none">
+                        <div class="tarima-card">
+                            <div class="tarima-header">
+                                <div>
+                                    <div class="tarima-number" id="tarima-number">TARIMA000000000</div>
+                                    <div class="tarima-date" id="tarima-date">Creada: --</div>
+                                </div>
+                                <button class="btn btn-small" style="background:rgba(255,255,255,0.2);color:white" onclick="closeTarima()">✕ Cerrar</button>
+                            </div>
+                            <div class="tarima-stats">
+                                <div class="tarima-stat"><div class="tarima-stat-value" id="stat-total">0</div><div class="tarima-stat-label">Total</div></div>
+                                <div class="tarima-stat ok"><div class="tarima-stat-value" id="stat-ok">0</div><div class="tarima-stat-label">OK</div></div>
+                                <div class="tarima-stat blocked"><div class="tarima-stat-value" id="stat-blocked">0</div><div class="tarima-stat-label">Bloqueadas</div></div>
+                                <div class="tarima-stat no-wms"><div class="tarima-stat-value" id="stat-nowms">0</div><div class="tarima-stat-label">No WMS</div></div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-title">📷 Escanear Código</span>
+                                <button class="btn btn-warning btn-small" onclick="openManualInput()">✏️ Manual</button>
+                            </div>
+                            <div class="input-group">
+                                <input type="text" id="scanner-input" class="scanner-input" placeholder="Escanea o ingresa código..." autofocus>
+                            </div>
+                        </div>
+                        <div class="last-scanned-card" id="last-scanned-card">
+                            <div class="last-scanned-header"><span>📦</span><span>Última Caja</span></div>
+                            <div class="last-scanned-grid">
+                                <div class="last-scanned-item"><label>Código</label><span id="last-code">--</span></div>
+                                <div class="last-scanned-item"><label>Ubicación</label><span id="last-location">--</span></div>
+                                <div class="last-scanned-item"><label>Estatus</label><span id="last-status">--</span></div>
+                                <div class="last-scanned-item"><label>SKU</label><span id="last-sku">--</span></div>
+                                <div class="last-scanned-item"><label>Producto</label><span id="last-product">--</span></div>
+                                <div class="last-scanned-item"><label>Cantidad</label><span id="last-qty">--</span></div>
+                            </div>
+                        </div>
+                        <div class="alert alert-blocked" id="blocked-alert" style="display:none">
+                            <span class="alert-icon">⚠️</span>
+                            <div class="alert-content">
+                                <div class="alert-title">Cajas Bloqueadas Detectadas</div>
+                                <div class="alert-text" id="blocked-alert-text">Hay X caja(s) bloqueada(s)</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="tabs-container">
+                                <button class="tab-btn active ok" data-tab="ok" onclick="switchTab('ok')">✅ OK <span class="tab-badge" id="tab-ok-count">0</span></button>
+                                <button class="tab-btn blocked" data-tab="blocked" onclick="switchTab('blocked')">🔒 Bloqueadas <span class="tab-badge" id="tab-blocked-count">0</span></button>
+                                <button class="tab-btn no-wms" data-tab="nowms" onclick="switchTab('nowms')">❌ No WMS <span class="tab-badge" id="tab-nowms-count">0</span></button>
+                            </div>
+                            <div class="box-list" id="box-list"></div>
+                        </div>
+                        <button class="btn btn-success btn-large btn-full" id="finalize-btn" onclick="openFinalizePopup()" disabled>✅ Finalizar y Asignar Destino</button>
+                    </div>
+                </section>
+
+                <!-- DASHBOARD -->
+                <section id="section-dashboard" class="section">
+                    <h1 style="color:var(--primary);margin-bottom:20px">📊 Dashboard</h1>
+                    <div class="filter-group">
+                        <button class="filter-btn active" onclick="setDashboardFilter('today')">Hoy</button>
+                        <button class="filter-btn" onclick="setDashboardFilter('week')">Semana</button>
+                        <button class="filter-btn" onclick="setDashboardFilter('month')">Mes</button>
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="metric-card"><div class="metric-icon">📦</div><div class="metric-value" id="metric-total">0</div><div class="metric-label">Cajas Transferidas</div></div>
+                        <div class="metric-card"><div class="metric-icon">✅</div><div class="metric-value" id="metric-ok" style="color:var(--success)">0</div><div class="metric-label">Transferencias OK</div></div>
+                        <div class="metric-card"><div class="metric-icon">🔒</div><div class="metric-value" id="metric-blocked" style="color:var(--blocked)">0</div><div class="metric-label">Enviadas a Surtido</div></div>
+                        <div class="metric-card"><div class="metric-icon">⏱️</div><div class="metric-value" id="metric-time">0s</div><div class="metric-label">Tiempo Prom/Caja</div></div>
+                    </div>
+                    <div class="chart-container"><div class="chart-title">📊 Cajas por Usuario</div><div class="bar-chart" id="users-chart"></div></div>
+                    <div class="chart-container"><div class="chart-title">📈 Distribución por Estatus</div><div class="bar-chart" id="status-chart"></div></div>
+                </section>
+
+                <!-- HISTORY -->
+                <section id="section-history" class="section">
+                    <h1 style="color:var(--primary);margin-bottom:20px">📋 Historial</h1>
+                    <div class="card">
+                        <div style="display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap">
+                            <div class="input-group" style="flex:1;min-width:200px;margin-bottom:0"><label>Fecha</label><input type="date" id="history-date" onchange="filterHistory()"></div>
+                            <div class="input-group" style="flex:2;min-width:250px;margin-bottom:0"><label>Buscar</label><input type="text" id="history-search" placeholder="Código, usuario..." oninput="filterHistory()"></div>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead><tr><th>Hora</th><th>Usuario</th><th>Código</th><th>Origen</th><th>Destino</th><th>Estatus</th><th>Tarima</th><th>Tarea</th></tr></thead>
+                                <tbody id="history-tbody"><tr><td colspan="8" style="text-align:center;padding:40px;color:#999">No hay movimientos</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SEARCH -->
+                <section id="section-search" class="section">
+                    <h1 style="color:var(--primary);margin-bottom:20px">🔍 Buscar Caja</h1>
+                    <div class="card">
+                        <div class="search-box-large">
+                            <input type="text" id="search-box-input" placeholder="Ingresa el código...">
+                            <button class="btn btn-primary" onclick="searchBox()">🔍 Buscar</button>
+                        </div>
+                    </div>
+                    <div id="search-results" style="display:none">
+                        <div class="box-detail-card">
+                            <div class="box-detail-header">
+                                <div class="box-detail-code" id="search-result-code">--</div>
+                                <span class="box-detail-status ok" id="search-result-status">OK</span>
+                            </div>
+                            <div class="box-detail-body">
+                                <div class="box-detail-grid">
+                                    <div class="box-detail-item"><label>Ubicación</label><span id="search-result-location">--</span></div>
+                                    <div class="box-detail-item"><label>SKU</label><span id="search-result-sku">--</span></div>
+                                    <div class="box-detail-item"><label>Producto</label><span id="search-result-product">--</span></div>
+                                    <div class="box-detail-item"><label>Cantidad</label><span id="search-result-qty">--</span></div>
+                                    <div class="box-detail-item"><label>Almacén</label><span id="search-result-warehouse">--</span></div>
+                                    <div class="box-detail-item"><label>Área</label><span id="search-result-area">--</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card" style="margin-top:20px">
+                            <div class="card-title" style="margin-bottom:15px">📜 Historial de Movimientos</div>
+                            <div class="table-container">
+                                <table class="data-table"><thead><tr><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Origen → Destino</th><th>Tarima</th></tr></thead><tbody id="search-history-tbody"></tbody></table>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="search-not-found" class="card" style="display:none">
+                        <div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No encontrada</div><div class="empty-state-text">El código no existe en WMS</div></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUPS -->
+    <div id="popup-alias" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header">👤 Configurar Alias</div>
+            <div class="popup-body">
+                <p style="margin-bottom:15px;color:#666">¿Deseas usar un alias personalizado?</p>
+                <div class="input-group"><label>Nombre de Google:</label><input type="text" id="google-name-display" disabled></div>
+                <div class="input-group"><label>Alias (opcional):</label><input type="text" id="alias-input" placeholder="Ej: Juan Bodega"></div>
+            </div>
+            <div class="popup-footer">
+                <button class="btn btn-secondary" onclick="useGoogleName()">Usar Google</button>
+                <button class="btn btn-primary" onclick="saveAlias()">Guardar Alias</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-manual" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close" onclick="closePopup('manual')">×</button>
+            <div class="popup-header">✏️ Ingreso Manual</div>
+            <div class="popup-body">
+                <div class="input-group"><label>Código:</label><input type="text" id="manual-code-input" placeholder="Ingresa el código..."></div>
+            </div>
+            <div class="popup-footer">
+                <button class="btn btn-secondary" onclick="closePopup('manual')">Cancelar</button>
+                <button class="btn btn-primary" onclick="submitManualCode()">Agregar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-nowms-note" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color:var(--error)">❌ Caja No en WMS</div>
+            <div class="popup-body">
+                <div style="background:#ffebee;padding:15px;border-radius:8px;margin-bottom:15px"><strong>Código:</strong> <span id="nowms-code-display">--</span></div>
+                <p style="margin-bottom:15px;color:#666">Ingresa una nota explicando la situación:</p>
+                <div class="input-group"><label>Nota (obligatoria):</label><textarea id="nowms-note-input" placeholder="Ej: Caja sin etiqueta..."></textarea></div>
+            </div>
+            <div class="popup-footer">
+                <button class="btn btn-secondary" onclick="cancelNoWmsBox()">Cancelar</button>
+                <button class="btn btn-danger" onclick="confirmNoWmsBox()">Agregar con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-duplicate" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close" onclick="closePopup('duplicate')">×</button>
+            <div class="popup-header" style="color:var(--warning)">⚠️ Código Duplicado</div>
+            <div class="popup-body">
+                <div style="background:#fff3e0;padding:15px;border-radius:8px"><p>El código <strong id="dup-code-display">--</strong> ya fue escaneado.</p></div>
+            </div>
+            <div class="popup-footer"><button class="btn btn-primary btn-full" onclick="closePopup('duplicate')">Entendido</button></div>
+        </div>
+    </div>
+
+    <div id="popup-finalize" class="popup-overlay">
+        <div class="popup-content" style="max-width:600px">
+            <button class="popup-close" onclick="closePopup('finalize')">×</button>
+            <div class="popup-header">✅ Finalizar Transferencia</div>
+            <div class="popup-body">
+                <div style="background:#f5f5f5;padding:20px;border-radius:12px">
+                    <div class="confirm-summary">
+                        <div class="confirm-stat ok"><div class="confirm-stat-value" id="confirm-ok">0</div><div class="confirm-stat-label">OK</div></div>
+                        <div class="confirm-stat blocked"><div class="confirm-stat-value" id="confirm-blocked">0</div><div class="confirm-stat-label">Bloqueadas</div></div>
+                        <div class="confirm-stat no-wms"><div class="confirm-stat-value" id="confirm-nowms">0</div><div class="confirm-stat-label">No WMS</div></div>
+                    </div>
+                    <div class="input-group" id="destination-group"><label>📍 Ubicación Destino:</label><input type="text" id="destination-input" placeholder="Ej: A1-01-02"></div>
+                    <div class="input-group"><label>📋 Tarea:</label><select id="task-select"><option value="">Seleccionar...</option></select></div>
+                    <div class="input-group"><label>📝 Notas:</label><textarea id="notes-input" placeholder="Observaciones..."></textarea></div>
+                </div>
+            </div>
+            <div class="popup-footer">
+                <button class="btn btn-secondary" onclick="closePopup('finalize')">Cancelar</button>
+                <button class="btn btn-success" onclick="confirmTransfer()">✅ Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-close-tarima" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color:var(--warning)">⚠️ Cerrar Tarima</div>
+            <div class="popup-body"><p>Hay <strong id="pending-boxes-count">0</strong> cajas pendientes. ¿Cerrar sin transferir?</p></div>
+            <div class="popup-footer">
+                <button class="btn btn-secondary" onclick="closePopup('close-tarima')">Cancelar</button>
+                <button class="btn btn-danger" onclick="forceCloseTarima()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script>
+const CONFIG = {
+    CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
+    SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
+    SPREADSHEET_WRITE: '1aNzMpst7UjRJjDtRXTK3TgF1gRZDpdo8d92wVnr0Rt4',
+    INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
+};
+
+let STATE = {
+    user: null, alias: null, isOnline: navigator.onLine,
+    inventory: new Map(), inventoryLastUpdate: null,
+    catalogs: { status: [], tasks: [] },
+    activeTarima: null, boxes: { ok: [], blocked: [], nowms: [] },
+    history: [], pendingSync: [],
+    tarimaCounter: { date: null, counter: 0 },
+    currentTab: 'ok', dashboardFilter: 'today', scanStartTime: null
+};
+
+let TOKEN_CLIENT = null, audioCtx = null, pendingNoWmsCode = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    initAudio();
+    await loadFromStorage();
+    setupEventListeners();
+    setupConnectionMonitor();
+    gapi.load('client', initGAPI);
+});
+
+function initAudio() {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); document.addEventListener('click', () => audioCtx?.state === 'suspended' && audioCtx.resume(), { once: true }); } catch (e) {}
+}
+
+async function initGAPI() {
+    try {
+        await gapi.client.init({ discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"] });
+        TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({ client_id: CONFIG.CLIENT_ID, scope: CONFIG.SCOPES, callback: handleAuthCallback });
+    } catch (e) { showNotification('Error inicializando API', 'error'); }
+}
+
+async function handleAuthCallback(response) {
+    if (response?.access_token) {
+        gapi.client.setToken(response);
+        await getUserProfile();
+        await loadInventory();
+        await loadCatalogs();
+        await syncPendingData();
+    }
+}
+
+function handleGoogleLogin() { TOKEN_CLIENT?.requestAccessToken(); }
+
+async function getUserProfile() {
+    try {
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` } });
+        const data = await response.json();
+        STATE.user = { name: data.name || 'Usuario', email: data.email, picture: data.picture };
+        const savedAlias = localStorage.getItem(`wms_alias_${STATE.user.email}`);
+        savedAlias ? (STATE.alias = savedAlias, showApp()) : showAliasPopup();
+    } catch (e) { STATE.user = { name: 'Usuario', email: 'unknown' }; showApp(); }
+}
+
+function showAliasPopup() { document.getElementById('google-name-display').value = STATE.user.name; document.getElementById('popup-alias').style.display = 'flex'; }
+function useGoogleName() { STATE.alias = STATE.user.name; localStorage.setItem(`wms_alias_${STATE.user.email}`, STATE.alias); closePopup('alias'); showApp(); }
+function saveAlias() { const alias = document.getElementById('alias-input').value.trim(); STATE.alias = alias || STATE.user.name; localStorage.setItem(`wms_alias_${STATE.user.email}`, STATE.alias); closePopup('alias'); showApp(); }
+
+function showApp() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-container').style.display = 'block';
+    document.getElementById('user-name').textContent = STATE.alias || STATE.user.name;
+    document.getElementById('user-avatar').textContent = (STATE.alias || STATE.user.name).charAt(0).toUpperCase();
+    showNotification(`¡Bienvenido, ${STATE.alias || STATE.user.name}!`, 'success');
+    renderTransfers(); updateDashboard();
+}
+
+function handleLogout() {
+    if (confirm('¿Cerrar sesión?')) {
+        if (gapi.client.getToken()) { google.accounts.oauth2.revoke(gapi.client.getToken().access_token); gapi.client.setToken(null); }
+        STATE.user = null; STATE.alias = null;
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('app-container').style.display = 'none';
+    }
+}
+
+async function loadInventory() {
+    try {
+        showNotification('Cargando inventario...', 'info');
+        const response = await fetch(CONFIG.INVENTORY_CSV_URL);
+        const csv = await response.text();
+        parseInventoryCSV(csv);
+        await saveToStorage();
+        showNotification(`Inventario: ${STATE.inventory.size} cajas`, 'success');
+    } catch (e) { showNotification('Error cargando inventario', 'warning'); }
+}
+
+function parseInventoryCSV(csv) {
+    const lines = csv.split('\n');
+    STATE.inventory.clear();
+    const firstLine = lines[0].split(',');
+    if (firstLine.length >= 17) STATE.inventoryLastUpdate = firstLine[16] || new Date().toLocaleString();
+    document.getElementById('bd-update-info').textContent = `Última act.: ${STATE.inventoryLastUpdate || '--'}`;
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        if (cols.length >= 16) {
+            const code = (cols[2] || '').toString().trim().toUpperCase();
+            if (code) {
+                STATE.inventory.set(code, {
+                    boxType: cols[0], no: cols[1], code, warehouse: cols[3], customer: cols[4],
+                    size: cols[5], weight: cols[6], cellNo: cols[7], area: cols[8],
+                    totalStock: cols[9], availableStock: cols[10], lockedInventory: parseFloat(cols[11]) || 0,
+                    sku: cols[12], productName: cols[13], productAlias: cols[14], qtyPerPackage: cols[15]
+                });
+            }
+        }
+    }
+}
+
+function parseCSVLine(line) {
+    const result = []; let current = '', inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') inQuotes = !inQuotes;
+        else if (char === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+        else current += char;
+    }
+    result.push(current.trim());
+    return result;
+}
+
+async function loadCatalogs() {
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: CONFIG.SPREADSHEET_WRITE, range: 'Lista!A:B' });
+        const rows = response.result.values || [];
+        STATE.catalogs.status = []; STATE.catalogs.tasks = [];
+        for (let i = 1; i < rows.length; i++) { if (rows[i][0]) STATE.catalogs.status.push(rows[i][0]); if (rows[i][1]) STATE.catalogs.tasks.push(rows[i][1]); }
+        updateTaskSelect(); await saveToStorage();
+    } catch (e) { console.log('Using cached catalogs'); }
+}
+
+function updateTaskSelect() {
+    const select = document.getElementById('task-select');
+    select.innerHTML = '<option value="">Seleccionar...</option>';
+    STATE.catalogs.tasks.forEach(task => { const opt = document.createElement('option'); opt.value = task; opt.textContent = task; select.appendChild(opt); });
+}
+
+async function loadFromStorage() {
+    try {
+        const saved = localStorage.getItem('wms_transfer_state');
+        if (saved) {
+            const data = JSON.parse(saved);
+            if (data.inventory) STATE.inventory = new Map(data.inventory);
+            STATE.inventoryLastUpdate = data.inventoryLastUpdate;
+            STATE.catalogs = data.catalogs || { status: [], tasks: [] };
+            STATE.history = data.history || [];
+            STATE.pendingSync = data.pendingSync || [];
+            STATE.tarimaCounter = data.tarimaCounter || { date: null, counter: 0 };
+            STATE.activeTarima = data.activeTarima;
+            STATE.boxes = data.boxes || { ok: [], blocked: [], nowms: [] };
+            if (STATE.inventoryLastUpdate) document.getElementById('bd-update-info').textContent = `Última act.: ${STATE.inventoryLastUpdate}`;
+            updateTaskSelect();
+        }
+    } catch (e) {}
+}
+
+async function saveToStorage() {
+    try {
+        const data = {
+            inventory: Array.from(STATE.inventory.entries()),
+            inventoryLastUpdate: STATE.inventoryLastUpdate,
+            catalogs: STATE.catalogs,
+            history: STATE.history.slice(0, 1000),
+            pendingSync: STATE.pendingSync,
+            tarimaCounter: STATE.tarimaCounter,
+            activeTarima: STATE.activeTarima,
+            boxes: STATE.boxes
+        };
+        localStorage.setItem('wms_transfer_state', JSON.stringify(data));
+    } catch (e) {}
+}
+
+function setupConnectionMonitor() {
+    window.addEventListener('online', () => { STATE.isOnline = true; updateConnectionStatus(); showConnectionBanner('online'); syncPendingData(); });
+    window.addEventListener('offline', () => { STATE.isOnline = false; updateConnectionStatus(); showConnectionBanner('offline'); });
+    updateConnectionStatus();
+}
+
+function updateConnectionStatus() {
+    const indicator = document.getElementById('connection-status');
+    const text = document.getElementById('connection-text');
+    if (!STATE.isOnline) { indicator.className = 'connection-indicator offline'; text.textContent = 'Sin conexión'; }
+    else if (STATE.pendingSync.length > 0) { indicator.className = 'connection-indicator syncing'; text.textContent = `${STATE.pendingSync.length} pendientes`; }
+    else { indicator.className = 'connection-indicator online'; text.textContent = 'Conectado'; }
+}
+
+function showConnectionBanner(status) {
+    const banner = document.getElementById('connection-banner');
+    banner.className = `connection-banner ${status}`;
+    banner.textContent = status === 'online' ? '✅ Conexión restaurada' : '❌ Sin conexión - Modo offline';
+    if (status === 'online') setTimeout(() => banner.style.display = 'none', 4000);
+}
+
+function createNewTarima() {
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    if (STATE.tarimaCounter.date !== dateStr) STATE.tarimaCounter = { date: dateStr, counter: 0 };
+    STATE.tarimaCounter.counter++;
+    const counter = STATE.tarimaCounter.counter.toString().padStart(3, '0');
+    const tarimaNumber = `TARIMA${dateStr.slice(2)}${counter}`;
+    STATE.activeTarima = { number: tarimaNumber, createdAt: today.toLocaleString(), date: today.toISOString().slice(0, 10) };
+    STATE.boxes = { ok: [], blocked: [], nowms: [] };
+    STATE.scanStartTime = Date.now();
+    saveToStorage(); renderTransfers(); playSound('ok');
+    showNotification(`Tarima ${tarimaNumber} creada`, 'success');
+    setTimeout(() => document.getElementById('scanner-input').focus(), 100);
+}
+
+function closeTarima() {
+    const totalBoxes = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
+    if (totalBoxes > 0) { document.getElementById('pending-boxes-count').textContent = totalBoxes; document.getElementById('popup-close-tarima').style.display = 'flex'; }
+    else forceCloseTarima();
+}
+
+function forceCloseTarima() {
+    closePopup('close-tarima');
+    STATE.activeTarima = null; STATE.boxes = { ok: [], blocked: [], nowms: [] };
+    saveToStorage(); renderTransfers(); showNotification('Tarima cerrada', 'info');
+}
+
+function setupEventListeners() {
+    const scanner = document.getElementById('scanner-input');
+    scanner.addEventListener('keydown', (e) => { if (e.key === 'Enter' && scanner.value.trim()) { e.preventDefault(); processScan(scanner.value.trim()); scanner.value = ''; } });
+    document.getElementById('search-box-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchBox(); });
+    document.getElementById('history-date').value = new Date().toISOString().slice(0, 10);
+}
+
+function processScan(rawCode) {
+    if (!STATE.activeTarima) { showNotification('Crea una tarima primero', 'warning'); playSound('error'); return; }
+    const extractedCode = extractCode(rawCode);
+    const normalizedCode = extractedCode.toUpperCase().trim();
+    const allBoxes = [...STATE.boxes.ok, ...STATE.boxes.blocked, ...STATE.boxes.nowms];
+    if (allBoxes.some(b => b.code === normalizedCode)) {
+        document.getElementById('dup-code-display').textContent = normalizedCode;
+        document.getElementById('popup-duplicate').style.display = 'flex';
+        playSound('duplicate'); flashScanner('warning'); return;
+    }
+    const inventoryItem = STATE.inventory.get(normalizedCode);
+    if (!inventoryItem) {
+        pendingNoWmsCode = { raw: rawCode, code: normalizedCode };
+        document.getElementById('nowms-code-display').textContent = normalizedCode;
+        document.getElementById('nowms-note-input').value = '';
+        document.getElementById('popup-nowms-note').style.display = 'flex';
+        playSound('error'); flashScanner('error'); return;
+    }
+    const isBlocked = inventoryItem.lockedInventory > 0;
+    const boxData = {
+        raw: rawCode, code: normalizedCode, location: inventoryItem.cellNo || '-',
+        sku: inventoryItem.sku || '-', product: inventoryItem.productName || inventoryItem.productAlias || '-',
+        qty: inventoryItem.totalStock || '-', warehouse: inventoryItem.warehouse || '-',
+        area: inventoryItem.area || '-', isBlocked, timestamp: new Date().toLocaleTimeString()
+    };
+    if (isBlocked) { STATE.boxes.blocked.push(boxData); playSound('warning'); flashScanner('warning'); showNotification('⚠️ Caja BLOQUEADA', 'warning'); }
+    else { STATE.boxes.ok.push(boxData); playSound('ok'); flashScanner('success'); }
+    updateLastScanned(boxData); saveToStorage(); renderBoxList(); updateTarimaStats();
+}
+
+function extractCode(raw) {
+    const code = raw.trim();
+    const p1 = /\[id\[.*?\[([^\[]+)\[/i; const m1 = code.match(p1); if (m1) return m1[1];
+    const p2 = /¨id¨.*?¨([^¨]+)¨/i; const m2 = code.match(p2); if (m2) return m2[1];
+    const p3 = /"id"\s*:\s*"([^"]+)"/i; const m3 = code.match(p3); if (m3) return m3[1];
+    return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+}
+
+function openManualInput() {
+    if (!STATE.activeTarima) { showNotification('Crea una tarima primero', 'warning'); return; }
+    document.getElementById('manual-code-input').value = '';
+    document.getElementById('popup-manual').style.display = 'flex';
+    setTimeout(() => document.getElementById('manual-code-input').focus(), 100);
+}
+
+function submitManualCode() {
+    const code = document.getElementById('manual-code-input').value.trim();
+    if (!code) { showNotification('Ingresa un código', 'warning'); return; }
+    closePopup('manual'); processScan(code);
+}
+
+function cancelNoWmsBox() { pendingNoWmsCode = null; closePopup('nowms-note'); }
+
+function confirmNoWmsBox() {
+    const note = document.getElementById('nowms-note-input').value.trim();
+    if (!note) { showNotification('Nota obligatoria', 'warning'); return; }
+    if (pendingNoWmsCode) {
+        STATE.boxes.nowms.push({ raw: pendingNoWmsCode.raw, code: pendingNoWmsCode.code, location: '-', note, timestamp: new Date().toLocaleTimeString() });
+        saveToStorage(); renderBoxList(); updateTarimaStats(); showNotification('Caja agregada', 'info');
+    }
+    pendingNoWmsCode = null; closePopup('nowms-note');
+}
+
+function deleteBox(type, index) {
+    if (confirm('¿Eliminar esta caja?')) { STATE.boxes[type].splice(index, 1); saveToStorage(); renderBoxList(); updateTarimaStats(); }
+}
+
+function openFinalizePopup() {
+    document.getElementById('confirm-ok').textContent = STATE.boxes.ok.length;
+    document.getElementById('confirm-blocked').textContent = STATE.boxes.blocked.length;
+    document.getElementById('confirm-nowms').textContent = STATE.boxes.nowms.length;
+    document.getElementById('destination-group').style.display = STATE.boxes.ok.length > 0 ? 'block' : 'none';
+    document.getElementById('destination-input').value = '';
+    document.getElementById('task-select').value = '';
+    document.getElementById('notes-input').value = '';
+    document.getElementById('popup-finalize').style.display = 'flex';
+}
+
+async function confirmTransfer() {
+    const destination = document.getElementById('destination-input').value.trim();
+    const task = document.getElementById('task-select').value;
+    const notes = document.getElementById('notes-input').value.trim();
+    if (STATE.boxes.ok.length > 0 && !destination) { showNotification('Ingresa ubicación destino', 'warning'); return; }
+    if (!task) { showNotification('Selecciona una tarea', 'warning'); return; }
+    closePopup('finalize'); showNotification('Guardando...', 'info');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toTimeString().slice(0, 8);
+    const records = [];
+    STATE.boxes.ok.forEach(box => { records.push({ date: dateStr, time: timeStr, user: STATE.alias || STATE.user?.name || 'Usuario', raw: box.raw, code: box.code, origin: box.location, status: 'OK', destination, tarima: STATE.activeTarima.number, task, notes }); });
+    STATE.boxes.blocked.forEach(box => { records.push({ date: dateStr, time: timeStr, user: STATE.alias || STATE.user?.name || 'Usuario', raw: box.raw, code: box.code, origin: box.location, status: 'BLOQUEADA', destination: 'SURTIDO', tarima: STATE.activeTarima.number, task, notes }); });
+    STATE.boxes.nowms.forEach(box => { records.push({ date: dateStr, time: timeStr, user: STATE.alias || STATE.user?.name || 'Usuario', raw: box.raw, code: box.code, origin: '-', status: 'NO WMS', destination: 'REVISAR', tarima: STATE.activeTarima.number, task, notes: box.note || notes }); });
+    STATE.history = [...records, ...STATE.history].slice(0, 1000);
+    if (STATE.isOnline && gapi.client.getToken()) {
+        try { await writeToSheets(records); showNotification(`✅ ${records.length} transferencias guardadas`, 'success'); }
+        catch (e) { STATE.pendingSync = [...STATE.pendingSync, ...records]; showNotification('Guardado localmente', 'warning'); }
+    } else { STATE.pendingSync = [...STATE.pendingSync, ...records]; showNotification('Sin conexión. Guardado local.', 'warning'); }
+    STATE.activeTarima = null; STATE.boxes = { ok: [], blocked: [], nowms: [] };
+    saveToStorage(); updateConnectionStatus(); renderTransfers(); updateDashboard(); playSound('ok');
+}
+
+async function writeToSheets(records) {
+    const values = records.map(r => [r.date, r.time, r.user, r.raw, r.code, r.origin, r.status, r.destination, r.tarima, r.task, r.notes]);
+    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: CONFIG.SPREADSHEET_WRITE, range: 'BD!A:K', valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS', resource: { values } });
+}
+
+async function syncPendingData() {
+    if (!STATE.isOnline || !gapi.client.getToken() || STATE.pendingSync.length === 0) return;
+    try { await writeToSheets(STATE.pendingSync); showNotification(`✅ ${STATE.pendingSync.length} sincronizados`, 'success'); STATE.pendingSync = []; saveToStorage(); updateConnectionStatus(); }
+    catch (e) { showNotification('Error sincronizando', 'error'); }
+}
+
+function renderTransfers() {
+    const noTarimaState = document.getElementById('no-tarima-state');
+    const activeTarimaContainer = document.getElementById('active-tarima-container');
+    if (!STATE.activeTarima) { noTarimaState.style.display = 'block'; activeTarimaContainer.style.display = 'none'; }
+    else {
+        noTarimaState.style.display = 'none'; activeTarimaContainer.style.display = 'block';
+        document.getElementById('tarima-number').textContent = STATE.activeTarima.number;
+        document.getElementById('tarima-date').textContent = `Creada: ${STATE.activeTarima.createdAt}`;
+        updateTarimaStats(); renderBoxList();
+    }
+}
+
+function updateTarimaStats() {
+    const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-ok').textContent = STATE.boxes.ok.length;
+    document.getElementById('stat-blocked').textContent = STATE.boxes.blocked.length;
+    document.getElementById('stat-nowms').textContent = STATE.boxes.nowms.length;
+    document.getElementById('tab-ok-count').textContent = STATE.boxes.ok.length;
+    document.getElementById('tab-blocked-count').textContent = STATE.boxes.blocked.length;
+    document.getElementById('tab-nowms-count').textContent = STATE.boxes.nowms.length;
+    const blockedAlert = document.getElementById('blocked-alert');
+    if (STATE.boxes.blocked.length > 0) { blockedAlert.style.display = 'flex'; document.getElementById('blocked-alert-text').textContent = `Hay ${STATE.boxes.blocked.length} caja(s) bloqueada(s) que deben entregarse a surtido`; }
+    else blockedAlert.style.display = 'none';
+    document.getElementById('finalize-btn').disabled = total === 0;
+}
+
+function updateLastScanned(box) {
+    document.getElementById('last-scanned-card').classList.add('show');
+    document.getElementById('last-code').textContent = box.code;
+    document.getElementById('last-location').textContent = box.location || '-';
+    document.getElementById('last-status').textContent = box.isBlocked ? 'BLOQUEADA' : 'OK';
+    document.getElementById('last-sku').textContent = box.sku || '-';
+    document.getElementById('last-product').textContent = box.product || '-';
+    document.getElementById('last-qty').textContent = box.qty || '-';
+}
+
+function renderBoxList() {
+    const boxList = document.getElementById('box-list');
+    const currentBoxes = STATE.boxes[STATE.currentTab] || [];
+    if (currentBoxes.length === 0) { boxList.innerHTML = '<div class="empty-state" style="padding:40px"><div class="empty-state-icon">📭</div><div class="empty-state-text">No hay cajas</div></div>'; return; }
+    boxList.innerHTML = currentBoxes.map((box, idx) => `
+        <div class="box-item ${STATE.currentTab === 'nowms' ? 'no-wms' : STATE.currentTab}">
+            <div class="box-info">
+                <div class="box-code">${box.code}</div>
+                <div class="box-meta">${box.location || '-'} • ${box.timestamp}${box.note ? ' • ' + box.note : ''}</div>
+            </div>
+            <span class="box-status ${STATE.currentTab === 'nowms' ? 'no-wms' : STATE.currentTab}">${STATE.currentTab === 'ok' ? 'OK' : STATE.currentTab === 'blocked' ? 'BLOQUEADA' : 'NO WMS'}</span>
+            <button class="box-delete" onclick="deleteBox('${STATE.currentTab}', ${idx})">×</button>
+        </div>
+    `).join('');
+}
+
+function switchTab(tab) {
+    STATE.currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(btn => { btn.classList.toggle('active', btn.dataset.tab === tab); });
+    renderBoxList();
+}
+
+function showSection(section) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById(`section-${section}`).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.section === section));
+    if (section === 'history') filterHistory();
+    if (section === 'dashboard') updateDashboard();
+}
+
+function updateDashboard() {
+    const filter = STATE.dashboardFilter;
+    const now = new Date();
+    let filtered = STATE.history.filter(r => {
+        const d = new Date(r.date);
+        if (filter === 'today') return r.date === now.toISOString().slice(0, 10);
+        if (filter === 'week') { const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000); return d >= weekAgo; }
+        if (filter === 'month') { const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()); return d >= monthAgo; }
+        return true;
+    });
+    document.getElementById('metric-total').textContent = filtered.length;
+    document.getElementById('metric-ok').textContent = filtered.filter(r => r.status === 'OK').length;
+    document.getElementById('metric-blocked').textContent = filtered.filter(r => r.status === 'BLOQUEADA').length;
+    document.getElementById('metric-time').textContent = filtered.length > 0 ? '~5s' : '0s';
+    // Users chart
+    const userCounts = {};
+    filtered.forEach(r => { userCounts[r.user] = (userCounts[r.user] || 0) + 1; });
+    const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
+    const maxUser = sortedUsers[0]?.[1] || 1;
+    document.getElementById('users-chart').innerHTML = sortedUsers.map(([user, count]) => `
+        <div class="bar-item">
+            <div class="bar-label">${user}</div>
+            <div class="bar-track"><div class="bar-fill primary" style="width:${(count / maxUser) * 100}%"></div></div>
+            <div class="bar-value">${count}</div>
+        </div>
+    `).join('') || '<p style="color:#999;text-align:center">Sin datos</p>';
+    // Status chart
+    const okCount = filtered.filter(r => r.status === 'OK').length;
+    const blockedCount = filtered.filter(r => r.status === 'BLOQUEADA').length;
+    const nowmsCount = filtered.filter(r => r.status === 'NO WMS').length;
+    const maxStatus = Math.max(okCount, blockedCount, nowmsCount, 1);
+    document.getElementById('status-chart').innerHTML = `
+        <div class="bar-item"><div class="bar-label">OK</div><div class="bar-track"><div class="bar-fill ok" style="width:${(okCount / maxStatus) * 100}%"></div></div><div class="bar-value">${okCount}</div></div>
+        <div class="bar-item"><div class="bar-label">Bloqueadas</div><div class="bar-track"><div class="bar-fill blocked" style="width:${(blockedCount / maxStatus) * 100}%"></div></div><div class="bar-value">${blockedCount}</div></div>
+        <div class="bar-item"><div class="bar-label">No WMS</div><div class="bar-track"><div class="bar-fill no-wms" style="width:${(nowmsCount / maxStatus) * 100}%"></div></div><div class="bar-value">${nowmsCount}</div></div>
+    `;
+}
+
+function setDashboardFilter(filter) {
+    STATE.dashboardFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.toggle('active', btn.textContent.toLowerCase().includes(filter === 'today' ? 'hoy' : filter === 'week' ? 'semana' : 'mes')));
+    updateDashboard();
+}
+
+function filterHistory() {
+    const dateFilter = document.getElementById('history-date').value;
+    const searchFilter = document.getElementById('history-search').value.toLowerCase();
+    let filtered = STATE.history;
+    if (dateFilter) filtered = filtered.filter(r => r.date === dateFilter);
+    if (searchFilter) filtered = filtered.filter(r => r.code.toLowerCase().includes(searchFilter) || r.user.toLowerCase().includes(searchFilter) || (r.origin && r.origin.toLowerCase().includes(searchFilter)) || (r.destination && r.destination.toLowerCase().includes(searchFilter)));
+    const tbody = document.getElementById('history-tbody');
+    if (filtered.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#999">No hay movimientos</td></tr>'; return; }
+    tbody.innerHTML = filtered.slice(0, 100).map(r => `
+        <tr>
+            <td>${r.time}</td>
+            <td>${r.user}</td>
+            <td>${r.code}</td>
+            <td>${r.origin || '-'}</td>
+            <td>${r.destination || '-'}</td>
+            <td><span class="status-badge ${r.status === 'OK' ? 'ok' : r.status === 'BLOQUEADA' ? 'blocked' : 'no-wms'}">${r.status}</span></td>
+            <td>${r.tarima || '-'}</td>
+            <td>${r.task || '-'}</td>
+        </tr>
+    `).join('');
+}
+
+function searchBox() {
+    const code = document.getElementById('search-box-input').value.trim().toUpperCase();
+    if (!code) { showNotification('Ingresa un código', 'warning'); return; }
+    const item = STATE.inventory.get(code);
+    const resultsDiv = document.getElementById('search-results');
+    const notFoundDiv = document.getElementById('search-not-found');
+    if (item) {
+        resultsDiv.style.display = 'block'; notFoundDiv.style.display = 'none';
+        document.getElementById('search-result-code').textContent = code;
+        const isBlocked = item.lockedInventory > 0;
+        document.getElementById('search-result-status').textContent = isBlocked ? 'BLOQUEADA' : 'OK';
+        document.getElementById('search-result-status').className = `box-detail-status ${isBlocked ? 'blocked' : 'ok'}`;
+        document.getElementById('search-result-location').textContent = item.cellNo || '-';
+        document.getElementById('search-result-sku').textContent = item.sku || '-';
+        document.getElementById('search-result-product').textContent = item.productName || item.productAlias || '-';
+        document.getElementById('search-result-qty').textContent = item.totalStock || '-';
+        document.getElementById('search-result-warehouse').textContent = item.warehouse || '-';
+        document.getElementById('search-result-area').textContent = item.area || '-';
+        const history = STATE.history.filter(r => r.code === code);
+        const historyTbody = document.getElementById('search-history-tbody');
+        if (history.length === 0) { historyTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#999">Sin movimientos registrados</td></tr>'; }
+        else { historyTbody.innerHTML = history.map(r => `<tr><td>${r.date}</td><td>${r.time}</td><td>${r.user}</td><td>${r.origin || '-'} → ${r.destination || '-'}</td><td>${r.tarima || '-'}</td></tr>`).join(''); }
+    } else { resultsDiv.style.display = 'none'; notFoundDiv.style.display = 'block'; }
+}
+
+function exportToCSV() {
+    if (STATE.history.length === 0) { showNotification('No hay datos', 'warning'); return; }
+    const headers = ['Fecha', 'Hora', 'Usuario', 'Escaneo', 'Código', 'Origen', 'Estatus', 'Destino', 'Tarima', 'Tarea', 'Notas'];
+    const rows = STATE.history.map(r => [r.date, r.time, r.user, r.raw, r.code, r.origin, r.status, r.destination, r.tarima, r.task, r.notes || '']);
+    const csv = '\ufeff' + [headers.join(','), ...rows.map(r => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `transferencias_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    showNotification('CSV exportado', 'success');
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        if (type === 'ok') { osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.start(); osc.stop(audioCtx.currentTime + 0.15); }
+        else if (type === 'error') { osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.35); }
+        else if (type === 'warning' || type === 'duplicate') { osc.frequency.setValueAtTime(600, audioCtx.currentTime); osc.start(); osc.stop(audioCtx.currentTime + 0.1); setTimeout(() => { const osc2 = audioCtx.createOscillator(); const gain2 = audioCtx.createGain(); osc2.connect(gain2); gain2.connect(audioCtx.destination); gain2.gain.setValueAtTime(0.3, audioCtx.currentTime); osc2.frequency.setValueAtTime(600, audioCtx.currentTime); osc2.start(); osc2.stop(audioCtx.currentTime + 0.1); }, 150); }
+    } catch (e) {}
+}
+
+function flashScanner(type) {
+    const input = document.getElementById('scanner-input');
+    input.classList.add(`flash-${type}`);
+    setTimeout(() => input.classList.remove(`flash-${type}`), 300);
+}
+
+function showNotification(msg, type) {
+    const container = document.getElementById('notifications');
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const div = document.createElement('div');
+    div.className = `notification ${type}`;
+    div.innerHTML = `<span class="notification-icon">${icons[type] || 'ℹ️'}</span><div class="notification-content">${msg}</div>`;
+    container.appendChild(div);
+    setTimeout(() => div.remove(), 4000);
+}
+
+function closePopup(name) { document.getElementById(`popup-${name}`).style.display = 'none'; }
+    </script>
+</body>
+</html>
