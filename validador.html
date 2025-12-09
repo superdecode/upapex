@@ -1,0 +1,2321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Validación WMS</title>
+    <style>
+        :root {
+            --primary: #ed5224;
+            --success: #4CAF50;
+            --error: #F44336;
+            --warning: #FF9800;
+            --text: #333;
+            --bg: #f7f7f7;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: var(--bg); 
+            color: var(--text);
+        }
+
+        /* === DASHBOARD === */
+        #dashboard { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+        .dash-header { text-align: center; margin-bottom: 40px; }
+        .dash-header h1 { font-size: 2.2em; color: var(--primary); margin-bottom: 8px; }
+        
+        .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .dash-card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; cursor: pointer; transition: all 0.3s; }
+        .dash-card:hover { transform: translateY(-5px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+        .dash-card.no-hover { cursor: default; }
+        .dash-card.no-hover:hover { transform: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .dash-card-icon { font-size: 2.5em; margin-bottom: 10px; }
+        .dash-card-value { font-size: 2em; font-weight: 700; color: var(--primary); margin-top: 5px; }
+        
+        .status-grid { display: grid; gap: 12px; margin-bottom: 20px; }
+        .status-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #f9f9f9; border-radius: 6px; }
+        .status-indicator { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        .status-ok { background: var(--success); }
+        .status-error { background: var(--error); }
+        .status-warning { background: var(--warning); }
+        
+        .btn { padding: 15px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 1.1em; transition: all 0.2s; width: 100%; }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: linear-gradient(135deg, #4CAF50, #45a049); color: white; font-size: 1.4em; padding: 20px; }
+        .btn-google { background: #4285F4; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-small { padding: 8px 15px; font-size: 0.85em; width: auto; }
+
+        /* Connection banner */
+        .connection-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 12px;
+            text-align: center;
+            font-weight: 700;
+            z-index: 10000;
+            display: none;
+            animation: slideDown 0.3s;
+        }
+        .connection-banner.offline {
+            background: var(--error);
+            color: white;
+            display: block;
+        }
+        .connection-banner.online {
+            background: var(--success);
+            color: white;
+            display: block;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); }
+            to { transform: translateY(0); }
+        }
+
+        /* User stats popup */
+        .user-stats-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            z-index: 9999;
+            display: none;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .user-stats-popup.active {
+            display: block;
+        }
+        .popup-overlay-dark {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9998;
+            display: none;
+        }
+        .popup-overlay-dark.active {
+            display: block;
+        }
+        .user-stat-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .user-stat-bar {
+            height: 8px;
+            background: var(--primary);
+            border-radius: 4px;
+            margin-top: 8px;
+            transition: width 0.5s;
+        }
+        .user-stat-name {
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+        .user-stat-count {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* === VALIDATION SCREEN === */
+        #validation { display: none; min-height: 100vh; }
+        .container { display: flex; height: 100vh; }
+        .sidebar { width: 200px; background: #333; color: white; padding: 18px; overflow-y: auto; display: flex; flex-direction: column; }
+        .main-content { flex: 1; padding: 15px; overflow-y: auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .header h1 { color: var(--primary); font-size: 1.6em; flex: 1; }
+        
+        .card { background: white; padding: 18px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        
+        /* Progress Card */
+        .progress-card { 
+            background: linear-gradient(135deg, #ffa07a 0%, #ff8a52 100%); 
+            color: white; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 15px; 
+        }
+        .progress-card.completed {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%) !important;
+        }
+        .progress-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .progress-obc-name { font-size: 1.2em; font-weight: 700; }
+        .progress-percentage { font-size: 2em; font-weight: 800; }
+        .progress-counts { display: flex; justify-content: space-around; margin-bottom: 10px; }
+        .progress-count-item { text-align: center; }
+        .progress-count-number { font-size: 1.4em; font-weight: 700; }
+        .progress-count-label { font-size: 0.7em; opacity: 0.85; }
+        .progress-bar-container { background: rgba(0,0,0,0.25); height: 10px; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.3); }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #fff, #ffd966); transition: width 0.5s; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        .progress-bar-fill.completed { background: linear-gradient(90deg, #fff, #81c784) !important; }
+        
+        /* Inputs en línea */
+        .inline-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.85em; }
+        .input-group input, .input-group select { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95em; }
+        .input-group textarea { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95em; font-family: inherit; resize: vertical; }
+        .scanner-input { font-size: 1.6em !important; text-transform: uppercase; font-weight: bold; text-align: center; background: #fff5ed !important; }
+        
+        /* Scanner section with manual button */
+        .scanner-section {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        .scanner-wrapper {
+            flex: 1;
+        }
+        .btn-manual {
+            padding: 10px 15px;
+            background: var(--warning);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-manual:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255,152,0,0.3);
+        }
+        
+        /* Stats */
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 15px; }
+        .stat-box { text-align: center; padding: 15px; border-radius: 8px; }
+        .stat-number { font-size: 2em; font-weight: 700; margin-top: 5px; }
+        .stat-ok { background: #e8f5e9; border: 2px solid var(--success); color: var(--success); }
+        .stat-error { background: #ffebee; border: 2px solid var(--error); color: var(--error); }
+        
+        /* Logs con numeración */
+        .logs-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
+        .log-list { max-height: 350px; overflow-y: auto; list-style: none; background: #fafafa; padding: 10px; border-radius: 8px; counter-reset: log-counter; }
+        .log-item { display: flex; gap: 8px; padding: 8px; margin-bottom: 6px; background: white; border-radius: 4px; border-left: 4px solid; }
+        .log-item::before { content: counter(log-counter) "."; counter-increment: log-counter; font-weight: 700; min-width: 25px; }
+        .log-ok { border-color: var(--success); }
+        .log-ok::before { color: var(--success); }
+        .log-reject { border-color: var(--error); }
+        .log-reject::before { color: var(--error); }
+        .log-info { flex: 1; }
+        .log-code { font-weight: 600; }
+        
+        /* Tabs */
+        .tab-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; align-items: center; }
+        .tab { 
+            padding: 8px 12px; 
+            cursor: pointer; 
+            border: 2px solid #ddd; 
+            border-radius: 6px; 
+            background: white; 
+            font-weight: 600; 
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .tab.completed { background: var(--success) !important; color: white !important; border-color: var(--success) !important; }
+        .tab.new-tab { background: linear-gradient(135deg, #ffb399, #ff9d7a); color: white; }
+        .tab-close {
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 0;
+            margin: 0;
+            line-height: 1;
+            opacity: 0.7;
+        }
+        .tab-close:hover {
+            opacity: 1;
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        .empty-state-text {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        /* Notificaciones */
+        .notification-container { position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 350px; }
+        .notification { background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border-left: 4px solid; animation: slideIn 0.3s; }
+        .notification.success { border-color: var(--success); }
+        .notification.error { border-color: var(--error); }
+        .notification.warning { border-color: var(--warning); }
+        .notification.info { border-color: #2196F3; }
+        @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
+        /* Popups */
+        .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .popup-content { background: white; padding: 25px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); position: relative; }
+        .popup-header { font-size: 1.4em; font-weight: 700; margin-bottom: 15px; }
+        .popup-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .popup-close-x {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            font-size: 1.2em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            transition: all 0.2s;
+        }
+        .popup-close-x:hover {
+            background: #d0d0d0;
+            color: #333;
+        }
+        
+        /* Mini alert */
+        .mini-alert {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(244, 67, 54, 0.95);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: 600;
+            z-index: 10000;
+            animation: fadeInOut 0.4s ease-in-out;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+        
+        /* Resumen Module */
+        #resumen-module { display: none; }
+        .search-bar { padding: 12px; border: 2px solid #ddd; border-radius: 6px; margin-bottom: 15px; width: 100%; font-size: 1em; }
+        .resumen-table { width: 100%; border-collapse: collapse; background: white; }
+        .resumen-table th, .resumen-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        .resumen-table th { background: #f5f5f5; font-weight: 700; }
+        
+        /* Faltantes Module */
+        #faltantes-module { display: none; }
+        .faltantes-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .faltantes-controls input {
+            flex: 1;
+            min-width: 200px;
+        }
+        .faltantes-controls select {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            min-width: 200px;
+        }
+        .faltantes-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
+            gap: 8px; 
+            max-height: 600px; 
+            overflow-y: auto; 
+        }
+        .faltante-item { padding: 10px; border-radius: 6px; text-align: center; font-size: 0.8em; font-weight: 600; word-break: break-all; }
+        .faltante-ok { background: #e8f5e9; color: var(--success); }
+        .faltante-pending { background: #ffebee; color: var(--error); }
+        
+        /* Sync status indicator */
+        .sync-status {
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 0.85em;
+            text-align: center;
+        }
+        .sync-ok {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+        .sync-error {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--error);
+            border: 1px solid var(--error);
+        }
+        .sync-warning {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
+        
+        /* Pending sync indicator */
+        .pending-sync-badge {
+            display: inline-block;
+            background: var(--warning);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+        
+        @media (max-width: 1024px) {
+            .sidebar { width: 180px; }
+        }
+        
+        @media (max-width: 768px) {
+            .container { flex-direction: column; height: auto; }
+            .sidebar { width: 100%; }
+            .inline-inputs { grid-template-columns: 1fr; }
+            .faltantes-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-banner" id="connection-banner"></div>
+    <div class="notification-container" id="notifications"></div>
+    <div class="popup-overlay-dark" id="user-stats-overlay" onclick="closeUserStats()"></div>
+    
+    <!-- User Stats Popup -->
+    <div class="user-stats-popup" id="user-stats-popup">
+        <button class="popup-close-x" onclick="closeUserStats()">×</button>
+        <h2 style="margin-bottom: 20px; color: var(--primary);">📊 Validaciones por Usuario</h2>
+        <div id="user-stats-content"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard">
+        <div class="dash-header">
+            <h1>🏭 Sistema de Validación WMS</h1>
+            <p>Warehouse Management System</p>
+        </div>
+
+        <div class="dash-grid">
+            <div class="dash-card no-hover">
+                <div class="dash-card-icon">📦</div>
+                <div>Órdenes de Hoy</div>
+                <div class="dash-card-value" id="dash-orders">-</div>
+            </div>
+            <div class="dash-card" onclick="showUserStats()">
+                <div class="dash-card-icon">✅</div>
+                <div>Cajas Validadas Hoy</div>
+                <div class="dash-card-value" id="dash-validated">-</div>
+                <div style="font-size: 0.8em; color: #666; margin-top: 10px;">👆 Click para ver por usuario</div>
+            </div>
+            <div class="dash-card no-hover">
+                <div class="dash-card-icon">📊</div>
+                <div>Códigos en BD</div>
+                <div class="dash-card-value" id="dash-bd">0</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 20px; color: var(--primary);">Estado del Sistema</h2>
+            <div class="status-grid">
+                <div class="status-row">
+                    <div style="display: flex; align-items: center;">
+                        <div class="status-indicator" id="status-conn"></div>
+                        Conexión Google Sheets
+                    </div>
+                    <span id="conn-label">Desconectado</span>
+                </div>
+                <div class="status-row">
+                    <div style="display: flex; align-items: center;">
+                        <div class="status-indicator" id="status-bd"></div>
+                        Base de Datos
+                    </div>
+                    <span id="bd-label">No cargada</span>
+                </div>
+                <div class="status-row">
+                    <div style="display: flex; align-items: center;">
+                        <div class="status-indicator" id="status-sync"></div>
+                        Sincronización
+                    </div>
+                    <span id="sync-label">Pendiente</span>
+                </div>
+            </div>
+            <button id="connect-btn" class="btn btn-google" onclick="handleAuthClick()">🔗 Conectar con Google Sheets</button>
+            <button id="load-bd-btn" class="btn btn-secondary" onclick="loadDatabase()" style="display:none; margin-top:10px;">📊 Cargar Base de Datos</button>
+        </div>
+
+        <button id="start-btn" class="btn btn-success" onclick="startValidation()" disabled style="margin-top: 20px;">
+            🚀 Iniciar Validación
+        </button>
+    </div>
+
+    <!-- VALIDATION SCREEN -->
+    <div id="validation">
+        <div class="container">
+            <div class="sidebar">
+                <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">WMS</h2>
+                <button class="btn btn-primary btn-small" onclick="returnToDashboard()" style="margin-bottom: 10px; width: 100%;">← Dashboard</button>
+                <button class="btn btn-secondary btn-small" onclick="showResumen()" style="margin-bottom: 10px; width: 100%;">📋 Resumen</button>
+                <button class="btn btn-secondary btn-small" onclick="showFaltantes()" style="margin-bottom: 10px; width: 100%;">🔍 Faltantes</button>
+                <hr style="border-color: #555; margin: 15px 0;">
+                <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none;">
+                    ✅ Sincronizado
+                </div>
+                <button class="btn btn-secondary btn-small" onclick="forceSync()" style="margin-bottom: 10px; width: 100%;">
+                    🔄 Sincronizar
+                    <span id="pending-badge" class="pending-sync-badge" style="display: none;">0</span>
+                </button>
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <div style="font-size: 1.3em; font-weight: 700; color: var(--primary);" id="bd-count-sidebar">0</div>
+                    <div style="font-size: 0.75em; opacity: 0.8;">códigos en BD</div>
+                </div>
+                <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
+            </div>
+
+            <div class="main-content">
+                <div class="header">
+                    <h1>🔍 Validación de Cajas</h1>
+                    <button class="btn btn-secondary btn-small" onclick="exportData()">📥 CSV</button>
+                </div>
+
+                <div id="content-area">
+                    <div id="empty-state" class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <div class="empty-state-text">No hay órdenes activas</div>
+                        <button class="btn btn-primary" onclick="addOBC()" style="width: auto; padding: 12px 30px;">+ Nueva Orden</button>
+                    </div>
+
+                    <div id="validation-content" style="display: none;">
+                        <div class="tab-bar" id="tab-bar"></div>
+
+                        <div class="progress-card">
+                            <div class="progress-header">
+                                <div class="progress-obc-name" id="prog-obc">-</div>
+                                <div class="progress-percentage" id="prog-pct">0%</div>
+                            </div>
+                            <div class="progress-counts">
+                                <div class="progress-count-item">
+                                    <div class="progress-count-number" id="prog-scan">0</div>
+                                    <div class="progress-count-label">Escaneadas</div>
+                                </div>
+                                <div class="progress-count-item">
+                                    <div class="progress-count-number" id="prog-total">0</div>
+                                    <div class="progress-count-label">Total</div>
+                                </div>
+                                <div class="progress-count-item">
+                                    <div class="progress-count-number" id="prog-rest">0</div>
+                                    <div class="progress-count-label">Faltantes</div>
+                                </div>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" id="prog-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div class="stats">
+                            <div class="stat-box stat-ok">
+                                VALIDADAS
+                                <div class="stat-number" id="stat-ok">0</div>
+                            </div>
+                            <div class="stat-box stat-error">
+                                RECHAZADAS
+                                <div class="stat-number" id="stat-error">0</div>
+                            </div>
+                        </div>
+
+                        <div class="logs-container">
+                            <div class="card">
+                                <h3>✅ Validaciones OK</h3>
+                                <ul id="log-ok" class="log-list"></ul>
+                            </div>
+                            <div class="card">
+                                <h3>❌ Rechazos</h3>
+                                <ul id="log-reject" class="log-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESUMEN MODULE -->
+    <div id="resumen-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>📋 Resumen de Órdenes</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideResumen()">← Volver</button>
+                </div>
+                <div class="card">
+                    <input type="text" id="search-resumen" class="search-bar" placeholder="🔍 Buscar orden..." oninput="filterResumen()">
+                    <div style="overflow-x: auto;">
+                        <table class="resumen-table">
+                            <thead>
+                                <tr>
+                                    <th>Orden</th>
+                                    <th>Total</th>
+                                    <th>Validadas</th>
+                                    <th>Progreso</th>
+                                    <th>Destino</th>
+                                    <th>Horario</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resumen-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FALTANTES MODULE -->
+    <div id="faltantes-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔍 Códigos Faltantes</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideFaltantes()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="faltantes-controls">
+                        <select id="faltantes-order-select" onchange="renderFaltantes()">
+                            <option value="">Seleccionar orden...</option>
+                        </select>
+                        <input type="text" id="search-faltantes" class="search-bar" placeholder="🔍 Buscar código..." oninput="filterFaltantes()">
+                    </div>
+                    <p style="margin-bottom: 15px;"><span style="color: var(--success);">✅ Validados</span> | <span style="color: var(--error);">❌ Faltantes</span></p>
+                    <div class="faltantes-grid" id="faltantes-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUPS -->
+    <div id="popup-error" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('error')">×</button>
+            <div class="popup-header" style="color: var(--error);">❌ CÓDIGO RECHAZADO</div>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="err-code"></span><br>
+                <strong>Motivo:</strong> <span id="err-reason" style="color: var(--error);"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="closePopup('error')">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-history" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('history')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ CÓDIGO YA VALIDADO EN HISTORIAL</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="hist-code"></span><br>
+                <strong>Orden Original:</strong> <span id="hist-obc"></span><br>
+                <strong>Validado:</strong> <span id="hist-when"></span><br>
+                <strong>Usuario:</strong> <span id="hist-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('history')">Cancelar</button>
+                <button class="btn btn-primary" onclick="forceHistoryValidation()">Forzar Validación con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-dup" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('dup')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ DUPLICADO</div>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="dup-code"></span><br>
+                <strong>Validado:</strong> <span id="dup-when"></span><br>
+                <strong>Usuario:</strong> <span id="dup-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('dup')">Ignorar</button>
+                <button class="btn btn-primary" onclick="forceDuplicate()">Forzar con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-completed" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="continueViewing()">×</button>
+            <div class="popup-header" style="color: var(--success);">✅ ORDEN COMPLETADA</div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                <div style="font-size: 1.8em; font-weight: 700; color: var(--success); margin-bottom: 10px;">🎉</div>
+                <strong>Orden:</strong> <span id="completed-obc"></span><br>
+                <strong>Cajas validadas:</strong> <span id="completed-count"></span><br>
+                <strong>Usuario:</strong> <span id="completed-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="continueToNewOrder()" style="background: var(--warning);">Nueva Orden</button>
+                <button class="btn btn-success" onclick="saveAndContinue()">Guardar y Continuar</button>
+                <button class="btn btn-secondary" onclick="saveAndClose()">Cerrar Validación</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-manual" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('manual')">×</button>
+            <div class="popup-header" style="color: var(--warning);">✏️ INGRESO MANUAL DE CÓDIGO</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <p style="margin-bottom: 15px; color: #e65100;"><strong>⚠️ Advertencia:</strong> Solo usar para casos excepcionales</p>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Código:</label>
+                    <input type="text" id="manual-code" placeholder="Ingresa el código">
+                </div>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Motivo:</label>
+                    <select id="manual-reason" onchange="toggleManualOtherNote()">
+                        <option value="">Seleccionar motivo...</option>
+                        <option value="Codigo Borroso">Código Borroso</option>
+                        <option value="Etiqueta Dañada">Etiqueta Dañada</option>
+                        <option value="Error Surtido">Error Surtido</option>
+                        <option value="Mercancia Reetiquetada">Mercancía Reetiquetada</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="input-group" id="manual-other-container" style="display: none;">
+                    <label>Especificar motivo (obligatorio):</label>
+                    <textarea id="manual-other-note" rows="3" placeholder="Describe el motivo..."></textarea>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('manual')">Cancelar</button>
+                <button class="btn btn-primary" onclick="submitManualCode()">Validar Código</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-reload-order" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color: var(--primary);">📦 ORDEN PARCIALMENTE VALIDADA</div>
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Orden:</strong> <span id="reload-obc"></span><br>
+                <strong>Ya validadas:</strong> <span id="reload-validated"></span><br>
+                <strong>Total:</strong> <span id="reload-total"></span><br>
+                <strong>Pendientes:</strong> <span id="reload-pending"></span>
+            </div>
+            <p style="margin: 15px 0; color: #666;">Esta orden ya tiene validaciones previas. ¿Deseas continuar donde se dejó?</p>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="cancelReloadOrder()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmReloadOrder()">Continuar Validación</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-already-complete" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color: var(--success);">✅ ORDEN YA COMPLETADA</div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                <div style="font-size: 1.8em; margin-bottom: 10px;">🎉</div>
+                <strong>Orden:</strong> <span id="complete-obc"></span><br>
+                <strong>Validadas:</strong> <span id="complete-count"></span><br>
+                <p style="margin-top: 10px; color: #666;">Esta orden ya fue validada al 100%</p>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="closePopup('already-complete')">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script>
+        const CLIENT_ID = '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com';
+        const SPREADSHEET_BD = '1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck';
+        const SPREADSHEET_WRITE = '1gU5yDb0R4_Mf1fE-lOA7vwYmTUBR0wV7EPGg5zUt2Xo';
+        const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
+        
+        let CURRENT_USER = '';
+        let BD_CODES = new Set();
+        let OBC_MAP = new Map();
+        let OBC_TOTALS = new Map();
+        let OBC_INFO = new Map();
+        let HISTORY = new Map();
+        let PENDING_SYNC = [];
+        let IS_ONLINE = navigator.onLine;
+        let SYNC_INTERVAL = null;
+        let STATE = {
+            activeOBC: null,
+            tabs: {},
+            closedTabs: {}
+        };
+        let TOKEN_CLIENT, audioCtx;
+        let lastScanned = null;
+        let typingTimer = null;
+        let scannerBuffer = '';
+        let pendingReloadOBC = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            initAudio();
+            await loadFromStorage();
+            setupListeners();
+            setupConnectionMonitor();
+            renderValidation();
+            gapi.load('client', initGAPI);
+            startAutoSync();
+        });
+
+        function initAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                document.addEventListener('click', () => audioCtx.state === 'suspended' && audioCtx.resume(), { once: true });
+            } catch (e) {}
+        }
+
+        function setupConnectionMonitor() {
+            window.addEventListener('online', () => {
+                IS_ONLINE = true;
+                showConnectionBanner('online');
+                showNotification('✅ Conexión restaurada - Sincronizando datos...', 'success');
+                setTimeout(() => syncPendingData(), 1000);
+            });
+
+            window.addEventListener('offline', () => {
+                IS_ONLINE = false;
+                showConnectionBanner('offline');
+                showNotification('⚠️ Sin conexión - Los datos se guardarán localmente', 'warning');
+                updateSyncStatus(false);
+            });
+
+            if (!IS_ONLINE) {
+                showConnectionBanner('offline');
+                updateSyncStatus(false);
+            }
+        }
+
+        function showConnectionBanner(status) {
+            const banner = document.getElementById('connection-banner');
+            banner.className = `connection-banner ${status}`;
+            banner.textContent = status === 'online' 
+                ? '✅ Conexión a Internet restaurada' 
+                : '❌ Sin conexión a Internet - Modo offline activo';
+            
+            if (status === 'online') {
+                setTimeout(() => banner.style.display = 'none', 5000);
+            }
+        }
+
+        function startAutoSync() {
+            SYNC_INTERVAL = setInterval(() => {
+                if (IS_ONLINE && gapi.client.getToken()) {
+                    console.log('Auto-sync triggered');
+                    syncPendingData();
+                }
+            }, 3600000);
+        }
+
+        async function syncPendingData() {
+            if (!IS_ONLINE) {
+                showNotification('⚠️ Sin conexión - No se puede sincronizar', 'warning');
+                return;
+            }
+
+            if (!gapi.client.getToken()) {
+                showNotification('⚠️ No conectado a Google Sheets', 'warning');
+                return;
+            }
+
+            if (PENDING_SYNC.length === 0) {
+                updateSyncStatus(true);
+                return;
+            }
+
+            showNotification(`🔄 Sincronizando ${PENDING_SYNC.length} validaciones pendientes...`, 'info');
+            
+            let successCount = 0;
+            let errorCount = 0;
+            const toRetry = [];
+
+            for (const item of PENDING_SYNC) {
+                try {
+                    await writeToSheets(item.sheet, item.log);
+                    successCount++;
+                } catch (e) {
+                    errorCount++;
+                    toRetry.push(item);
+                }
+            }
+
+            PENDING_SYNC = toRetry;
+            await savePendingSync();
+            updatePendingBadge();
+
+            if (errorCount === 0) {
+                showNotification(`✅ ${successCount} validaciones sincronizadas correctamente`, 'success');
+                updateSyncStatus(true);
+            } else {
+                showNotification(`⚠️ ${successCount} sincronizadas, ${errorCount} pendientes`, 'warning');
+                updateSyncStatus(false);
+            }
+        }
+
+        async function savePendingSync() {
+            try {
+                await window.storage.set('wms_pending_sync', JSON.stringify(PENDING_SYNC));
+            } catch (e) {}
+        }
+
+        async function loadPendingSync() {
+            try {
+                const res = await window.storage.get('wms_pending_sync');
+                if (res?.value) {
+                    PENDING_SYNC = JSON.parse(res.value);
+                    updatePendingBadge();
+                }
+            } catch (e) {}
+        }
+
+        function updatePendingBadge() {
+            const badge = document.getElementById('pending-badge');
+            if (PENDING_SYNC.length > 0) {
+                badge.textContent = PENDING_SYNC.length;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        async function initGAPI() {
+            try {
+                await gapi.client.init({ discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"] });
+                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    callback: async (res) => {
+                        if (res?.access_token) {
+                            gapi.client.setToken(res);
+                            await getUserProfile();
+                            updateConnectionStatus(true);
+                            loadDatabase();
+                            await loadPendingSync();
+                            if (PENDING_SYNC.length > 0) syncPendingData();
+                        }
+                    }
+                });
+            } catch (e) {
+                showNotification('❌ Error al inicializar Google API', 'error');
+            }
+        }
+
+        async function getUserProfile() {
+            try {
+                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
+                });
+                const data = await response.json();
+                CURRENT_USER = data.name || 'Usuario';
+                showNotification(`✅ Sesión iniciada: ${CURRENT_USER}`, 'success');
+            } catch (e) {
+                CURRENT_USER = 'Usuario';
+            }
+        }
+
+        async function loadFromStorage() {
+            try {
+                const stateRes = await window.storage.get('wms_state');
+                if (stateRes?.value) {
+                    const loaded = JSON.parse(stateRes.value);
+                    STATE.tabs = loaded.tabs || {};
+                    STATE.closedTabs = loaded.closedTabs || {};
+                    STATE.activeOBC = loaded.activeOBC;
+                }
+                
+                const bdRes = await window.storage.get('wms_bd');
+                if (bdRes?.value) {
+                    const cached = JSON.parse(bdRes.value);
+                    BD_CODES = new Set(cached.codes);
+                    OBC_MAP = new Map(cached.obcMap?.map(([k, v]) => [k, new Set(v)]));
+                    OBC_TOTALS = new Map(cached.totals);
+                    OBC_INFO = new Map(cached.info);
+                    updateDashboardStats();
+                }
+
+                const histRes = await window.storage.get('wms_history');
+                if (histRes?.value) {
+                    const cached = JSON.parse(histRes.value);
+                    HISTORY = new Map(cached.history);
+                }
+
+                await loadPendingSync();
+            } catch (e) {}
+        }
+
+        async function saveState() {
+            try {
+                await window.storage.set('wms_state', JSON.stringify(STATE));
+            } catch (e) {}
+        }
+
+        async function saveBD() {
+            try {
+                await window.storage.set('wms_bd', JSON.stringify({
+                    codes: Array.from(BD_CODES),
+                    obcMap: Array.from(OBC_MAP.entries()).map(([k, v]) => [k, Array.from(v)]),
+                    totals: Array.from(OBC_TOTALS.entries()),
+                    info: Array.from(OBC_INFO.entries())
+                }));
+            } catch (e) {}
+        }
+
+        async function saveHistory() {
+            try {
+                await window.storage.set('wms_history', JSON.stringify({
+                    history: Array.from(HISTORY.entries())
+                }));
+            } catch (e) {}
+        }
+
+        function handleAuthClick() {
+            if (gapi.client.getToken()) {
+                google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
+                    gapi.client.setToken(null);
+                    updateConnectionStatus(false);
+                    showNotification('🔓 Sesión cerrada', 'info');
+                });
+            } else {
+                TOKEN_CLIENT.requestAccessToken();
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            document.getElementById('status-conn').className = `status-indicator ${connected ? 'status-ok' : 'status-error'}`;
+            document.getElementById('conn-label').textContent = connected ? 'Conectado' : 'Desconectado';
+            document.getElementById('connect-btn').textContent = connected ? '🔓 Cerrar Sesión' : '🔗 Conectar';
+            document.getElementById('load-bd-btn').style.display = connected ? 'block' : 'none';
+            updateStartButton();
+            updateSyncStatus(connected);
+        }
+
+        function updateSyncStatus(synced) {
+            const syncEl = document.getElementById('sync-status-sidebar');
+            const statusIndicator = document.getElementById('status-sync');
+            const statusLabel = document.getElementById('sync-label');
+            
+            if (!IS_ONLINE) {
+                syncEl.className = 'sync-status sync-warning';
+                syncEl.textContent = '⚠️ Sin conexión';
+                syncEl.style.display = 'block';
+                statusIndicator.className = 'status-indicator status-warning';
+                statusLabel.textContent = 'Offline';
+            } else if (PENDING_SYNC.length > 0) {
+                syncEl.className = 'sync-status sync-warning';
+                syncEl.textContent = `⚠️ ${PENDING_SYNC.length} pendientes`;
+                syncEl.style.display = 'block';
+                statusIndicator.className = 'status-indicator status-warning';
+                statusLabel.textContent = `${PENDING_SYNC.length} pendientes`;
+            } else if (synced && IS_ONLINE) {
+                syncEl.className = 'sync-status sync-ok';
+                syncEl.textContent = '✅ Sincronizado';
+                syncEl.style.display = 'block';
+                statusIndicator.className = 'status-indicator status-ok';
+                statusLabel.textContent = 'Sincronizado';
+            } else {
+                syncEl.className = 'sync-status sync-error';
+                syncEl.textContent = '❌ No sincronizado';
+                syncEl.style.display = 'block';
+                statusIndicator.className = 'status-indicator status-error';
+                statusLabel.textContent = 'No sincronizado';
+            }
+        }
+
+        function updateStartButton() {
+            const canStart = gapi.client.getToken() && BD_CODES.size > 0;
+            document.getElementById('start-btn').disabled = !canStart;
+        }
+
+        async function loadDatabase() {
+            if (!gapi.client.getToken()) {
+                showNotification('⚠️ Conecta primero con Google Sheets', 'warning');
+                return;
+            }
+
+            if (!IS_ONLINE) {
+                showNotification('⚠️ Sin conexión a Internet', 'warning');
+                return;
+            }
+
+            showNotification('🔄 Cargando base de datos...', 'info');
+            
+            try {
+                const resRes = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SPREADSHEET_BD,
+                    range: 'Resumen!A:E'
+                });
+
+                const resRows = resRes.result.values;
+                if (resRows?.length > 1) {
+                    OBC_TOTALS.clear();
+                    OBC_INFO.clear();
+                    
+                    for (let i = 1; i < resRows.length; i++) {
+                        const [obc, ref, time, recipient, count] = resRows[i];
+                        if (obc && count) {
+                            OBC_TOTALS.set(obc, parseInt(count));
+                            OBC_INFO.set(obc, { recipient, arrivalTime: time, referenceOrder: ref });
+                        }
+                    }
+                }
+
+                const sheets = ['BD', 'Outbound_出库单', 'Sheet1'];
+                for (const sheet of sheets) {
+                    try {
+                        const codesRes = await gapi.client.sheets.spreadsheets.values.get({
+                            spreadsheetId: SPREADSHEET_BD,
+                            range: `${sheet}!A:I`
+                        });
+
+                        const rows = codesRes.result.values;
+                        if (rows?.length > 1) {
+                            BD_CODES.clear();
+                            OBC_MAP.clear();
+                            
+                            for (let i = 1; i < rows.length; i++) {
+                                const obc = rows[i][0]?.toString().trim();
+                                const concat = rows[i][8]?.toString().trim();
+                                if (obc && concat) {
+                                    const norm = normalizeCode(concat);
+                                    BD_CODES.add(norm);
+                                    if (!OBC_MAP.has(obc)) OBC_MAP.set(obc, new Set());
+                                    OBC_MAP.get(obc).add(norm);
+                                }
+                            }
+                            
+                            await saveBD();
+                            break;
+                        }
+                    } catch (e) {}
+                }
+
+                try {
+                    const histRes = await gapi.client.sheets.spreadsheets.values.get({
+                        spreadsheetId: SPREADSHEET_WRITE,
+                        range: 'Val3!A:G'
+                    });
+
+                    const histRows = histRes.result.values;
+                    if (histRows?.length > 1) {
+                        HISTORY.clear();
+                        
+                        for (let i = 1; i < histRows.length; i++) {
+                            const [date, timestamp, user, obc, code, location, note] = histRows[i];
+                            if (code && obc) {
+                                const key = `${normalizeCode(code)}_${obc.toLowerCase()}`;
+                                HISTORY.set(key, {
+                                    user: user || 'Usuario',
+                                    timestamp: timestamp || '',
+                                    date: date || '',
+                                    obc: obc || ''
+                                });
+                            }
+                        }
+                        
+                        await saveHistory();
+                        showNotification(`📚 Historial cargado: ${HISTORY.size} validaciones`, 'info');
+                    }
+                } catch (e) {
+                    console.error('Error loading history:', e);
+                }
+                
+                updateDashboardStats();
+                document.getElementById('status-bd').className = 'status-indicator status-ok';
+                document.getElementById('bd-label').textContent = 'Cargada';
+                updateStartButton();
+                showNotification(`✅ BD cargada: ${BD_CODES.size} códigos en ${OBC_TOTALS.size} órdenes`, 'success');
+                playSound('ok');
+                updateSyncStatus(true);
+            } catch (err) {
+                showNotification('❌ Error al cargar BD', 'error');
+                console.error(err);
+                updateSyncStatus(false);
+            }
+        }
+
+        async function forceSync() {
+            if (!gapi.client.getToken()) {
+                showNotification('⚠️ No hay conexión con Google Sheets', 'warning');
+                updateSyncStatus(false);
+                return;
+            }
+
+            if (!IS_ONLINE) {
+                showNotification('⚠️ Sin conexión a Internet - Modo offline', 'warning');
+                return;
+            }
+
+            showNotification('🔄 Sincronizando...', 'info');
+            
+            try {
+                await loadDatabase();
+                await syncPendingData();
+                updateSyncStatus(true);
+                showNotification('✅ Sincronización completada', 'success');
+            } catch (e) {
+                updateSyncStatus(false);
+                showNotification('❌ Error en sincronización', 'error');
+            }
+        }
+
+        function updateDashboardStats() {
+            document.getElementById('dash-bd').textContent = BD_CODES.size.toLocaleString();
+            document.getElementById('bd-count-sidebar').textContent = BD_CODES.size.toLocaleString();
+            document.getElementById('dash-orders').textContent = OBC_TOTALS.size || '-';
+            
+            let totalValidated = 0;
+            for (const obc in STATE.tabs) {
+                totalValidated += STATE.tabs[obc].validations.length;
+            }
+            for (const obc in STATE.closedTabs) {
+                totalValidated += STATE.closedTabs[obc].validations.length;
+            }
+            document.getElementById('dash-validated').textContent = totalValidated || '-';
+        }
+
+        function showUserStats() {
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            const userStats = {};
+            let total = 0;
+
+            for (const obc in allOrders) {
+                allOrders[obc].validations.forEach(val => {
+                    const user = val.user || 'Usuario';
+                    if (!userStats[user]) userStats[user] = 0;
+                    userStats[user]++;
+                    total++;
+                });
+            }
+
+            const sortedUsers = Object.entries(userStats).sort((a, b) => b[1] - a[1]);
+            const content = document.getElementById('user-stats-content');
+            content.innerHTML = '';
+
+            if (sortedUsers.length === 0) {
+                content.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">No hay validaciones registradas hoy</p>';
+            } else {
+                sortedUsers.forEach(([user, count]) => {
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+                    const div = document.createElement('div');
+                    div.className = 'user-stat-item';
+                    div.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div>
+                                <div class="user-stat-name">${user}</div>
+                                <div style="color: #666; font-size: 0.9em;">${percentage}% del total</div>
+                            </div>
+                            <div class="user-stat-count">${count}</div>
+                        </div>
+                        <div style="background: #e0e0e0; height: 8px; border-radius: 4px;">
+                            <div class="user-stat-bar" style="width: ${percentage}%"></div>
+                        </div>
+                    `;
+                    content.appendChild(div);
+                });
+
+                const totalDiv = document.createElement('div');
+                totalDiv.style.cssText = 'margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px; text-align: center; font-weight: 700;';
+                totalDiv.innerHTML = `Total del día: <span style="color: var(--primary); font-size: 1.5em;">${total}</span> cajas`;
+                content.appendChild(totalDiv);
+            }
+
+            document.getElementById('user-stats-popup').classList.add('active');
+            document.getElementById('user-stats-overlay').classList.add('active');
+        }
+
+        function closeUserStats() {
+            document.getElementById('user-stats-popup').classList.remove('active');
+            document.getElementById('user-stats-overlay').classList.remove('active');
+        }
+
+        function extractCode(raw) {
+            const code = raw.trim();
+            const jsonPattern1 = /\[id\[.*?\[([\d\/\-]+)\[/i;
+            const jsonPattern2 = /¨id¨.*?¨([\d\/\-]+)¨/i;
+            const match1 = code.match(jsonPattern1);
+            if (match1) return match1[1];
+            const match2 = code.match(jsonPattern2);
+            if (match2) return match2[1];
+            const directPattern = /^([\d\/\-]+)/;
+            const match3 = code.match(directPattern);
+            if (match3) return match3[1];
+            return code;
+        }
+
+        function normalizeCode(code) {
+            return code ? code.replace(/-/g, '/').toLowerCase().trim() : '';
+        }
+
+        function setupListeners() {
+            const scanner = document.getElementById('scanner');
+            const location = document.getElementById('location-input');
+            
+            scanner.addEventListener('input', (e) => {
+                clearTimeout(typingTimer);
+                scannerBuffer = e.target.value;
+                typingTimer = setTimeout(() => {
+                    if (scanner.value.length > 0 && scanner.value.length < 15) {
+                        showMiniAlert('⚠️ Use solo escaneo o botón Manual');
+                        scanner.value = '';
+                        scannerBuffer = '';
+                    }
+                }, 500);
+            });
+            
+            scanner.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && scanner.value.trim()) {
+                    e.preventDefault();
+                    clearTimeout(typingTimer);
+                    if (!STATE.activeOBC) {
+                        showNotification('⚠️ Crea una orden primero', 'warning');
+                        playSound('error');
+                        scanner.value = '';
+                        return;
+                    }
+                    processScan(scanner.value.trim(), false);
+                    scanner.value = '';
+                    scannerBuffer = '';
+                }
+            });
+            
+            location.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    scanner.focus();
+                }
+            });
+        }
+
+        function showMiniAlert(message) {
+            const alert = document.createElement('div');
+            alert.className = 'mini-alert';
+            alert.textContent = message;
+            document.body.appendChild(alert);
+            setTimeout(() => alert.remove(), 400);
+        }
+
+        async function processScan(raw, isManual = false) {
+            if (BD_CODES.size === 0) {
+                showNotification('⚠️ Carga la BD primero', 'warning');
+                playSound('error');
+                return;
+            }
+
+            const activeOBC = STATE.activeOBC;
+            if (!activeOBC) {
+                showNotification('⚠️ Crea una orden primero', 'warning');
+                playSound('error');
+                return;
+            }
+
+            const tab = STATE.tabs[activeOBC];
+            if (tab.completed) {
+                showNotification('⚠️ Esta orden ya está completada', 'warning');
+                playSound('error');
+                return;
+            }
+            
+            const extracted = extractCode(raw);
+            const normalized = normalizeCode(extracted);
+            const concatenated = normalized + activeOBC.toLowerCase();
+            
+            if (!BD_CODES.has(concatenated)) {
+                await handleRejection('NO_EXISTE_EN_BD', raw, normalized, activeOBC);
+                return;
+            }
+
+            const histKey = concatenated;
+            if (HISTORY.has(histKey)) {
+                const histData = HISTORY.get(histKey);
+                lastScanned = { raw, code: normalized, obc: activeOBC, location: tab.location, isManual, histData };
+                showPopup('history', normalized, histData);
+                playSound('duplicate');
+                return;
+            }
+            
+            const isDup = tab.validations.find(v => v.code === normalized);
+            if (isDup) {
+                lastScanned = { raw, code: normalized, obc: activeOBC, location: tab.location, duplicate: isDup, isManual };
+                showPopup('dup', normalized, isDup);
+                playSound('duplicate');
+                return;
+            }
+            
+            await handleValidationOK(raw, normalized, activeOBC, tab.location, '', isManual);
+        }
+
+        async function handleValidationOK(raw, code, obc, location, note = '', isManual = false) {
+            const tab = STATE.tabs[obc];
+            const now = new Date();
+            const finalNote = isManual && note ? `Codigo Escrito Manualmente: ${note}` : note;
+            
+            const log = {
+                id: now.getTime(),
+                timestamp: now.toLocaleTimeString('es-MX'),
+                date: new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 10),
+                user: CURRENT_USER, obc, raw, code, location, note: finalNote
+            };
+            
+            tab.validations.unshift(log);
+            
+            const histKey = `${code}_${obc.toLowerCase()}`;
+            HISTORY.set(histKey, {
+                user: CURRENT_USER,
+                timestamp: log.timestamp,
+                date: log.date,
+                obc: obc
+            });
+            await saveHistory();
+            
+            playSound('ok');
+            flashInput('success');
+            
+            const total = OBC_TOTALS.get(obc) || 0;
+            if (tab.validations.length >= total && total > 0) {
+                tab.completed = true;
+                showOrderCompleted(obc);
+            }
+            
+            renderValidation();
+            await saveState();
+            
+            if (gapi.client.getToken() && IS_ONLINE) {
+                try {
+                    await writeToSheets('Val3', log);
+                    updateSyncStatus(true);
+                } catch (e) {
+                    PENDING_SYNC.push({ sheet: 'Val3', log });
+                    await savePendingSync();
+                    updatePendingBadge();
+                    updateSyncStatus(false);
+                    showNotification('⚠️ Guardado localmente - Se sincronizará cuando haya conexión', 'warning');
+                }
+            } else {
+                PENDING_SYNC.push({ sheet: 'Val3', log });
+                await savePendingSync();
+                updatePendingBadge();
+                updateSyncStatus(false);
+            }
+        }
+
+        async function handleRejection(reason, raw, code, obc) {
+            const tab = STATE.tabs[obc];
+            const now = new Date();
+            
+            const log = {
+                id: now.getTime(),
+                timestamp: now.toLocaleTimeString('es-MX'),
+                date: new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 10),
+                user: CURRENT_USER, obc, raw, code, reason
+            };
+            
+            tab.rejections.unshift(log);
+            playSound('error');
+            flashInput('error');
+            showPopup('error', code, reason);
+            renderValidation();
+            await saveState();
+            
+            if (gapi.client.getToken() && IS_ONLINE) {
+                try {
+                    await writeToSheets('Validaciones_RECHAZADAS', log);
+                } catch (e) {
+                    PENDING_SYNC.push({ sheet: 'Validaciones_RECHAZADAS', log });
+                    await savePendingSync();
+                    updatePendingBadge();
+                }
+            } else {
+                PENDING_SYNC.push({ sheet: 'Validaciones_RECHAZADAS', log });
+                await savePendingSync();
+                updatePendingBadge();
+            }
+        }
+
+        async function writeToSheets(sheet, log) {
+            const values = sheet === 'Val3' 
+                ? [[log.date, log.timestamp, log.user, log.obc, log.code, log.location, log.note]]
+                : [[log.date, log.timestamp, log.user, log.obc, log.raw, log.reason, log.code]];
+            
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: SPREADSHEET_WRITE,
+                range: `${sheet}!A1`,
+                valueInputOption: 'USER_ENTERED',
+                insertDataOption: 'INSERT_ROWS',
+                resource: { values }
+            });
+        }
+
+        function renderValidation() {
+            const activeOBC = STATE.activeOBC;
+            const hasOrders = Object.keys(STATE.tabs).length > 0;
+            
+            document.getElementById('empty-state').style.display = hasOrders ? 'none' : 'block';
+            document.getElementById('validation-content').style.display = hasOrders ? 'block' : 'none';
+            
+            if (!hasOrders) {
+                updateSidebar();
+                return;
+            }
+            
+            const tab = STATE.tabs[activeOBC];
+            const total = OBC_TOTALS.get(activeOBC) || 0;
+            const scanned = tab.validations.length;
+            const remaining = Math.max(0, total - scanned);
+            const pct = total > 0 ? Math.min(100, (scanned / total) * 100) : 0;
+            const isCompleted = tab.completed;
+            
+            const progressCard = document.querySelector('.progress-card');
+            const progressBar = document.getElementById('prog-bar');
+            if (isCompleted) {
+                progressCard.classList.add('completed');
+                progressBar.classList.add('completed');
+            } else {
+                progressCard.classList.remove('completed');
+                progressBar.classList.remove('completed');
+            }
+            
+            document.getElementById('prog-obc').textContent = activeOBC;
+            document.getElementById('prog-pct').textContent = `${pct.toFixed(0)}%`;
+            document.getElementById('prog-scan').textContent = scanned;
+            document.getElementById('prog-total').textContent = total;
+            document.getElementById('prog-rest').textContent = remaining;
+            document.getElementById('prog-bar').style.width = `${pct}%`;
+            
+            const rejected = tab.rejections.filter(r => r.reason === 'NO_EXISTE_EN_BD').length;
+            document.getElementById('stat-ok').textContent = scanned;
+            document.getElementById('stat-error').textContent = rejected;
+            
+            const tabBar = document.getElementById('tab-bar');
+            tabBar.innerHTML = '';
+            Object.keys(STATE.tabs).forEach(obc => {
+                const t = document.createElement('div');
+                const tabData = STATE.tabs[obc];
+                t.className = `tab ${obc === activeOBC ? 'active' : ''} ${tabData.completed ? 'completed' : ''}`;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = obc;
+                nameSpan.onclick = () => switchOBC(obc);
+                t.appendChild(nameSpan);
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'tab-close';
+                closeBtn.innerHTML = '×';
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    closeTab(obc);
+                };
+                t.appendChild(closeBtn);
+                tabBar.appendChild(t);
+            });
+            
+            const newTab = document.createElement('div');
+            newTab.className = 'tab new-tab';
+            newTab.textContent = '+ Nueva Orden';
+            newTab.onclick = addOBC;
+            tabBar.appendChild(newTab);
+            
+            const info = OBC_INFO.get(activeOBC) || {};
+            document.getElementById('obc-display').value = activeOBC;
+            document.getElementById('recipient-display').value = info.recipient || '-';
+            document.getElementById('time-display').value = info.arrivalTime || '-';
+            document.getElementById('location-input').value = tab.location;
+            
+            const scanner = document.getElementById('scanner');
+            scanner.disabled = isCompleted;
+            scanner.placeholder = isCompleted ? '✅ Orden completada' : 'Escanea aquí...';
+            
+            const okList = document.getElementById('log-ok');
+            const rejectList = document.getElementById('log-reject');
+            okList.innerHTML = '';
+            rejectList.innerHTML = '';
+            
+            tab.validations.slice(0, 10).forEach(log => {
+                const li = document.createElement('li');
+                li.className = 'log-item log-ok';
+                li.innerHTML = `<div class="log-info"><div class="log-code">${log.code}</div><div class="log-meta">${log.timestamp} • ${log.location || '-'}</div></div>`;
+                okList.appendChild(li);
+            });
+            
+            tab.rejections.slice(0, 10).forEach(log => {
+                const li = document.createElement('li');
+                li.className = 'log-item log-reject';
+                li.innerHTML = `<div class="log-info"><div class="log-code">${log.code}</div><div class="log-meta">${log.timestamp} • ${log.reason}</div></div>`;
+                rejectList.appendChild(li);
+            });
+            
+            updateSidebar();
+            updateDashboardStats();
+        }
+
+        function updateSidebar() {
+            const obcList = document.getElementById('obc-list');
+            obcList.innerHTML = '';
+            
+            Object.keys(STATE.tabs).forEach(obc => {
+                const tab = STATE.tabs[obc];
+                const total = OBC_TOTALS.get(obc) || 0;
+                const count = tab.validations.length;
+                const pct = total > 0 ? ((count / total) * 100).toFixed(0) : 0;
+                
+                const div = document.createElement('div');
+                div.style.cssText = `padding: 8px; margin-bottom: 8px; background: ${tab.completed ? 'rgba(76,175,80,0.2)' : 'rgba(255,255,255,0.1)'}; border-radius: 6px; font-size: 0.8em; cursor: pointer;`;
+                div.innerHTML = `<div style="font-weight: 700; font-size: 0.9em;">${obc} ${tab.completed ? '✅' : ''}</div><div style="opacity: 0.8; font-size: 0.85em;">${count}/${total} (${pct}%)</div>`;
+                div.onclick = () => {
+                    if (document.getElementById('validation').style.display === 'block') {
+                        switchOBC(obc);
+                    }
+                };
+                obcList.appendChild(div);
+            });
+        }
+
+        function switchOBC(obc) {
+            STATE.activeOBC = obc;
+            renderValidation();
+            document.getElementById('location-input').focus();
+            saveState();
+        }
+
+        function closeTab(obc) {
+            if (!confirm(`¿Cerrar la orden ${obc}? Los datos se mantendrán en el historial.`)) return;
+            STATE.closedTabs[obc] = STATE.tabs[obc];
+            delete STATE.tabs[obc];
+            if (STATE.activeOBC === obc) {
+                const remaining = Object.keys(STATE.tabs);
+                STATE.activeOBC = remaining.length > 0 ? remaining[0] : null;
+            }
+            renderValidation();
+            saveState();
+            showNotification(`Orden ${obc} cerrada`, 'info');
+        }
+
+        async function addOBC() {
+            const obc = prompt('Ingresa el número de la nueva orden:');
+            if (!obc) return;
+            const obcName = obc.toUpperCase().trim();
+            if (STATE.tabs[obcName]) {
+                showNotification('⚠️ Esta orden ya está abierta', 'warning');
+                return;
+            }
+            const total = OBC_TOTALS.get(obcName) || 0;
+            let validatedCount = 0;
+            for (const [key, data] of HISTORY.entries()) {
+                if (data.obc === obcName) validatedCount++;
+            }
+            if (total > 0 && validatedCount >= total) {
+                document.getElementById('complete-obc').textContent = obcName;
+                document.getElementById('complete-count').textContent = `${validatedCount}/${total}`;
+                document.getElementById('popup-already-complete').style.display = 'flex';
+                playSound('error');
+                return;
+            }
+            if (validatedCount > 0) {
+                pendingReloadOBC = obcName;
+                document.getElementById('reload-obc').textContent = obcName;
+                document.getElementById('reload-validated').textContent = validatedCount;
+                document.getElementById('reload-total').textContent = total;
+                document.getElementById('reload-pending').textContent = total - validatedCount;
+                document.getElementById('popup-reload-order').style.display = 'flex';
+                return;
+            }
+            createNewOBC(obcName);
+        }
+
+        function createNewOBC(obcName) {
+            STATE.tabs[obcName] = { location: '', validations: [], rejections: [], completed: false };
+            switchOBC(obcName);
+            showNotification(`✅ Orden ${obcName} creada`, 'success');
+        }
+
+        function confirmReloadOrder() {
+            if (!pendingReloadOBC) return;
+            const obcName = pendingReloadOBC;
+            const validations = [];
+            for (const [key, data] of HISTORY.entries()) {
+                if (data.obc === obcName) {
+                    const code = key.replace(`_${obcName.toLowerCase()}`, '');
+                    validations.push({
+                        id: Date.now() + Math.random(),
+                        timestamp: data.timestamp,
+                        date: data.date,
+                        user: data.user,
+                        obc: obcName,
+                        raw: code,
+                        code: code,
+                        location: '',
+                        note: 'Cargado desde historial'
+                    });
+                }
+            }
+            STATE.tabs[obcName] = { location: '', validations: validations, rejections: [], completed: false };
+            closePopup('reload-order');
+            pendingReloadOBC = null;
+            switchOBC(obcName);
+            showNotification(`✅ Orden ${obcName} recargada con ${validations.length} validaciones`, 'success');
+        }
+
+        function cancelReloadOrder() {
+            closePopup('reload-order');
+            pendingReloadOBC = null;
+        }
+
+        function updateState() {
+            if (!STATE.activeOBC) return;
+            const tab = STATE.tabs[STATE.activeOBC];
+            tab.location = document.getElementById('location-input').value.toUpperCase().trim();
+            saveState();
+        }
+
+        function startValidation() {
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('validation').style.display = 'block';
+            renderValidation();
+            if (STATE.activeOBC) document.getElementById('scanner').focus();
+        }
+
+        function returnToDashboard() {
+            document.getElementById('validation').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            updateDashboardStats();
+        }
+
+        function showResumen() {
+            document.getElementById('validation').style.display = 'none';
+            document.getElementById('resumen-module').style.display = 'block';
+            renderResumen();
+        }
+
+        function hideResumen() {
+            document.getElementById('resumen-module').style.display = 'none';
+            document.getElementById('validation').style.display = 'block';
+        }
+
+        function showFaltantes() {
+            document.getElementById('validation').style.display = 'none';
+            document.getElementById('faltantes-module').style.display = 'block';
+            populateFaltantesOrders();
+            renderFaltantes();
+        }
+
+        function hideFaltantes() {
+            document.getElementById('faltantes-module').style.display = 'none';
+            document.getElementById('validation').style.display = 'block';
+        }
+
+        function renderResumen() {
+            const tbody = document.getElementById('resumen-tbody');
+            tbody.innerHTML = '';
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            Object.keys(allOrders).forEach(obc => {
+                const tab = allOrders[obc];
+                const total = OBC_TOTALS.get(obc) || 0;
+                const validated = tab.validations.length;
+                const pct = total > 0 ? ((validated / total) * 100).toFixed(0) : 0;
+                const info = OBC_INFO.get(obc) || {};
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td><strong>${obc}</strong></td><td>${total}</td><td>${validated}</td><td>${pct}%</td><td>${info.recipient || '-'}</td><td>${info.arrivalTime || '-'}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterResumen() {
+            const search = document.getElementById('search-resumen').value.toLowerCase();
+            const rows = document.querySelectorAll('#resumen-tbody tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(search) ? '' : 'none';
+            });
+        }
+
+        function populateFaltantesOrders() {
+            const select = document.getElementById('faltantes-order-select');
+            select.innerHTML = '<option value="">Seleccionar orden...</option>';
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            Object.keys(allOrders).forEach(obc => {
+                const option = document.createElement('option');
+                option.value = obc;
+                option.textContent = obc;
+                select.appendChild(option);
+            });
+            if (STATE.activeOBC && allOrders[STATE.activeOBC]) {
+                select.value = STATE.activeOBC;
+            }
+        }
+
+        function renderFaltantes() {
+            const selectedOBC = document.getElementById('faltantes-order-select').value;
+            const grid = document.getElementById('faltantes-grid');
+            grid.innerHTML = '';
+            if (!selectedOBC) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">Selecciona una orden para ver los códigos</div>';
+                return;
+            }
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            const tab = allOrders[selectedOBC];
+            const obcCodes = OBC_MAP.get(selectedOBC);
+            if (!obcCodes || obcCodes.size === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">No hay datos para esta orden</div>';
+                return;
+            }
+            const validated = new Set(tab.validations.map(v => v.code));
+            const codesArray = Array.from(obcCodes).map(concatenated => {
+                const obcLower = selectedOBC.toLowerCase();
+                if (concatenated.endsWith(obcLower)) {
+                    return concatenated.slice(0, -obcLower.length);
+                }
+                return concatenated;
+            });
+            const pendingCodes = codesArray.filter(code => !validated.has(code));
+            if (pendingCodes.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--success);">✅ ¡Todos los códigos han sido validados!</div>';
+                return;
+            }
+            pendingCodes.forEach(code => {
+                const div = document.createElement('div');
+                div.className = 'faltante-item faltante-pending';
+                div.textContent = code;
+                div.dataset.code = code;
+                grid.appendChild(div);
+            });
+        }
+
+        function filterFaltantes() {
+            const search = document.getElementById('search-faltantes').value.toLowerCase();
+            const items = document.querySelectorAll('.faltante-item');
+            items.forEach(item => {
+                const code = item.dataset.code.toLowerCase();
+                item.style.display = code.includes(search) ? '' : 'none';
+            });
+        }
+
+        function showPopup(type, code, data) {
+            if (type === 'error') {
+                document.getElementById('err-code').textContent = code;
+                document.getElementById('err-reason').textContent = data;
+                document.getElementById('popup-error').style.display = 'flex';
+            } else if (type === 'history') {
+                document.getElementById('hist-code').textContent = code;
+                document.getElementById('hist-obc').textContent = data.obc;
+                document.getElementById('hist-when').textContent = `${data.date} ${data.timestamp}`;
+                document.getElementById('hist-user').textContent = data.user;
+                document.getElementById('popup-history').style.display = 'flex';
+            } else if (type === 'dup') {
+                document.getElementById('dup-code').textContent = code;
+                document.getElementById('dup-when').textContent = `${data.date} ${data.timestamp}`;
+                document.getElementById('dup-user').textContent = data.user;
+                document.getElementById('popup-dup').style.display = 'flex';
+            }
+            document.getElementById('scanner').blur();
+        }
+
+        function closePopup(type) {
+            document.getElementById(`popup-${type}`).style.display = 'none';
+            if (!['completed', 'already-complete', 'reload-order'].includes(type)) {
+                document.getElementById('scanner').focus();
+            }
+            lastScanned = null;
+        }
+
+        function forceHistoryValidation() {
+            const note = prompt('Justificación de la revalidación:') || 'Sin justificación';
+            if (lastScanned) {
+                const histInfo = `REVALIDACION - Original: ${lastScanned.histData.obc} por ${lastScanned.histData.user} el ${lastScanned.histData.date}`;
+                let finalNote;
+                if (lastScanned.isManual && lastScanned.manualNote) {
+                    finalNote = `${histInfo} - Codigo Escrito Manualmente: ${lastScanned.manualNote} - ${note}`;
+                } else if (lastScanned.isManual) {
+                    finalNote = `${histInfo} - Codigo Escrito Manualmente: ${note}`;
+                } else {
+                    finalNote = `${histInfo} - ${note}`;
+                }
+                handleValidationOK(lastScanned.raw, lastScanned.code, lastScanned.obc, lastScanned.location, finalNote, false);
+            }
+            closePopup('history');
+        }
+
+        function forceDuplicate() {
+            const note = prompt('Justificación del duplicado:') || 'Sin justificación';
+            if (lastScanned) {
+                let finalNote;
+                if (lastScanned.isManual && lastScanned.manualNote) {
+                    finalNote = `DUPLICADO FORZADO - Codigo Escrito Manualmente: ${lastScanned.manualNote} - ${note}`;
+                } else if (lastScanned.isManual) {
+                    finalNote = `DUPLICADO FORZADO - Codigo Escrito Manualmente: ${note}`;
+                } else {
+                    finalNote = `DUPLICADO FORZADO: ${note}`;
+                }
+                handleValidationOK(lastScanned.raw, lastScanned.code, lastScanned.obc, lastScanned.location, finalNote, false);
+            }
+            closePopup('dup');
+        }
+
+        function toggleManualOtherNote() {
+            const reason = document.getElementById('manual-reason').value;
+            const otherContainer = document.getElementById('manual-other-container');
+            otherContainer.style.display = reason === 'Otro' ? 'block' : 'none';
+        }
+
+        function openManualInput() {
+            if (!STATE.activeOBC) {
+                showNotification('⚠️ Crea una orden primero', 'warning');
+                return;
+            }
+            const tab = STATE.tabs[STATE.activeOBC];
+            if (tab.completed) {
+                showNotification('⚠️ Esta orden ya está completada', 'warning');
+                return;
+            }
+            document.getElementById('manual-code').value = '';
+            document.getElementById('manual-reason').value = '';
+            document.getElementById('manual-other-note').value = '';
+            document.getElementById('manual-other-container').style.display = 'none';
+            document.getElementById('popup-manual').style.display = 'flex';
+            document.getElementById('manual-code').focus();
+        }
+
+        async function submitManualCode() {
+            const code = document.getElementById('manual-code').value.trim();
+            const reason = document.getElementById('manual-reason').value;
+            const otherNote = document.getElementById('manual-other-note').value.trim();
+            
+            if (!code) {
+                showNotification('⚠️ Ingresa un código', 'warning');
+                return;
+            }
+            if (!reason) {
+                showNotification('⚠️ Selecciona un motivo', 'warning');
+                return;
+            }
+            if (reason === 'Otro' && !otherNote) {
+                showNotification('⚠️ Especifica el motivo', 'warning');
+                return;
+            }
+            
+            const finalNote = reason === 'Otro' ? `Otro: ${otherNote}` : reason;
+            closePopup('manual');
+            
+            const activeOBC = STATE.activeOBC;
+            const tab = STATE.tabs[activeOBC];
+            const normalized = normalizeCode(code);
+            const concatenated = normalized + activeOBC.toLowerCase();
+            
+            if (!BD_CODES.has(concatenated)) {
+                await handleRejection('NO_EXISTE_EN_BD', code, normalized, activeOBC);
+                return;
+            }
+
+            if (HISTORY.has(concatenated)) {
+                const histData = HISTORY.get(concatenated);
+                lastScanned = { raw: code, code: normalized, obc: activeOBC, location: tab.location, isManual: true, manualNote: finalNote, histData };
+                showPopup('history', normalized, histData);
+                playSound('duplicate');
+                return;
+            }
+            
+            const isDup = tab.validations.find(v => v.code === normalized);
+            if (isDup) {
+                lastScanned = { raw: code, code: normalized, obc: activeOBC, location: tab.location, duplicate: isDup, isManual: true, manualNote: finalNote };
+                showPopup('dup', normalized, isDup);
+                playSound('duplicate');
+                return;
+            }
+            
+            await handleValidationOK(code, normalized, activeOBC, tab.location, finalNote, true);
+        }
+
+        function showOrderCompleted(obc) {
+            const tab = STATE.tabs[obc];
+            document.getElementById('completed-obc').textContent = obc;
+            document.getElementById('completed-count').textContent = tab.validations.length;
+            document.getElementById('completed-user').textContent = CURRENT_USER;
+            document.getElementById('popup-completed').style.display = 'flex';
+            playSound('ok');
+            showNotification(`🎉 Orden ${obc} completada!`, 'success');
+        }
+
+        function continueToNewOrder() {
+            const currentOBC = STATE.activeOBC;
+            closePopup('completed');
+            if (currentOBC && STATE.tabs[currentOBC]) {
+                STATE.closedTabs[currentOBC] = STATE.tabs[currentOBC];
+                delete STATE.tabs[currentOBC];
+            }
+            STATE.activeOBC = null;
+            saveState();
+            addOBC();
+        }
+
+        function saveAndContinue() {
+            closePopup('completed');
+            addOBC();
+        }
+
+        function saveAndClose() {
+            const currentOBC = STATE.activeOBC;
+            closePopup('completed');
+            if (currentOBC && STATE.tabs[currentOBC]) {
+                STATE.closedTabs[currentOBC] = STATE.tabs[currentOBC];
+                delete STATE.tabs[currentOBC];
+            }
+            STATE.activeOBC = null;
+            saveState();
+            returnToDashboard();
+        }
+
+        function continueViewing() {
+            closePopup('completed');
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                
+                if (type === 'ok') {
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.15);
+                } else if (type === 'error') {
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.35);
+                } else if (type === 'duplicate') {
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                    setTimeout(() => {
+                        const osc2 = audioCtx.createOscillator();
+                        const gain2 = audioCtx.createGain();
+                        osc2.connect(gain2);
+                        gain2.connect(audioCtx.destination);
+                        gain2.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                        osc2.frequency.setValueAtTime(600, audioCtx.currentTime);
+                        osc2.start();
+                        osc2.stop(audioCtx.currentTime + 0.1);
+                    }, 150);
+                }
+            } catch (e) {}
+        }
+
+        function flashInput(type) {
+            const input = document.getElementById('scanner');
+            input.style.borderColor = type === 'success' ? 'var(--success)' : 'var(--error)';
+            setTimeout(() => input.style.borderColor = '#ddd', 300);
+        }
+
+        function showNotification(msg, type) {
+            const container = document.getElementById('notifications');
+            const div = document.createElement('div');
+            div.className = `notification ${type}`;
+            div.innerHTML = `<strong>${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</strong> ${msg}`;
+            container.appendChild(div);
+            setTimeout(() => div.remove(), 4000);
+        }
+
+        function exportData() {
+            const rows = [];
+            rows.push('Fecha,Hora,Usuario,Orden,Código,Ubicación,Nota');
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            for (const obc in allOrders) {
+                allOrders[obc].validations.forEach(log => {
+                    rows.push(`${log.date},${log.timestamp},${log.user},${log.obc},${log.code},${log.location || ''},${log.note || ''}`);
+                });
+            }
+            const csv = rows.join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `validaciones_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+            showNotification('📥 Datos exportados', 'success');
+        }
+    </script>
+</body>
+</html><div class="card">
+                            <div class="inline-inputs">
+                                <div class="input-group">
+                                    <label>📦 Orden:</label>
+                                    <input type="text" id="obc-display" disabled>
+                                </div>
+                                <div class="input-group">
+                                    <label>🏢 Destino:</label>
+                                    <input type="text" id="recipient-display" disabled>
+                                </div>
+                                <div class="input-group">
+                                    <label>🕐 Horario:</label>
+                                    <input type="text" id="time-display" disabled>
+                                </div>
+                                <div class="input-group">
+                                    <label>📍 Ubicación:</label>
+                                    <input type="text" id="location-input" placeholder="Ej: PLEC123" onchange="updateState()">
+                                </div>
+                           <div class="scanner-section">
+                                <div class="scanner-wrapper">
+                                    <div class="input-group">
+                                        <label style="font-size: 1.1em; color: var(--primary);">📷 ESCANEAR CÓDIGO:</label>
+                                        <input type="text" id="scanner" class="scanner-input" placeholder="Escanea aquí..." autofocus>
+                                    </div>
+                                </div>
+                                <button class="btn-manual" onclick="openManualInput()">✏️ Manual</button>
+                            </div>
+                        </div>
+
+                        <div class="stats">
+                            <div class="stat-box stat-ok">
+                                VALIDADAS
+                                <div class="stat-number" id="stat-ok">0</div>
+                            </div>
+                            <div class="stat-box stat-error">
+                                RECHAZADAS
+                                <div class="stat-number" id="stat-error">0</div>
+                            </div>
+                        </div>
+
+                        <div class="logs-container">
+                            <div class="card">
+                                <h3>✅ Validaciones OK</h3>
+                                <ul id="log-ok" class="log-list"></ul>
+                            </div>
+                            <div class="card">
+                                <h3>❌ Rechazos</h3>
+                                <ul id="log-reject" class="log-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESUMEN MODULE -->
+    <div id="resumen-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>📋 Resumen de Órdenes</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideResumen()">← Volver</button>
+                </div>
+                <div class="card">
+                    <input type="text" id="search-resumen" class="search-bar" placeholder="🔍 Buscar orden..." oninput="filterResumen()">
+                    <div style="overflow-x: auto;">
+                        <table class="resumen-table">
+                            <thead>
+                                <tr>
+                                    <th>Orden</th>
+                                    <th>Total</th>
+                                    <th>Validadas</th>
+                                    <th>Progreso</th>
+                                    <th>Destino</th>
+                                    <th>Horario</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resumen-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FALTANTES MODULE -->
+    <div id="faltantes-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔍 Códigos Faltantes</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideFaltantes()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="faltantes-controls">
+                        <select id="faltantes-order-select" onchange="renderFaltantes()">
+                            <option value="">Seleccionar orden...</option>
+                        </select>
+                        <input type="text" id="search-faltantes" class="search-bar" placeholder="🔍 Buscar código..." oninput="filterFaltantes()">
+                    </div>
+                    <p style="margin-bottom: 15px;"><span style="color: var(--success);">✅ Validados</span> | <span style="color: var(--error);">❌ Faltantes</span></p>
+                    <div class="faltantes-grid" id="faltantes-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUPS -->
+    <div id="popup-error" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('error')">×</button>
+            <div class="popup-header" style="color: var(--error);">❌ CÓDIGO RECHAZADO</div>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="err-code"></span><br>
+                <strong>Motivo:</strong> <span id="err-reason" style="color: var(--error);"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="closePopup('error')">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-history" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('history')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ CÓDIGO YA VALIDADO EN HISTORIAL</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="hist-code"></span><br>
+                <strong>Orden Original:</strong> <span id="hist-obc"></span><br>
+                <strong>Validado:</strong> <span id="hist-when"></span><br>
+                <strong>Usuario:</strong> <span id="hist-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('history')">Cancelar</button>
+                <button class="btn btn-primary" onclick="forceHistoryValidation()">Forzar Validación con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-dup" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('dup')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ DUPLICADO</div>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="dup-code"></span><br>
+                <strong>Validado:</strong> <span id="dup-when"></span><br>
+                <strong>Usuario:</strong> <span id="dup-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('dup')">Ignorar</button>
+                <button class="btn btn-primary" onclick="forceDuplicate()">Forzar con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-completed" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="continueViewing()">×</button>
+            <div class="popup-header" style="color: var(--success);">✅ ORDEN COMPLETADA</div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                <div style="font-size: 1.8em; font-weight: 700; color: var(--success); margin-bottom: 10px;">🎉</div>
+                <strong>Orden:</strong> <span id="completed-obc"></span><br>
+                <strong>Cajas validadas:</strong> <span id="completed-count"></span><br>
+                <strong>Usuario:</strong> <span id="completed-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="continueToNewOrder()" style="background: var(--warning);">Nueva Orden</button>
+                <button class="btn btn-success" onclick="saveAndContinue()">Guardar y Continuar</button>
+                <button class="btn btn-secondary" onclick="saveAndClose()">Cerrar Validación</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-manual" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('manual')">×</button>
+            <div class="popup-header" style="color: var(--warning);">✏️ INGRESO MANUAL DE CÓDIGO</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <p style="margin-bottom: 15px; color: #e65100;"><strong>⚠️ Advertencia:</strong> Solo usar para casos excepcionales</p>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Código:</label>
+                    <input type="text" id="manual-code" placeholder="Ingresa el código">
+                </div>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Motivo:</label>
+                    <select id="manual-reason" onchange="toggleManualOtherNote()">
+                        <option value="">Seleccionar motivo...</option>
+                        <option value="Codigo Borroso">Código Borroso</option>
+                        <option value="Etiqueta Dañada">Etiqueta Dañada</option>
+                        <option value="Error Surtido">Error Surtido</option>
+                        <option value="Mercancia Reetiquetada">Mercancía Reetiquetada</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="input-group" id="manual-other-container" style="display: none;">
+                    <label>Especificar motivo (obligatorio):</label>
+                    <textarea id="manual-other-note" rows="3" placeholder="Describe el motivo..."></textarea>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('manual')">Cancelar</button>
+                <button class="btn btn-primary" onclick="submitManualCode()">Validar Código</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-reload-order" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color: var(--primary);">📦 ORDEN PARCIALMENTE VALIDADA</div>
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Orden:</strong> <span id="reload-obc"></span><br>
+                <strong>Ya validadas:</strong> <span id="reload-validated"></span><br>
+                <strong>Total:</strong> <span id="reload-total"></span><br>
+                <strong>Pendientes:</strong> <span id="reload-pending"></span>
+            </div>
+            <p style="margin: 15px 0; color: #666;">Esta orden ya tiene validaciones previas. ¿Deseas continuar donde se dejó?</p>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="cancelReloadOrder()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmReloadOrder()">Continuar Validación</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-already-complete" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color: var(--success);">✅ ORDEN YA COMPLETADA</div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                <div style="font-size: 1.8em; margin-bottom: 10px;">🎉</div>
+                <strong>Orden:</strong> <span id="complete-obc"></span><br>
+                <strong>Validadas:</strong> <span id="complete-count"></span><br>
+                <p style="margin-top: 10px; color: #666;">Esta orden ya fue validada al 100%</p>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="closePopup('already-complete')">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script>
+    </script>
+</body>
+</html>
