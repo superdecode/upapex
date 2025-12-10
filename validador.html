@@ -50,6 +50,15 @@
         .btn-google { background: #4285F4; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-small { padding: 8px 15px; font-size: 0.85em; width: auto; }
+        /* Botón de salida segura */
+        .btn-exit {
+            background: linear-gradient(135deg, #6c757d, #5a6268);
+            color: white;
+            margin-top: 15px;
+        }
+        .btn-exit:hover:not(:disabled) {
+            background: linear-gradient(135deg, #5a6268, #495057);
+        }
 
         /* Connection banner */
         .connection-banner {
@@ -684,6 +693,7 @@
             </div>
             <button id="connect-btn" class="btn btn-google" onclick="handleAuthClick()">🔗 Conectar con Google Sheets</button>
             <button id="load-bd-btn" class="btn btn-secondary" onclick="loadDatabase()" style="display:none; margin-top:10px;">📊 Cargar Base de Datos</button>
+            <button id="safe-exit-btn-dash" class="btn btn-exit" onclick="showSafeExitDialog()">🚪 Salida Segura</button>
         </div>
 
         <button id="start-btn" class="btn btn-success" onclick="startValidation()" disabled style="margin-top: 20px;">
@@ -1120,7 +1130,6 @@
             setupListeners();
             setupConnectionMonitor();
             setupExitProtection();      // ← AGREGAR
-            addSafeExitButton();        // ← AGREGAR
             renderValidation();
             gapi.load('client', initGAPI);
             startAutoSync();
@@ -1151,224 +1160,220 @@
                 showConnectionBanner('offline');
                 updateSyncStatus(false);
             }
-        }
-        function setupExitProtection() {
-            window.addEventListener('beforeunload', (e) => {
-                // Contar órdenes activas con validaciones
+                    }
+            
+//Elian Ajustes
+                function setupExitProtection() {
+                window.addEventListener('beforeunload', (e) => {
+                    // Contar órdenes activas con validaciones
+                    let activeOrdersCount = 0;
+                    let totalValidations = 0;
+                    
+                    for (const obc in STATE.tabs) {
+                        if (STATE.tabs[obc].validations && STATE.tabs[obc].validations.length > 0) {
+                            activeOrdersCount++;
+                            totalValidations += STATE.tabs[obc].validations.length;
+                        }
+                    }
+                    
+                    // Verificar si estamos en pantalla de validación
+                    const validationDiv = document.getElementById('validation');
+                    const isInValidation = validationDiv && validationDiv.style.display === 'block';
+                    
+                    // Construir mensaje de advertencia
+                    const warnings = [];
+                    
+                    if (activeOrdersCount > 0) {
+                        warnings.push(`${activeOrdersCount} orden(es) activa(s) con ${totalValidations} validación(es)`);
+                    }
+                    
+                    if (PENDING_SYNC && PENDING_SYNC.length > 0) {
+                        warnings.push(`${PENDING_SYNC.length} registro(s) pendiente(s) de sincronizar`);
+                    }
+                    
+                    // Solo mostrar alerta si hay datos relevantes
+                    if ((isInValidation && activeOrdersCount > 0) || (PENDING_SYNC && PENDING_SYNC.length > 0)) {
+                        const message = `⚠️ ADVERTENCIA:\n\nTienes:\n• ${warnings.join('\n• ')}\n\n¿Estás seguro de salir?`;
+                        
+                        // Estándar moderno
+                        e.preventDefault();
+                        e.returnValue = message;
+                        
+                        // Para navegadores antiguos
+                        return message;
+                    }
+                });
+                
+                console.log('✅ Protección contra salida activada');
+            }
+            
+            function addSafeExitButtonToSidebar() {
+                // Solo agregar botón al sidebar si no existe
+                if (document.getElementById('safe-exit-button-sidebar')) return;
+            
+                const sidebar = document.querySelector('.sidebar');
+                if (!sidebar) {
+                    console.log('⚠️ Sidebar no encontrado, reintentando...');
+                    setTimeout(addSafeExitButtonToSidebar, 500);
+                    return;
+                }
+            
+                const button = document.createElement('button');
+                button.id = 'safe-exit-button-sidebar';
+                button.className = 'btn btn-secondary btn-small';
+                button.innerHTML = '🚪 Salida Segura';
+                button.style.cssText = 'width: 100%; margin-top: 10px;';
+                button.onclick = showSafeExitDialog;
+                
+                // Agregar al final del sidebar
+                sidebar.appendChild(button);
+                console.log('✅ Botón de salida segura agregado al sidebar');
+            }
+            
+            function showSafeExitDialog() {
+                // Contar órdenes activas
                 let activeOrdersCount = 0;
                 let totalValidations = 0;
-                
                 for (const obc in STATE.tabs) {
                     if (STATE.tabs[obc].validations && STATE.tabs[obc].validations.length > 0) {
                         activeOrdersCount++;
                         totalValidations += STATE.tabs[obc].validations.length;
                     }
                 }
+            
+                // Crear overlay
+                const overlay = document.createElement('div');
+                overlay.id = 'safe-exit-overlay';
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background-color: rgba(0, 0, 0, 0.7);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10000;
+                `;
                 
-                // Verificar si estamos en pantalla de validación
-                const isInValidation = document.getElementById('validation') && 
-                                       document.getElementById('validation').style.display === 'block';
+                const dialog = document.createElement('div');
+                dialog.style.cssText = `
+                    background: white;
+                    border-radius: 12px;
+                    padding: 30px;
+                    max-width: 500px;
+                    width: 90%;
+                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+                `;
                 
-                // Construir mensaje de advertencia
-                let warnings = [];
+                const hasToken = gapi && gapi.client && gapi.client.getToken();
+                const canSync = PENDING_SYNC.length > 0 && IS_ONLINE && hasToken;
                 
-                if (activeOrdersCount > 0) {
-                    warnings.push(`${activeOrdersCount} orden(es) activa(s) con ${totalValidations} validación(es)`);
-                }
-                
-                if (PENDING_SYNC && PENDING_SYNC.length > 0) {
-                    warnings.push(`${PENDING_SYNC.length} registro(s) pendiente(s) de sincronizar`);
-                }
-                
-                // Solo mostrar alerta si hay datos relevantes
-                if ((isInValidation && activeOrdersCount > 0) || (PENDING_SYNC && PENDING_SYNC.length > 0)) {
-                    const message = `⚠️ ADVERTENCIA:\n\nTienes:\n• ${warnings.join('\n• ')}\n\n¿Estás seguro de salir?`;
+                dialog.innerHTML = `
+                    <h2 style="color: #ed5224; margin-bottom: 20px; text-align: center;">🚪 Salir del Sistema</h2>
                     
-                    // Estándar moderno
-                    e.preventDefault();
-                    e.returnValue = message;
+                    <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <p style="margin: 0 0 10px 0; font-weight: 600;">📊 Estado actual:</p>
+                        <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                            <li><strong>${activeOrdersCount}</strong> orden(es) activa(s)</li>
+                            <li><strong>${totalValidations}</strong> validación(es) en proceso</li>
+                            <li><strong>${PENDING_SYNC.length}</strong> pendientes de sincronizar</li>
+                            <li>${IS_ONLINE ? '✅ En línea' : '❌ Sin conexión'}</li>
+                            <li>${hasToken ? '✅ Conectado a Google' : '❌ No conectado'}</li>
+                        </ul>
+                    </div>
                     
-                    // Para navegadores antiguos
-                    return message;
-                }
-            });
-            
-            console.log('✅ Protección contra salida activada');
-            }
-            
-            function addSafeExitButton() {
-            // Verificar si ya existe
-            if (document.getElementById('safe-exit-button-sidebar')) return;
-        
-            // Helper para crear botón
-            function createSafeExitBtn(id, isSmall = false) {
-                const button = document.createElement('button');
-                button.id = id;
-                button.className = isSmall ? 'btn btn-secondary btn-small' : 'btn btn-secondary';
-                button.innerHTML = '🚪 Salir Seguro';
-                button.style.width = '100%';
-                button.style.marginTop = '10px';
-                button.onclick = showSafeExitDialog;
-                return button;
-            }
-        
-            // 1. Botón en sidebar (después del botón de Sincronizar)
-            const syncButton = document.querySelector('.sidebar button[onclick="forceSync()"]');
-            if (syncButton) {
-                const sidebarBtn = createSafeExitBtn('safe-exit-button-sidebar', true);
-                syncButton.insertAdjacentElement('afterend', sidebarBtn);
-            }
-        
-            // 2. Botón en dashboard (después de Iniciar Validación)
-            const startBtn = document.getElementById('start-btn');
-            if (startBtn) {
-                const dashboardBtn = createSafeExitBtn('safe-exit-button-dashboard', false);
-                startBtn.insertAdjacentElement('afterend', dashboardBtn);
-            }
-            
-            console.log('✅ Botones de salida segura agregados');
-            }
-            
-            function showSafeExitDialog() {
-            // Contar órdenes activas
-            let activeOrdersCount = 0;
-            let totalValidations = 0;
-            for (const obc in STATE.tabs) {
-                if (STATE.tabs[obc].validations && STATE.tabs[obc].validations.length > 0) {
-                    activeOrdersCount++;
-                    totalValidations += STATE.tabs[obc].validations.length;
-                }
-            }
-        
-            const overlay = document.createElement('div');
-            overlay.id = 'safe-exit-overlay';
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: rgba(0, 0, 0, 0.7);
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                z-index: 10000;
-            `;
-            
-            const dialog = document.createElement('div');
-            dialog.style.cssText = `
-                background: white;
-                border-radius: 12px;
-                padding: 30px;
-                max-width: 500px;
-                width: 90%;
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            `;
-            
-            const hasToken = gapi && gapi.client && gapi.client.getToken();
-            const canSync = PENDING_SYNC.length > 0 && IS_ONLINE && hasToken;
-            
-            dialog.innerHTML = `
-                <h2 style="color: #ed5224; margin-bottom: 20px; text-align: center;">🚪 Salir del Sistema</h2>
-                
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <p style="margin: 0 0 10px 0; font-weight: 600;">📊 Estado actual:</p>
-                    <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                        <li><strong>${activeOrdersCount}</strong> orden(es) activa(s)</li>
-                        <li><strong>${totalValidations}</strong> validación(es) en proceso</li>
-                        <li><strong>${PENDING_SYNC.length}</strong> pendientes de sincronizar</li>
-                        <li>${IS_ONLINE ? '✅ En línea' : '❌ Sin conexión'}</li>
-                        <li>${hasToken ? '✅ Conectado a Google' : '❌ No conectado'}</li>
-                    </ul>
-                </div>
-                
-                ${PENDING_SYNC.length > 0 ? `
-                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
-                        <p style="margin: 0; color: #e65100;">
-                            <strong>⚠️ Atención: ${PENDING_SYNC.length} validaciones sin sincronizar</strong><br>
-                            ${canSync ? 'Se recomienda sincronizar antes de salir.' : 'Los datos están guardados localmente y se sincronizarán automáticamente.'}
-                        </p>
-                    </div>
-                ` : ''}
-                
-                ${activeOrdersCount > 0 ? `
-                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
-                        <p style="margin: 0; color: #1565c0;">
-                            <strong>📦 Tienes ${activeOrdersCount} orden(es) en proceso</strong><br>
-                            Tus validaciones están guardadas y podrás continuar después.
-                        </p>
-                    </div>
-                ` : ''}
-                
-                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
-                    ${canSync ? `
-                        <button id="sync-and-exit" class="btn btn-success" style="width: 100%;">
-                            🔄 Sincronizar y Cerrar
-                        </button>
+                    ${PENDING_SYNC.length > 0 ? `
+                        <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
+                            <p style="margin: 0; color: #e65100;">
+                                <strong>⚠️ Atención: ${PENDING_SYNC.length} validaciones sin sincronizar</strong><br>
+                                ${canSync ? 'Se recomienda sincronizar antes de salir.' : 'Los datos están guardados localmente y se sincronizarán automáticamente.'}
+                            </p>
+                        </div>
                     ` : ''}
                     
-                    <button id="just-exit" class="btn btn-secondary" style="width: 100%;">
-                        💾 Guardar y Cerrar
-                    </button>
+                    ${activeOrdersCount > 0 ? `
+                        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+                            <p style="margin: 0; color: #1565c0;">
+                                <strong>📦 Tienes ${activeOrdersCount} orden(es) en proceso</strong><br>
+                                Tus validaciones están guardadas y podrás continuar después.
+                            </p>
+                        </div>
+                    ` : ''}
                     
-                    <button id="cancel-exit" class="btn btn-primary" style="width: 100%;">
-                        ← Volver al Sistema
-                    </button>
-                </div>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+                        ${canSync ? `
+                            <button id="sync-and-exit" class="btn btn-success" style="width: 100%;">
+                                🔄 Sincronizar y Cerrar Sesión
+                            </button>
+                        ` : ''}
+                        
+                        <button id="just-close-dialog" class="btn btn-secondary" style="width: 100%;">
+                            💾 Guardar Local (Sin Cerrar)
+                        </button>
+                        
+                        <button id="cancel-exit" class="btn btn-primary" style="width: 100%;">
+                            ← Volver al Sistema
+                        </button>
+                    </div>
+                    
+                    <p style="margin-top: 15px; text-align: center; font-size: 0.85em; color: #666;">
+                        💡 Todos tus datos están guardados localmente y seguros
+                    </p>
+                `;
                 
-                <p style="margin-top: 15px; text-align: center; font-size: 0.85em; color: #666;">
-                    💡 Todos tus datos están guardados localmente y seguros
-                </p>
-            `;
-            
-            overlay.appendChild(dialog);
-            document.body.appendChild(overlay);
-            
-            // Event listeners
-            const syncBtn = document.getElementById('sync-and-exit');
-            if (syncBtn) {
-                syncBtn.addEventListener('click', async () => {
-                    const originalText = syncBtn.innerHTML;
-                    try {
-                        syncBtn.disabled = true;
-                        syncBtn.innerHTML = '🔄 Sincronizando...';
-                        
-                        await syncPendingData();
-                        
-                        if (PENDING_SYNC.length === 0) {
-                            showNotification('✅ Todo sincronizado correctamente', 'success');
-                            setTimeout(() => {
-                                overlay.remove();
-                                returnToDashboard();
-                            }, 1000);
-                        } else {
-                            const remaining = PENDING_SYNC.length;
-                            if (confirm(`Quedan ${remaining} validaciones pendientes.\n\n¿Deseas cerrar de todos modos?\nLos datos están guardados localmente.`)) {
-                                overlay.remove();
-                                returnToDashboard();
+                overlay.appendChild(dialog);
+                document.body.appendChild(overlay);
+                
+                // Event listeners
+                const syncBtn = document.getElementById('sync-and-exit');
+                if (syncBtn) {
+                    syncBtn.addEventListener('click', async () => {
+                        const originalText = syncBtn.innerHTML;
+                        try {
+                            syncBtn.disabled = true;
+                            syncBtn.innerHTML = '🔄 Sincronizando...';
+                            
+                            await syncPendingData();
+                            
+                            if (PENDING_SYNC.length === 0) {
+                                showNotification('✅ Todo sincronizado correctamente', 'success');
+                                setTimeout(() => {
+                                    overlay.remove();
+                                    // Cerrar todas las órdenes y volver al dashboard
+                                    for (const obc in STATE.tabs) {
+                                        STATE.closedTabs[obc] = STATE.tabs[obc];
+                                    }
+                                    STATE.tabs = {};
+                                    STATE.activeOBC = null;
+                                    saveState();
+                                    returnToDashboard();
+                                }, 1000);
                             } else {
+                                const remaining = PENDING_SYNC.length;
+                                alert(`Quedan ${remaining} validaciones pendientes.\n\nLos datos están guardados localmente y se sincronizarán automáticamente cuando haya conexión.`);
                                 overlay.remove();
                             }
+                        } catch (error) {
+                            console.error('Error al sincronizar:', error);
+                            showNotification('❌ Error al sincronizar', 'error');
+                            syncBtn.disabled = false;
+                            syncBtn.innerHTML = originalText;
                         }
-                    } catch (error) {
-                        console.error('Error al sincronizar:', error);
-                        showNotification('❌ Error al sincronizar', 'error');
-                        syncBtn.disabled = false;
-                        syncBtn.innerHTML = originalText;
-                    }
+                    });
+                }
+                
+                document.getElementById('just-close-dialog').addEventListener('click', () => {
+                    showNotification('💾 Datos guardados localmente', 'success');
+                    overlay.remove();
+                });
+                
+                document.getElementById('cancel-exit').addEventListener('click', () => {
+                    overlay.remove();
                 });
             }
-            
-            document.getElementById('just-exit').addEventListener('click', () => {
-                showNotification('💾 Datos guardados localmente', 'success');
-                overlay.remove();
-                returnToDashboard();
-            });
-            
-            document.getElementById('cancel-exit').addEventListener('click', () => {
-                overlay.remove();
-            });
-            }
+
     
             function showConnectionBanner(status) {
             const banner = document.getElementById('connection-banner');
@@ -2256,6 +2261,7 @@
         function startValidation() {
             document.getElementById('dashboard').style.display = 'none';
             document.getElementById('validation').style.display = 'block';
+            addSafeExitButtonToSidebar(); 
             renderValidation();
             if (STATE.activeOBC) document.getElementById('scanner').focus();
         }
