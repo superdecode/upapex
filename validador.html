@@ -1943,8 +1943,29 @@
 
         function closeTab(obc) {
             if (!confirm(`¿Cerrar la orden ${obc}? Los datos se mantendrán en el historial.`)) return;
-            STATE.tabs[obc].completed = true;
-            renderValidation();
+
+            // Remove the tab from STATE.tabs
+            delete STATE.tabs[obc];
+
+            // If the closed tab was the active one, switch to another tab or show empty state
+            const remainingTabs = Object.keys(STATE.tabs);
+            if (STATE.activeOBC === obc) {
+                if (remainingTabs.length > 0) {
+                    STATE.activeOBC = remainingTabs[0];
+                } else {
+                    STATE.activeOBC = null;
+                }
+            }
+
+            // Update UI
+            if (remainingTabs.length === 0) {
+                document.getElementById('validation-content').style.display = 'none';
+                document.getElementById('empty-state').style.display = 'block';
+            } else {
+                renderValidation();
+            }
+
+            updateSidebar();
             saveState();
             showNotification(`Orden ${obc} cerrada`, 'info');
         }
