@@ -1124,7 +1124,37 @@
             renderValidation();
             gapi.load('client', initGAPI);
             startAutoSync();
+            setupExitProtection();
         });
+
+        // Setup exit protection to prevent accidental data loss
+        function setupExitProtection() {
+            window.addEventListener('beforeunload', (e) => {
+                // Check if there are active orders with validations
+                const activeOrders = Object.keys(STATE.tabs);
+                const hasActiveValidations = activeOrders.some(obc => {
+                    const tab = STATE.tabs[obc];
+                    return tab && (tab.validations.length > 0 || tab.rejections.length > 0);
+                });
+
+                // Check if there are pending syncs
+                const hasPendingSync = PENDING_SYNC.length > 0;
+
+                // Check if validation screen is active
+                const isValidationActive = document.getElementById('validation').style.display === 'block';
+
+                // Show warning if there's active work
+                if ((hasActiveValidations && isValidationActive) || hasPendingSync) {
+                    const message = hasPendingSync
+                        ? `Tienes ${PENDING_SYNC.length} registros pendientes de sincronizar.`
+                        : `Tienes ${activeOrders.length} orden(es) activa(s) con validaciones.`;
+
+                    e.preventDefault();
+                    e.returnValue = message;
+                    return message;
+                }
+            });
+        }
 
         function initAudio() {
             try {
@@ -2327,7 +2357,14 @@
         }
 
         function saveAndContinue() {
+            const currentOBC = STATE.activeOBC;
             closePopup('completed');
+            // Move completed order to closedTabs so it doesn't stay in active panel
+            if (currentOBC && STATE.tabs[currentOBC] && STATE.tabs[currentOBC].completed) {
+                STATE.closedTabs[currentOBC] = STATE.tabs[currentOBC];
+                delete STATE.tabs[currentOBC];
+            }
+            saveState();
             addOBC();
         }
 
@@ -2344,7 +2381,28 @@
         }
 
         function continueViewing() {
+            const currentOBC = STATE.activeOBC;
             closePopup('completed');
+            // Move completed order to closedTabs - keeps it visible temporarily for review
+            // but removes from active tabs panel on next navigation
+            if (currentOBC && STATE.tabs[currentOBC] && STATE.tabs[currentOBC].completed) {
+                STATE.closedTabs[currentOBC] = STATE.tabs[currentOBC];
+                delete STATE.tabs[currentOBC];
+                STATE.activeOBC = null;
+
+                // Check if there are remaining tabs
+                const remainingTabs = Object.keys(STATE.tabs);
+                if (remainingTabs.length === 0) {
+                    document.getElementById('validation-content').style.display = 'none';
+                    document.getElementById('empty-state').style.display = 'block';
+                } else {
+                    STATE.activeOBC = remainingTabs[0];
+                    renderValidation();
+                }
+                updateSidebar();
+                saveState();
+                showNotification(`Orden ${currentOBC} archivada en historial`, 'info');
+            }
         }
 
         function playSound(type) {
