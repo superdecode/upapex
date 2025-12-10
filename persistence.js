@@ -556,52 +556,64 @@ function setupExitProtection() {
 }
 
 /**
- * Add a safe exit button to the UI
+ * Add safe exit buttons to the UI (sidebar and dashboard)
  */
 function addSafeExitButton() {
     // Check if the button already exists
-    if (document.getElementById('safe-exit-button')) return;
-    
-    // Create the button
-    const button = document.createElement('button');
-    button.id = 'safe-exit-button';
-    button.innerHTML = '🚪 Salir con Seguridad';
-    button.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9999;
-        padding: 12px 24px;
-        background-color: #ed5224;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 1em;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-        transition: all 0.2s;
-    `;
-    
-    // Add hover effect
-    button.addEventListener('mouseover', () => {
-        button.style.backgroundColor = '#d4491f';
-        button.style.transform = 'translateX(-50%) translateY(-2px)';
-        button.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
-    });
-    
-    button.addEventListener('mouseout', () => {
-        button.style.backgroundColor = '#ed5224';
-        button.style.transform = 'translateX(-50%)';
-        button.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.2)';
-    });
-    
-    // Add click handler
-    button.addEventListener('click', showSafeExitDialog);
-    
-    // Add the button to the page
-    document.body.appendChild(button);
+    if (document.getElementById('safe-exit-button-sidebar')) return;
+
+    // Helper function to create a safe exit button
+    function createSafeExitBtn(id, isSmall = false) {
+        const button = document.createElement('button');
+        button.id = id;
+        button.className = isSmall ? 'btn btn-small' : 'btn';
+        button.innerHTML = '🚪 Salir con Seguridad';
+        button.style.cssText = `
+            width: 100%;
+            padding: ${isSmall ? '8px 15px' : '15px 30px'};
+            background-color: #ed5224;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: ${isSmall ? '0.85em' : '1.1em'};
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+        `;
+
+        // Add hover effect
+        button.addEventListener('mouseover', () => {
+            button.style.backgroundColor = '#d4491f';
+            button.style.transform = 'translateY(-2px)';
+            button.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
+        });
+
+        button.addEventListener('mouseout', () => {
+            button.style.backgroundColor = '#ed5224';
+            button.style.transform = 'none';
+            button.style.boxShadow = 'none';
+        });
+
+        // Add click handler
+        button.addEventListener('click', showSafeExitDialog);
+
+        return button;
+    }
+
+    // 1. Add button to sidebar (after "Sincronizar" button)
+    const syncButton = document.querySelector('button[onclick="forceSync()"]');
+    if (syncButton && syncButton.parentElement) {
+        const sidebarBtn = createSafeExitBtn('safe-exit-button-sidebar', true);
+        syncButton.insertAdjacentElement('afterend', sidebarBtn);
+    }
+
+    // 2. Add button to dashboard (after "Iniciar Validación" button)
+    const startBtn = document.getElementById('start-btn');
+    if (startBtn && startBtn.parentElement) {
+        const dashboardBtn = createSafeExitBtn('safe-exit-button-dashboard', false);
+        startBtn.insertAdjacentElement('afterend', dashboardBtn);
+    }
 }
 
 /**
