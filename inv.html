@@ -279,9 +279,11 @@
                         <div class="user-avatar" id="user-avatar">U</div>
                         <div class="user-name" id="user-name">Usuario</div>
                     </div>
+                    <button class="btn btn-primary btn-small btn-full" onclick="refreshInventory()" style="margin-bottom:8px" id="refresh-inventory-btn">🔄 Actualizar BD</button>
                     <button class="btn btn-secondary btn-small btn-full" onclick="exportToCSV()" style="margin-bottom:8px">📥 Exportar CSV</button>
                     <button class="btn btn-danger btn-small btn-full" onclick="handleLogout()">🚪 Cerrar Sesión</button>
                     <div class="bd-update-info" id="bd-update-info">Última actualización: --</div>
+                    <div class="bd-update-info" id="inventory-count-info">Cajas cargadas: --</div>
                 </div>
             </div>
 
@@ -591,7 +593,15 @@ function showApp() {
     document.getElementById('user-name').textContent = STATE.alias || STATE.user.name;
     document.getElementById('user-avatar').textContent = (STATE.alias || STATE.user.name).charAt(0).toUpperCase();
     showNotification(`¡Bienvenido, ${STATE.alias || STATE.user.name}!`, 'success');
-    renderTransfers(); updateDashboard();
+    updateInventoryCountDisplay();
+    renderTransfers();
+    updateDashboard();
+
+    // Si el inventario está vacío o desactualizado, intentar cargarlo
+    if (STATE.inventory.size === 0) {
+        showNotification('Inventario vacío. Cargando datos...', 'info');
+        loadInventory().then(() => updateInventoryCountDisplay());
+    }
 }
 
 function handleLogout() {
@@ -606,34 +616,111 @@ function handleLogout() {
 async function loadInventory() {
     try {
         showNotification('Cargando inventario...', 'info');
-        const response = await fetch(CONFIG.INVENTORY_CSV_URL);
+        updateConnectionStatus('syncing');
+
+        const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-cache'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const csv = await response.text();
+
+        if (!csv || csv.trim().length === 0) {
+            throw new Error('CSV vacío o sin datos');
+        }
+
         parseInventoryCSV(csv);
-        await saveToStorage();
-        showNotification(`Inventario: ${STATE.inventory.size} cajas`, 'success');
-    } catch (e) { showNotification('Error cargando inventario', 'warning'); }
+
+        if (STATE.inventory.size === 0) {
+            showNotification('Advertencia: No se encontraron cajas en el inventario', 'warning');
+        } else {
+            await saveToStorage();
+            showNotification(`Inventario cargado: ${STATE.inventory.size} cajas`, 'success');
+        }
+
+        updateConnectionStatus();
+    } catch (e) {
+        console.error('Error cargando inventario:', e);
+        showNotification(`Error cargando inventario: ${e.message}`, 'error');
+        updateConnectionStatus();
+
+        // Intentar usar datos en caché si existen
+        if (STATE.inventory.size > 0) {
+            showNotification(`Usando ${STATE.inventory.size} cajas en caché local`, 'info');
+        }
+    }
 }
 
 function parseInventoryCSV(csv) {
-    const lines = csv.split('\n');
+    const lines = csv.split('\n').filter(line => line.trim().length > 0);
     STATE.inventory.clear();
-    const firstLine = lines[0].split(',');
-    if (firstLine.length >= 17) STATE.inventoryLastUpdate = firstLine[16] || new Date().toLocaleString();
-    document.getElementById('bd-update-info').textContent = `Última act.: ${STATE.inventoryLastUpdate || '--'}`;
+
+    console.log(`Procesando CSV con ${lines.length} líneas`);
+
+    if (lines.length === 0) {
+        console.error('CSV vacío');
+        return;
+    }
+
+    // Procesar headers y buscar fecha de actualización
+    const firstLine = parseCSVLine(lines[0]);
+    console.log(`Primera línea tiene ${firstLine.length} columnas:`, firstLine.slice(0, 5));
+
+    // Buscar fecha de actualización en la última columna
+    if (firstLine.length >= 17) {
+        STATE.inventoryLastUpdate = firstLine[16] || new Date().toLocaleString();
+    } else {
+        STATE.inventoryLastUpdate = new Date().toLocaleString();
+    }
+    document.getElementById('bd-update-info').textContent = `Última act.: ${STATE.inventoryLastUpdate}`;
+
+    let processedCount = 0;
+    let skippedCount = 0;
+
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
-        if (cols.length >= 16) {
+
+        // Log primeras filas para diagnóstico
+        if (i <= 3) {
+            console.log(`Fila ${i} tiene ${cols.length} columnas:`, cols.slice(0, 5));
+        }
+
+        if (cols.length >= 13) { // Reducido de 16 a 13 para ser más flexible
             const code = (cols[2] || '').toString().trim().toUpperCase();
-            if (code) {
+            if (code && code.length > 0) {
                 STATE.inventory.set(code, {
-                    boxType: cols[0], no: cols[1], code, warehouse: cols[3], customer: cols[4],
-                    size: cols[5], weight: cols[6], cellNo: cols[7], area: cols[8],
-                    totalStock: cols[9], availableStock: cols[10], lockedInventory: parseFloat(cols[11]) || 0,
-                    sku: cols[12], productName: cols[13], productAlias: cols[14], qtyPerPackage: cols[15]
+                    boxType: cols[0] || '',
+                    no: cols[1] || '',
+                    code,
+                    warehouse: cols[3] || '',
+                    customer: cols[4] || '',
+                    size: cols[5] || '',
+                    weight: cols[6] || '',
+                    cellNo: cols[7] || '',
+                    area: cols[8] || '',
+                    totalStock: cols[9] || '',
+                    availableStock: cols[10] || '',
+                    lockedInventory: parseFloat(cols[11]) || 0,
+                    sku: cols[12] || '',
+                    productName: cols[13] || '',
+                    productAlias: cols[14] || '',
+                    qtyPerPackage: cols[15] || ''
                 });
+                processedCount++;
+            } else {
+                skippedCount++;
             }
+        } else {
+            skippedCount++;
         }
     }
+
+    console.log(`Inventario procesado: ${processedCount} cajas, ${skippedCount} líneas omitidas`);
 }
 
 function parseCSVLine(line) {
@@ -677,10 +764,19 @@ async function loadFromStorage() {
             STATE.tarimaCounter = data.tarimaCounter || { date: null, counter: 0 };
             STATE.activeTarima = data.activeTarima;
             STATE.boxes = data.boxes || { ok: [], blocked: [], nowms: [] };
-            if (STATE.inventoryLastUpdate) document.getElementById('bd-update-info').textContent = `Última act.: ${STATE.inventoryLastUpdate}`;
+
+            if (STATE.inventoryLastUpdate) {
+                document.getElementById('bd-update-info').textContent = `Última act.: ${STATE.inventoryLastUpdate}`;
+            }
+
             updateTaskSelect();
+            updateInventoryCountDisplay();
+
+            console.log(`Datos cargados de localStorage: ${STATE.inventory.size} cajas en inventario`);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error('Error cargando datos de localStorage:', e);
+    }
 }
 
 async function saveToStorage() {
@@ -705,12 +801,26 @@ function setupConnectionMonitor() {
     updateConnectionStatus();
 }
 
-function updateConnectionStatus() {
+function updateConnectionStatus(forceStatus = null) {
     const indicator = document.getElementById('connection-status');
     const text = document.getElementById('connection-text');
-    if (!STATE.isOnline) { indicator.className = 'connection-indicator offline'; text.textContent = 'Sin conexión'; }
-    else if (STATE.pendingSync.length > 0) { indicator.className = 'connection-indicator syncing'; text.textContent = `${STATE.pendingSync.length} pendientes`; }
-    else { indicator.className = 'connection-indicator online'; text.textContent = 'Conectado'; }
+
+    if (forceStatus === 'syncing') {
+        indicator.className = 'connection-indicator syncing';
+        text.textContent = 'Sincronizando...';
+        return;
+    }
+
+    if (!STATE.isOnline) {
+        indicator.className = 'connection-indicator offline';
+        text.textContent = 'Sin conexión';
+    } else if (STATE.pendingSync.length > 0) {
+        indicator.className = 'connection-indicator syncing';
+        text.textContent = `${STATE.pendingSync.length} pendientes`;
+    } else {
+        indicator.className = 'connection-indicator online';
+        text.textContent = 'Conectado';
+    }
 }
 
 function showConnectionBanner(status) {
@@ -1067,6 +1177,27 @@ function showNotification(msg, type) {
 }
 
 function closePopup(name) { document.getElementById(`popup-${name}`).style.display = 'none'; }
+
+async function refreshInventory() {
+    const btn = document.getElementById('refresh-inventory-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Cargando...';
+
+    try {
+        await loadInventory();
+        updateInventoryCountDisplay();
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Actualizar BD';
+    }
+}
+
+function updateInventoryCountDisplay() {
+    const countInfo = document.getElementById('inventory-count-info');
+    if (countInfo) {
+        countInfo.textContent = `Cajas cargadas: ${STATE.inventory.size}`;
+    }
+}
     </script>
 </body>
 </html>
