@@ -1121,11 +1121,11 @@
             await loadFromStorage();
             setupListeners();
             setupConnectionMonitor();
+            setupExitProtection();  // ← AGREGAR ESTA LÍNEA
             renderValidation();
             gapi.load('client', initGAPI);
             startAutoSync();
         });
-
         function initAudio() {
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1152,6 +1152,47 @@
                 showConnectionBanner('offline');
                 updateSyncStatus(false);
             }
+        }
+
+        function setupExitProtection() {
+        window.addEventListener('beforeunload', (e) => {
+            // Contar órdenes activas con validaciones
+            let activeOrdersCount = 0;
+            let totalValidations = 0;
+            
+            for (const obc in STATE.tabs) {
+                if (STATE.tabs[obc].validations.length > 0) {
+                    activeOrdersCount++;
+                    totalValidations += STATE.tabs[obc].validations.length;
+                }
+            }
+            
+            // Verificar si estamos en pantalla de validación
+            const isInValidation = document.getElementById('validation').style.display === 'block';
+            
+            // Construir mensaje de advertencia
+            let warnings = [];
+            
+            if (activeOrdersCount > 0) {
+                warnings.push(`${activeOrdersCount} orden(es) activa(s) con ${totalValidations} validación(es)`);
+            }
+            
+            if (PENDING_SYNC.length > 0) {
+                warnings.push(`${PENDING_SYNC.length} registro(s) pendiente(s) de sincronizar`);
+            }
+            
+            // Solo mostrar alerta si hay datos relevantes
+            if ((isInValidation && activeOrdersCount > 0) || PENDING_SYNC.length > 0) {
+                const message = `⚠️ ADVERTENCIA:\n\nTienes:\n• ${warnings.join('\n• ')}\n\n¿Estás seguro de salir?`;
+                
+            // Estándar moderno
+            e.preventDefault();
+            e.returnValue = message;
+            
+            // Para navegadores antiguos
+            return message;
+                }
+            });
         }
 
         function showConnectionBanner(status) {
@@ -1942,12 +1983,23 @@
         }
 
         function closeTab(obc) {
-            if (!confirm(`¿Cerrar la orden ${obc}? Los datos se mantendrán en el historial.`)) return;
-            STATE.tabs[obc].completed = true;
+        if (!confirm(`¿Cerrar la orden ${obc}? Los datos se mantendrán en el historial.`)) return;
+        
+        // Mover la orden a closedTabs
+        STATE.closedTabs[obc] = STATE.tabs[obc];
+        STATE.closedTabs[obc].completed = true;
+        delete STATE.tabs[obc];
+        
+        // Si era la orden activa, resetear
+        if (STATE.activeOBC === obc) {
+            const remainingOrders = Object.keys(STATE.tabs);
+            STATE.activeOBC = remainingOrders.length > 0 ? remainingOrders[0] : null;
+            }
+            
             renderValidation();
             saveState();
-            showNotification(`Orden ${obc} cerrada`, 'info');
-        }
+            showNotification(`Orden ${obc} cerrada correctamente`, 'success');
+        }    
 
         async function addOBC() {
             const obc = prompt('Ingresa el número de la nueva orden:');
