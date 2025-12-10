@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Validación WMS</title>
-    <!-- Add persistence system -->
-    <script src="persistence.js"></script>
     <style>
         :root {
             --primary: #ed5224;
@@ -1121,7 +1119,8 @@
             await loadFromStorage();
             setupListeners();
             setupConnectionMonitor();
-            setupExitProtection();  // ← AGREGAR ESTA LÍNEA
+            setupExitProtection();      // ← AGREGAR
+            addSafeExitButton();        // ← AGREGAR
             renderValidation();
             gapi.load('client', initGAPI);
             startAutoSync();
@@ -1153,49 +1152,225 @@
                 updateSyncStatus(false);
             }
         }
-
         function setupExitProtection() {
-        window.addEventListener('beforeunload', (e) => {
-            // Contar órdenes activas con validaciones
+            window.addEventListener('beforeunload', (e) => {
+                // Contar órdenes activas con validaciones
+                let activeOrdersCount = 0;
+                let totalValidations = 0;
+                
+                for (const obc in STATE.tabs) {
+                    if (STATE.tabs[obc].validations && STATE.tabs[obc].validations.length > 0) {
+                        activeOrdersCount++;
+                        totalValidations += STATE.tabs[obc].validations.length;
+                    }
+                }
+                
+                // Verificar si estamos en pantalla de validación
+                const isInValidation = document.getElementById('validation') && 
+                                       document.getElementById('validation').style.display === 'block';
+                
+                // Construir mensaje de advertencia
+                let warnings = [];
+                
+                if (activeOrdersCount > 0) {
+                    warnings.push(`${activeOrdersCount} orden(es) activa(s) con ${totalValidations} validación(es)`);
+                }
+                
+                if (PENDING_SYNC && PENDING_SYNC.length > 0) {
+                    warnings.push(`${PENDING_SYNC.length} registro(s) pendiente(s) de sincronizar`);
+                }
+                
+                // Solo mostrar alerta si hay datos relevantes
+                if ((isInValidation && activeOrdersCount > 0) || (PENDING_SYNC && PENDING_SYNC.length > 0)) {
+                    const message = `⚠️ ADVERTENCIA:\n\nTienes:\n• ${warnings.join('\n• ')}\n\n¿Estás seguro de salir?`;
+                    
+                    // Estándar moderno
+                    e.preventDefault();
+                    e.returnValue = message;
+                    
+                    // Para navegadores antiguos
+                    return message;
+                }
+            });
+            
+            console.log('✅ Protección contra salida activada');
+            }
+            
+            function addSafeExitButton() {
+            // Verificar si ya existe
+            if (document.getElementById('safe-exit-button-sidebar')) return;
+        
+            // Helper para crear botón
+            function createSafeExitBtn(id, isSmall = false) {
+                const button = document.createElement('button');
+                button.id = id;
+                button.className = isSmall ? 'btn btn-secondary btn-small' : 'btn btn-secondary';
+                button.innerHTML = '🚪 Salir Seguro';
+                button.style.width = '100%';
+                button.style.marginTop = '10px';
+                button.onclick = showSafeExitDialog;
+                return button;
+            }
+        
+            // 1. Botón en sidebar (después del botón de Sincronizar)
+            const syncButton = document.querySelector('.sidebar button[onclick="forceSync()"]');
+            if (syncButton) {
+                const sidebarBtn = createSafeExitBtn('safe-exit-button-sidebar', true);
+                syncButton.insertAdjacentElement('afterend', sidebarBtn);
+            }
+        
+            // 2. Botón en dashboard (después de Iniciar Validación)
+            const startBtn = document.getElementById('start-btn');
+            if (startBtn) {
+                const dashboardBtn = createSafeExitBtn('safe-exit-button-dashboard', false);
+                startBtn.insertAdjacentElement('afterend', dashboardBtn);
+            }
+            
+            console.log('✅ Botones de salida segura agregados');
+            }
+            
+            function showSafeExitDialog() {
+            // Contar órdenes activas
             let activeOrdersCount = 0;
             let totalValidations = 0;
-            
             for (const obc in STATE.tabs) {
-                if (STATE.tabs[obc].validations.length > 0) {
+                if (STATE.tabs[obc].validations && STATE.tabs[obc].validations.length > 0) {
                     activeOrdersCount++;
                     totalValidations += STATE.tabs[obc].validations.length;
                 }
             }
+        
+            const overlay = document.createElement('div');
+            overlay.id = 'safe-exit-overlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: rgba(0, 0, 0, 0.7);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+            `;
             
-            // Verificar si estamos en pantalla de validación
-            const isInValidation = document.getElementById('validation').style.display === 'block';
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: white;
+                border-radius: 12px;
+                padding: 30px;
+                max-width: 500px;
+                width: 90%;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            `;
             
-            // Construir mensaje de advertencia
-            let warnings = [];
+            const hasToken = gapi && gapi.client && gapi.client.getToken();
+            const canSync = PENDING_SYNC.length > 0 && IS_ONLINE && hasToken;
             
-            if (activeOrdersCount > 0) {
-                warnings.push(`${activeOrdersCount} orden(es) activa(s) con ${totalValidations} validación(es)`);
-            }
-            
-            if (PENDING_SYNC.length > 0) {
-                warnings.push(`${PENDING_SYNC.length} registro(s) pendiente(s) de sincronizar`);
-            }
-            
-            // Solo mostrar alerta si hay datos relevantes
-            if ((isInValidation && activeOrdersCount > 0) || PENDING_SYNC.length > 0) {
-                const message = `⚠️ ADVERTENCIA:\n\nTienes:\n• ${warnings.join('\n• ')}\n\n¿Estás seguro de salir?`;
+            dialog.innerHTML = `
+                <h2 style="color: #ed5224; margin-bottom: 20px; text-align: center;">🚪 Salir del Sistema</h2>
                 
-            // Estándar moderno
-            e.preventDefault();
-            e.returnValue = message;
+                <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <p style="margin: 0 0 10px 0; font-weight: 600;">📊 Estado actual:</p>
+                    <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                        <li><strong>${activeOrdersCount}</strong> orden(es) activa(s)</li>
+                        <li><strong>${totalValidations}</strong> validación(es) en proceso</li>
+                        <li><strong>${PENDING_SYNC.length}</strong> pendientes de sincronizar</li>
+                        <li>${IS_ONLINE ? '✅ En línea' : '❌ Sin conexión'}</li>
+                        <li>${hasToken ? '✅ Conectado a Google' : '❌ No conectado'}</li>
+                    </ul>
+                </div>
+                
+                ${PENDING_SYNC.length > 0 ? `
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
+                        <p style="margin: 0; color: #e65100;">
+                            <strong>⚠️ Atención: ${PENDING_SYNC.length} validaciones sin sincronizar</strong><br>
+                            ${canSync ? 'Se recomienda sincronizar antes de salir.' : 'Los datos están guardados localmente y se sincronizarán automáticamente.'}
+                        </p>
+                    </div>
+                ` : ''}
+                
+                ${activeOrdersCount > 0 ? `
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+                        <p style="margin: 0; color: #1565c0;">
+                            <strong>📦 Tienes ${activeOrdersCount} orden(es) en proceso</strong><br>
+                            Tus validaciones están guardadas y podrás continuar después.
+                        </p>
+                    </div>
+                ` : ''}
+                
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+                    ${canSync ? `
+                        <button id="sync-and-exit" class="btn btn-success" style="width: 100%;">
+                            🔄 Sincronizar y Cerrar
+                        </button>
+                    ` : ''}
+                    
+                    <button id="just-exit" class="btn btn-secondary" style="width: 100%;">
+                        💾 Guardar y Cerrar
+                    </button>
+                    
+                    <button id="cancel-exit" class="btn btn-primary" style="width: 100%;">
+                        ← Volver al Sistema
+                    </button>
+                </div>
+                
+                <p style="margin-top: 15px; text-align: center; font-size: 0.85em; color: #666;">
+                    💡 Todos tus datos están guardados localmente y seguros
+                </p>
+            `;
             
-            // Para navegadores antiguos
-            return message;
-                }
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            
+            // Event listeners
+            const syncBtn = document.getElementById('sync-and-exit');
+            if (syncBtn) {
+                syncBtn.addEventListener('click', async () => {
+                    const originalText = syncBtn.innerHTML;
+                    try {
+                        syncBtn.disabled = true;
+                        syncBtn.innerHTML = '🔄 Sincronizando...';
+                        
+                        await syncPendingData();
+                        
+                        if (PENDING_SYNC.length === 0) {
+                            showNotification('✅ Todo sincronizado correctamente', 'success');
+                            setTimeout(() => {
+                                overlay.remove();
+                                returnToDashboard();
+                            }, 1000);
+                        } else {
+                            const remaining = PENDING_SYNC.length;
+                            if (confirm(`Quedan ${remaining} validaciones pendientes.\n\n¿Deseas cerrar de todos modos?\nLos datos están guardados localmente.`)) {
+                                overlay.remove();
+                                returnToDashboard();
+                            } else {
+                                overlay.remove();
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error al sincronizar:', error);
+                        showNotification('❌ Error al sincronizar', 'error');
+                        syncBtn.disabled = false;
+                        syncBtn.innerHTML = originalText;
+                    }
+                });
+            }
+            
+            document.getElementById('just-exit').addEventListener('click', () => {
+                showNotification('💾 Datos guardados localmente', 'success');
+                overlay.remove();
+                returnToDashboard();
             });
-        }
-
-        function showConnectionBanner(status) {
+            
+            document.getElementById('cancel-exit').addEventListener('click', () => {
+                overlay.remove();
+            });
+            }
+    
+            function showConnectionBanner(status) {
             const banner = document.getElementById('connection-banner');
             banner.className = `connection-banner ${status}`;
             banner.textContent = status === 'online' 
@@ -1205,18 +1380,18 @@
             if (status === 'online') {
                 setTimeout(() => banner.style.display = 'none', 5000);
             }
-        }
-
-        function startAutoSync() {
+            }
+    
+            function startAutoSync() {
             SYNC_INTERVAL = setInterval(() => {
                 if (IS_ONLINE && gapi.client.getToken()) {
                     console.log('Auto-sync triggered');
                     syncPendingData();
                 }
             }, 3600000);
-        }
-
-        async function syncPendingData() {
+            }
+    
+            async function syncPendingData() {
             if (!IS_ONLINE) {
                 showNotification('⚠️ Sin conexión - No se puede sincronizar', 'warning');
                 return;
@@ -1259,15 +1434,15 @@
                 showNotification(`⚠️ ${successCount} sincronizadas, ${errorCount} pendientes`, 'warning');
                 updateSyncStatus(false);
             }
-        }
-
-        async function savePendingSync() {
+            }
+    
+            async function savePendingSync() {
             try {
                 await window.storage.set('wms_pending_sync', JSON.stringify(PENDING_SYNC));
             } catch (e) {}
-        }
-
-        async function loadPendingSync() {
+            }
+    
+            async function loadPendingSync() {
             try {
                 const res = await window.storage.get('wms_pending_sync');
                 if (res?.value) {
@@ -1275,9 +1450,9 @@
                     updatePendingBadge();
                 }
             } catch (e) {}
-        }
-
-        function updatePendingBadge() {
+            }
+    
+            function updatePendingBadge() {
             const badge = document.getElementById('pending-badge');
             if (PENDING_SYNC.length > 0) {
                 badge.textContent = PENDING_SYNC.length;
@@ -1285,9 +1460,9 @@
             } else {
                 badge.style.display = 'none';
             }
-        }
-
-        async function initGAPI() {
+            }
+    
+            async function initGAPI() {
             try {
                 await gapi.client.init({ discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"] });
                 TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
@@ -1307,9 +1482,9 @@
             } catch (e) {
                 showNotification('❌ Error al inicializar Google API', 'error');
             }
-        }
-
-        async function getUserProfile() {
+            }
+    
+            async function getUserProfile() {
             try {
                 const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
                     headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
@@ -1320,9 +1495,9 @@
             } catch (e) {
                 CURRENT_USER = 'Usuario';
             }
-        }
-
-        async function loadFromStorage() {
+            }
+    
+            async function loadFromStorage() {
             try {
                 const stateRes = await window.storage.get('wms_state');
                 if (stateRes?.value) {
@@ -1350,15 +1525,15 @@
 
                 await loadPendingSync();
             } catch (e) {}
-        }
-
-        async function saveState() {
+            }
+    
+            async function saveState() {
             try {
                 await window.storage.set('wms_state', JSON.stringify(STATE));
             } catch (e) {}
-        }
-
-        async function saveBD() {
+            }
+    
+            async function saveBD() {
             try {
                 await window.storage.set('wms_bd', JSON.stringify({
                     codes: Array.from(BD_CODES),
@@ -1367,17 +1542,17 @@
                     info: Array.from(OBC_INFO.entries())
                 }));
             } catch (e) {}
-        }
-
-        async function saveHistory() {
+            }
+    
+            async function saveHistory() {
             try {
                 await window.storage.set('wms_history', JSON.stringify({
                     history: Array.from(HISTORY.entries())
                 }));
             } catch (e) {}
-        }
-
-        function handleAuthClick() {
+            }
+    
+            function handleAuthClick() {
             if (gapi.client.getToken()) {
                 google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
                     gapi.client.setToken(null);
@@ -1387,18 +1562,18 @@
             } else {
                 TOKEN_CLIENT.requestAccessToken();
             }
-        }
-
-        function updateConnectionStatus(connected) {
+            }
+    
+            function updateConnectionStatus(connected) {
             document.getElementById('status-conn').className = `status-indicator ${connected ? 'status-ok' : 'status-error'}`;
             document.getElementById('conn-label').textContent = connected ? 'Conectado' : 'Desconectado';
             document.getElementById('connect-btn').textContent = connected ? '🔓 Cerrar Sesión' : '🔗 Conectar';
             document.getElementById('load-bd-btn').style.display = connected ? 'block' : 'none';
             updateStartButton();
             updateSyncStatus(connected);
-        }
-
-        function updateSyncStatus(synced) {
+            }
+    
+            function updateSyncStatus(synced) {
             const syncEl = document.getElementById('sync-status-sidebar');
             const statusIndicator = document.getElementById('status-sync');
             const statusLabel = document.getElementById('sync-label');
@@ -1428,14 +1603,14 @@
                 statusIndicator.className = 'status-indicator status-error';
                 statusLabel.textContent = 'No sincronizado';
             }
-        }
-
-        function updateStartButton() {
+            }
+    
+            function updateStartButton() {
             const canStart = gapi.client.getToken() && BD_CODES.size > 0;
             document.getElementById('start-btn').disabled = !canStart;
-        }
-
-        async function loadDatabase() {
+            }
+    
+            async function loadDatabase() {
             if (!gapi.client.getToken()) {
                 showNotification('⚠️ Conecta primero con Google Sheets', 'warning');
                 return;
