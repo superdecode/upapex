@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Validación WMS</title>
+    <!-- Add persistence system -->
+    <script src="persistence.js"></script>
     <style>
         :root {
             --primary: #ed5224;
@@ -491,7 +493,9 @@
             <div class="sidebar">
                 <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">WMS</h2>
                 <button class="btn btn-primary btn-small" onclick="returnToDashboard()" style="margin-bottom: 10px; width: 100%;">← Dashboard</button>
-                <button class="btn btn-secondary btn-small" onclick="showResumen()" style="margin-bottom: 10px; width: 100%;">📋 Resumen</button>
+                <button class="btn btn-secondary btn-small" onclick="showResumen()" style="margin-bottom: 10px; width: 100%;">
+                    📋 Resumen <span id="pending-badge"></span>
+                </button>
                 <button class="btn btn-secondary btn-small" onclick="showFaltantes()" style="margin-bottom: 10px; width: 100%;">🔍 Faltantes</button>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none;">
@@ -807,8 +811,7 @@
         let SYNC_INTERVAL = null;
         let STATE = {
             activeOBC: null,
-            tabs: {},
-            closedTabs: {}
+            tabs: {}
         };
         let TOKEN_CLIENT, audioCtx;
         let lastScanned = null;
@@ -987,7 +990,6 @@
                 if (stateRes?.value) {
                     const loaded = JSON.parse(stateRes.value);
                     STATE.tabs = loaded.tabs || {};
-                    STATE.closedTabs = loaded.closedTabs || {};
                     STATE.activeOBC = loaded.activeOBC;
                 }
                 
@@ -1175,7 +1177,7 @@
                                     user: user || 'Usuario',
                                     timestamp: timestamp || '',
                                     date: date || '',
-                                    obc: obc || ''
+                                    obc: obc
                                 });
                             }
                         }
@@ -1235,14 +1237,11 @@
             for (const obc in STATE.tabs) {
                 totalValidated += STATE.tabs[obc].validations.length;
             }
-            for (const obc in STATE.closedTabs) {
-                totalValidated += STATE.closedTabs[obc].validations.length;
-            }
             document.getElementById('dash-validated').textContent = totalValidated || '-';
         }
 
         function showUserStats() {
-            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            const allOrders = STATE.tabs;
             const userStats = {};
             let total = 0;
 
@@ -1646,12 +1645,7 @@
 
         function closeTab(obc) {
             if (!confirm(`¿Cerrar la orden ${obc}? Los datos se mantendrán en el historial.`)) return;
-            STATE.closedTabs[obc] = STATE.tabs[obc];
-            delete STATE.tabs[obc];
-            if (STATE.activeOBC === obc) {
-                const remaining = Object.keys(STATE.tabs);
-                STATE.activeOBC = remaining.length > 0 ? remaining[0] : null;
-            }
+            STATE.tabs[obc].completed = true;
             renderValidation();
             saveState();
             showNotification(`Orden ${obc} cerrada`, 'info');
