@@ -337,6 +337,212 @@
         .resumen-table th, .resumen-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
         .resumen-table th { background: #f5f5f5; font-weight: 700; }
         
+        /* Consulta Rapida Module */
+        #consulta-module { display: none; }
+        .consulta-result {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .consulta-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #eee;
+        }
+        .consulta-obc {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .consulta-status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9em;
+        }
+        .consulta-status.validated {
+            background: #e8f5e9;
+            color: var(--success);
+        }
+        .consulta-status.pending {
+            background: #fff3e0;
+            color: var(--warning);
+        }
+        .consulta-status.not-found {
+            background: #ffebee;
+            color: var(--error);
+        }
+        .consulta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .consulta-item {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .consulta-item-label {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .consulta-item-value {
+            font-size: 1.2em;
+            font-weight: 700;
+        }
+        .consulta-progress {
+            background: #e0e0e0;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .consulta-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #ff8a52);
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 0.85em;
+        }
+        .consulta-progress-bar.complete {
+            background: linear-gradient(90deg, var(--success), #45a049);
+        }
+        .consulta-action {
+            text-align: center;
+            padding-top: 15px;
+            border-top: 2px solid #eee;
+        }
+
+        /* Reconteo Module */
+        #reconteo-module { display: none; }
+        .reconteo-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        .reconteo-stat {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .reconteo-stat-number {
+            font-size: 1.8em;
+            font-weight: 700;
+        }
+        .reconteo-stat-label {
+            font-size: 0.8em;
+            color: #666;
+        }
+        .reconteo-stat.ok { border: 2px solid var(--success); }
+        .reconteo-stat.ok .reconteo-stat-number { color: var(--success); }
+        .reconteo-stat.dup { border: 2px solid var(--warning); }
+        .reconteo-stat.dup .reconteo-stat-number { color: var(--warning); }
+        .reconteo-stat.missing { border: 2px solid var(--error); }
+        .reconteo-stat.missing .reconteo-stat-number { color: var(--error); }
+        .reconteo-stat.extra { border: 2px solid #9c27b0; }
+        .reconteo-stat.extra .reconteo-stat-number { color: #9c27b0; }
+        .reconteo-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        .reconteo-table th, .reconteo-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .reconteo-table th {
+            background: #f5f5f5;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+        }
+        .reconteo-table .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 700;
+        }
+        .reconteo-table .status-ok {
+            background: #e8f5e9;
+            color: var(--success);
+        }
+        .reconteo-table .status-dup {
+            background: #fff3e0;
+            color: var(--warning);
+        }
+        .reconteo-table .status-missing {
+            background: #ffebee;
+            color: var(--error);
+        }
+        .reconteo-table .status-extra {
+            background: #f3e5f5;
+            color: #9c27b0;
+        }
+        .reconteo-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .btn-add-validation {
+            padding: 4px 10px;
+            background: var(--success);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .btn-add-validation:hover {
+            background: #45a049;
+        }
+        .btn-reconteo {
+            padding: 10px 15px;
+            background: #9c27b0;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-reconteo:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(156,39,176,0.3);
+        }
+        .btn-consulta {
+            padding: 10px 15px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-consulta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(33,150,243,0.3);
+        }
+
         /* Faltantes Module */
         #faltantes-module { display: none; }
         .faltantes-controls {
@@ -497,6 +703,7 @@
                     📋 Resumen <span id="pending-badge"></span>
                 </button>
                 <button class="btn btn-secondary btn-small" onclick="showFaltantes()" style="margin-bottom: 10px; width: 100%;">🔍 Faltantes</button>
+                <button class="btn btn-small btn-consulta" onclick="showConsulta()" style="margin-bottom: 10px; width: 100%;">🔎 Consulta</button>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none;">
                     ✅ Sincronizado
@@ -579,6 +786,7 @@
                                     </div>
                                 </div>
                                 <button class="btn-manual" onclick="openManualInput()">✏️ Manual</button>
+                                <button class="btn-reconteo" onclick="openReconteo()">🔄 Reconteo</button>
                             </div>
                         </div>
 
@@ -656,6 +864,94 @@
                     </div>
                     <p style="margin-bottom: 15px;"><span style="color: var(--success);">✅ Validados</span> | <span style="color: var(--error);">❌ Faltantes</span></p>
                     <div class="faltantes-grid" id="faltantes-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONSULTA RAPIDA MODULE -->
+    <div id="consulta-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔎 Consulta Rápida de Trazabilidad</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideConsulta()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="input-group">
+                        <label style="font-size: 1.1em; color: var(--primary);">📦 Escanear código de caja:</label>
+                        <input type="text" id="consulta-scanner" class="scanner-input" placeholder="Escanea o ingresa el código..." onkeydown="handleConsultaScan(event)">
+                    </div>
+                    <button class="btn btn-primary" onclick="executeConsulta()" style="margin-top: 15px;">🔍 Consultar</button>
+                </div>
+                <div id="consulta-result" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECONTEO MODULE -->
+    <div id="reconteo-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔄 Reconteo de Orden</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideReconteo()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="faltantes-controls">
+                        <select id="reconteo-order-select" onchange="initReconteo()">
+                            <option value="">Seleccionar orden...</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" onclick="clearReconteo()">🗑️ Limpiar Reconteo</button>
+                    </div>
+                </div>
+                <div id="reconteo-content" style="display: none;">
+                    <div class="card">
+                        <div class="input-group">
+                            <label style="font-size: 1.1em; color: #9c27b0;">📦 Escanear para reconteo:</label>
+                            <input type="text" id="reconteo-scanner" class="scanner-input" placeholder="Escanea aquí..." onkeydown="handleReconteoScan(event)" style="background: #f3e5f5 !important;">
+                        </div>
+                    </div>
+                    <div class="reconteo-stats" id="reconteo-stats">
+                        <div class="reconteo-stat ok">
+                            <div class="reconteo-stat-number" id="reconteo-ok">0</div>
+                            <div class="reconteo-stat-label">OK</div>
+                        </div>
+                        <div class="reconteo-stat dup">
+                            <div class="reconteo-stat-number" id="reconteo-dup">0</div>
+                            <div class="reconteo-stat-label">Duplicados</div>
+                        </div>
+                        <div class="reconteo-stat missing">
+                            <div class="reconteo-stat-number" id="reconteo-missing">0</div>
+                            <div class="reconteo-stat-label">Faltantes BD</div>
+                        </div>
+                        <div class="reconteo-stat extra">
+                            <div class="reconteo-stat-number" id="reconteo-extra">0</div>
+                            <div class="reconteo-stat-label">No en Orden</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin-bottom: 15px;">📋 Registro de Escaneos</h3>
+                        <div class="reconteo-table-container">
+                            <table class="reconteo-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Código</th>
+                                        <th>Estatus</th>
+                                        <th>Hora</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reconteo-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card" style="margin-top: 15px;">
+                        <h3 style="margin-bottom: 15px; color: var(--error);">❌ Códigos NO escaneados en Reconteo</h3>
+                        <p style="margin-bottom: 10px; color: #666;">Códigos validados previamente que no han sido escaneados en este reconteo:</p>
+                        <div class="faltantes-grid" id="reconteo-not-scanned"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -811,7 +1107,8 @@
         let SYNC_INTERVAL = null;
         let STATE = {
             activeOBC: null,
-            tabs: {}
+            tabs: {},
+            closedTabs: {}
         };
         let TOKEN_CLIENT, audioCtx;
         let lastScanned = null;
@@ -990,6 +1287,7 @@
                 if (stateRes?.value) {
                     const loaded = JSON.parse(stateRes.value);
                     STATE.tabs = loaded.tabs || {};
+                    STATE.closedTabs = loaded.closedTabs || {};
                     STATE.activeOBC = loaded.activeOBC;
                 }
                 
@@ -1596,14 +1894,14 @@
             okList.innerHTML = '';
             rejectList.innerHTML = '';
             
-            tab.validations.slice(0, 10).forEach(log => {
+            tab.validations.forEach(log => {
                 const li = document.createElement('li');
                 li.className = 'log-item log-ok';
                 li.innerHTML = `<div class="log-info"><div class="log-code">${log.code}</div><div class="log-meta">${log.timestamp} • ${log.location || '-'}</div></div>`;
                 okList.appendChild(li);
             });
-            
-            tab.rejections.slice(0, 10).forEach(log => {
+
+            tab.rejections.forEach(log => {
                 const li = document.createElement('li');
                 li.className = 'log-item log-reject';
                 li.innerHTML = `<div class="log-info"><div class="log-code">${log.code}</div><div class="log-meta">${log.timestamp} • ${log.reason}</div></div>`;
@@ -2095,6 +2393,510 @@
             link.download = `validaciones_${new Date().toISOString().slice(0, 10)}.csv`;
             link.click();
             showNotification('📥 Datos exportados', 'success');
+        }
+
+        // ==================== CONSULTA RAPIDA MODULE ====================
+        function showConsulta() {
+            document.getElementById('validation').style.display = 'none';
+            document.getElementById('consulta-module').style.display = 'block';
+            document.getElementById('consulta-scanner').value = '';
+            document.getElementById('consulta-result').style.display = 'none';
+            document.getElementById('consulta-scanner').focus();
+        }
+
+        function hideConsulta() {
+            document.getElementById('consulta-module').style.display = 'none';
+            document.getElementById('validation').style.display = 'block';
+        }
+
+        function handleConsultaScan(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                executeConsulta();
+            }
+        }
+
+        function executeConsulta() {
+            const raw = document.getElementById('consulta-scanner').value.trim();
+            if (!raw) {
+                showNotification('⚠️ Ingresa un código para consultar', 'warning');
+                return;
+            }
+
+            const extracted = extractCode(raw);
+            const normalized = normalizeCode(extracted);
+
+            let foundOBC = null;
+            let isValidatedInHistory = false;
+            let historyData = null;
+
+            // Buscar en qué OBC está el código
+            for (const [obc, codes] of OBC_MAP.entries()) {
+                const concatenated = normalized + obc.toLowerCase();
+                if (codes.has(concatenated) || codes.has(normalized + obc.toLowerCase())) {
+                    foundOBC = obc;
+                    // Verificar si está validado en historial
+                    const histKey = `${normalized}_${obc.toLowerCase()}`;
+                    if (HISTORY.has(histKey)) {
+                        isValidatedInHistory = true;
+                        historyData = HISTORY.get(histKey);
+                    }
+                    break;
+                }
+            }
+
+            // También buscar directamente en BD_CODES
+            if (!foundOBC) {
+                for (const code of BD_CODES) {
+                    if (code.startsWith(normalized)) {
+                        // Extraer el OBC del código concatenado
+                        const possibleOBC = code.slice(normalized.length).toUpperCase();
+                        if (OBC_TOTALS.has(possibleOBC)) {
+                            foundOBC = possibleOBC;
+                            const histKey = `${normalized}_${possibleOBC.toLowerCase()}`;
+                            if (HISTORY.has(histKey)) {
+                                isValidatedInHistory = true;
+                                historyData = HISTORY.get(histKey);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            renderConsultaResult(normalized, foundOBC, isValidatedInHistory, historyData);
+        }
+
+        function renderConsultaResult(code, obc, isValidated, historyData) {
+            const resultDiv = document.getElementById('consulta-result');
+
+            if (!obc) {
+                resultDiv.innerHTML = `
+                    <div class="consulta-result">
+                        <div class="consulta-header">
+                            <div class="consulta-obc">Código: ${code}</div>
+                            <div class="consulta-status not-found">NO ENCONTRADO</div>
+                        </div>
+                        <div style="text-align: center; padding: 30px; color: #666;">
+                            <div style="font-size: 3em; margin-bottom: 15px;">❓</div>
+                            <p>Este código no se encontró en ninguna orden de la base de datos.</p>
+                        </div>
+                    </div>
+                `;
+                resultDiv.style.display = 'block';
+                playSound('error');
+                return;
+            }
+
+            const info = OBC_INFO.get(obc) || {};
+            const total = OBC_TOTALS.get(obc) || 0;
+
+            // Contar validaciones de esta orden
+            let validatedCount = 0;
+            for (const [key, data] of HISTORY.entries()) {
+                if (data.obc === obc) validatedCount++;
+            }
+
+            const pct = total > 0 ? ((validatedCount / total) * 100).toFixed(1) : 0;
+            const isComplete = validatedCount >= total && total > 0;
+
+            let statusClass = isValidated ? 'validated' : 'pending';
+            let statusText = isValidated ? '✅ VALIDADO' : '⏳ PENDIENTE';
+
+            let actionButton = '';
+            if (!isValidated) {
+                actionButton = `
+                    <div class="consulta-action">
+                        <button class="btn btn-success" onclick="goToValidateFromConsulta('${obc}')">
+                            ✅ Validar Ahora - Ir a Orden ${obc}
+                        </button>
+                    </div>
+                `;
+            }
+
+            let validationInfo = '';
+            if (isValidated && historyData) {
+                validationInfo = `
+                    <div class="consulta-item" style="background: #e8f5e9; border: 2px solid var(--success);">
+                        <div class="consulta-item-label">Información de Validación</div>
+                        <div class="consulta-item-value" style="font-size: 0.9em; color: var(--success);">
+                            ✅ Validado el ${historyData.date} a las ${historyData.timestamp}<br>
+                            Por: ${historyData.user}
+                        </div>
+                    </div>
+                `;
+            }
+
+            resultDiv.innerHTML = `
+                <div class="consulta-result">
+                    <div class="consulta-header">
+                        <div>
+                            <div style="font-size: 0.9em; color: #666;">Código escaneado:</div>
+                            <div style="font-size: 1.2em; font-weight: 700;">${code}</div>
+                        </div>
+                        <div class="consulta-status ${statusClass}">${statusText}</div>
+                    </div>
+
+                    <div class="consulta-grid">
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Orden de Pedido (PO)</div>
+                            <div class="consulta-item-value" style="color: var(--primary);">${obc}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Destino</div>
+                            <div class="consulta-item-value">${info.recipient || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Horario</div>
+                            <div class="consulta-item-value">${info.arrivalTime || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Referencia</div>
+                            <div class="consulta-item-value">${info.referenceOrder || '-'}</div>
+                        </div>
+                    </div>
+
+                    ${validationInfo}
+
+                    <div style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="font-weight: 600;">Avance de la Orden</span>
+                            <span style="font-weight: 700; color: ${isComplete ? 'var(--success)' : 'var(--primary)'};">${validatedCount}/${total} cajas (${pct}%)</span>
+                        </div>
+                        <div class="consulta-progress">
+                            <div class="consulta-progress-bar ${isComplete ? 'complete' : ''}" style="width: ${pct}%">
+                                ${pct > 10 ? pct + '%' : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    ${actionButton}
+                </div>
+            `;
+
+            resultDiv.style.display = 'block';
+            playSound(isValidated ? 'ok' : 'duplicate');
+        }
+
+        function goToValidateFromConsulta(obc) {
+            hideConsulta();
+
+            // Si la orden ya está abierta, ir a ella
+            if (STATE.tabs[obc]) {
+                switchOBC(obc);
+                return;
+            }
+
+            // Si no, verificar si tiene validaciones previas
+            const total = OBC_TOTALS.get(obc) || 0;
+            let validatedCount = 0;
+            for (const [key, data] of HISTORY.entries()) {
+                if (data.obc === obc) validatedCount++;
+            }
+
+            if (total > 0 && validatedCount >= total) {
+                showNotification('⚠️ Esta orden ya está completamente validada', 'warning');
+                return;
+            }
+
+            if (validatedCount > 0) {
+                // Cargar con validaciones previas
+                const validations = [];
+                for (const [key, data] of HISTORY.entries()) {
+                    if (data.obc === obc) {
+                        const code = key.replace(`_${obc.toLowerCase()}`, '');
+                        validations.push({
+                            id: Date.now() + Math.random(),
+                            timestamp: data.timestamp,
+                            date: data.date,
+                            user: data.user,
+                            obc: obc,
+                            raw: code,
+                            code: code,
+                            location: '',
+                            note: 'Cargado desde historial'
+                        });
+                    }
+                }
+                STATE.tabs[obc] = { location: '', validations: validations, rejections: [], completed: false };
+                switchOBC(obc);
+                showNotification(`✅ Orden ${obc} cargada con ${validations.length} validaciones previas`, 'success');
+            } else {
+                // Crear orden nueva
+                STATE.tabs[obc] = { location: '', validations: [], rejections: [], completed: false };
+                switchOBC(obc);
+                showNotification(`✅ Orden ${obc} creada`, 'success');
+            }
+        }
+
+        // ==================== RECONTEO MODULE ====================
+        let RECONTEO_DATA = {
+            obc: null,
+            scans: [],
+            scannedCodes: new Set()
+        };
+
+        function openReconteo() {
+            if (!STATE.activeOBC) {
+                showNotification('⚠️ No hay orden activa', 'warning');
+                return;
+            }
+
+            document.getElementById('validation').style.display = 'none';
+            document.getElementById('reconteo-module').style.display = 'block';
+            populateReconteoOrders();
+            document.getElementById('reconteo-order-select').value = STATE.activeOBC;
+            initReconteo();
+        }
+
+        function hideReconteo() {
+            document.getElementById('reconteo-module').style.display = 'none';
+            document.getElementById('validation').style.display = 'block';
+        }
+
+        function populateReconteoOrders() {
+            const select = document.getElementById('reconteo-order-select');
+            select.innerHTML = '<option value="">Seleccionar orden...</option>';
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            Object.keys(allOrders).forEach(obc => {
+                const option = document.createElement('option');
+                option.value = obc;
+                option.textContent = obc;
+                select.appendChild(option);
+            });
+        }
+
+        function initReconteo() {
+            const selectedOBC = document.getElementById('reconteo-order-select').value;
+            const contentDiv = document.getElementById('reconteo-content');
+
+            if (!selectedOBC) {
+                contentDiv.style.display = 'none';
+                return;
+            }
+
+            RECONTEO_DATA = {
+                obc: selectedOBC,
+                scans: [],
+                scannedCodes: new Set()
+            };
+
+            contentDiv.style.display = 'block';
+            updateReconteoStats();
+            renderReconteoTable();
+            renderReconteoNotScanned();
+            document.getElementById('reconteo-scanner').focus();
+        }
+
+        function clearReconteo() {
+            if (!RECONTEO_DATA.obc) return;
+
+            if (RECONTEO_DATA.scans.length > 0 && !confirm('¿Limpiar todos los escaneos del reconteo?')) {
+                return;
+            }
+
+            RECONTEO_DATA.scans = [];
+            RECONTEO_DATA.scannedCodes = new Set();
+            updateReconteoStats();
+            renderReconteoTable();
+            renderReconteoNotScanned();
+            document.getElementById('reconteo-scanner').focus();
+            showNotification('🗑️ Reconteo limpiado', 'info');
+        }
+
+        function handleReconteoScan(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const input = document.getElementById('reconteo-scanner');
+                const raw = input.value.trim();
+                if (raw) {
+                    processReconteoScan(raw);
+                    input.value = '';
+                }
+            }
+        }
+
+        function processReconteoScan(raw) {
+            const obc = RECONTEO_DATA.obc;
+            if (!obc) return;
+
+            const extracted = extractCode(raw);
+            const normalized = normalizeCode(extracted);
+            const concatenated = normalized + obc.toLowerCase();
+            const now = new Date();
+
+            // Determinar estatus
+            let status = 'OK';
+            let statusClass = 'status-ok';
+
+            // Verificar duplicado en este reconteo
+            if (RECONTEO_DATA.scannedCodes.has(normalized)) {
+                status = 'DUPLICADO';
+                statusClass = 'status-dup';
+                playSound('duplicate');
+            }
+            // Verificar si existe en la BD para esta orden
+            else if (!BD_CODES.has(concatenated)) {
+                // Verificar si existe en BD pero para otra orden
+                let existsInOtherOrder = false;
+                for (const code of BD_CODES) {
+                    if (code.startsWith(normalized)) {
+                        existsInOtherOrder = true;
+                        break;
+                    }
+                }
+
+                if (existsInOtherOrder) {
+                    status = 'OTRA ORDEN';
+                    statusClass = 'status-extra';
+                } else {
+                    status = 'NO EN BD';
+                    statusClass = 'status-missing';
+                }
+                playSound('error');
+            } else {
+                playSound('ok');
+            }
+
+            // Verificar si está validado previamente
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            const tab = allOrders[obc];
+            const wasValidated = tab?.validations?.some(v => v.code === normalized);
+
+            const scanEntry = {
+                id: now.getTime(),
+                number: RECONTEO_DATA.scans.length + 1,
+                code: normalized,
+                raw: raw,
+                status: status,
+                statusClass: statusClass,
+                timestamp: now.toLocaleTimeString('es-MX'),
+                wasValidated: wasValidated,
+                canAdd: status === 'OK' && !wasValidated && BD_CODES.has(concatenated)
+            };
+
+            RECONTEO_DATA.scans.unshift(scanEntry);
+            if (status !== 'DUPLICADO') {
+                RECONTEO_DATA.scannedCodes.add(normalized);
+            }
+
+            updateReconteoStats();
+            renderReconteoTable();
+            renderReconteoNotScanned();
+        }
+
+        function updateReconteoStats() {
+            let ok = 0, dup = 0, missing = 0, extra = 0;
+
+            RECONTEO_DATA.scans.forEach(scan => {
+                switch(scan.status) {
+                    case 'OK': ok++; break;
+                    case 'DUPLICADO': dup++; break;
+                    case 'NO EN BD': missing++; break;
+                    case 'OTRA ORDEN': extra++; break;
+                }
+            });
+
+            document.getElementById('reconteo-ok').textContent = ok;
+            document.getElementById('reconteo-dup').textContent = dup;
+            document.getElementById('reconteo-missing').textContent = missing;
+            document.getElementById('reconteo-extra').textContent = extra;
+        }
+
+        function renderReconteoTable() {
+            const tbody = document.getElementById('reconteo-tbody');
+            tbody.innerHTML = '';
+
+            RECONTEO_DATA.scans.forEach((scan, index) => {
+                const tr = document.createElement('tr');
+
+                let actionBtn = '';
+                if (scan.canAdd && !scan.wasValidated) {
+                    actionBtn = `<button class="btn-add-validation" onclick="addFromReconteo('${scan.code}')">+ Agregar</button>`;
+                } else if (scan.wasValidated) {
+                    actionBtn = '<span style="color: var(--success); font-size: 0.8em;">Ya validado</span>';
+                }
+
+                tr.innerHTML = `
+                    <td><strong>${RECONTEO_DATA.scans.length - index}</strong></td>
+                    <td><code>${scan.code}</code></td>
+                    <td><span class="status-badge ${scan.statusClass}">${scan.status}</span></td>
+                    <td>${scan.timestamp}</td>
+                    <td>${actionBtn}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (RECONTEO_DATA.scans.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999; padding: 30px;">Escanea códigos para iniciar el reconteo</td></tr>';
+            }
+        }
+
+        function renderReconteoNotScanned() {
+            const grid = document.getElementById('reconteo-not-scanned');
+            const obc = RECONTEO_DATA.obc;
+
+            if (!obc) {
+                grid.innerHTML = '';
+                return;
+            }
+
+            const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+            const tab = allOrders[obc];
+
+            if (!tab || !tab.validations || tab.validations.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #999;">No hay validaciones previas para esta orden</div>';
+                return;
+            }
+
+            const notScanned = tab.validations.filter(v => !RECONTEO_DATA.scannedCodes.has(v.code));
+
+            if (notScanned.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--success);">✅ Todos los códigos validados han sido escaneados en el reconteo</div>';
+                return;
+            }
+
+            grid.innerHTML = '';
+            notScanned.forEach(v => {
+                const div = document.createElement('div');
+                div.className = 'faltante-item faltante-pending';
+                div.textContent = v.code;
+                grid.appendChild(div);
+            });
+        }
+
+        async function addFromReconteo(code) {
+            const obc = RECONTEO_DATA.obc;
+            if (!obc) return;
+
+            // Asegurarse de que la orden está abierta
+            if (!STATE.tabs[obc]) {
+                const allOrders = { ...STATE.closedTabs };
+                if (allOrders[obc]) {
+                    STATE.tabs[obc] = allOrders[obc];
+                    delete STATE.closedTabs[obc];
+                } else {
+                    STATE.tabs[obc] = { location: '', validations: [], rejections: [], completed: false };
+                }
+            }
+
+            const tab = STATE.tabs[obc];
+            const location = tab.location || '';
+
+            // Validar el código
+            await handleValidationOK(code, code, obc, location, 'Agregado desde Reconteo', false);
+
+            // Actualizar la tabla de reconteo
+            RECONTEO_DATA.scans.forEach(scan => {
+                if (scan.code === code) {
+                    scan.wasValidated = true;
+                    scan.canAdd = false;
+                }
+            });
+
+            renderReconteoTable();
+            renderReconteoNotScanned();
+            showNotification(`✅ Código ${code} agregado a la validación`, 'success');
         }
     </script>
 </body>
