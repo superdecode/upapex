@@ -1883,10 +1883,22 @@
         function extractCode(raw) {
             if (raw === null || raw === undefined) return '';
             let code = String(raw).trim();
+
             // Remover caracteres invisibles
             code = code.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '').trim();
+
+            // IMPORTANTE: Convertir * y & a / ANTES de cualquier extracción
+            code = code.replace(/\*/g, '/');
+            code = code.replace(/&/g, '/');
+
             // Normalizar comillas raras
-            code = code.replace(/[“”«»„‟‚‛‘’¨]/g, '"');
+            code = code.replace(/[""«»„‟‚‛''¨]/g, '"');
+
+            // Eliminar caracteres intermedios problemáticos como ñ[, ?
+            // que aparecen entre delimitadores
+            code = code.replace(/ñ\[/g, '');
+            code = code.replace(/\?/g, '');
+
             // 1) Intento de extraer JSON válido dentro del texto
             try {
                 const first = (() => {
@@ -1896,21 +1908,21 @@
                     const bb = b !== -1 ? b : Infinity;
                     return Math.min(aa, bb);
                 })();
-        
+
                 const last = Math.max(code.lastIndexOf('}'), code.lastIndexOf(']'));
-        
+
                 let candidate = code;
                 if (first !== Infinity && last > first) {
                     candidate = code.slice(first, last + 1);
                 }
-        
+
                 const parsed = JSON.parse(candidate);
-        
+
                 function findKey(obj) {
                     if (!obj) return null;
-        
+
                     if (typeof obj === 'string' || typeof obj === 'number') return null;
-        
+
                     if (Array.isArray(obj)) {
                         for (const item of obj) {
                             const r = findKey(item);
@@ -1918,7 +1930,7 @@
                         }
                         return null;
                     }
-        
+
                     if (typeof obj === 'object') {
                         for (const k of Object.keys(obj)) {
                             const val = obj[k];
@@ -1936,37 +1948,44 @@
                         }
                     }
                     return null;
-                }      
+                }
                 const found = findKey(parsed);
                 if (found) return found;
-        
+
             } catch (e) {
             }
+
             const patterns = [
-                // [id[ CODE [
+                // [id[ CODE [ - Prioridad alta: formato con slash (49987997/1)
+                /\[id\[\s*([A-Za-z0-9]+\/[A-Za-z0-9\/\-\._:]+)\s*\[/i,
+
+                // [id[ CODE [ - formato general
                 /\[id\[\s*([A-Za-z0-9\/\-\._:]{3,})\s*\[/i,
-        
-                // "id": "CODE" o ¨id¨ CODE
-                /(?:¨|["'])?id(?:¨|["'])?\s*[:=]?\s*["']?([A-Za-z0-9\/\-\._:]{3,})["']?/i,
-        
+
+                // "id": "CODE" o "id" CODE
+                /(?:"|["'])?id(?:"|["'])?\s*[:=]?\s*["']?([A-Za-z0-9]+\/[A-Za-z0-9\/\-\._:]+)["']?/i,
+                /(?:"|["'])?id(?:"|["'])?\s*[:=]?\s*["']?([A-Za-z0-9\/\-\._:]{3,})["']?/i,
+
                 // id = CODE
+                /\bid\s*[:=]\s*([A-Za-z0-9]+\/[A-Za-z0-9\/\-\._:]+)/i,
                 /\bid\s*[:=]\s*([A-Za-z0-9\/\-\._:]{3,})/i,
-        
-                // Formatos con slash ABC/123
-                /([A-Za-z0-9]{2,}\/[A-Za-z0-9\/\-\._:]{2,})/,
-        
-                // Nuevo: cualquier token alfanumérico largo dentro de texto
+
+                // Formatos con slash ABC/123 (alta prioridad)
+                /([0-9]+\/[0-9]+)/,
+                /([A-Za-z0-9]{2,}\/[A-Za-z0-9\/\-\._:]{1,})/,
+
+                // Cualquier token alfanumérico largo dentro de texto
                 /.*?([A-Za-z0-9]{6,}).*/,
-        
+
                 // Super fallback: números largos (000123456)
                 /([0-9]{6,})/
             ];
-        
+
             for (const p of patterns) {
                 const m = code.match(p);
                 if (m && m[1]) return m[1].trim();
             }
-        
+
             return code.trim();
         }
 
