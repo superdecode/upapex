@@ -808,8 +808,8 @@
                         </div>
                     </div>
                     <div class="user-footer-actions">
-                        <button class="btn btn-secondary btn-small" onclick="loadDatabase()" title="Actualizar BD">🔄 BD</button>
-                        <button class="btn btn-secondary btn-small" onclick="handleAuthClick()" id="logout-btn" title="Cerrar sesión">🚪 Salir</button>
+                        <button class="btn btn-secondary btn-small" onclick="reloadBD()" title="Actualizar BD">🔄 BD</button>
+                        <button class="btn btn-secondary btn-small" onclick="toggleGoogleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗 Conectar</button>
                     </div>
                     <div class="bd-info">
                         <div id="bd-count-footer"><span id="bd-count-sidebar">0</span> códigos cargados</div>
@@ -1713,6 +1713,8 @@
                             gapi.client.setToken(res);
                             await getUserProfile();
                             updateConnectionStatus(true);
+                            updateSidebarAuthButton(true);  // Actualizar botón sidebar
+                            updateConnectionIndicator();     // Actualizar indicador
                             loadDatabase();
                             await loadPendingSync();
                             if (PENDING_SYNC.length > 0) syncPendingData();
@@ -1935,15 +1937,98 @@
             }
     
             function handleAuthClick() {
-            if (gapi.client.getToken()) {
-                google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
-                    gapi.client.setToken(null);
-                    updateConnectionStatus(false);
-                    showNotification('🔓 Sesión cerrada', 'info');
-                });
-            } else {
-                TOKEN_CLIENT.requestAccessToken();
+                if (gapi.client.getToken()) {
+                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
+                        gapi.client.setToken(null);
+                        updateConnectionStatus(false);
+                        updateSidebarAuthButton(false);
+                        showNotification('🔓 Sesión cerrada', 'info');
+                    });
+                } else {
+                    TOKEN_CLIENT.requestAccessToken();
+                }
             }
+
+            // Función robusta para conectar/desconectar desde el sidebar
+            function toggleGoogleConnection() {
+                const hasToken = gapi?.client?.getToken();
+
+                if (hasToken) {
+                    // Desconectar
+                    showNotification('🔄 Cerrando sesión...', 'info');
+                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
+                        gapi.client.setToken(null);
+                        updateConnectionStatus(false);
+                        updateSidebarAuthButton(false);
+                        updateUserFooterDisconnected();
+                        showNotification('🔓 Sesión cerrada', 'info');
+                    });
+                } else {
+                    // Conectar - igual que el botón del dashboard
+                    showNotification('🔄 Conectando con Google...', 'info');
+                    try {
+                        TOKEN_CLIENT.requestAccessToken();
+                    } catch (e) {
+                        showNotification('❌ Error al conectar. Intenta de nuevo.', 'error');
+                        console.error('Error conectando:', e);
+                    }
+                }
+            }
+
+            // Actualizar botón del sidebar según estado de conexión
+            function updateSidebarAuthButton(connected) {
+                const btn = document.getElementById('sidebar-auth-btn');
+                if (btn) {
+                    btn.innerHTML = connected ? '🚪 Salir' : '🔗 Conectar';
+                    btn.title = connected ? 'Cerrar sesión de Google' : 'Conectar con Google';
+                }
+            }
+
+            // Actualizar footer cuando se desconecta
+            function updateUserFooterDisconnected() {
+                const avatar = document.getElementById('user-avatar');
+                const nameDisplay = document.getElementById('user-name-display');
+
+                if (avatar) {
+                    avatar.textContent = '?';
+                    avatar.style.cursor = 'default';
+                    avatar.onclick = null;
+                }
+                if (nameDisplay) {
+                    nameDisplay.textContent = 'No conectado';
+                    nameDisplay.style.cursor = 'default';
+                    nameDisplay.onclick = null;
+                }
+
+                CURRENT_USER = '';
+                USER_EMAIL = '';
+                updateConnectionIndicator();
+            }
+
+            // Función robusta para recargar BD
+            async function reloadBD() {
+                if (!gapi?.client?.getToken()) {
+                    showNotification('⚠️ Primero conecta con Google', 'warning');
+                    // Ofrecer conectar automáticamente
+                    if (confirm('¿Deseas conectar con Google ahora?')) {
+                        toggleGoogleConnection();
+                    }
+                    return;
+                }
+
+                if (!IS_ONLINE) {
+                    showNotification('⚠️ Sin conexión a Internet', 'warning');
+                    return;
+                }
+
+                showNotification('🔄 Recargando base de datos...', 'info');
+
+                try {
+                    await loadDatabase();
+                } catch (e) {
+                    showNotification('❌ Error al recargar BD', 'error');
+                    console.error('Error recargando BD:', e);
+                }
             }
     
             function updateConnectionStatus(connected) {
@@ -1955,48 +2040,57 @@
             updateSyncStatus(connected);
             }
     
+            // Función unificada - siempre se basa en el estado REAL
             function updateSyncStatus(synced) {
-            const syncEl = document.getElementById('sync-status-sidebar');
-            const statusIndicator = document.getElementById('status-sync');
-            const statusLabel = document.getElementById('sync-label');
-            const pendingBadge = document.getElementById('pending-badge');
-            
-            if (!IS_ONLINE) {
-                syncEl.className = 'sync-status sync-warning';
-                syncEl.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length} pendientes)` : ''}`;
+                const syncEl = document.getElementById('sync-status-sidebar');
+                const statusIndicator = document.getElementById('status-sync');
+                const statusLabel = document.getElementById('sync-label');
+                const pendingBadge = document.getElementById('pending-badge');
+                const exportBtn = document.getElementById('export-pending-btn');
+                const hasToken = gapi?.client?.getToken();
+
+                if (!syncEl) return;
                 syncEl.style.display = 'block';
-                statusIndicator.className = 'status-indicator status-warning';
-                statusLabel.textContent = 'Offline';
-            } else if (PENDING_SYNC.length > 0) {
-                syncEl.className = 'sync-status sync-warning';
-                syncEl.innerHTML = `⚠️ ${PENDING_SYNC.length} pendientes ${SYNC_RETRY_COUNT > 0 ? `(${SYNC_RETRY_COUNT} intentos)` : ''}`;
-                syncEl.style.display = 'block';
-                statusIndicator.className = 'status-indicator status-warning';
-                statusLabel.textContent = `${PENDING_SYNC.length} pendientes`;
-                
-                // Mostrar badge de pendientes
-                if (pendingBadge) {
-                    pendingBadge.textContent = PENDING_SYNC.length;
-                    pendingBadge.style.display = 'inline-block';
+
+                // Determinar estado REAL basado en conexión y pendientes
+                const isConnected = IS_ONLINE && hasToken;
+                const hasPending = PENDING_SYNC.length > 0;
+
+                if (!IS_ONLINE) {
+                    // Sin internet
+                    syncEl.className = 'sync-status sync-warning';
+                    syncEl.innerHTML = `⚠️ Sin conexión${hasPending ? ` (${PENDING_SYNC.length})` : ''}`;
+                    if (statusIndicator) statusIndicator.className = 'status-indicator status-warning';
+                    if (statusLabel) statusLabel.textContent = 'Offline';
+                } else if (!hasToken) {
+                    // Sin conexión a Google
+                    syncEl.className = 'sync-status sync-warning';
+                    syncEl.textContent = '⚠️ No conectado';
+                    if (statusIndicator) statusIndicator.className = 'status-indicator status-warning';
+                    if (statusLabel) statusLabel.textContent = 'No conectado';
+                } else if (hasPending) {
+                    // Hay pendientes
+                    syncEl.className = 'sync-status sync-warning';
+                    syncEl.innerHTML = `⚠️ ${PENDING_SYNC.length} pendientes`;
+                    if (statusIndicator) statusIndicator.className = 'status-indicator status-warning';
+                    if (statusLabel) statusLabel.textContent = `${PENDING_SYNC.length} pendientes`;
+                } else {
+                    // Todo sincronizado
+                    syncEl.className = 'sync-status sync-ok';
+                    syncEl.textContent = '✅ Sincronizado';
+                    if (statusIndicator) statusIndicator.className = 'status-indicator status-ok';
+                    if (statusLabel) statusLabel.textContent = 'Sincronizado';
                 }
-            } else if (synced && IS_ONLINE) {
-                syncEl.className = 'sync-status sync-ok';
-                syncEl.textContent = '✅ Sincronizado';
-                syncEl.style.display = 'block';
-                statusIndicator.className = 'status-indicator status-ok';
-                statusLabel.textContent = 'Sincronizado';
-                
+
+                // Actualizar badge y botón de exportar
                 if (pendingBadge) {
-                    pendingBadge.style.display = 'none';
+                    pendingBadge.textContent = hasPending ? PENDING_SYNC.length : '';
+                    pendingBadge.style.display = hasPending ? 'inline-block' : 'none';
                 }
-            } else {
-                syncEl.className = 'sync-status sync-error';
-                syncEl.textContent = '❌ No sincronizado';
-                syncEl.style.display = 'block';
-                statusIndicator.className = 'status-indicator status-error';
-                statusLabel.textContent = 'No sincronizado';
+                if (exportBtn) {
+                    exportBtn.style.display = hasPending ? 'block' : 'none';
+                }
             }
-        }
     
             function updateStartButton() {
             const canStart = gapi.client.getToken() && BD_CODES.size > 0;
