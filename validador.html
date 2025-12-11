@@ -615,7 +615,78 @@
             font-weight: 700;
             margin-left: 8px;
         }
-        
+
+        /* User Footer Sidebar */
+        .user-footer {
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 1px solid #555;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1em;
+            color: white;
+            flex-shrink: 0;
+        }
+        .user-details {
+            flex: 1;
+            overflow: hidden;
+        }
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .connection-indicator {
+            font-size: 0.75em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .connection-dot.online { background: var(--success); }
+        .connection-dot.offline { background: var(--error); }
+        .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .user-footer-actions {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 8px;
+        }
+        .user-footer-actions button {
+            flex: 1;
+            padding: 6px;
+            font-size: 0.75em;
+        }
+        .bd-info {
+            font-size: 0.7em;
+            color: #aaa;
+            text-align: center;
+            line-height: 1.4;
+        }
+
         @media (max-width: 1024px) {
             .sidebar { width: 180px; }
         }
@@ -722,11 +793,29 @@
                 <button id="export-pending-btn" class="btn btn-small" onclick="SyncManager.exportPending()" style="margin-bottom: 10px; width: 100%; background: var(--warning); display: none;">
                     📥 Exportar Pendientes
                 </button>
-                <div style="text-align: center; margin-bottom: 15px;">
-                    <div style="font-size: 1.3em; font-weight: 700; color: var(--primary);" id="bd-count-sidebar">0</div>
-                    <div style="font-size: 0.75em; opacity: 0.8;">códigos en BD</div>
-                </div>
                 <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
+
+                <!-- User Footer -->
+                <div class="user-footer" id="user-footer">
+                    <div class="user-info">
+                        <div class="user-avatar" id="user-avatar">?</div>
+                        <div class="user-details">
+                            <div class="user-name" id="user-name-display">No conectado</div>
+                            <div class="connection-indicator">
+                                <div class="connection-dot" id="connection-dot"></div>
+                                <span id="connection-text">Offline</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-footer-actions">
+                        <button class="btn btn-secondary btn-small" onclick="loadDatabase()" title="Actualizar BD">🔄 BD</button>
+                        <button class="btn btn-secondary btn-small" onclick="handleAuthClick()" id="logout-btn" title="Cerrar sesión">🚪 Salir</button>
+                    </div>
+                    <div class="bd-info">
+                        <div id="bd-count-footer"><span id="bd-count-sidebar">0</span> códigos cargados</div>
+                        <div id="bd-update-time">Sin actualizar</div>
+                    </div>
+                </div>
             </div>
 
             <div class="main-content">
@@ -1107,6 +1196,9 @@
         const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
         
         let CURRENT_USER = '';
+        let USER_EMAIL = '';
+        let USER_GOOGLE_NAME = '';
+        let LAST_BD_UPDATE = null;
         let BD_CODES = new Set();
         let OBC_MAP = new Map();
         let OBC_TOTALS = new Map();
@@ -1150,6 +1242,7 @@
                 IS_ONLINE = true;
                 showConnectionBanner('online');
                 showNotification('✅ Conexión restaurada - Sincronizando datos...', 'success');
+                updateConnectionIndicator();
                 setTimeout(() => syncPendingData(), 1000);
             });
 
@@ -1158,13 +1251,15 @@
                 showConnectionBanner('offline');
                 showNotification('⚠️ Sin conexión - Los datos se guardarán localmente', 'warning');
                 updateSyncStatus(false);
+                updateConnectionIndicator();
             });
 
             if (!IS_ONLINE) {
                 showConnectionBanner('offline');
                 updateSyncStatus(false);
             }
-                    }
+            updateConnectionIndicator();
+        }
             
 // ============================================================
         // SYNC MANAGER - Sistema Unificado de Sincronización
@@ -1269,6 +1364,7 @@
             async _doSync(showMessages, slow = false) {
                 this.inProgress = true;
                 SYNC_IN_PROGRESS = true;
+                updateConnectionIndicator(true); // Mostrar "sincronizando"
                 const total = PENDING_SYNC.length;
                 if (showMessages) showNotification(`🔄 Sincronizando ${total} pendientes...`, 'info');
 
@@ -1300,6 +1396,7 @@
                 this.updateBadge();
                 this.inProgress = false;
                 SYNC_IN_PROGRESS = false;
+                updateConnectionIndicator(false); // Restaurar indicador normal
 
                 if (errors.length === 0) {
                     this.retryCount = 0;
@@ -1628,16 +1725,158 @@
             }
     
             async function getUserProfile() {
-            try {
-                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                    headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
-                });
-                const data = await response.json();
-                CURRENT_USER = data.name || 'Usuario';
-                showNotification(`✅ Sesión iniciada: ${CURRENT_USER}`, 'success');
-            } catch (e) {
-                CURRENT_USER = 'Usuario';
+                try {
+                    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                        headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
+                    });
+                    const data = await response.json();
+                    USER_EMAIL = data.email || '';
+                    USER_GOOGLE_NAME = data.name || 'Usuario';
+
+                    // Verificar si hay alias guardado para este email
+                    const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                    if (savedAlias) {
+                        CURRENT_USER = savedAlias;
+                        showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
+                        updateUserFooter();
+                    } else {
+                        // Primera vez - mostrar popup de alias
+                        showAliasPopup();
+                    }
+                } catch (e) {
+                    CURRENT_USER = 'Usuario';
+                    updateUserFooter();
+                }
             }
+
+            function showAliasPopup() {
+                document.querySelectorAll('.alias-popup-overlay').forEach(e => e.remove());
+
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay alias-popup-overlay';
+                overlay.style.display = 'flex';
+
+                overlay.innerHTML = `
+                    <div class="popup-content" style="max-width: 400px;">
+                        <div class="popup-header" style="color: var(--primary);">
+                            👤 Configura tu Nombre
+                        </div>
+
+                        <div style="text-align: center; margin: 20px 0;">
+                            <div style="width: 60px; height: 60px; border-radius: 50%; background: var(--primary); margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 1.8em; color: white;">
+                                ${USER_GOOGLE_NAME.charAt(0).toUpperCase()}
+                            </div>
+                            <p style="color: #666; font-size: 0.9em;">${USER_EMAIL}</p>
+                        </div>
+
+                        <p style="margin-bottom: 15px; text-align: center;">
+                            ¿Cómo quieres que te identifiquemos en el sistema?
+                        </p>
+
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                            <button class="btn btn-primary" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">
+                                ✅ Usar mi nombre: ${USER_GOOGLE_NAME}
+                            </button>
+
+                            <div style="text-align: center; color: #999; font-size: 0.85em;">o</div>
+
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="alias-input" placeholder="Escribe un alias..."
+                                    style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 1em;"
+                                    maxlength="20">
+                                <button class="btn btn-success" onclick="saveUserAlias(document.getElementById('alias-input').value)" style="width: auto;">
+                                    💾
+                                </button>
+                            </div>
+                        </div>
+
+                        <p style="text-align: center; font-size: 0.8em; color: #888;">
+                            💡 Puedes cambiar esto más tarde desde el panel de usuario
+                        </p>
+                    </div>
+                `;
+
+                document.body.appendChild(overlay);
+
+                // Focus en el input y enter para guardar
+                const input = overlay.querySelector('#alias-input');
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && input.value.trim()) {
+                        saveUserAlias(input.value);
+                    }
+                });
+            }
+
+            function saveUserAlias(alias, isGoogleName = false) {
+                const finalAlias = alias?.trim() || USER_GOOGLE_NAME;
+                if (!finalAlias) {
+                    showNotification('⚠️ Ingresa un nombre válido', 'warning');
+                    return;
+                }
+
+                CURRENT_USER = finalAlias;
+                localStorage.setItem(`wms_alias_${USER_EMAIL}`, finalAlias);
+
+                document.querySelectorAll('.alias-popup-overlay').forEach(e => e.remove());
+                showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
+                updateUserFooter();
+            }
+
+            function changeUserAlias() {
+                showAliasPopup();
+            }
+
+            function updateUserFooter() {
+                const avatar = document.getElementById('user-avatar');
+                const nameDisplay = document.getElementById('user-name-display');
+
+                if (avatar) {
+                    avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
+                    avatar.title = USER_EMAIL || 'No conectado';
+                    avatar.style.cursor = 'pointer';
+                    avatar.onclick = changeUserAlias;
+                }
+                if (nameDisplay) {
+                    nameDisplay.textContent = CURRENT_USER || 'No conectado';
+                    nameDisplay.title = `Click para cambiar alias\n${USER_EMAIL}`;
+                    nameDisplay.style.cursor = 'pointer';
+                    nameDisplay.onclick = changeUserAlias;
+                }
+
+                updateConnectionIndicator();
+            }
+
+            function updateConnectionIndicator(syncing = false) {
+                const dot = document.getElementById('connection-dot');
+                const text = document.getElementById('connection-text');
+
+                if (!dot || !text) return;
+
+                if (syncing) {
+                    dot.className = 'connection-dot syncing';
+                    text.textContent = 'Sincronizando...';
+                } else if (IS_ONLINE) {
+                    dot.className = 'connection-dot online';
+                    text.textContent = 'Online';
+                } else {
+                    dot.className = 'connection-dot offline';
+                    text.textContent = 'Offline';
+                }
+            }
+
+            function updateBdInfo() {
+                const countEl = document.getElementById('bd-count-sidebar');
+                const timeEl = document.getElementById('bd-update-time');
+
+                if (countEl) countEl.textContent = BD_CODES.size.toLocaleString();
+                if (timeEl) {
+                    if (LAST_BD_UPDATE) {
+                        const time = new Date(LAST_BD_UPDATE).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+                        timeEl.textContent = `Actualizado: ${time}`;
+                    } else {
+                        timeEl.textContent = 'Sin actualizar';
+                    }
+                }
             }
     
             async function loadFromStorage() {
@@ -1864,6 +2103,10 @@
                 showNotification(`✅ BD cargada: ${BD_CODES.size} códigos en ${OBC_TOTALS.size} órdenes`, 'success');
                 playSound('ok');
                 updateSyncStatus(true);
+
+                // Actualizar timestamp y footer
+                LAST_BD_UPDATE = Date.now();
+                updateBdInfo();
             } catch (err) {
                 showNotification('❌ Error al cargar BD', 'error');
                 console.error(err);
