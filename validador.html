@@ -1908,7 +1908,13 @@
         }
 
         function normalizeCode(code) {
-            return code ? code.replace(/-/g, '/').toLowerCase().trim() : '';
+            if (!code) return '';
+        
+            return String(code)
+                .replace(/&/g, '/')   // nuevo: convertir & → /
+                .replace(/-/g, '/')   // ya estaba
+                .toLowerCase()
+                .trim();
         }
 
         function setupListeners() {
