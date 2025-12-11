@@ -716,9 +716,11 @@
                 <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none;">
                     ✅ Sincronizado
                 </div>
-                <button class="btn btn-secondary btn-small" onclick="forceSync()" style="margin-bottom: 10px; width: 100%;">
+                 <button class="btn btn-secondary btn-small" onclick="forceSync()" style="margin-bottom: 10px; width: 100%;">
                     🔄 Sincronizar
-                    <span id="pending-badge" class="pending-sync-badge" style="display: none;">0</span>
+                </button>
+                <button class="btn btn-secondary btn-small" onclick="showSyncOptions()" style="margin-bottom: 10px; width: 100%; background: var(--warning);">
+                    🛠️ Opciones Sync
                 </button>
                 <div style="text-align: center; margin-bottom: 15px;">
                     <div style="font-size: 1.3em; font-weight: 700; color: var(--primary);" id="bd-count-sidebar">0</div>
@@ -1119,6 +1121,9 @@
             closedTabs: {}
         };
         let TOKEN_CLIENT, audioCtx;
+        let SYNC_RETRY_COUNT = 0;
+        let SYNC_IN_PROGRESS = false;
+        let LAST_SYNC_ERROR = null;
         let lastScanned = null;
         let typingTimer = null;
         let scannerBuffer = '';
@@ -1396,50 +1401,89 @@
             }, 3600000);
             }
     
-            async function syncPendingData() {
+            async function syncPendingData(isManualRetry = false) {
+            if (SYNC_IN_PROGRESS) {
+                showNotification('⏳ Sincronización en progreso...', 'info');
+                return;
+            }
+        
             if (!IS_ONLINE) {
                 showNotification('⚠️ Sin conexión - No se puede sincronizar', 'warning');
+                updateSyncStatus(false);
                 return;
             }
-
+        
             if (!gapi.client.getToken()) {
                 showNotification('⚠️ No conectado a Google Sheets', 'warning');
+                updateSyncStatus(false);
                 return;
             }
-
+        
             if (PENDING_SYNC.length === 0) {
                 updateSyncStatus(true);
+                showNotification('✅ No hay datos pendientes de sincronización', 'success');
                 return;
             }
-
-            showNotification(`🔄 Sincronizando ${PENDING_SYNC.length} validaciones pendientes...`, 'info');
+        
+            SYNC_IN_PROGRESS = true;
+            const totalItems = PENDING_SYNC.length;
+            showNotification(`🔄 Sincronizando ${totalItems} validaciones pendientes...`, 'info');
             
             let successCount = 0;
             let errorCount = 0;
             const toRetry = [];
-
-            for (const item of PENDING_SYNC) {
-                try {
-                    await writeToSheets(item.sheet, item.log);
-                    successCount++;
-                } catch (e) {
-                    errorCount++;
-                    toRetry.push(item);
+            const errors = [];
+        
+            // Sincronizar por lotes para mejor rendimiento
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < PENDING_SYNC.length; i += BATCH_SIZE) {
+                const batch = PENDING_SYNC.slice(i, i + BATCH_SIZE);
+                
+                for (const item of batch) {
+                    try {
+                        await writeToSheets(item.sheet, item.log);
+                        successCount++;
+                        
+                        // Pequeña pausa entre requests para evitar rate limiting
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    } catch (e) {
+                        errorCount++;
+                        toRetry.push(item);
+                        errors.push({
+                            code: item.log.code,
+                            error: e.message || 'Error desconocido'
+                        });
+                        console.error('Error sincronizando:', e);
+                    }
+                }
+                
+                // Pausa entre lotes
+                if (i + BATCH_SIZE < PENDING_SYNC.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
-
+        
             PENDING_SYNC = toRetry;
+            LAST_SYNC_ERROR = errors.length > 0 ? errors : null;
             await savePendingSync();
             updatePendingBadge();
-
+            SYNC_IN_PROGRESS = false;
+        
             if (errorCount === 0) {
                 showNotification(`✅ ${successCount} validaciones sincronizadas correctamente`, 'success');
                 updateSyncStatus(true);
+                SYNC_RETRY_COUNT = 0;
             } else {
-                showNotification(`⚠️ ${successCount} sincronizadas, ${errorCount} pendientes`, 'warning');
+                SYNC_RETRY_COUNT++;
+                showNotification(`⚠️ ${successCount} sincronizadas, ${errorCount} fallaron`, 'warning');
                 updateSyncStatus(false);
+                
+                // Mostrar diálogo de recuperación después de 3 intentos fallidos
+                if (SYNC_RETRY_COUNT >= 3 && !isManualRetry) {
+                    showSyncRecoveryDialog(errorCount);
+                }
             }
-            }
+        }
     
             async function savePendingSync() {
             try {
@@ -1582,25 +1626,36 @@
             const syncEl = document.getElementById('sync-status-sidebar');
             const statusIndicator = document.getElementById('status-sync');
             const statusLabel = document.getElementById('sync-label');
+            const pendingBadge = document.getElementById('pending-badge');
             
             if (!IS_ONLINE) {
                 syncEl.className = 'sync-status sync-warning';
-                syncEl.textContent = '⚠️ Sin conexión';
+                syncEl.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length} pendientes)` : ''}`;
                 syncEl.style.display = 'block';
                 statusIndicator.className = 'status-indicator status-warning';
                 statusLabel.textContent = 'Offline';
             } else if (PENDING_SYNC.length > 0) {
                 syncEl.className = 'sync-status sync-warning';
-                syncEl.textContent = `⚠️ ${PENDING_SYNC.length} pendientes`;
+                syncEl.innerHTML = `⚠️ ${PENDING_SYNC.length} pendientes ${SYNC_RETRY_COUNT > 0 ? `(${SYNC_RETRY_COUNT} intentos)` : ''}`;
                 syncEl.style.display = 'block';
                 statusIndicator.className = 'status-indicator status-warning';
                 statusLabel.textContent = `${PENDING_SYNC.length} pendientes`;
+                
+                // Mostrar badge de pendientes
+                if (pendingBadge) {
+                    pendingBadge.textContent = PENDING_SYNC.length;
+                    pendingBadge.style.display = 'inline-block';
+                }
             } else if (synced && IS_ONLINE) {
                 syncEl.className = 'sync-status sync-ok';
                 syncEl.textContent = '✅ Sincronizado';
                 syncEl.style.display = 'block';
                 statusIndicator.className = 'status-indicator status-ok';
                 statusLabel.textContent = 'Sincronizado';
+                
+                if (pendingBadge) {
+                    pendingBadge.style.display = 'none';
+                }
             } else {
                 syncEl.className = 'sync-status sync-error';
                 syncEl.textContent = '❌ No sincronizado';
@@ -1608,7 +1663,7 @@
                 statusIndicator.className = 'status-indicator status-error';
                 statusLabel.textContent = 'No sincronizado';
             }
-            }
+        }
     
             function updateStartButton() {
             const canStart = gapi.client.getToken() && BD_CODES.size > 0;
@@ -1728,22 +1783,30 @@
                 updateSyncStatus(false);
                 return;
             }
-
+        
             if (!IS_ONLINE) {
                 showNotification('⚠️ Sin conexión a Internet - Modo offline', 'warning');
+                // Mostrar diálogo de diagnóstico
+                showNetworkDiagnosticDialog();
                 return;
             }
-
+        
             showNotification('🔄 Sincronizando...', 'info');
             
             try {
                 await loadDatabase();
-                await syncPendingData();
-                updateSyncStatus(true);
-                showNotification('✅ Sincronización completada', 'success');
+                await syncPendingData(true); // true = manual retry
+                updateSyncStatus(PENDING_SYNC.length === 0);
+                if (PENDING_SYNC.length === 0) {
+                    showNotification('✅ Sincronización completada', 'success');
+                    SYNC_RETRY_COUNT = 0;
+                }
             } catch (e) {
                 updateSyncStatus(false);
                 showNotification('❌ Error en sincronización', 'error');
+                console.error('Sync error:', e);
+                // Mostrar opciones de recuperación
+                showSyncRecoveryDialog(PENDING_SYNC.length);
             }
         }
 
@@ -3216,6 +3279,476 @@
             renderReconteoNotScanned();
             showNotification(`✅ Código ${code} agregado a la validación`, 'success');
         }
+
+        function showNetworkDiagnosticDialog() {
+            const overlay = document.createElement('div');
+            overlay.id = 'network-diagnostic-overlay';
+            overlay.className = 'popup-overlay';
+            overlay.style.display = 'flex';
+            
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 600px;">
+                    <button class="popup-close-x" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    <div class="popup-header" style="color: var(--warning);">
+                        ⚠️ PROBLEMA DE CONEXIÓN DETECTADO
+                    </div>
+                    
+                    <div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid var(--warning);">
+                        <h3 style="margin-bottom: 15px; color: #e65100;">🔍 Diagnóstico:</h3>
+                        <ul style="line-height: 2; margin-left: 20px;">
+                            <li><strong>Estado de Internet:</strong> <span style="color: var(--error);">❌ Sin conexión</span></li>
+                            <li><strong>Validaciones pendientes:</strong> <span style="color: var(--warning); font-weight: 700;">${PENDING_SYNC.length}</span></li>
+                            <li><strong>Datos locales:</strong> <span style="color: var(--success);">✅ Guardados</span></li>
+                        </ul>
+                    </div>
+        
+                    <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+                        <h3 style="margin-bottom: 10px; color: #1565c0;">💡 Recomendaciones:</h3>
+                        <ol style="line-height: 2; margin-left: 20px;">
+                            <li>Verifica tu conexión WiFi o datos móviles</li>
+                            <li>Intenta cambiar de red si es posible</li>
+                            <li>Los datos están seguros localmente</li>
+                            <li>La sincronización se intentará automáticamente al recuperar conexión</li>
+                        </ol>
+                    </div>
+        
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button class="btn btn-primary" onclick="retryConnection()">
+                            🔄 Reintentar Ahora
+                        </button>
+                        <button class="btn btn-secondary" onclick="exportPendingData()">
+                            📥 Exportar Datos Pendientes (CSV)
+                        </button>
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove()">
+                            ← Continuar Trabajando
+                        </button>
+                    </div>
+        
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; text-align: center; color: #666; font-size: 0.9em;">
+                        💾 Tus datos están seguros y se sincronizarán automáticamente<br>cuando se restablezca la conexión
+                    </p>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        }
+        
+        function showSyncRecoveryDialog(pendingCount) {
+            const overlay = document.createElement('div');
+            overlay.id = 'sync-recovery-overlay';
+            overlay.className = 'popup-overlay';
+            overlay.style.display = 'flex';
+            
+            let errorDetails = '';
+            if (LAST_SYNC_ERROR && LAST_SYNC_ERROR.length > 0) {
+                errorDetails = `
+                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; margin: 15px 0; max-height: 200px; overflow-y: auto;">
+                        <h4 style="margin-bottom: 10px; color: var(--error);">❌ Errores detectados:</h4>
+                        <ul style="font-size: 0.85em; line-height: 1.8; margin-left: 20px;">
+                            ${LAST_SYNC_ERROR.slice(0, 5).map(e => `
+                                <li><strong>${e.code}:</strong> ${e.error}</li>
+                            `).join('')}
+                            ${LAST_SYNC_ERROR.length > 5 ? `<li><em>...y ${LAST_SYNC_ERROR.length - 5} más</em></li>` : ''}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 650px;">
+                    <button class="popup-close-x" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    <div class="popup-header" style="color: var(--error);">
+                        🚨 FALLO EN SINCRONIZACIÓN
+                    </div>
+                    
+                    <div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid var(--warning);">
+                        <h3 style="margin-bottom: 10px; color: #e65100;">⚠️ Situación Actual:</h3>
+                        <ul style="line-height: 2; margin-left: 20px;">
+                            <li><strong>Validaciones sin sincronizar:</strong> <span style="color: var(--error); font-size: 1.2em; font-weight: 700;">${pendingCount}</span></li>
+                            <li><strong>Intentos de sincronización:</strong> ${SYNC_RETRY_COUNT}</li>
+                            <li><strong>Conexión:</strong> ${IS_ONLINE ? '✅ En línea' : '❌ Sin conexión'}</li>
+                            <li><strong>Google Sheets:</strong> ${gapi.client.getToken() ? '✅ Conectado' : '❌ Desconectado'}</li>
+                        </ul>
+                    </div>
+        
+                    ${errorDetails}
+        
+                    <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+                        <h3 style="margin-bottom: 10px; color: #1565c0;">🛠️ Opciones de Recuperación:</h3>
+                    </div>
+        
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button class="btn btn-primary" onclick="retryConnectionFull()">
+                            🔄 Reintentar Conexión Completa
+                        </button>
+                        <button class="btn btn-success" onclick="batchSyncWithDelay()">
+                            ⏱️ Sincronización Lenta (Recomendado)
+                        </button>
+                        <button class="btn btn-google" onclick="reconnectGoogleSheets()">
+                            🔗 Reconectar Google Sheets
+                        </button>
+                        <button class="btn btn-warning" onclick="exportPendingData()">
+                            📥 Exportar Datos Pendientes (Respaldo)
+                        </button>
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove()">
+                            💾 Continuar Trabajando (Datos Guardados)
+                        </button>
+                    </div>
+        
+                    <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+                        <p style="margin: 0; text-align: center; color: #666; font-size: 0.9em; line-height: 1.6;">
+                            <strong>💡 Importante:</strong> Tus datos están seguros localmente.<br>
+                            Puedes continuar trabajando y sincronizar más tarde.<br>
+                            El sistema intentará sincronizar automáticamente cada hora.
+                        </p>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        }
+        
+        async function retryConnection() {
+            document.getElementById('network-diagnostic-overlay')?.remove();
+            
+            if (!navigator.onLine) {
+                showNotification('❌ Aún sin conexión a Internet', 'error');
+                return;
+            }
+            
+            showNotification('🔄 Reintentando conexión...', 'info');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            try {
+                await forceSync();
+            } catch (e) {
+                showNotification('❌ No se pudo conectar. Intenta más tarde', 'error');
+            }
+        }
+        
+        async function retryConnectionFull() {
+            const overlay = document.getElementById('sync-recovery-overlay');
+            if (overlay) overlay.remove();
+            
+            showNotification('🔄 Realizando diagnóstico completo...', 'info');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Verificar conectividad
+            if (!navigator.onLine) {
+                showNetworkDiagnosticDialog();
+                return;
+            }
+            
+            // Verificar token de Google
+            if (!gapi.client.getToken()) {
+                showNotification('⚠️ Sesión expirada. Reconectando...', 'warning');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                reconnectGoogleSheets();
+                return;
+            }
+            
+            // Intentar sincronización
+            await syncPendingData(true);
+        }
+        
+        async function batchSyncWithDelay() {
+            const overlay = document.getElementById('sync-recovery-overlay');
+            if (overlay) overlay.remove();
+            
+            if (PENDING_SYNC.length === 0) {
+                showNotification('✅ No hay datos pendientes', 'success');
+                return;
+            }
+            
+            showNotification('⏱️ Iniciando sincronización lenta...', 'info');
+            
+            let successCount = 0;
+            let errorCount = 0;
+            const toRetry = [];
+            
+            for (let i = 0; i < PENDING_SYNC.length; i++) {
+                const item = PENDING_SYNC[i];
+                
+                try {
+                    await writeToSheets(item.sheet, item.log);
+                    successCount++;
+                    showNotification(`✅ Sincronizado ${successCount}/${PENDING_SYNC.length}`, 'success');
+                    
+                    // Pausa de 2 segundos entre cada item para evitar problemas de red
+                    if (i < PENDING_SYNC.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                } catch (e) {
+                    errorCount++;
+                    toRetry.push(item);
+                    console.error('Error en sync lento:', e);
+                }
+            }
+            
+            PENDING_SYNC = toRetry;
+            await savePendingSync();
+            updatePendingBadge();
+            
+            if (errorCount === 0) {
+                showNotification(`🎉 ¡Sincronización completada! ${successCount} validaciones`, 'success');
+                updateSyncStatus(true);
+                SYNC_RETRY_COUNT = 0;
+            } else {
+                showNotification(`⚠️ ${successCount} sincronizadas, ${errorCount} fallaron`, 'warning');
+                updateSyncStatus(false);
+            }
+        }
+        
+        function reconnectGoogleSheets() {
+            const overlay = document.getElementById('sync-recovery-overlay');
+            if (overlay) overlay.remove();
+            
+            showNotification('🔄 Reconectando con Google Sheets...', 'info');
+            
+            // Revocar token actual
+            if (gapi.client.getToken()) {
+                google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                gapi.client.setToken(null);
+            }
+            
+            // Solicitar nuevo token
+            setTimeout(() => {
+                TOKEN_CLIENT.requestAccessToken();
+            }, 500);
+        }
+        
+        function exportPendingData() {
+            const overlay = document.getElementById('sync-recovery-overlay') || document.getElementById('network-diagnostic-overlay');
+            if (overlay) overlay.remove();
+            
+            if (PENDING_SYNC.length === 0) {
+                showNotification('⚠️ No hay datos pendientes para exportar', 'warning');
+                return;
+            }
+            
+            const rows = [];
+            rows.push('Tipo,Fecha,Hora,Usuario,Orden,Código,Ubicación,Nota,Motivo');
+            
+            PENDING_SYNC.forEach(item => {
+                const log = item.log;
+                if (item.sheet === 'Val3') {
+                    rows.push(`Validación,${log.date},${log.timestamp},${log.user},${log.obc},${log.code},${log.location || ''},${log.note || ''},`);
+                } else {
+                    rows.push(`Rechazo,${log.date},${log.timestamp},${log.user},${log.obc},${log.code},,${log.reason || ''}`);
+                }
+            });
+            
+            const csv = rows.join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            link.download = `validaciones_pendientes_${timestamp}.csv`;
+            link.click();
+            
+            showNotification(`📥 ${PENDING_SYNC.length} validaciones exportadas correctamente`, 'success');
+        }
+        
+        function showSyncOptions() {
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay';
+            overlay.style.display = 'flex';
+            
+            const hasToken = gapi && gapi.client && gapi.client.getToken();
+            const statusColor = PENDING_SYNC.length === 0 ? 'var(--success)' : 'var(--warning)';
+            const statusIcon = PENDING_SYNC.length === 0 ? '✅' : '⚠️';
+            
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 600px;">
+                    <button class="popup-close-x" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    <div class="popup-header" style="color: ${statusColor};">
+                        ${statusIcon} OPCIONES DE SINCRONIZACIÓN
+                    </div>
+                    
+                    <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                        <h3 style="margin-bottom: 15px; color: var(--primary);">📊 Estado Actual:</h3>
+                        <ul style="line-height: 2.2; margin-left: 20px;">
+                            <li><strong>Pendientes de sincronizar:</strong> <span style="color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'}; font-size: 1.2em; font-weight: 700;">${PENDING_SYNC.length}</span></li>
+                            <li><strong>Conexión a Internet:</strong> ${IS_ONLINE ? '<span style="color: var(--success);">✅ Conectado</span>' : '<span style="color: var(--error);">❌ Sin conexión</span>'}</li>
+                            <li><strong>Google Sheets:</strong> ${hasToken ? '<span style="color: var(--success);">✅ Conectado</span>' : '<span style="color: var(--error);">❌ Desconectado</span>'}</li>
+                            <li><strong>Intentos fallidos:</strong> ${SYNC_RETRY_COUNT}</li>
+                            <li><strong>Sincronización automática:</strong> ${SYNC_INTERVAL ? '<span style="color: var(--success);">✅ Activa</span>' : '<span style="color: var(--error);">❌ Inactiva</span>'}</li>
+                        </ul>
+                    </div>
+        
+                    ${PENDING_SYNC.length > 0 ? `
+                        <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid var(--warning);">
+                            <p style="margin: 0; color: #e65100;">
+                                <strong>⚠️ Hay ${PENDING_SYNC.length} validaciones pendientes de sincronizar</strong><br>
+                                <span style="font-size: 0.9em;">Selecciona una opción para sincronizar o exportar los datos.</span>
+                            </p>
+                        </div>
+                    ` : ''}
+        
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                        ${PENDING_SYNC.length > 0 ? `
+                            <button class="btn btn-primary" onclick="this.closest('.popup-overlay').remove(); forceSync();">
+                                🔄 Sincronizar Ahora
+                            </button>
+                            <button class="btn btn-success" onclick="this.closest('.popup-overlay').remove(); batchSyncWithDelay();">
+                                ⏱️ Sincronización Lenta (Recomendado si falla)
+                            </button>
+                        ` : ''}
+                        
+                        ${!hasToken ? `
+                            <button class="btn btn-google" onclick="this.closest('.popup-overlay').remove(); handleAuthClick();">
+                                🔗 Conectar Google Sheets
+                            </button>
+                        ` : ''}
+                        
+                        ${PENDING_SYNC.length > 0 ? `
+                            <button class="btn btn-warning" onclick="this.closest('.popup-overlay').remove(); exportPendingData();">
+                                📥 Exportar Datos Pendientes
+                            </button>
+                        ` : ''}
+                        
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove(); showSyncDiagnostic();">
+                            🔍 Ver Diagnóstico Detallado
+                        </button>
+                        
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove();">
+                            ← Cerrar
+                        </button>
+                    </div>
+        
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196F3;">
+                        <p style="margin: 0; font-size: 0.9em; line-height: 1.6; color: #1565c0;">
+                            <strong>💡 Información:</strong><br>
+                            • Los datos están guardados localmente y seguros<br>
+                            • La sincronización se reintenta automáticamente cada hora<br>
+                            • Puedes continuar trabajando sin conexión
+                        </p>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        }
+        
+        function showSyncDiagnostic() {
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay';
+            overlay.style.display = 'flex';
+            
+            let pendingDetails = '';
+            if (PENDING_SYNC.length > 0) {
+                const groupedBySheet = {};
+                PENDING_SYNC.forEach(item => {
+                    if (!groupedBySheet[item.sheet]) groupedBySheet[item.sheet] = [];
+                    groupedBySheet[item.sheet].push(item.log);
+                });
+                
+                pendingDetails = `
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0; max-height: 250px; overflow-y: auto;">
+                        <h4 style="margin-bottom: 10px; color: var(--warning);">📋 Detalles de datos pendientes:</h4>
+                        ${Object.entries(groupedBySheet).map(([sheet, logs]) => `
+                            <div style="margin-bottom: 15px;">
+                                <strong>${sheet === 'Val3' ? 'Validaciones OK' : 'Rechazos'}:</strong> ${logs.length} registros
+                                <ul style="font-size: 0.85em; margin-left: 20px; margin-top: 5px;">
+                                    ${logs.slice(0, 3).map(log => `
+                                        <li>${log.code} - Orden: ${log.obc} - ${log.date} ${log.timestamp}</li>
+                                    `).join('')}
+                                    ${logs.length > 3 ? `<li><em>...y ${logs.length - 3} más</em></li>` : ''}
+                                </ul>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            let errorDetails = '';
+            if (LAST_SYNC_ERROR && LAST_SYNC_ERROR.length > 0) {
+                errorDetails = `
+                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; margin: 15px 0; max-height: 200px; overflow-y: auto;">
+                        <h4 style="margin-bottom: 10px; color: var(--error);">❌ Últimos errores de sincronización:</h4>
+                        <ul style="font-size: 0.85em; line-height: 1.8; margin-left: 20px;">
+                            ${LAST_SYNC_ERROR.slice(0, 10).map(e => `
+                                <li><strong>${e.code}:</strong> ${e.error}</li>
+                            `).join('')}
+                            ${LAST_SYNC_ERROR.length > 10 ? `<li><em>...y ${LAST_SYNC_ERROR.length - 10} más</em></li>` : ''}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+                    <button class="popup-close-x" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    <div class="popup-header">
+                        🔍 DIAGNÓSTICO COMPLETO DEL SISTEMA
+                    </div>
+                    
+                    <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                        <h3 style="margin-bottom: 15px; color: var(--primary);">📊 Estado General:</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                            <div>
+                                <strong>Conexión Internet:</strong><br>
+                                ${IS_ONLINE ? '<span style="color: var(--success);">✅ Activa</span>' : '<span style="color: var(--error);">❌ Inactiva</span>'}
+                            </div>
+                            <div>
+                                <strong>Google Sheets:</strong><br>
+                                ${gapi.client.getToken() ? '<span style="color: var(--success);">✅ Conectado</span>' : '<span style="color: var(--error);">❌ Desconectado</span>'}
+                            </div>
+                            <div>
+                                <strong>Pendientes Sync:</strong><br>
+                                <span style="color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'}; font-weight: 700;">${PENDING_SYNC.length}</span>
+                            </div>
+                            <div>
+                                <strong>Intentos Fallidos:</strong><br>
+                                <span style="color: ${SYNC_RETRY_COUNT > 0 ? 'var(--warning)' : 'var(--success)'}; font-weight: 700;">${SYNC_RETRY_COUNT}</span>
+                            </div>
+                            <div>
+                                <strong>BD Cargada:</strong><br>
+                                ${BD_CODES.size > 0 ? `<span style="color: var(--success);">✅ ${BD_CODES.size} códigos</span>` : '<span style="color: var(--error);">❌ No cargada</span>'}
+                            </div>
+                            <div>
+                                <strong>Órdenes Activas:</strong><br>
+                                <span style="font-weight: 700;">${Object.keys(STATE.tabs).length}</span>
+                            </div>
+                            <div>
+                                <strong>Sync Automática:</strong><br>
+                                ${SYNC_INTERVAL ? '<span style="color: var(--success);">✅ Activa</span>' : '<span style="color: var(--error);">❌ Inactiva</span>'}
+                            </div>
+                            <div>
+                                <strong>Usuario:</strong><br>
+                                <span style="font-weight: 700;">${CURRENT_USER}</span>
+                            </div>
+                        </div>
+                    </div>
+        
+                    ${pendingDetails}
+                    ${errorDetails}
+        
+                    <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2196F3;">
+                        <h3 style="margin-bottom: 15px; color: #1565c0;">🛠️ Recomendaciones:</h3>
+                        <ul style="line-height: 2; margin-left: 20px;">
+                            ${!IS_ONLINE ? '<li style="color: var(--error);"><strong>⚠️ Sin conexión a Internet</strong> - Verifica tu red WiFi o datos móviles</li>' : ''}
+                            ${!gapi.client.getToken() ? '<li style="color: var(--warning);"><strong>⚠️ Reconecta Google Sheets</strong> - La sesión puede haber expirado</li>' : ''}
+                            ${PENDING_SYNC.length > 10 ? '<li style="color: var(--warning);"><strong>⚠️ Muchos registros pendientes</strong> - Usa la sincronización lenta</li>' : ''}
+                            ${SYNC_RETRY_COUNT >= 3 ? '<li style="color: var(--error);"><strong>⚠️ Múltiples intentos fallidos</strong> - Considera exportar los datos como respaldo</li>' : ''}
+                            ${IS_ONLINE && gapi.client.getToken() && PENDING_SYNC.length > 0 ? '<li style="color: var(--success);"><strong>✅ Todo listo</strong> - Puedes intentar sincronizar ahora</li>' : ''}
+                        </ul>
+                    </div>
+        
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button class="btn btn-primary" onclick="this.closest('.popup-overlay').remove(); showSyncOptions();">
+                            🛠️ Ver Opciones de Sincronización
+                        </button>
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove();">
+                            ← Cerrar Diagnóstico
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        }
+
     </script>
 </body>
 </html>
