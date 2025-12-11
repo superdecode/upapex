@@ -719,6 +719,9 @@
                 <button class="btn btn-secondary btn-small" onclick="SyncManager.showPanel()" style="margin-bottom: 10px; width: 100%;">
                     ⚡ Estado / Sync
                 </button>
+                <button id="export-pending-btn" class="btn btn-small" onclick="SyncManager.exportPending()" style="margin-bottom: 10px; width: 100%; background: var(--warning); display: none;">
+                    📥 Exportar Pendientes
+                </button>
                 <div style="text-align: center; margin-bottom: 15px;">
                     <div style="font-size: 1.3em; font-weight: 700; color: var(--primary);" id="bd-count-sidebar">0</div>
                     <div style="font-size: 0.75em; opacity: 0.8;">códigos en BD</div>
@@ -1339,6 +1342,7 @@
                 const el = document.getElementById('sync-status-sidebar');
                 const indicator = document.getElementById('status-sync');
                 const label = document.getElementById('sync-label');
+                const exportBtn = document.getElementById('export-pending-btn');
                 if (!el) return;
 
                 el.style.display = 'block';
@@ -1362,6 +1366,10 @@
                     el.textContent = '❌ Error sync';
                     if (indicator) indicator.className = 'status-indicator status-error';
                     if (label) label.textContent = 'Error';
+                }
+                // Mostrar/ocultar botón de exportación rápida
+                if (exportBtn) {
+                    exportBtn.style.display = PENDING_SYNC.length > 0 ? 'block' : 'none';
                 }
                 this.updateBadge();
             },
