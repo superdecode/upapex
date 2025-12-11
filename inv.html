@@ -895,7 +895,9 @@ function processScan(rawCode) {
 }
 
 function extractCode(raw) {
-    const code = raw.trim();
+    let code = raw.trim();
+    // Convertir - entre números a / (37843434-1 → 37843434/1)
+    code = code.replace(/(\d)-(\d)/g, '$1/$2');
     const p1 = /\[id\[.*?\[([^\[]+)\[/i; const m1 = code.match(p1); if (m1) return m1[1];
     const p2 = /¨id¨.*?¨([^¨]+)¨/i; const m2 = code.match(p2); if (m2) return m2[1];
     const p3 = /"id"\s*:\s*"([^"]+)"/i; const m3 = code.match(p3); if (m3) return m3[1];
