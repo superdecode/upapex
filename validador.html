@@ -784,14 +784,14 @@
                 <button class="btn btn-secondary btn-small" onclick="showFaltantes()" style="margin-bottom: 10px; width: 100%;">🔍 Faltantes</button>
                 <button class="btn btn-small btn-consulta" onclick="showConsulta()" style="margin-bottom: 10px; width: 100%;">🔎 Consulta</button>
                 <hr style="border-color: #555; margin: 15px 0;">
-                <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none;">
+                <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none; cursor: pointer;" onclick="SyncManager.showPanel()">
                     ✅ Sincronizado
                 </div>
-                <button class="btn btn-secondary btn-small" onclick="SyncManager.showPanel()" style="margin-bottom: 10px; width: 100%;">
-                    ⚡ Estado / Sync
-                </button>
                 <button id="export-pending-btn" class="btn btn-small" onclick="SyncManager.exportPending()" style="margin-bottom: 10px; width: 100%; background: var(--warning); display: none;">
                     📥 Exportar Pendientes
+                </button>
+                <button class="btn btn-secondary btn-small" onclick="SyncManager.showPanel()" style="margin-bottom: 10px; width: 100%;">
+                    ⚡ Estado / Sync
                 </button>
                 <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
 
@@ -973,15 +973,14 @@
         <div class="container">
             <div class="main-content" style="max-width: 100%;">
                 <div class="header">
-                    <h1>🔎 Consulta Rápida de Trazabilidad</h1>
+                    <h1>🔎 Consulta Rápida</h1>
                     <button class="btn btn-secondary btn-small" onclick="hideConsulta()">← Volver</button>
                 </div>
-                <div class="card">
-                    <div class="input-group">
-                        <label style="font-size: 1.1em; color: var(--primary);">📦 Escanear código de caja:</label>
-                        <input type="text" id="consulta-scanner" class="scanner-input" placeholder="Escanea o ingresa el código..." onkeydown="handleConsultaScan(event)">
+                <div class="card" style="padding: 12px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="consulta-scanner" class="scanner-input" placeholder="📦 Escanea o ingresa código..." onkeydown="handleConsultaScan(event)" style="flex: 1; margin: 0;">
+                        <button class="btn btn-primary" onclick="executeConsulta()" style="white-space: nowrap;">🔍 Buscar</button>
                     </div>
-                    <button class="btn btn-primary" onclick="executeConsulta()" style="margin-top: 15px;">🔍 Consultar</button>
                 </div>
                 <div id="consulta-result" style="display: none;"></div>
             </div>
@@ -1490,21 +1489,23 @@
             },
 
             exportPending() {
-                if (PENDING_SYNC.length === 0) {
-                    showNotification('⚠️ No hay datos pendientes', 'warning');
+                // Solo exportar validaciones OK (Val3), excluir rechazos
+                const validData = PENDING_SYNC.filter(item => item.sheet === 'Val3');
+                if (validData.length === 0) {
+                    showNotification('⚠️ No hay datos válidos pendientes', 'warning');
                     return;
                 }
-                const rows = ['Tipo,Fecha,Hora,Usuario,Orden,Código,Ubicación,Nota'];
-                PENDING_SYNC.forEach(item => {
+                const rows = ['Fecha,Hora,Usuario,Orden,Código,Ubicación,Nota'];
+                validData.forEach(item => {
                     const l = item.log;
-                    rows.push(`${item.sheet === 'Val3' ? 'OK' : 'Rechazo'},${l.date},${l.timestamp},${l.user},${l.obc},${l.code},${l.location || ''},${l.note || l.reason || ''}`);
+                    rows.push(`${l.date},${l.timestamp},${l.user},${l.obc},${l.code},${l.location || ''},${l.note || ''}`);
                 });
                 const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = `backup_${new Date().toISOString().slice(0,10)}.csv`;
                 link.click();
-                showNotification(`📥 ${PENDING_SYNC.length} registros exportados`, 'success');
+                showNotification(`📥 ${validData.length} registros exportados`, 'success');
             },
 
             // ========== PANEL UNIFICADO ==========
@@ -2113,19 +2114,19 @@
             try {
                 const resRes = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_BD,
-                    range: 'Resumen!A:E'
+                    range: 'Resumen!A:F'
                 });
 
                 const resRows = resRes.result.values;
                 if (resRows?.length > 1) {
                     OBC_TOTALS.clear();
                     OBC_INFO.clear();
-                    
+
                     for (let i = 1; i < resRows.length; i++) {
-                        const [obc, ref, time, recipient, count] = resRows[i];
+                        const [obc, ref, referenceId, time, recipient, count] = resRows[i];
                         if (obc && count) {
                             OBC_TOTALS.set(obc, parseInt(count));
-                            OBC_INFO.set(obc, { recipient, arrivalTime: time, referenceOrder: ref });
+                            OBC_INFO.set(obc, { recipient, arrivalTime: time, referenceOrder: ref, referenceId: referenceId || '' });
                         }
                     }
                 }
@@ -2135,17 +2136,17 @@
                     try {
                         const codesRes = await gapi.client.sheets.spreadsheets.values.get({
                             spreadsheetId: SPREADSHEET_BD,
-                            range: `${sheet}!A:I`
+                            range: `${sheet}!A:J`
                         });
 
                         const rows = codesRes.result.values;
                         if (rows?.length > 1) {
                             BD_CODES.clear();
                             OBC_MAP.clear();
-                            
+
                             for (let i = 1; i < rows.length; i++) {
                                 const obc = rows[i][0]?.toString().trim();
-                                const concat = rows[i][8]?.toString().trim();
+                                const concat = rows[i][9]?.toString().trim(); // Column J (index 9) - moved from I due to new column D
                                 if (obc && concat) {
                                     const norm = normalizeCode(concat);
                                     BD_CODES.add(norm);
@@ -2153,7 +2154,7 @@
                                     OBC_MAP.get(obc).add(norm);
                                 }
                             }
-                            
+
                             await saveBD();
                             break;
                         }
@@ -3251,7 +3252,8 @@
         }
 
         function executeConsulta() {
-            const raw = document.getElementById('consulta-scanner').value.trim();
+            const scanner = document.getElementById('consulta-scanner');
+            const raw = scanner.value.trim();
             if (!raw) {
                 showNotification('⚠️ Ingresa un código para consultar', 'warning');
                 return;
@@ -3259,6 +3261,10 @@
 
             const extracted = extractCode(raw);
             const normalized = normalizeCode(extracted);
+
+            // Limpiar scanner después de ejecutar la consulta
+            scanner.value = '';
+            scanner.focus();
 
             let foundOBC = null;
             let isValidatedInHistory = false;
@@ -3387,6 +3393,10 @@
                         <div class="consulta-item">
                             <div class="consulta-item-label">Referencia</div>
                             <div class="consulta-item-value">${info.referenceOrder || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Reference ID (货件追踪码)</div>
+                            <div class="consulta-item-value">${info.referenceId || '-'}</div>
                         </div>
                     </div>
 
