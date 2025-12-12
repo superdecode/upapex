@@ -348,18 +348,38 @@
         #consulta-module { display: none; }
         .consulta-result {
             background: white;
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 16px;
+            padding: 24px;
             margin-top: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid #e8e8e8;
         }
         .consulta-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #eee;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eee;
+        }
+        .consulta-code-display {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 12px 18px;
+            border-radius: 10px;
+            border-left: 4px solid var(--primary);
+        }
+        .consulta-code-label {
+            font-size: 0.75em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .consulta-code-value {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #333;
+            font-family: 'Monaco', 'Consolas', monospace;
         }
         .consulta-obc {
             font-size: 1.8em;
@@ -367,68 +387,110 @@
             color: var(--primary);
         }
         .consulta-status {
-            padding: 8px 16px;
-            border-radius: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
             font-weight: 700;
-            font-size: 0.9em;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .consulta-status.validated {
-            background: #e8f5e9;
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
             color: var(--success);
+            box-shadow: 0 2px 8px rgba(76,175,80,0.2);
         }
         .consulta-status.pending {
-            background: #fff3e0;
-            color: var(--warning);
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            color: #e65100;
+            box-shadow: 0 2px 8px rgba(255,152,0,0.2);
         }
         .consulta-status.not-found {
-            background: #ffebee;
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
             color: var(--error);
+            box-shadow: 0 2px 8px rgba(244,67,54,0.2);
+        }
+        .consulta-section-title {
+            font-size: 0.75em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            font-weight: 600;
         }
         .consulta-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
             margin-bottom: 20px;
         }
         .consulta-item {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 8px;
+            background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+            padding: 14px 16px;
+            border-radius: 10px;
+            border: 1px solid #eee;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .consulta-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .consulta-item.highlight {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-color: #90caf9;
         }
         .consulta-item-label {
-            font-size: 0.8em;
-            color: #666;
-            margin-bottom: 5px;
+            font-size: 0.7em;
+            color: #888;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
         }
         .consulta-item-value {
-            font-size: 1.2em;
+            font-size: 1.1em;
             font-weight: 700;
+            color: #333;
+            word-break: break-word;
+        }
+        .consulta-progress-section {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
         }
         .consulta-progress {
             background: #e0e0e0;
-            height: 20px;
-            border-radius: 10px;
+            height: 24px;
+            border-radius: 12px;
             overflow: hidden;
-            margin-bottom: 20px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
         }
         .consulta-progress-bar {
             height: 100%;
             background: linear-gradient(90deg, var(--primary), #ff8a52);
-            transition: width 0.5s;
+            transition: width 0.5s ease-out;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             font-weight: 700;
             font-size: 0.85em;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
         .consulta-progress-bar.complete {
             background: linear-gradient(90deg, var(--success), #45a049);
         }
         .consulta-action {
             text-align: center;
-            padding-top: 15px;
-            border-top: 2px solid #eee;
+            padding-top: 16px;
+            border-top: 1px solid #eee;
+        }
+        .consulta-validation-info {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            border: 1px solid #a5d6a7;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
         }
 
         /* Reconteo Module */
@@ -973,14 +1035,15 @@
         <div class="container">
             <div class="main-content" style="max-width: 100%;">
                 <div class="header">
-                    <h1>🔎 Consulta Rápida</h1>
+                    <h1>🔎 Consulta Rápida de Trazabilidad</h1>
                     <button class="btn btn-secondary btn-small" onclick="hideConsulta()">← Volver</button>
                 </div>
-                <div class="card" style="padding: 12px;">
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" id="consulta-scanner" class="scanner-input" placeholder="📦 Escanea o ingresa código..." onkeydown="handleConsultaScan(event)" style="flex: 1; margin: 0;">
-                        <button class="btn btn-primary" onclick="executeConsulta()" style="white-space: nowrap;">🔍 Buscar</button>
+                <div class="card">
+                    <div class="input-group">
+                        <label style="font-size: 1.1em; color: var(--primary);">📦 Escanear código de caja:</label>
+                        <input type="text" id="consulta-scanner" class="scanner-input" placeholder="Escanea o ingresa el código..." onkeydown="handleConsultaScan(event)">
                     </div>
+                    <button class="btn btn-primary" onclick="executeConsulta()" style="margin-top: 15px;">🔍 Consultar</button>
                 </div>
                 <div id="consulta-result" style="display: none;"></div>
             </div>
@@ -3355,11 +3418,13 @@
             let validationInfo = '';
             if (isValidated && historyData) {
                 validationInfo = `
-                    <div class="consulta-item" style="background: #e8f5e9; border: 2px solid var(--success);">
-                        <div class="consulta-item-label">Información de Validación</div>
-                        <div class="consulta-item-value" style="font-size: 0.9em; color: var(--success);">
-                            ✅ Validado el ${historyData.date} a las ${historyData.timestamp}<br>
-                            Por: ${historyData.user}
+                    <div class="consulta-validation-info">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 1.5em;">✅</span>
+                            <div>
+                                <div style="font-weight: 700; color: var(--success);">Validado correctamente</div>
+                                <div style="font-size: 0.85em; color: #666;">${historyData.date} a las ${historyData.timestamp} por ${historyData.user}</div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -3368,16 +3433,19 @@
             resultDiv.innerHTML = `
                 <div class="consulta-result">
                     <div class="consulta-header">
-                        <div>
-                            <div style="font-size: 0.9em; color: #666;">Código escaneado:</div>
-                            <div style="font-size: 1.2em; font-weight: 700;">${code}</div>
+                        <div class="consulta-code-display">
+                            <div class="consulta-code-label">Código escaneado</div>
+                            <div class="consulta-code-value">${code}</div>
                         </div>
                         <div class="consulta-status ${statusClass}">${statusText}</div>
                     </div>
 
-                    <div class="consulta-grid">
-                        <div class="consulta-item">
-                            <div class="consulta-item-label">Orden de Pedido (PO)</div>
+                    ${validationInfo}
+
+                    <div class="consulta-section-title">Información de la Orden</div>
+                    <div class="consulta-grid" style="grid-template-columns: repeat(3, 1fr);">
+                        <div class="consulta-item highlight">
+                            <div class="consulta-item-label">Orden (PO)</div>
                             <div class="consulta-item-value" style="color: var(--primary);">${obc}</div>
                         </div>
                         <div class="consulta-item">
@@ -3385,25 +3453,27 @@
                             <div class="consulta-item-value">${info.recipient || '-'}</div>
                         </div>
                         <div class="consulta-item">
-                            <div class="consulta-item-label">Horario</div>
+                            <div class="consulta-item-label">Horario Llegada</div>
                             <div class="consulta-item-value">${info.arrivalTime || '-'}</div>
                         </div>
+                    </div>
+
+                    <div class="consulta-section-title">Referencias</div>
+                    <div class="consulta-grid" style="grid-template-columns: repeat(2, 1fr);">
                         <div class="consulta-item">
-                            <div class="consulta-item-label">Referencia</div>
+                            <div class="consulta-item-label">Referencia 1</div>
                             <div class="consulta-item-value">${info.referenceOrder || '-'}</div>
                         </div>
                         <div class="consulta-item">
-                            <div class="consulta-item-label">Reference ID (货件追踪码)</div>
+                            <div class="consulta-item-label">Referencia 2</div>
                             <div class="consulta-item-value">${info.referenceId || '-'}</div>
                         </div>
                     </div>
 
-                    ${validationInfo}
-
-                    <div style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="font-weight: 600;">Avance de la Orden</span>
-                            <span style="font-weight: 700; color: ${isComplete ? 'var(--success)' : 'var(--primary)'};">${validatedCount}/${total} cajas (${pct}%)</span>
+                    <div class="consulta-progress-section">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="font-weight: 600; color: #555;">Avance de la Orden</span>
+                            <span style="font-weight: 700; color: ${isComplete ? 'var(--success)' : 'var(--primary)'};">${validatedCount} / ${total} cajas (${pct}%)</span>
                         </div>
                         <div class="consulta-progress">
                             <div class="consulta-progress-bar ${isComplete ? 'complete' : ''}" style="width: ${pct}%">
