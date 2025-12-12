@@ -2319,6 +2319,8 @@
             code = code.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '').trim();
 
             // IMPORTANTE: Convertir *, & y - (entre números) a / ANTES de cualquier extracción
+            code = code.replace(/\‘/g, '/');
+            code = code.replace(/\'/g, '/');
             code = code.replace(/\*/g, '/');
             code = code.replace(/&/g, '/');
             code = code.replace(/(\d)-(\d)/g, '$1/$2'); // 37843434-1 → 37843434/1
