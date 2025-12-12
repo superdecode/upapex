@@ -3316,20 +3316,29 @@
             const scanner = document.getElementById('consulta-scanner');
             const raw = scanner.value.trim();
             if (!raw) {
-                showNotification('⚠️ Ingresa un código para consultar', 'warning');
+                showNotification('⚠️ Ingresa un código o número de orden', 'warning');
+                return;
+            }
+
+            // Limpiar scanner después de ejecutar la consulta
+            scanner.value = '';
+            scanner.focus();
+
+            // Verificar si es un número de orden (OBC format)
+            const upperRaw = raw.toUpperCase().trim();
+            if (OBC_TOTALS.has(upperRaw) || OBC_MAP.has(upperRaw)) {
+                // Es una búsqueda por orden directa
+                renderConsultaResultByOrder(upperRaw);
                 return;
             }
 
             const extracted = extractCode(raw);
             const normalized = normalizeCode(extracted);
 
-            // Limpiar scanner después de ejecutar la consulta
-            scanner.value = '';
-            scanner.focus();
-
             let foundOBC = null;
             let isValidatedInHistory = false;
             let historyData = null;
+            let locationData = '';
 
             // Buscar en qué OBC está el código
             for (const [obc, codes] of OBC_MAP.entries()) {
@@ -3341,6 +3350,11 @@
                     if (HISTORY.has(histKey)) {
                         isValidatedInHistory = true;
                         historyData = HISTORY.get(histKey);
+                        locationData = historyData.location || '';
+                    }
+                    // También verificar ubicación en tabs activos
+                    if (STATE.tabs[obc]) {
+                        locationData = STATE.tabs[obc].location || locationData;
                     }
                     break;
                 }
@@ -3358,6 +3372,10 @@
                             if (HISTORY.has(histKey)) {
                                 isValidatedInHistory = true;
                                 historyData = HISTORY.get(histKey);
+                                locationData = historyData.location || '';
+                            }
+                            if (STATE.tabs[possibleOBC]) {
+                                locationData = STATE.tabs[possibleOBC].location || locationData;
                             }
                             break;
                         }
@@ -3365,10 +3383,96 @@
                 }
             }
 
-            renderConsultaResult(normalized, foundOBC, isValidatedInHistory, historyData);
+            renderConsultaResult(normalized, foundOBC, isValidatedInHistory, historyData, locationData);
         }
 
-        function renderConsultaResult(code, obc, isValidated, historyData) {
+        // Nueva función para mostrar resultado por orden
+        function renderConsultaResultByOrder(obc) {
+            const resultDiv = document.getElementById('consulta-result');
+            const info = OBC_INFO.get(obc) || {};
+            const total = OBC_TOTALS.get(obc) || 0;
+
+            // Contar validaciones de esta orden
+            let validatedCount = 0;
+            for (const [key, data] of HISTORY.entries()) {
+                if (data.obc === obc) validatedCount++;
+            }
+
+            const pct = total > 0 ? ((validatedCount / total) * 100).toFixed(1) : 0;
+            const isComplete = validatedCount >= total && total > 0;
+
+            // Obtener ubicación del tab activo si existe
+            const locationData = STATE.tabs[obc]?.location || '';
+
+            resultDiv.innerHTML = `
+                <div class="consulta-result">
+                    <div class="consulta-header">
+                        <div class="consulta-code-display" style="border-left-color: var(--primary);">
+                            <div class="consulta-code-label">Orden Consultada</div>
+                            <div class="consulta-code-value" style="color: var(--primary);">${obc}</div>
+                        </div>
+                        <div class="consulta-status ${isComplete ? 'validated' : 'pending'}">${isComplete ? '✅ COMPLETA' : '⏳ EN PROCESO'}</div>
+                    </div>
+
+                    <div class="consulta-section-title">Información de la Orden</div>
+                    <div class="consulta-grid" style="grid-template-columns: repeat(3, 1fr);">
+                        <div class="consulta-item highlight">
+                            <div class="consulta-item-label">Total Cajas</div>
+                            <div class="consulta-item-value" style="color: var(--primary);">${total}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Destino</div>
+                            <div class="consulta-item-value">${info.recipient || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Horario Llegada</div>
+                            <div class="consulta-item-value">${info.arrivalTime || '-'}</div>
+                        </div>
+                    </div>
+
+                    <div class="consulta-section-title">Referencias y Ubicación</div>
+                    <div class="consulta-grid" style="grid-template-columns: repeat(3, 1fr);">
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Referencia 1</div>
+                            <div class="consulta-item-value">${info.referenceOrder || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Referencia 2</div>
+                            <div class="consulta-item-value">${info.referenceId || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Ubicación</div>
+                            <div class="consulta-item-value">${locationData || '-'}</div>
+                        </div>
+                    </div>
+
+                    <div class="consulta-progress-section">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="font-weight: 600; color: #555;">Avance de la Orden</span>
+                            <span style="font-weight: 700; color: ${isComplete ? 'var(--success)' : 'var(--primary)'};">${validatedCount} / ${total} cajas (${pct}%)</span>
+                        </div>
+                        <div class="consulta-progress">
+                            <div class="consulta-progress-bar ${isComplete ? 'complete' : ''}" style="width: ${pct}%">
+                                ${pct > 10 ? pct + '%' : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    ${!isComplete && total > 0 ? `
+                        <div class="consulta-action">
+                            <button class="btn btn-success" onclick="goToValidateFromConsulta('${obc}')">
+                                ✅ Ir a Validar Orden ${obc}
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            resultDiv.style.display = 'block';
+            playSound(isComplete ? 'ok' : 'duplicate');
+        }
+
+        function renderConsultaResult(code, obc, isValidated, historyData, locationData = '') {
             const resultDiv = document.getElementById('consulta-result');
 
             if (!obc) {
@@ -3458,8 +3562,8 @@
                         </div>
                     </div>
 
-                    <div class="consulta-section-title">Referencias</div>
-                    <div class="consulta-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="consulta-section-title">Referencias y Ubicación</div>
+                    <div class="consulta-grid" style="grid-template-columns: repeat(3, 1fr);">
                         <div class="consulta-item">
                             <div class="consulta-item-label">Referencia 1</div>
                             <div class="consulta-item-value">${info.referenceOrder || '-'}</div>
@@ -3467,6 +3571,10 @@
                         <div class="consulta-item">
                             <div class="consulta-item-label">Referencia 2</div>
                             <div class="consulta-item-value">${info.referenceId || '-'}</div>
+                        </div>
+                        <div class="consulta-item">
+                            <div class="consulta-item-label">Ubicación</div>
+                            <div class="consulta-item-value">${locationData || '-'}</div>
                         </div>
                     </div>
 
