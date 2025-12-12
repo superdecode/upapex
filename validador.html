@@ -493,6 +493,65 @@
             margin-bottom: 16px;
         }
 
+        /* Prerecepción Module */
+        .prerec-order-info {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 15px 0;
+            border-left: 4px solid var(--primary);
+        }
+        .prerec-order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .prerec-order-code {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .prerec-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+        }
+        .prerec-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .prerec-item {
+            background: white;
+            padding: 10px 12px;
+            border-radius: 8px;
+        }
+        .prerec-item-label {
+            font-size: 0.7em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .prerec-item-value {
+            font-weight: 600;
+            color: #333;
+        }
+        .prerec-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7em;
+            font-weight: 600;
+            background: #e3f2fd;
+            color: #1565c0;
+            margin-left: 6px;
+        }
+
         /* Reconteo Module */
         #reconteo-module { display: none; }
         .reconteo-stats {
@@ -844,17 +903,12 @@
                     📋 Resumen <span id="pending-badge"></span>
                 </button>
                 <button class="btn btn-secondary btn-small" onclick="showFaltantes()" style="margin-bottom: 10px; width: 100%;">🔍 Faltantes</button>
+                <button class="btn btn-small" onclick="showPrerecepcion()" style="margin-bottom: 10px; width: 100%; background: #6c757d; color: white;">📋 Prerecepción</button>
                 <button class="btn btn-small btn-consulta" onclick="showConsulta()" style="margin-bottom: 10px; width: 100%;">🔎 Consulta</button>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none; cursor: pointer;" onclick="SyncManager.showPanel()">
                     ✅ Sincronizado
                 </div>
-                <button id="export-pending-btn" class="btn btn-small" onclick="SyncManager.exportPending()" style="margin-bottom: 10px; width: 100%; background: var(--warning); display: none;">
-                    📥 Exportar Pendientes
-                </button>
-                <button class="btn btn-secondary btn-small" onclick="SyncManager.showPanel()" style="margin-bottom: 10px; width: 100%;">
-                    ⚡ Estado / Sync
-                </button>
                 <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
 
                 <!-- User Footer -->
@@ -1289,6 +1343,7 @@
             setupListeners();
             setupConnectionMonitor();
             SyncManager.init();  // Inicializa sync + protección de salida
+            loadPrerecData();   // Cargar datos de prerecepción
             renderValidation();
             gapi.load('client', initGAPI);
         });
@@ -2683,10 +2738,17 @@
         }
 
         async function writeToSheets(sheet, log) {
-            const values = sheet === 'Val3' 
-                ? [[log.date, log.timestamp, log.user, log.obc, log.code, log.location, log.note]]
-                : [[log.date, log.timestamp, log.user, log.obc, log.raw, log.reason, log.code]];
-            
+            let values;
+            if (sheet === 'Val3') {
+                values = [[log.date, log.timestamp, log.user, log.obc, log.code, log.location, log.note]];
+            } else if (sheet === 'Previa') {
+                // Prerecepción: Fecha, Hora, Orden, Ubicación
+                values = [[log.date, log.timestamp, log.obc, log.location]];
+            } else {
+                // Rechazos
+                values = [[log.date, log.timestamp, log.user, log.obc, log.raw, log.reason, log.code]];
+            }
+
             await gapi.client.sheets.spreadsheets.values.append({
                 spreadsheetId: SPREADSHEET_WRITE,
                 range: `${sheet}!A1`,
@@ -2963,6 +3025,8 @@
         function renderResumen() {
             const tbody = document.getElementById('resumen-tbody');
             tbody.innerHTML = '';
+
+            // Primero mostrar órdenes activas/cerradas
             const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
             Object.keys(allOrders).forEach(obc => {
                 const tab = allOrders[obc];
@@ -2970,10 +3034,31 @@
                 const validated = tab.validations.length;
                 const pct = total > 0 ? ((validated / total) * 100).toFixed(0) : 0;
                 const info = OBC_INFO.get(obc) || {};
+                const prerec = PREREC_DATA.get(obc);
+                const prerecBadge = prerec ? `<span class="prerec-indicator">PRE</span>` : '';
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td><strong>${obc}</strong></td><td>${total}</td><td>${validated}</td><td>${pct}%</td><td>${info.recipient || '-'}</td><td>${info.arrivalTime || '-'}</td>`;
+                tr.innerHTML = `<td><strong>${obc}</strong>${prerecBadge}</td><td>${total}</td><td>${validated}</td><td>${pct}%</td><td>${info.recipient || '-'}</td><td>${info.arrivalTime || '-'}</td>`;
                 tbody.appendChild(tr);
             });
+
+            // Luego mostrar órdenes solo prerecibidas (sin validaciones activas)
+            for (const [obc, prerec] of PREREC_DATA.entries()) {
+                if (!allOrders[obc]) {
+                    const total = OBC_TOTALS.get(obc) || 0;
+                    const info = OBC_INFO.get(obc) || {};
+                    const tr = document.createElement('tr');
+                    tr.style.background = '#e3f2fd';
+                    tr.innerHTML = `
+                        <td><strong>${obc}</strong><span class="prerec-indicator">PRE ${prerec.time}</span></td>
+                        <td>${total}</td>
+                        <td>0</td>
+                        <td>0%</td>
+                        <td>${info.recipient || '-'}</td>
+                        <td>${prerec.location || info.arrivalTime || '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            }
         }
 
         function filterResumen() {
@@ -3403,8 +3488,22 @@
             const pct = total > 0 ? ((validatedCount / total) * 100).toFixed(1) : 0;
             const isComplete = validatedCount >= total && total > 0;
 
-            // Obtener ubicación del tab activo si existe
-            const locationData = STATE.tabs[obc]?.location || '';
+            // Obtener ubicación del tab activo o de prerecepción
+            const prerec = PREREC_DATA.get(obc);
+            const locationData = STATE.tabs[obc]?.location || prerec?.location || '';
+
+            // Determinar estado
+            let statusClass = isComplete ? 'validated' : 'pending';
+            let statusText = isComplete ? '✅ COMPLETA' : (prerec ? '📋 PRERECIBIDA' : '⏳ EN PROCESO');
+            if (prerec && !isComplete) statusClass = 'pending';
+
+            // Info de prerecepción
+            const prerecInfo = prerec ? `
+                <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #1565c0;">
+                    <div style="font-weight: 600; color: #1565c0; margin-bottom: 4px;">📋 Prerecibida</div>
+                    <div style="font-size: 0.85em; color: #555;">${prerec.date} a las ${prerec.time}${prerec.location ? ` - Ubicación: ${prerec.location}` : ''}</div>
+                </div>
+            ` : '';
 
             resultDiv.innerHTML = `
                 <div class="consulta-result">
@@ -3413,8 +3512,10 @@
                             <div class="consulta-code-label">Orden Consultada</div>
                             <div class="consulta-code-value" style="color: var(--primary);">${obc}</div>
                         </div>
-                        <div class="consulta-status ${isComplete ? 'validated' : 'pending'}">${isComplete ? '✅ COMPLETA' : '⏳ EN PROCESO'}</div>
+                        <div class="consulta-status ${statusClass}">${statusText}</div>
                     </div>
+
+                    ${prerecInfo}
 
                     <div class="consulta-section-title">Información de la Orden</div>
                     <div class="consulta-grid" style="grid-template-columns: repeat(3, 1fr);">
@@ -3649,6 +3750,241 @@
                 switchOBC(obc);
                 showNotification(`✅ Orden ${obc} creada`, 'success');
             }
+        }
+
+        // ==================== PRERECEPCIÓN MODULE ====================
+        let PREREC_DATA = new Map(); // Almacena órdenes prerecibidas: obc -> {date, time, location}
+        let PREREC_CURRENT = null; // Orden actual siendo procesada en el modal
+
+        async function loadPrerecData() {
+            try {
+                const res = await window.storage.get('wms_prerec_data');
+                if (res?.value) {
+                    const arr = JSON.parse(res.value);
+                    PREREC_DATA = new Map(arr);
+                }
+            } catch (e) {}
+        }
+
+        async function savePrerecData() {
+            try {
+                await window.storage.set('wms_prerec_data', JSON.stringify(Array.from(PREREC_DATA.entries())));
+            } catch (e) {}
+        }
+
+        function showPrerecepcion() {
+            document.querySelectorAll('.prerec-overlay').forEach(e => e.remove());
+            PREREC_CURRENT = null;
+
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay prerec-overlay';
+            overlay.style.display = 'flex';
+
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 500px;">
+                    <button class="popup-close-x" onclick="closePrerecepcion()">×</button>
+                    <div class="popup-header" style="color: #6c757d;">
+                        📋 PRERECEPCIÓN DE ORDEN
+                    </div>
+                    <p style="text-align: center; color: #666; margin-bottom: 15px;">
+                        Escanea o ingresa el número de orden para registrar su llegada
+                    </p>
+
+                    <div class="input-group">
+                        <label>Número de Orden *</label>
+                        <input type="text" id="prerec-order-input" class="scanner-input"
+                               placeholder="Escanea o escribe el número de orden..."
+                               onkeydown="handlePrerecScan(event)" autofocus>
+                    </div>
+
+                    <div id="prerec-order-info" style="display: none;"></div>
+
+                    <div id="prerec-location-section" style="display: none;">
+                        <div class="input-group">
+                            <label>Ubicación (opcional)</label>
+                            <input type="text" id="prerec-location-input" class="scanner-input"
+                                   placeholder="Ej: Rack 3, Mesa A, Zona B...">
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button class="btn btn-secondary" onclick="resetPrerecModal()" style="flex: 1;">
+                                🔄 Otra Orden
+                            </button>
+                            <button class="btn btn-success" onclick="confirmPrerecepcion()" style="flex: 1;">
+                                ✅ Confirmar Llegada
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="prerec-history" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                        <div style="font-size: 0.85em; color: #888; margin-bottom: 10px;">
+                            📦 Prerecibidas hoy: <strong id="prerec-today-count">0</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+            updatePrerecTodayCount();
+            setTimeout(() => document.getElementById('prerec-order-input').focus(), 100);
+        }
+
+        function closePrerecepcion() {
+            document.querySelectorAll('.prerec-overlay').forEach(e => e.remove());
+            PREREC_CURRENT = null;
+        }
+
+        function resetPrerecModal() {
+            PREREC_CURRENT = null;
+            document.getElementById('prerec-order-input').value = '';
+            document.getElementById('prerec-order-info').style.display = 'none';
+            document.getElementById('prerec-location-section').style.display = 'none';
+            document.getElementById('prerec-order-input').focus();
+        }
+
+        function handlePrerecScan(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const input = document.getElementById('prerec-order-input');
+                const raw = input.value.trim().toUpperCase();
+
+                if (!raw) {
+                    showNotification('⚠️ Ingresa un número de orden', 'warning');
+                    return;
+                }
+
+                // Limpiar input
+                input.value = '';
+
+                // Verificar si la orden existe en la BD
+                if (!OBC_TOTALS.has(raw) && !OBC_MAP.has(raw)) {
+                    showNotification('❌ Orden no encontrada en la base de datos', 'error');
+                    playSound('error');
+                    return;
+                }
+
+                // Verificar si ya fue prerecibida
+                if (PREREC_DATA.has(raw)) {
+                    const existing = PREREC_DATA.get(raw);
+                    showNotification(`⚠️ Orden ya prerecibida el ${existing.date} a las ${existing.time}`, 'warning');
+                    playSound('duplicate');
+                    return;
+                }
+
+                PREREC_CURRENT = raw;
+                showPrerecOrderInfo(raw);
+                playSound('ok');
+            }
+        }
+
+        function showPrerecOrderInfo(obc) {
+            const info = OBC_INFO.get(obc) || {};
+            const total = OBC_TOTALS.get(obc) || 0;
+
+            // Contar validaciones existentes
+            let validatedCount = 0;
+            for (const [key, data] of HISTORY.entries()) {
+                if (data.obc === obc) validatedCount++;
+            }
+            const pct = total > 0 ? ((validatedCount / total) * 100).toFixed(1) : 0;
+
+            const infoDiv = document.getElementById('prerec-order-info');
+            infoDiv.innerHTML = `
+                <div class="prerec-order-info">
+                    <div class="prerec-order-header">
+                        <span class="prerec-order-code">${obc}</span>
+                        <span class="prerec-badge">📦 ${total} cajas</span>
+                    </div>
+                    <div class="prerec-grid">
+                        <div class="prerec-item">
+                            <div class="prerec-item-label">Destino</div>
+                            <div class="prerec-item-value">${info.recipient || '-'}</div>
+                        </div>
+                        <div class="prerec-item">
+                            <div class="prerec-item-label">Horario</div>
+                            <div class="prerec-item-value">${info.arrivalTime || '-'}</div>
+                        </div>
+                        <div class="prerec-item">
+                            <div class="prerec-item-label">Referencia 1</div>
+                            <div class="prerec-item-value">${info.referenceOrder || '-'}</div>
+                        </div>
+                        <div class="prerec-item">
+                            <div class="prerec-item-label">Referencia 2</div>
+                            <div class="prerec-item-value">${info.referenceId || '-'}</div>
+                        </div>
+                    </div>
+                    ${validatedCount > 0 ? `
+                        <div style="margin-top: 10px; padding: 8px; background: #e8f5e9; border-radius: 6px; font-size: 0.85em;">
+                            ✅ Progreso actual: ${validatedCount}/${total} (${pct}%)
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            infoDiv.style.display = 'block';
+            document.getElementById('prerec-location-section').style.display = 'block';
+            document.getElementById('prerec-location-input').focus();
+        }
+
+        async function confirmPrerecepcion() {
+            if (!PREREC_CURRENT) {
+                showNotification('⚠️ No hay orden seleccionada', 'warning');
+                return;
+            }
+
+            const location = document.getElementById('prerec-location-input').value.trim();
+            const now = new Date();
+            const date = now.toLocaleDateString('es-MX');
+            const time = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+            // Guardar en PREREC_DATA local
+            PREREC_DATA.set(PREREC_CURRENT, {
+                date,
+                time,
+                location,
+                user: USER_NAME || 'Usuario'
+            });
+            await savePrerecData();
+
+            // Agregar a PENDING_SYNC para sincronizar a hoja "Previa"
+            const log = {
+                date,
+                timestamp: time,
+                obc: PREREC_CURRENT,
+                location: location || '-'
+            };
+            PENDING_SYNC.push({ sheet: 'Previa', log });
+            await SyncManager.save();
+            SyncManager.updateUI(false);
+
+            showNotification(`✅ Orden ${PREREC_CURRENT} prerecibida`, 'success');
+            playSound('ok');
+
+            // Actualizar contador y resetear para siguiente
+            updatePrerecTodayCount();
+            resetPrerecModal();
+
+            // Intentar sincronizar si hay conexión
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                SyncManager.sync(false);
+            }
+        }
+
+        function updatePrerecTodayCount() {
+            const today = new Date().toLocaleDateString('es-MX');
+            let count = 0;
+            for (const [obc, data] of PREREC_DATA.entries()) {
+                if (data.date === today) count++;
+            }
+            const el = document.getElementById('prerec-today-count');
+            if (el) el.textContent = count;
+        }
+
+        function isOrderPrereceived(obc) {
+            return PREREC_DATA.has(obc);
+        }
+
+        function getPrerecInfo(obc) {
+            return PREREC_DATA.get(obc);
         }
 
         // ==================== RECONTEO MODULE ====================
