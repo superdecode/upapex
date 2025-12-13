@@ -1119,7 +1119,7 @@
         const CONFIG = {
             CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
-            SPREADSHEET_WRITE: '1aNzMpst7UjRJjDtRXTK3TgF1gRZDpdo8d92wVnr0Rt4',
+            SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
             SHEET_NAME: 'BD',  // Nombre de la hoja donde se escriben los datos
             INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
         };
@@ -1732,8 +1732,8 @@
             return {
                 raw,
                 code,
-                scan1: normalizeCode(raw),        // Valor limpio para BD
-                scan2: scan2 ? normalizeCode(scan2) : '',  // Valor limpio para BD
+                scan1: raw,
+                scan2: scan2 || '',
                 location: item?.cellNo || '-',
                 sku: item?.sku || '-',
                 product: item?.productName || '-',
