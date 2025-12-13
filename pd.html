@@ -1743,8 +1743,8 @@
 
         function normalizeCode(raw) {
             let code = raw.trim().toUpperCase();
-            code = code.replace(/(\d)-(\d)/g, '$1/$2');
 
+            // Patrones de extracción especiales (JSON, etc)
             const patterns = [
                 /\[id\[.*?\[([^\[]+)\[/i,
                 /¨id¨.*?¨([^¨]+)¨/i,
@@ -1756,6 +1756,16 @@
                 if (match) return match[1];
             }
 
+            // CRÍTICO: Preservar guiones ANTES de convertir - a /
+            // Detectar patrones tipo: LETRAS+NÚMEROS+GUION+NÚMEROS (ej: BY9888548520-07)
+            const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code);
+
+            if (!hasValidDash) {
+                // Solo si NO es un patrón válido con guion, entonces convertir - a /
+                code = code.replace(/(\d)-(\d)/g, '$1/$2');
+            }
+
+            // Limpiar caracteres especiales excepto guiones, diagonales y letras/números
             return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
         }
 
