@@ -1743,8 +1743,8 @@
 
         function normalizeCode(raw) {
             let code = raw.trim().toUpperCase();
-            code = code.replace(/(\d)-(\d)/g, '$1/$2');
 
+            // Patrones de extracción especiales (JSON, etc)
             const patterns = [
                 /\[id\[.*?\[([^\[]+)\[/i,
                 /¨id¨.*?¨([^¨]+)¨/i,
@@ -1756,7 +1756,100 @@
                 if (match) return match[1];
             }
 
+            // CRÍTICO: Preservar guiones ANTES de convertir - a /
+            // Detectar patrones tipo: LETRAS+NÚMEROS+GUION+NÚMEROS (ej: BY9888548520-07)
+            const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code);
+
+            if (!hasValidDash) {
+                // Solo si NO es un patrón válido con guion, entonces convertir - a /
+                code = code.replace(/(\d)-(\d)/g, '$1/$2');
+            }
+
+            // Limpiar caracteres especiales excepto guiones, diagonales y letras/números
             return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+        }
+
+        // ==================== VALIDADOR DE UBICACIONES ====================
+        /**
+         * Valida el formato de ubicación del almacén
+         * Formato: [LETRA][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
+         * Ejemplo: A21-06-05-01, B27-01-04-01
+         */
+        function validateLocation(location) {
+            const loc = location.trim().toUpperCase();
+
+            // Patrón: LETRA + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS
+            const pattern = /^([A-Z])(\d{1,3})-(\d{1,2})-(\d{1,2})-(\d{1,2})$/;
+            const match = loc.match(pattern);
+
+            if (!match) {
+                return {
+                    valid: false,
+                    message: '❌ Formato inválido',
+                    details: 'La ubicación debe seguir el formato: [LETRA][NUM]-[NUM]-[NUM]-[NUM]\nEjemplo: A21-06-05-01',
+                    parsed: null
+                };
+            }
+
+            const [, area, pasillo, rack, nivel, palet] = match;
+
+            return {
+                valid: true,
+                message: '✅ Ubicación válida',
+                parsed: {
+                    area: area,
+                    pasillo: pasillo.padStart(2, '0'),
+                    rack: rack.padStart(2, '0'),
+                    nivel: nivel.padStart(2, '0'),
+                    palet: palet.padStart(2, '0'),
+                    formatted: `${area}${pasillo.padStart(2, '0')}-${rack.padStart(2, '0')}-${nivel.padStart(2, '0')}-${palet.padStart(2, '0')}`
+                }
+            };
+        }
+
+        /**
+         * Muestra diálogo de confirmación para ubicación inválida (doble confirmación)
+         */
+        function confirmInvalidLocation(location) {
+            const validation = validateLocation(location);
+
+            if (validation.valid) {
+                return { confirmed: true, formatted: validation.parsed.formatted };
+            }
+
+            // Primera confirmación
+            const firstConfirm = confirm(
+                `⚠️ UBICACIÓN CON FORMATO INCORRECTO ⚠️\n\n` +
+                `Ubicación ingresada: "${location}"\n\n` +
+                `${validation.message}\n` +
+                `${validation.details}\n\n` +
+                `Formato correcto:\n` +
+                `• Área (letra): A, B, C, etc.\n` +
+                `• Pasillo (números): 01-99\n` +
+                `• Rack (números): 01-99\n` +
+                `• Nivel (números): 01-99\n` +
+                `• Palet (números): 01-99\n\n` +
+                `Ejemplos válidos:\n` +
+                `• A21-06-05-01\n` +
+                `• B27-01-04-01\n` +
+                `• C15-03-02-05\n\n` +
+                `¿Estás seguro que deseas usar "${location}"?`
+            );
+
+            if (!firstConfirm) {
+                return { confirmed: false, formatted: null };
+            }
+
+            // Segunda confirmación (doble check)
+            const secondConfirm = confirm(
+                `⚠️ SEGUNDA CONFIRMACIÓN REQUERIDA ⚠️\n\n` +
+                `Confirma nuevamente que deseas registrar esta ubicación:\n\n` +
+                `"${location}"\n\n` +
+                `Esta ubicación NO cumple con el formato estándar del almacén.\n\n` +
+                `¿CONFIRMAS el uso de esta ubicación?`
+            );
+
+            return { confirmed: secondConfirm, formatted: secondConfirm ? location.toUpperCase() : null };
         }
 
         function showResultBox(type, code, title, message, item) {
@@ -1821,6 +1914,18 @@
                 return;
             }
 
+            // Validar formato de ubicación con doble confirmación si es inválida
+            const locationCheck = confirmInvalidLocation(location);
+            if (!locationCheck.confirmed) {
+                showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
+                locationInput.focus();
+                return;
+            }
+
+            // Usar la ubicación formateada (normalizada si es válida)
+            const finalLocation = locationCheck.formatted;
+            locationInput.value = finalLocation; // Actualizar el input con formato correcto
+
             const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
             const now = new Date();
             const dateStr = now.toISOString().slice(0, 10);
@@ -1832,7 +1937,7 @@
                 user: CURRENT_USER || 'Usuario',
                 scan1: box.scan1 || box.raw,
                 scan2: box.scan2 || '',
-                location: location,
+                location: finalLocation,
                 status: statusMap[category],
                 note: '',
                 pallet: pallet.id
