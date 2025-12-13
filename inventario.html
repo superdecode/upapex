@@ -178,6 +178,17 @@
             color: white;
         }
 
+        .sidebar-btn-accent {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+
+        .sidebar-btn-accent:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            transform: scale(1.02);
+        }
+
         /* Sync Status */
         .sync-status {
             padding: 10px 12px;
@@ -850,6 +861,182 @@
             .main-container { flex-direction: column; }
             .sidebar { width: 100%; max-height: 200px; }
         }
+
+        /* ==================== CAPTURA RAPIDA MODULE ==================== */
+        .captura-rapida-container {
+            padding: 20px;
+        }
+
+        .captura-rapida-input-section {
+            margin-bottom: 20px;
+        }
+
+        .captura-rapida-input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 1.2em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+
+        .captura-rapida-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
+        }
+
+        .captura-rapida-result {
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 15px;
+            text-align: center;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .captura-rapida-result.show { display: block; }
+
+        .captura-rapida-result.status-ok {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.05));
+            border: 2px solid var(--success);
+        }
+
+        .captura-rapida-result.status-blocked {
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.05));
+            border: 2px solid var(--blocked);
+        }
+
+        .captura-rapida-result.status-nowms {
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.15), rgba(244, 67, 54, 0.05));
+            border: 2px solid var(--error);
+        }
+
+        .captura-rapida-result.status-searching {
+            background: linear-gradient(135deg, rgba(33, 150, 243, 0.15), rgba(33, 150, 243, 0.05));
+            border: 2px solid var(--primary);
+        }
+
+        .captura-rapida-code {
+            font-family: 'Courier New', monospace;
+            font-size: 1.4em;
+            font-weight: 700;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+
+        .captura-rapida-status {
+            font-size: 1.1em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .captura-rapida-status.ok { color: var(--success); }
+        .captura-rapida-status.blocked { color: var(--blocked); }
+        .captura-rapida-status.nowms { color: var(--error); }
+        .captura-rapida-status.searching { color: var(--primary); }
+
+        .captura-rapida-details {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            font-size: 0.9em;
+            color: #666;
+            text-align: left;
+        }
+
+        .captura-rapida-detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+        }
+
+        .captura-rapida-detail-label {
+            font-weight: 500;
+            color: #888;
+        }
+
+        .captura-rapida-detail-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .captura-rapida-history {
+            margin-top: 20px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .captura-rapida-history-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+        }
+
+        .captura-rapida-history-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            gap: 12px;
+        }
+
+        .captura-rapida-history-item .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .captura-rapida-history-item .status-dot.ok { background: var(--success); }
+        .captura-rapida-history-item .status-dot.blocked { background: var(--blocked); }
+        .captura-rapida-history-item .status-dot.nowms { background: var(--error); }
+
+        .captura-rapida-history-item .code {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .captura-rapida-history-item .status-label {
+            font-size: 0.85em;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .captura-rapida-history-item .status-label.ok { background: rgba(76, 175, 80, 0.2); color: var(--success); }
+        .captura-rapida-history-item .status-label.blocked { background: rgba(255, 152, 0, 0.2); color: var(--blocked); }
+        .captura-rapida-history-item .status-label.nowms { background: rgba(244, 67, 54, 0.2); color: var(--error); }
+
+        .captura-rapida-alt-code {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        .captura-rapida-instructions {
+            background: #f5f5f5;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
@@ -887,6 +1074,9 @@
                 <div class="sidebar-section">
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
                         📊 Resumen
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-accent" onclick="showCapturaRapida()">
+                        ⚡ Captura Rápida
                     </button>
                     <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
                         ➕ Nueva Sesión
@@ -1108,6 +1298,42 @@
                     <tbody id="resumen-table-body">
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Captura Rapida Popup -->
+    <div class="popup-overlay" id="captura-rapida-popup">
+        <div class="popup-content" style="max-width: 500px;">
+            <div class="popup-header">
+                <span>⚡ Captura Rápida</span>
+                <button class="popup-close" onclick="closeCapturaRapida()">×</button>
+            </div>
+
+            <div class="captura-rapida-container">
+                <div class="captura-rapida-instructions">
+                    📋 Escanea un código para ver su estatus. Si no se encuentra, se intentará con un código alternativo automáticamente.
+                </div>
+
+                <div class="captura-rapida-input-section">
+                    <input type="text"
+                           id="captura-rapida-input"
+                           class="captura-rapida-input"
+                           placeholder="Escanear código..."
+                           autocomplete="off">
+                </div>
+
+                <div class="captura-rapida-result" id="captura-rapida-result">
+                    <div class="captura-rapida-code" id="captura-rapida-code"></div>
+                    <div class="captura-rapida-status" id="captura-rapida-status"></div>
+                    <div class="captura-rapida-alt-code" id="captura-rapida-alt"></div>
+                    <div class="captura-rapida-details" id="captura-rapida-details"></div>
+                </div>
+
+                <div class="captura-rapida-history" id="captura-rapida-history">
+                    <div class="captura-rapida-history-title">📜 Historial de consultas</div>
+                    <div id="captura-rapida-history-list"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -2110,6 +2336,193 @@
                     </tr>
                 `).join('');
             }
+        }
+
+        // ==================== CAPTURA RAPIDA MODULE ====================
+        let capturaRapidaHistory = [];
+
+        function showCapturaRapida() {
+            document.getElementById('captura-rapida-popup').classList.add('show');
+            document.getElementById('captura-rapida-result').classList.remove('show');
+            document.getElementById('captura-rapida-input').value = '';
+            updateCapturaRapidaHistory();
+
+            // Focus and setup event listener
+            setTimeout(() => {
+                const input = document.getElementById('captura-rapida-input');
+                input.focus();
+                input.onkeydown = (e) => {
+                    if (e.key === 'Enter' && input.value.trim()) {
+                        processCapturaRapida(input.value.trim());
+                        input.value = '';
+                    }
+                };
+            }, 100);
+        }
+
+        function closeCapturaRapida() {
+            document.getElementById('captura-rapida-popup').classList.remove('show');
+        }
+
+        function processCapturaRapida(rawCode) {
+            const code1 = normalizeCode(rawCode);
+            const resultEl = document.getElementById('captura-rapida-result');
+            const codeEl = document.getElementById('captura-rapida-code');
+            const statusEl = document.getElementById('captura-rapida-status');
+            const altEl = document.getElementById('captura-rapida-alt');
+            const detailsEl = document.getElementById('captura-rapida-details');
+
+            // Show searching state
+            resultEl.className = 'captura-rapida-result show status-searching';
+            codeEl.textContent = code1;
+            statusEl.className = 'captura-rapida-status searching';
+            statusEl.innerHTML = '🔍 Buscando...';
+            altEl.textContent = '';
+            detailsEl.innerHTML = '';
+
+            // Try first code
+            let item = STATE.inventory.get(code1);
+            let usedCode = code1;
+            let altCodeUsed = null;
+
+            // If not found, try alternative code patterns
+            if (!item) {
+                const altCodes = generateAlternativeCodes(code1);
+                for (const altCode of altCodes) {
+                    item = STATE.inventory.get(altCode);
+                    if (item) {
+                        altCodeUsed = altCode;
+                        usedCode = altCode;
+                        break;
+                    }
+                }
+            }
+
+            // Small delay for visual feedback
+            setTimeout(() => {
+                if (item) {
+                    // Found in inventory
+                    const status = item.isBlocked ? 'blocked' : 'ok';
+                    const statusLabel = item.isBlocked ? 'BLOQUEADO' : 'OK';
+                    const statusIcon = item.isBlocked ? '⚠️' : '✅';
+
+                    resultEl.className = `captura-rapida-result show status-${status}`;
+                    codeEl.textContent = usedCode;
+                    statusEl.className = `captura-rapida-status ${status}`;
+                    statusEl.innerHTML = `${statusIcon} Estatus: <strong>${statusLabel}</strong>`;
+
+                    if (altCodeUsed) {
+                        altEl.textContent = `(Encontrado con código alternativo: ${altCodeUsed})`;
+                    } else {
+                        altEl.textContent = '';
+                    }
+
+                    detailsEl.innerHTML = `
+                        <div class="captura-rapida-detail-row">
+                            <span class="captura-rapida-detail-label">Ubicación</span>
+                            <span class="captura-rapida-detail-value">${item.cellNo || '-'}</span>
+                        </div>
+                        <div class="captura-rapida-detail-row">
+                            <span class="captura-rapida-detail-label">SKU</span>
+                            <span class="captura-rapida-detail-value">${item.sku || '-'}</span>
+                        </div>
+                        <div class="captura-rapida-detail-row">
+                            <span class="captura-rapida-detail-label">Producto</span>
+                            <span class="captura-rapida-detail-value">${item.productName || '-'}</span>
+                        </div>
+                        <div class="captura-rapida-detail-row">
+                            <span class="captura-rapida-detail-label">Stock</span>
+                            <span class="captura-rapida-detail-value">${item.availableStock || 0}</span>
+                        </div>
+                    `;
+
+                    // Add to history
+                    addToCapturaRapidaHistory(usedCode, status, statusLabel, altCodeUsed);
+                    playSound(status === 'ok' ? 'success' : 'warning');
+
+                } else {
+                    // Not found - No WMS
+                    resultEl.className = 'captura-rapida-result show status-nowms';
+                    codeEl.textContent = code1;
+                    statusEl.className = 'captura-rapida-status nowms';
+                    statusEl.innerHTML = '❌ Estatus: <strong>NO WMS</strong>';
+                    altEl.textContent = 'Código no encontrado en el inventario';
+                    detailsEl.innerHTML = `
+                        <div style="text-align: center; padding: 10px; color: #666;">
+                            Se intentaron códigos alternativos sin éxito
+                        </div>
+                    `;
+
+                    // Add to history
+                    addToCapturaRapidaHistory(code1, 'nowms', 'NO WMS', null);
+                    playSound('error');
+                }
+            }, 200);
+        }
+
+        function generateAlternativeCodes(code) {
+            const alternatives = [];
+
+            // Try with/without leading zeros
+            if (/^\d+$/.test(code)) {
+                alternatives.push(code.replace(/^0+/, '')); // Remove leading zeros
+                alternatives.push(code.padStart(10, '0')); // Add leading zeros
+            }
+
+            // Try replacing / with -
+            if (code.includes('/')) {
+                alternatives.push(code.replace(/\//g, '-'));
+            }
+
+            // Try replacing - with /
+            if (code.includes('-')) {
+                alternatives.push(code.replace(/-/g, '/'));
+            }
+
+            // Try without special characters
+            alternatives.push(code.replace(/[^a-zA-Z0-9]/g, ''));
+
+            // Try extracting just numbers
+            const numbersOnly = code.replace(/[^0-9]/g, '');
+            if (numbersOnly && numbersOnly !== code) {
+                alternatives.push(numbersOnly);
+            }
+
+            return [...new Set(alternatives)].filter(alt => alt !== code && alt.length > 0);
+        }
+
+        function addToCapturaRapidaHistory(code, status, label, altCode) {
+            capturaRapidaHistory.unshift({
+                code,
+                status,
+                label,
+                altCode,
+                time: new Date().toLocaleTimeString()
+            });
+
+            // Keep only last 20 entries
+            if (capturaRapidaHistory.length > 20) {
+                capturaRapidaHistory = capturaRapidaHistory.slice(0, 20);
+            }
+
+            updateCapturaRapidaHistory();
+        }
+
+        function updateCapturaRapidaHistory() {
+            const listEl = document.getElementById('captura-rapida-history-list');
+
+            if (capturaRapidaHistory.length === 0) {
+                listEl.innerHTML = '<div style="text-align: center; color: #999; padding: 15px;">Sin consultas recientes</div>';
+                return;
+            }
+
+            listEl.innerHTML = capturaRapidaHistory.map(item => `
+                <div class="captura-rapida-history-item">
+                    <div class="status-dot ${item.status}"></div>
+                    <div class="code">${item.code}${item.altCode ? ` <small style="color:#888">(alt: ${item.altCode})</small>` : ''}</div>
+                    <span class="status-label ${item.status}">${item.label}</span>
+                </div>
+            `).join('');
         }
 
         // ==================== CONNECTION ====================
