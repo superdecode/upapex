@@ -3,28 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Inventario</title>
+    <title>Sistema PD - Picking y Distribución</title>
     <style>
         :root {
             --primary: #2563eb;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
+            --success: #4CAF50;
+            --warning: #FF9800;
+            --error: #F44336;
             --blocked: #f97316;
-            --bg: #f8fafc;
+            --bg: #f7f7f7;
+            --text: #333;
             --card: #ffffff;
-            --text: #1e293b;
-            --text-light: #64748b;
             --border: #e2e8f0;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
             background: var(--bg);
             color: var(--text);
-            line-height: 1.6;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Connection Banner */
+        .connection-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 10px;
+            text-align: center;
+            font-weight: 700;
+            z-index: 10000;
+            display: none;
+            animation: slideDown 0.3s;
+        }
+        .connection-banner.offline {
+            background: var(--error);
+            color: white;
+            display: block;
+        }
+        .connection-banner.online {
+            background: var(--success);
+            color: white;
+            display: block;
+        }
+        .connection-banner.syncing {
+            background: var(--warning);
+            color: white;
+            display: block;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
         /* LOGIN */
@@ -33,13 +66,13 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         }
 
         .login-card {
             background: white;
             padding: 3rem;
-            border-radius: 20px;
+            border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             text-align: center;
             max-width: 400px;
@@ -58,488 +91,538 @@
         }
 
         .login-title {
-            font-size: 2rem;
+            font-size: 1.8rem;
             font-weight: 700;
             color: var(--text);
             margin-bottom: 0.5rem;
         }
 
         .login-subtitle {
-            color: var(--text-light);
+            color: #666;
             margin-bottom: 2rem;
         }
 
-        /* HEADER */
-        .app-header {
-            background: white;
-            border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
+        /* MAIN LAYOUT */
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 220px;
+            background: #333;
+            color: white;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            text-align: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #555;
+        }
+
+        .sidebar-header h2 {
+            color: var(--primary);
+            font-size: 1.3em;
+            margin-bottom: 5px;
+        }
+
+        .sidebar-header p {
+            font-size: 0.8em;
+            color: #aaa;
+        }
+
+        .sidebar-section {
+            margin-bottom: 15px;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.75em;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Sync Status */
+        .sync-status {
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 0.85em;
+            text-align: center;
+            cursor: pointer;
+        }
+        .sync-ok {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+        .sync-error {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--error);
+            border: 1px solid var(--error);
+        }
+        .sync-warning {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
+
+        /* Pallets por estatus */
+        .pallet-status-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .pallet-status-item {
+            background: #444;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .pallet-status-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 6px;
         }
 
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .header-logo {
-            font-size: 1.8rem;
-        }
-
-        .header-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--text);
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .connection-badge {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            border-radius: 50px;
-            font-size: 0.85rem;
+        .pallet-status-name {
             font-weight: 600;
+            font-size: 0.9em;
         }
 
-        .connection-badge.online {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success);
+        .pallet-status-count {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
         }
 
-        .connection-badge.offline {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--error);
+        .pallet-code {
+            font-family: monospace;
+            font-size: 0.7em;
+            color: #aaa;
+            word-break: break-all;
         }
 
-        .connection-badge.syncing {
-            background: rgba(245, 158, 11, 0.1);
-            color: var(--warning);
+        /* User Footer */
+        .user-footer {
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 1px solid #555;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1em;
+            color: white;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .user-details {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+
+        .connection-indicator {
+            font-size: 0.75em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .connection-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: currentColor;
-            animation: pulse 2s ease-in-out infinite;
         }
+        .connection-dot.online { background: var(--success); }
+        .connection-dot.offline { background: var(--error); }
+        .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
 
-        .user-badge {
+        .user-footer-actions {
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.5rem 1rem;
-            background: var(--bg);
-            border-radius: 50px;
+            gap: 5px;
+            margin-bottom: 8px;
         }
 
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea, #764ba2);
+        .user-footer-actions button {
+            flex: 1;
+            padding: 6px;
+            font-size: 0.75em;
+        }
+
+        .bd-info {
+            font-size: 0.7em;
+            color: #aaa;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            padding: 15px;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 700;
-            font-size: 0.9rem;
+            flex-direction: column;
+            overflow: hidden;
         }
 
-        .user-name {
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        /* MAIN CONTAINER */
-        .main-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        /* SCAN AREA */
-        .scan-section {
-            background: white;
-            border-radius: 16px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .scan-header {
+        /* Header */
+        .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
-        .scan-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+        .header h1 {
+            color: var(--primary);
+            font-size: 1.4em;
         }
 
-        .pallet-info {
+        .header-actions {
             display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.75rem 1.5rem;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            gap: 8px;
+        }
+
+        /* Scan Section */
+        .scan-section {
+            background: white;
             border-radius: 12px;
-            font-weight: 600;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
-        .scan-input-container {
-            position: relative;
-            margin-bottom: 1.5rem;
+        .scan-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .scan-input-group {
+            flex: 1;
+        }
+
+        .scan-input-group label {
+            display: block;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-bottom: 5px;
         }
 
         .scan-input {
             width: 100%;
-            padding: 1.5rem 1.5rem 1.5rem 3.5rem;
-            font-size: 1.5rem;
-            border: 3px solid var(--border);
-            border-radius: 12px;
+            padding: 12px 15px;
+            font-size: 1.3em;
+            border: 2px solid var(--border);
+            border-radius: 8px;
             font-weight: 600;
             text-transform: uppercase;
-            transition: all 0.3s;
-            background: var(--bg);
+            text-align: center;
+            background: #fff5ed;
+            transition: all 0.2s;
         }
 
         .scan-input:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
-            background: white;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        .scan-icon {
-            position: absolute;
-            left: 1.2rem;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 1.5rem;
-            color: var(--text-light);
+        .scan-input.error {
+            border-color: var(--error);
+            background: #ffebee;
         }
 
-        /* RESULT BOX */
+        .scan-input.success {
+            border-color: var(--success);
+            background: #e8f5e9;
+        }
+
+        /* Result Box */
         .result-box {
-            padding: 1.5rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
             display: none;
-            animation: slideDown 0.3s ease-out;
+            animation: fadeIn 0.3s;
         }
 
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .result-box.show {
-            display: block;
-        }
-
-        .result-box.success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 2px solid var(--success);
-        }
-
-        .result-box.warning {
-            background: rgba(245, 158, 11, 0.1);
-            border: 2px solid var(--warning);
-        }
-
-        .result-box.blocked {
-            background: rgba(249, 115, 22, 0.1);
-            border: 2px solid var(--blocked);
-        }
-
-        .result-box.error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 2px solid var(--error);
-        }
+        .result-box.show { display: block; }
+        .result-box.success { background: #e8f5e9; border: 2px solid var(--success); }
+        .result-box.warning { background: #fff3e0; border: 2px solid var(--warning); }
+        .result-box.blocked { background: #fff3e0; border: 2px solid var(--blocked); }
+        .result-box.error { background: #ffebee; border: 2px solid var(--error); }
 
         .result-header {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 1rem;
+            gap: 10px;
+            margin-bottom: 8px;
         }
 
-        .result-icon {
-            font-size: 2rem;
-        }
-
-        .result-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-        }
-
-        .result-code {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            font-family: 'Courier New', monospace;
-        }
+        .result-icon { font-size: 1.5rem; }
+        .result-title { font-weight: 700; font-size: 1.1em; }
+        .result-code { font-family: monospace; font-weight: 600; }
 
         .result-details {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 8px;
+            font-size: 0.85em;
         }
 
-        .result-detail {
+        .result-detail-label { color: #666; font-size: 0.8em; }
+        .result-detail-value { font-weight: 600; }
+
+        /* Code2 Input */
+        .code2-container {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 2px dashed var(--error);
+            display: none;
+        }
+
+        .code2-container.show { display: block; }
+
+        .code2-row {
             display: flex;
-            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
         }
 
-        .result-label {
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            color: var(--text-light);
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-
-        .result-value {
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .code2-input-container {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 2px dashed currentColor;
-        }
-
-        .code2-label {
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--error);
-        }
-
-        .code2-input {
-            width: 100%;
-            padding: 1rem;
-            font-size: 1.2rem;
-            border: 2px solid var(--error);
+        .btn-insertado {
+            padding: 12px 20px;
+            background: var(--error);
+            color: white;
+            border: none;
             border-radius: 8px;
-            font-weight: 600;
-            text-transform: uppercase;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
         }
 
-        .code2-input:focus {
-            outline: none;
-            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
+        .btn-insertado:hover {
+            background: #d32f2f;
         }
 
-        /* COLUMNS */
+        /* Columns Container */
         .columns-container {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            gap: 12px;
+            flex: 1;
+            min-height: 0;
         }
 
         .column {
             background: white;
-            border-radius: 16px;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .column-header {
             display: flex;
-            align-items: center;
             justify-content: space-between;
-            margin-bottom: 1rem;
-            padding-bottom: 1rem;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
             border-bottom: 2px solid var(--border);
         }
 
         .column-title {
-            font-size: 1.1rem;
             font-weight: 700;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 6px;
         }
 
         .column-count {
-            background: var(--bg);
-            padding: 0.25rem 0.75rem;
-            border-radius: 50px;
+            padding: 3px 10px;
+            border-radius: 15px;
             font-weight: 700;
-            font-size: 0.9rem;
+            font-size: 0.85em;
         }
 
         .column.ok .column-title { color: var(--success); }
-        .column.ok .column-count { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .column.ok .column-count { background: rgba(76, 175, 80, 0.15); color: var(--success); }
 
         .column.blocked .column-title { color: var(--blocked); }
-        .column.blocked .column-count { background: rgba(249, 115, 22, 0.1); color: var(--blocked); }
+        .column.blocked .column-count { background: rgba(249, 115, 22, 0.15); color: var(--blocked); }
 
         .column.nowms .column-title { color: var(--error); }
-        .column.nowms .column-count { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+        .column.nowms .column-count { background: rgba(244, 67, 54, 0.15); color: var(--error); }
+
+        .column-pallet-info {
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 0.8em;
+        }
+
+        .column-pallet-code {
+            font-family: monospace;
+            font-weight: 600;
+            color: var(--primary);
+        }
 
         .column-list {
-            max-height: 400px;
+            flex: 1;
             overflow-y: auto;
+            counter-reset: item-counter;
         }
 
         .box-item {
-            padding: 0.75rem;
-            background: var(--bg);
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
+            padding: 8px 10px;
+            background: #f9f9f9;
+            border-radius: 6px;
+            margin-bottom: 6px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: all 0.2s;
+            border-left: 3px solid;
+            counter-increment: item-counter;
         }
 
-        .box-item:hover {
-            transform: translateX(5px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .box-code {
+        .box-item::before {
+            content: counter(item-counter) ".";
             font-weight: 700;
-            font-family: 'Courier New', monospace;
+            min-width: 25px;
+            margin-right: 8px;
         }
+
+        .column.ok .box-item { border-color: var(--success); }
+        .column.ok .box-item::before { color: var(--success); }
+
+        .column.blocked .box-item { border-color: var(--blocked); }
+        .column.blocked .box-item::before { color: var(--blocked); }
+
+        .column.nowms .box-item { border-color: var(--error); }
+        .column.nowms .box-item::before { color: var(--error); }
+
+        .box-info { flex: 1; }
+        .box-code { font-weight: 600; font-family: monospace; font-size: 0.9em; }
+        .box-meta { font-size: 0.75em; color: #666; }
 
         .box-delete {
             background: none;
             border: none;
             color: var(--error);
-            font-size: 1.2rem;
             cursor: pointer;
-            padding: 0.25rem;
-            border-radius: 4px;
-            transition: all 0.2s;
+            font-size: 1.1em;
+            padding: 4px;
+            opacity: 0.6;
         }
 
-        .box-delete:hover {
-            background: rgba(239, 68, 68, 0.1);
-        }
+        .box-delete:hover { opacity: 1; }
 
         .empty-state {
             text-align: center;
-            padding: 2rem;
-            color: var(--text-light);
+            padding: 30px 15px;
+            color: #999;
         }
 
-        .empty-icon {
-            font-size: 3rem;
-            margin-bottom: 0.5rem;
-            opacity: 0.5;
-        }
+        .empty-icon { font-size: 2.5em; margin-bottom: 8px; opacity: 0.5; }
 
-        /* FINALIZE SECTION */
+        /* Finalize Section */
         .finalize-section {
             background: white;
-            border-radius: 16px;
-            padding: 2rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .finalize-header {
-            font-size: 1.2rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            border-radius: 12px;
+            padding: 12px 15px;
+            margin-top: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .finalize-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            grid-template-columns: repeat(3, 1fr) auto;
+            gap: 10px;
+            align-items: flex-end;
         }
 
-        .input-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .input-label {
-            font-size: 0.85rem;
+        .finalize-input-group label {
+            display: block;
+            font-size: 0.8em;
             font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--text);
+            margin-bottom: 4px;
         }
 
-        .input-required {
-            color: var(--error);
-        }
-
-        .input-field {
-            padding: 0.75rem;
+        .finalize-input {
+            width: 100%;
+            padding: 10px;
             border: 2px solid var(--border);
-            border-radius: 8px;
-            font-size: 1rem;
-            transition: all 0.2s;
+            border-radius: 6px;
+            font-size: 0.95em;
         }
 
-        .input-field:focus {
+        .finalize-input:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        textarea.input-field {
-            resize: vertical;
-            min-height: 80px;
-            font-family: inherit;
-        }
-
-        /* BUTTONS */
+        /* Buttons */
         .btn {
-            padding: 1rem 2rem;
+            padding: 10px 18px;
             border: none;
-            border-radius: 10px;
+            border-radius: 6px;
             font-weight: 600;
-            font-size: 1rem;
             cursor: pointer;
             transition: all 0.2s;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
+            gap: 6px;
         }
 
         .btn:hover:not(:disabled) {
@@ -552,146 +635,39 @@
             cursor: not-allowed;
         }
 
-        .btn-primary {
-            background: var(--primary);
-            color: white;
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-google { background: #4285F4; color: white; }
+
+        .btn-small { padding: 6px 12px; font-size: 0.85em; }
+        .btn-full { width: 100%; }
+
+        .btn-finalize {
+            padding: 12px 25px;
+            font-size: 1em;
+            background: linear-gradient(135deg, var(--success), #45a049);
         }
 
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-google {
-            background: #4285F4;
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--error);
-            color: white;
-        }
-
-        .btn-secondary {
-            background: var(--text-light);
-            color: white;
-        }
-
-        .btn-full {
-            width: 100%;
-        }
-
-        .btn-large {
-            padding: 1.25rem 2.5rem;
-            font-size: 1.1rem;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1.5rem;
-        }
-
-        /* UTILITY BUTTONS */
-        .utility-buttons {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .btn-small {
-            padding: 0.5rem 1rem;
-            font-size: 0.85rem;
-        }
-
-        /* MODAL */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            backdrop-filter: blur(4px);
-        }
-
-        .modal-overlay.show {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 2rem;
-            border-radius: 16px;
-            max-width: 500px;
-            width: 90%;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            animation: modalSlideUp 0.3s ease-out;
-        }
-
-        @keyframes modalSlideUp {
-            from {
-                opacity: 0;
-                transform: translateY(50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .modal-header {
-            font-size: 1.3rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-        }
-
-        .modal-body {
-            margin-bottom: 1.5rem;
-        }
-
-        /* NOTIFICATIONS */
+        /* Notifications */
         .notification-container {
             position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 2000;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 350px;
         }
 
         .notification {
             background: white;
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            min-width: 300px;
-            animation: slideInRight 0.3s ease-out;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             border-left: 4px solid;
-        }
-
-        @keyframes slideInRight {
-            from {
-                opacity: 0;
-                transform: translateX(400px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
+            animation: slideIn 0.3s;
         }
 
         .notification.success { border-color: var(--success); }
@@ -699,79 +675,76 @@
         .notification.warning { border-color: var(--warning); }
         .notification.info { border-color: var(--primary); }
 
-        .notification-icon {
-            font-size: 1.5rem;
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
 
-        .notification-text {
-            flex: 1;
-            font-weight: 600;
+        /* Popups */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
         }
 
-        /* STATS SUMMARY */
-        .stats-summary {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
+        .popup-overlay.show { display: flex; }
 
-        .stat-card {
-            background: var(--bg);
-            padding: 1rem;
+        .popup-content {
+            background: white;
+            padding: 25px;
             border-radius: 12px;
-            text-align: center;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
         }
 
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 800;
-            margin-bottom: 0.25rem;
+        .popup-header {
+            font-size: 1.3em;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--primary);
         }
 
-        .stat-label {
-            font-size: 0.85rem;
-            color: var(--text-light);
-            text-transform: uppercase;
-            font-weight: 600;
+        .popup-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
         }
 
-        .stat-card.ok .stat-value { color: var(--success); }
-        .stat-card.blocked .stat-value { color: var(--blocked); }
-        .stat-card.nowms .stat-value { color: var(--error); }
+        .hidden { display: none !important; }
 
-        /* RESPONSIVE */
-        @media (max-width: 968px) {
-            .columns-container {
-                grid-template-columns: 1fr;
-            }
-
-            .finalize-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .app-header {
-                flex-direction: column;
-                gap: 1rem;
-            }
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar { width: 180px; }
+            .columns-container { grid-template-columns: 1fr; }
         }
 
-        .hidden {
-            display: none !important;
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .sidebar { width: 100%; max-height: 200px; }
+            .finalize-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <!-- NOTIFICATION CONTAINER -->
+    <div class="connection-banner" id="connection-banner"></div>
     <div class="notification-container" id="notifications"></div>
 
     <!-- LOGIN SCREEN -->
     <div class="login-screen" id="login-screen">
         <div class="login-card">
             <div class="login-icon">📦</div>
-            <h1 class="login-title">Sistema de Inventario</h1>
-            <p class="login-subtitle">Control y clasificación de mercancía</p>
-            <button class="btn btn-google btn-full btn-large" onclick="handleLogin()">
+            <h1 class="login-title">Sistema PD</h1>
+            <p class="login-subtitle">Picking y Distribución</p>
+            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
                 🔐 Iniciar sesión con Google
             </button>
         </div>
@@ -779,193 +752,191 @@
 
     <!-- MAIN APP -->
     <div id="main-app" class="hidden">
-        <!-- HEADER -->
-        <header class="app-header">
-            <div class="header-left">
-                <span class="header-logo">📦</span>
-                <h1 class="header-title">Sistema de Inventario</h1>
-            </div>
-            <div class="header-right">
-                <div class="connection-badge online" id="connection-status">
-                    <span class="connection-dot"></span>
-                    <span id="connection-text">Conectado</span>
-                </div>
-                <div class="user-badge">
-                    <div class="user-avatar" id="user-avatar">U</div>
-                    <span class="user-name" id="user-name">Usuario</span>
-                </div>
-                <button class="btn btn-danger btn-small" onclick="handleLogout()">🚪 Salir</button>
-            </div>
-        </header>
-
-        <!-- MAIN CONTAINER -->
         <div class="main-container">
-            <!-- SCAN SECTION -->
-            <div class="scan-section">
-                <div class="scan-header">
-                    <h2 class="scan-title">📸 Área de Escaneo</h2>
-                    <div class="pallet-info" id="pallet-info">
-                        <span>🎯</span>
-                        <span id="pallet-number">PALLET-001</span>
-                    </div>
+            <!-- SIDEBAR -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>📦 PD</h2>
+                    <p>Picking y Distribución</p>
                 </div>
 
-                <div class="utility-buttons">
-                    <button class="btn btn-primary btn-small" onclick="refreshInventory()">🔄 Actualizar BD</button>
-                    <button class="btn btn-secondary btn-small" onclick="exportData()">📥 Exportar</button>
-                    <button class="btn btn-warning btn-small" onclick="newPallet()">➕ Nuevo Pallet</button>
+                <!-- Sync Status -->
+                <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">
+                    ✅ Sincronizado
                 </div>
 
-                <div class="scan-input-container">
-                    <span class="scan-icon">🔍</span>
-                    <input 
-                        type="text" 
-                        class="scan-input" 
-                        id="scan-input" 
-                        placeholder="Escanea o ingresa código..."
-                        autocomplete="off"
-                    >
-                </div>
-
-                <!-- RESULT BOX -->
-                <div class="result-box" id="result-box">
-                    <div class="result-header">
-                        <span class="result-icon" id="result-icon">✅</span>
-                        <div>
-                            <div class="result-title" id="result-title">Estado</div>
-                            <div class="result-code" id="result-code">CÓDIGO</div>
+                <!-- Pallets por estatus -->
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title">Tarimas Activas</div>
+                    <div class="pallet-status-list" id="pallet-status-list">
+                        <div class="pallet-status-item">
+                            <div class="pallet-status-header">
+                                <span class="pallet-status-name" style="color: var(--success);">✅ OK</span>
+                                <span class="pallet-status-count" id="sidebar-ok-count">0</span>
+                            </div>
+                            <div class="pallet-code" id="sidebar-ok-pallet">-</div>
+                        </div>
+                        <div class="pallet-status-item">
+                            <div class="pallet-status-header">
+                                <span class="pallet-status-name" style="color: var(--blocked);">⚠️ Bloqueado</span>
+                                <span class="pallet-status-count" id="sidebar-blocked-count">0</span>
+                            </div>
+                            <div class="pallet-code" id="sidebar-blocked-pallet">-</div>
+                        </div>
+                        <div class="pallet-status-item">
+                            <div class="pallet-status-header">
+                                <span class="pallet-status-name" style="color: var(--error);">❌ No WMS</span>
+                                <span class="pallet-status-count" id="sidebar-nowms-count">0</span>
+                            </div>
+                            <div class="pallet-code" id="sidebar-nowms-pallet">-</div>
                         </div>
                     </div>
-                    <div class="result-details" id="result-details"></div>
-                    <div class="code2-input-container hidden" id="code2-container">
-                        <div class="code2-label">⚠️ Código no encontrado en WMS. Ingresa el Código 2:</div>
-                        <input 
-                            type="text" 
-                            class="code2-input" 
-                            id="code2-input" 
-                            placeholder="Código 2..."
-                            autocomplete="off"
-                        >
+                </div>
+
+                <!-- User Footer -->
+                <div class="user-footer">
+                    <div class="user-info">
+                        <div class="user-avatar" id="user-avatar" onclick="changeUserAlias()">?</div>
+                        <div class="user-details">
+                            <div class="user-name" id="user-name-display" onclick="changeUserAlias()">No conectado</div>
+                            <div class="connection-indicator">
+                                <div class="connection-dot" id="connection-dot"></div>
+                                <span id="connection-text">Offline</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-footer-actions">
+                        <button class="btn btn-secondary btn-small" onclick="refreshInventory()">🔄 BD</button>
+                        <button class="btn btn-secondary btn-small" onclick="toggleConnection()" id="sidebar-auth-btn">🔗</button>
+                        <button class="btn btn-danger btn-small" onclick="handleLogout()">🚪</button>
+                    </div>
+                    <div class="bd-info">
+                        <div><span id="bd-count">0</span> códigos cargados</div>
+                        <div id="bd-update-time">Sin actualizar</div>
                     </div>
                 </div>
             </div>
 
-            <!-- COLUMNS -->
-            <div class="columns-container">
-                <!-- OK COLUMN -->
-                <div class="column ok">
-                    <div class="column-header">
-                        <h3 class="column-title">
-                            <span>✅</span>
-                            <span>Tarima Activa (OK)</span>
-                        </h3>
-                        <span class="column-count" id="ok-count">0</span>
+            <!-- MAIN CONTENT -->
+            <div class="main-content">
+                <!-- Header -->
+                <div class="header">
+                    <h1>📸 Área de Escaneo</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-warning btn-small" onclick="newSession()">➕ Nueva Sesión</button>
+                        <button class="btn btn-secondary btn-small" onclick="exportData()">📥 Exportar</button>
                     </div>
-                    <div class="column-list" id="ok-list">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
+                </div>
+
+                <!-- Scan Section -->
+                <div class="scan-section">
+                    <div class="scan-row">
+                        <div class="scan-input-group">
+                            <label>🔍 Código Principal</label>
+                            <input type="text" class="scan-input" id="scan-input" placeholder="Escanea o ingresa código..." autocomplete="off">
                         </div>
                     </div>
-                </div>
 
-                <!-- BLOCKED COLUMN -->
-                <div class="column blocked">
-                    <div class="column-header">
-                        <h3 class="column-title">
-                            <span>⚠️</span>
-                            <span>Bloqueadas</span>
-                        </h3>
-                        <span class="column-count" id="blocked-count">0</span>
-                    </div>
-                    <div class="column-list" id="blocked-list">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
+                    <!-- Result Box -->
+                    <div class="result-box" id="result-box">
+                        <div class="result-header">
+                            <span class="result-icon" id="result-icon">📦</span>
+                            <span class="result-title" id="result-title">Estado</span>
                         </div>
+                        <div class="result-code" id="result-code"></div>
+                        <div class="result-details" id="result-details"></div>
                     </div>
-                </div>
 
-                <!-- NO WMS COLUMN -->
-                <div class="column nowms">
-                    <div class="column-header">
-                        <h3 class="column-title">
-                            <span>❌</span>
-                            <span>No WMS</span>
-                        </h3>
-                        <span class="column-count" id="nowms-count">0</span>
-                    </div>
-                    <div class="column-list" id="nowms-list">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- FINALIZE SECTION -->
-            <div class="finalize-section">
-                <h3 class="finalize-header">
-                    <span>✅</span>
-                    <span>Finalizar y Asignar Ubicación</span>
-                </h3>
-
-                <div class="stats-summary">
-                    <div class="stat-card ok">
-                        <div class="stat-value" id="final-ok-count">0</div>
-                        <div class="stat-label">OK</div>
-                    </div>
-                    <div class="stat-card blocked">
-                        <div class="stat-value" id="final-blocked-count">0</div>
-                        <div class="stat-label">Bloqueadas</div>
-                    </div>
-                    <div class="stat-card nowms">
-                        <div class="stat-value" id="final-nowms-count">0</div>
-                        <div class="stat-label">No WMS</div>
-                    </div>
-                </div>
-
-                <div class="finalize-grid">
-                    <div class="input-group">
-                        <label class="input-label">
-                            📍 Ubicación Destino <span class="input-required">*</span>
+                    <!-- Code2 Container -->
+                    <div class="code2-container" id="code2-container">
+                        <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
+                            ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
                         </label>
-                        <input 
-                            type="text" 
-                            class="input-field" 
-                            id="destination-input" 
-                            placeholder="Ej: A1-01-02"
-                        >
-                    </div>
-                    <div class="input-group">
-                        <label class="input-label">📝 Nota (opcional)</label>
-                        <textarea 
-                            class="input-field" 
-                            id="note-input" 
-                            placeholder="Observaciones..."
-                        ></textarea>
+                        <div class="code2-row">
+                            <div class="scan-input-group">
+                                <input type="text" class="scan-input" id="code2-input" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
+                            </div>
+                            <button class="btn-insertado" onclick="forceInsert()">
+                                ⚡ INSERTADO
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="btn-group">
-                    <button class="btn btn-danger" onclick="clearPallet()">🗑️ Limpiar Todo</button>
-                    <button class="btn btn-success btn-full btn-large" onclick="finalizePallet()" id="finalize-btn" disabled>
-                        ✅ FINALIZAR Y ASIGNAR UBICACIÓN
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+                <!-- Columns -->
+                <div class="columns-container">
+                    <!-- OK Column -->
+                    <div class="column ok">
+                        <div class="column-header">
+                            <span class="column-title">✅ OK</span>
+                            <span class="column-count" id="ok-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            Pallet: <span class="column-pallet-code" id="ok-pallet">-</span>
+                        </div>
+                        <div class="column-list" id="ok-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Sin cajas</div>
+                            </div>
+                        </div>
+                    </div>
 
-    <!-- MODAL -->
-    <div class="modal-overlay" id="modal">
-        <div class="modal-content">
-            <div class="modal-header" id="modal-title">Confirmación</div>
-            <div class="modal-body" id="modal-body">¿Estás seguro?</div>
-            <div class="btn-group">
-                <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-                <button class="btn btn-primary" id="modal-confirm" onclick="closeModal()">Confirmar</button>
+                    <!-- Blocked Column -->
+                    <div class="column blocked">
+                        <div class="column-header">
+                            <span class="column-title">⚠️ Bloqueado</span>
+                            <span class="column-count" id="blocked-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span>
+                        </div>
+                        <div class="column-list" id="blocked-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Sin cajas</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- No WMS Column -->
+                    <div class="column nowms">
+                        <div class="column-header">
+                            <span class="column-title">❌ No WMS</span>
+                            <span class="column-count" id="nowms-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span>
+                        </div>
+                        <div class="column-list" id="nowms-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Sin cajas</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Finalize Section -->
+                <div class="finalize-section">
+                    <div class="finalize-grid">
+                        <div class="finalize-input-group">
+                            <label>📍 Ubicación OK</label>
+                            <input type="text" class="finalize-input" id="location-ok" placeholder="Ej: A1-01">
+                        </div>
+                        <div class="finalize-input-group">
+                            <label>📍 Ubicación Bloqueado</label>
+                            <input type="text" class="finalize-input" id="location-blocked" placeholder="Ej: B2-03">
+                        </div>
+                        <div class="finalize-input-group">
+                            <label>📍 Ubicación No WMS</label>
+                            <input type="text" class="finalize-input" id="location-nowms" placeholder="Ej: C3-05">
+                        </div>
+                        <button class="btn btn-finalize" onclick="finalizePallets()" id="finalize-btn">
+                            ✅ FINALIZAR
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -973,7 +944,7 @@
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script>
-        // CONFIG
+        // ==================== CONFIGURATION ====================
         const CONFIG = {
             CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
@@ -981,27 +952,198 @@
             INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
         };
 
-        // STATE
+        // ==================== STATE ====================
         let STATE = {
-            user: null,
-            isOnline: navigator.onLine,
             inventory: new Map(),
             inventoryLastUpdate: null,
-            currentPallet: generatePalletId(),
-            boxes: {
-                ok: [],
-                blocked: [],
-                nowms: []
+            pallets: {
+                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
             },
-            pendingSync: [],
-            history: [],
-            pendingCode1: null
+            pendingCode1: null,
+            history: []
         };
 
+        let CURRENT_USER = '';
+        let USER_EMAIL = '';
+        let USER_GOOGLE_NAME = '';
+        let IS_ONLINE = navigator.onLine;
+        let PENDING_SYNC = [];
         let TOKEN_CLIENT = null;
         let audioCtx = null;
 
-        // INIT
+        // ==================== SYNC MANAGER ====================
+        const SyncManager = {
+            inProgress: false,
+            retryCount: 0,
+            intervalId: null,
+            AUTO_SYNC_INTERVAL: 30000,
+
+            init() {
+                this.load();
+                this.startAutoSync();
+                this.setupExitProtection();
+                this.updateUI(PENDING_SYNC.length === 0);
+            },
+
+            setupExitProtection() {
+                window.addEventListener('beforeunload', (e) => {
+                    const hasUnsavedData = PENDING_SYNC.length > 0 ||
+                        STATE.pallets.ok.boxes.length > 0 ||
+                        STATE.pallets.blocked.boxes.length > 0 ||
+                        STATE.pallets.nowms.boxes.length > 0;
+
+                    if (hasUnsavedData) {
+                        e.preventDefault();
+                        e.returnValue = '¡Tienes datos sin sincronizar! ¿Seguro que quieres salir?';
+                        return e.returnValue;
+                    }
+                });
+            },
+
+            startAutoSync() {
+                if (this.intervalId) clearInterval(this.intervalId);
+                this.intervalId = setInterval(() => {
+                    if (IS_ONLINE && gapi?.client?.getToken() && PENDING_SYNC.length > 0) {
+                        this.sync(false);
+                    }
+                }, this.AUTO_SYNC_INTERVAL);
+            },
+
+            async sync(showMessages = true) {
+                if (this.inProgress) {
+                    if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
+                    return { success: false };
+                }
+
+                if (!IS_ONLINE) {
+                    if (showMessages) showNotification('⚠️ Sin conexión a internet', 'warning');
+                    return { success: false };
+                }
+
+                if (!gapi?.client?.getToken()) {
+                    if (showMessages) showNotification('⚠️ No conectado a Google', 'warning');
+                    return { success: false };
+                }
+
+                if (PENDING_SYNC.length === 0) {
+                    this.updateUI(true);
+                    if (showMessages) showNotification('✅ Todo sincronizado', 'success');
+                    return { success: true, synced: 0 };
+                }
+
+                return await this._doSync(showMessages);
+            },
+
+            async _doSync(showMessages) {
+                this.inProgress = true;
+                updateConnectionIndicator(true);
+
+                if (showMessages) showNotification('🔄 Sincronizando...', 'info');
+
+                try {
+                    const values = PENDING_SYNC.map(r => [
+                        r.date, r.time, r.user, r.scan1, r.scan2,
+                        r.location, r.status, r.note, r.pallet
+                    ]);
+
+                    await gapi.client.sheets.spreadsheets.values.append({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: 'BD!A:I',
+                        valueInputOption: 'USER_ENTERED',
+                        insertDataOption: 'INSERT_ROWS',
+                        resource: { values }
+                    });
+
+                    const synced = PENDING_SYNC.length;
+                    PENDING_SYNC = [];
+                    this.save();
+                    this.updateUI(true);
+
+                    if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success');
+                    return { success: true, synced };
+                } catch (e) {
+                    console.error('Sync error:', e);
+                    this.updateUI(false);
+                    if (showMessages) showNotification('❌ Error al sincronizar', 'error');
+                    return { success: false };
+                } finally {
+                    this.inProgress = false;
+                    updateConnectionIndicator();
+                }
+            },
+
+            async save() {
+                try {
+                    localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
+                } catch (e) {}
+            },
+
+            async load() {
+                try {
+                    const saved = localStorage.getItem('pd_pending_sync');
+                    if (saved) PENDING_SYNC = JSON.parse(saved);
+                } catch (e) {}
+            },
+
+            updateUI(synced) {
+                const el = document.getElementById('sync-status');
+                if (!el) return;
+
+                if (!IS_ONLINE) {
+                    el.className = 'sync-status sync-warning';
+                    el.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`;
+                } else if (PENDING_SYNC.length > 0) {
+                    el.className = 'sync-status sync-warning';
+                    el.innerHTML = `⏳ ${PENDING_SYNC.length} pendientes`;
+                } else if (synced) {
+                    el.className = 'sync-status sync-ok';
+                    el.textContent = '✅ Sincronizado';
+                } else {
+                    el.className = 'sync-status sync-error';
+                    el.textContent = '❌ Error sync';
+                }
+            },
+
+            showPanel() {
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.innerHTML = `
+                    <div class="popup-content">
+                        <div class="popup-header">📊 Estado de Sincronización</div>
+                        <div style="margin-bottom: 15px;">
+                            <div style="padding: 10px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px;">
+                                <div style="font-size: 0.85em; color: #666;">Pendientes de sincronizar</div>
+                                <div style="font-size: 1.8em; font-weight: 700; color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'};">
+                                    ${PENDING_SYNC.length}
+                                </div>
+                            </div>
+                            <div style="font-size: 0.9em;">
+                                ${IS_ONLINE ? '🟢 Conectado a internet' : '🔴 Sin conexión'}<br>
+                                ${gapi?.client?.getToken() ? '🟢 Google conectado' : '🔴 Google desconectado'}
+                            </div>
+                        </div>
+                        <div class="popup-buttons">
+                            ${PENDING_SYNC.length > 0 && IS_ONLINE && gapi?.client?.getToken() ? `
+                                <button class="btn btn-success btn-full" onclick="this.closest('.popup-overlay').remove(); SyncManager.sync();">
+                                    🔄 Sincronizar Ahora
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) overlay.remove();
+                });
+            }
+        };
+
+        // ==================== INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', () => {
             initAudio();
             loadFromStorage();
@@ -1016,9 +1158,7 @@
                 document.addEventListener('click', () => {
                     if (audioCtx?.state === 'suspended') audioCtx.resume();
                 }, { once: true });
-            } catch (e) {
-                console.log('Audio not available');
-            }
+            } catch (e) {}
         }
 
         async function initGAPI() {
@@ -1041,7 +1181,8 @@
                 gapi.client.setToken(response);
                 await getUserProfile();
                 await loadInventory();
-                await syncPendingData();
+                SyncManager.init();
+                if (PENDING_SYNC.length > 0) SyncManager.sync();
                 showApp();
             }
         }
@@ -1056,43 +1197,133 @@
                     headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
                 });
                 const data = await response.json();
-                STATE.user = {
-                    name: data.name || 'Usuario',
-                    email: data.email,
-                    picture: data.picture
-                };
+                USER_EMAIL = data.email || '';
+                USER_GOOGLE_NAME = data.name || 'Usuario';
+
+                const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
+                if (savedAlias) {
+                    CURRENT_USER = savedAlias;
+                    showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
+                    updateUserFooter();
+                } else {
+                    showAliasPopup();
+                }
             } catch (e) {
-                STATE.user = { name: 'Usuario', email: 'unknown' };
+                CURRENT_USER = 'Usuario';
+                updateUserFooter();
             }
         }
 
         function showApp() {
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
-            document.getElementById('user-name').textContent = STATE.user.name;
-            document.getElementById('user-avatar').textContent = STATE.user.name.charAt(0).toUpperCase();
-            document.getElementById('pallet-number').textContent = STATE.currentPallet;
-            showNotification(`¡Bienvenido, ${STATE.user.name}!`, 'success');
+            updateUserFooter();
             updateUI();
+            document.getElementById('scan-input').focus();
         }
 
         function handleLogout() {
-            if (confirm('¿Cerrar sesión?')) {
-                if (gapi.client.getToken()) {
-                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
-                    gapi.client.setToken(null);
+            const hasData = PENDING_SYNC.length > 0 ||
+                STATE.pallets.ok.boxes.length > 0 ||
+                STATE.pallets.blocked.boxes.length > 0 ||
+                STATE.pallets.nowms.boxes.length > 0;
+
+            if (hasData) {
+                if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres salir?')) {
+                    return;
                 }
-                STATE.user = null;
-                document.getElementById('login-screen').classList.remove('hidden');
-                document.getElementById('main-app').classList.add('hidden');
             }
+
+            if (gapi.client.getToken()) {
+                google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                gapi.client.setToken(null);
+            }
+
+            CURRENT_USER = '';
+            USER_EMAIL = '';
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
         }
 
-        // INVENTORY MANAGEMENT
+        // ==================== ALIAS/NICKNAME SYSTEM ====================
+        function showAliasPopup() {
+            document.querySelectorAll('.alias-popup').forEach(e => e.remove());
+
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show alias-popup';
+            overlay.innerHTML = `
+                <div class="popup-content">
+                    <div class="popup-header">👤 ¿Cómo te llamamos?</div>
+                    <p style="margin-bottom: 15px; color: #666;">
+                        Hola <strong>${USER_GOOGLE_NAME}</strong>, elige cómo aparecerá tu nombre en los registros:
+                    </p>
+                    <div class="popup-buttons">
+                        <button class="btn btn-primary btn-full" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">
+                            👤 Usar mi nombre de Google
+                        </button>
+                        <div style="text-align: center; color: #999; font-size: 0.85em;">o</div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="alias-input" placeholder="Escribe un alias..."
+                                style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 1em;"
+                                maxlength="20">
+                            <button class="btn btn-success" onclick="saveUserAlias(document.getElementById('alias-input').value)">
+                                💾
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const input = overlay.querySelector('#alias-input');
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && input.value.trim()) {
+                    saveUserAlias(input.value);
+                }
+            });
+            input.focus();
+        }
+
+        function saveUserAlias(alias, isGoogleName = false) {
+            const finalAlias = alias?.trim() || USER_GOOGLE_NAME;
+            if (!finalAlias) {
+                showNotification('⚠️ Ingresa un nombre válido', 'warning');
+                return;
+            }
+
+            CURRENT_USER = finalAlias;
+            localStorage.setItem(`pd_alias_${USER_EMAIL}`, finalAlias);
+
+            document.querySelectorAll('.alias-popup').forEach(e => e.remove());
+            showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
+            updateUserFooter();
+        }
+
+        function changeUserAlias() {
+            showAliasPopup();
+        }
+
+        function updateUserFooter() {
+            const avatar = document.getElementById('user-avatar');
+            const nameDisplay = document.getElementById('user-name-display');
+
+            if (avatar) {
+                avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
+                avatar.title = USER_EMAIL || 'No conectado';
+            }
+            if (nameDisplay) {
+                nameDisplay.textContent = CURRENT_USER || 'No conectado';
+                nameDisplay.title = `Click para cambiar alias\n${USER_EMAIL}`;
+            }
+
+            updateConnectionIndicator();
+        }
+
+        // ==================== INVENTORY ====================
         async function loadInventory() {
             try {
-                showNotification('Cargando inventario...', 'info');
-                updateConnectionStatus('syncing');
+                showNotification('📦 Cargando inventario...', 'info');
+                updateConnectionIndicator(true);
 
                 const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
                     method: 'GET',
@@ -1100,27 +1331,24 @@
                     cache: 'no-cache'
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const csv = await response.text();
-                if (!csv || csv.trim().length === 0) {
-                    throw new Error('CSV vacío');
-                }
+                if (!csv || csv.trim().length === 0) throw new Error('CSV vacío');
 
                 parseInventoryCSV(csv);
                 await saveToStorage();
-                showNotification(`Inventario cargado: ${STATE.inventory.size} cajas`, 'success');
-                updateConnectionStatus();
+                showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
+                updateBdInfo();
             } catch (e) {
                 console.error('Error cargando inventario:', e);
-                showNotification(`Error: ${e.message}`, 'error');
-                updateConnectionStatus();
-                
+                showNotification(`⚠️ ${e.message}`, 'warning');
+
                 if (STATE.inventory.size > 0) {
-                    showNotification(`Usando ${STATE.inventory.size} cajas en caché`, 'info');
+                    showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
                 }
+            } finally {
+                updateConnectionIndicator();
             }
         }
 
@@ -1128,19 +1356,16 @@
             const lines = csv.split('\n').filter(line => line.trim().length > 0);
             STATE.inventory.clear();
 
-            if (lines.length === 0) return;
-
-            // Skip header row
             for (let i = 1; i < lines.length; i++) {
                 const cols = parseCSVLine(lines[i]);
-                
+
                 if (cols.length >= 11) {
-                    const code = (cols[1] || '').toString().trim().toUpperCase(); // Columna B (índice 1)
-                    
+                    const code = (cols[1] || '').toString().trim().toUpperCase();
+
                     if (code && code.length > 0) {
-                        const availableStock = parseFloat(cols[9]) || 0; // Columna J (índice 9)
-                        const lockedInventory = parseFloat(cols[10]) || 0; // Columna K (índice 10)
-                        
+                        const availableStock = parseFloat(cols[9]) || 0;
+                        const lockedInventory = parseFloat(cols[10]) || 0;
+
                         STATE.inventory.set(code, {
                             code,
                             boxType: cols[0] || '',
@@ -1159,14 +1384,13 @@
             }
 
             STATE.inventoryLastUpdate = new Date().toLocaleString();
-            console.log(`Inventario procesado: ${STATE.inventory.size} cajas`);
         }
 
         function parseCSVLine(line) {
             const result = [];
             let current = '';
             let inQuotes = false;
-            
+
             for (let i = 0; i < line.length; i++) {
                 const char = line[i];
                 if (char === '"') {
@@ -1182,7 +1406,16 @@
             return result;
         }
 
-        // SCAN PROCESSING
+        function refreshInventory() {
+            loadInventory();
+        }
+
+        function updateBdInfo() {
+            document.getElementById('bd-count').textContent = STATE.inventory.size.toLocaleString();
+            document.getElementById('bd-update-time').textContent = STATE.inventoryLastUpdate || 'Sin actualizar';
+        }
+
+        // ==================== SCAN PROCESSING ====================
         function setupEventListeners() {
             const scanInput = document.getElementById('scan-input');
             scanInput.addEventListener('keydown', (e) => {
@@ -1205,11 +1438,17 @@
 
         function processScan(rawCode) {
             const code = normalizeCode(rawCode);
-            
-            // Check duplicates
-            const allBoxes = [...STATE.boxes.ok, ...STATE.boxes.blocked, ...STATE.boxes.nowms];
+
+            // Check duplicates across all pallets
+            const allBoxes = [
+                ...STATE.pallets.ok.boxes,
+                ...STATE.pallets.blocked.boxes,
+                ...STATE.pallets.nowms.boxes
+            ];
+
             if (allBoxes.some(b => b.code === code)) {
                 showNotification('⚠️ Código duplicado', 'warning');
+                flashInput('warning');
                 playSound('warning');
                 return;
             }
@@ -1217,60 +1456,37 @@
             const item = STATE.inventory.get(code);
 
             if (!item) {
-                // NO WMS - need Code 2
+                // Not found - show Code2 input
                 STATE.pendingCode1 = { raw: rawCode, code };
-                showResultBox('error', code, 'NO WMS', 
-                    'Código no encontrado en sistema. Se requiere Código 2 para validación.', 
-                    null, true);
+                showResultBox('error', code, 'NO ENCONTRADO',
+                    'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.', null);
+                document.getElementById('code2-container').classList.add('show');
+                flashInput('error');
                 playSound('error');
                 setTimeout(() => document.getElementById('code2-input').focus(), 100);
                 return;
             }
 
-            // Check if blocked
+            // Hide code2 container
+            document.getElementById('code2-container').classList.remove('show');
+            STATE.pendingCode1 = null;
+
+            // Determine status and add to appropriate pallet
             if (item.isBlocked) {
-                addBox('blocked', {
-                    raw: rawCode,
-                    code,
-                    scan1: rawCode,
-                    scan2: '',
-                    location: item.cellNo || '-',
-                    sku: item.sku || '-',
-                    product: item.productName || '-',
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                showResultBox('blocked', code, 'BLOQUEADO', 
-                    'Esta caja tiene inventario bloqueado', item);
+                addBox('blocked', createBoxData(rawCode, code, '', item));
+                showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
                 playSound('warning');
             } else if (item.isAvailable) {
-                addBox('ok', {
-                    raw: rawCode,
-                    code,
-                    scan1: rawCode,
-                    scan2: '',
-                    location: item.cellNo || '-',
-                    sku: item.sku || '-',
-                    product: item.productName || '-',
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                showResultBox('success', code, 'OK', 
-                    'Caja validada correctamente', item);
+                addBox('ok', createBoxData(rawCode, code, '', item));
+                showResultBox('success', code, 'OK', 'Validado correctamente', item);
                 playSound('success');
             } else {
-                addBox('blocked', {
-                    raw: rawCode,
-                    code,
-                    scan1: rawCode,
-                    scan2: '',
-                    location: item.cellNo || '-',
-                    sku: item.sku || '-',
-                    product: item.productName || '-',
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                showResultBox('blocked', code, 'SIN STOCK', 
-                    'Caja sin stock disponible', item);
+                addBox('blocked', createBoxData(rawCode, code, '', item));
+                showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
                 playSound('warning');
             }
+
+            flashInput('success');
         }
 
         function processCode2(rawCode2) {
@@ -1279,154 +1495,150 @@
             const code2 = normalizeCode(rawCode2);
             const item = STATE.inventory.get(code2);
 
+            document.getElementById('code2-container').classList.remove('show');
+
             if (!item) {
-                addBox('nowms', {
-                    raw: STATE.pendingCode1.raw,
-                    code: STATE.pendingCode1.code,
-                    scan1: STATE.pendingCode1.raw,
-                    scan2: rawCode2,
-                    location: '-',
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                showResultBox('error', STATE.pendingCode1.code, 'NO WMS CONFIRMADO', 
-                    'Código 2 tampoco encontrado en sistema', null);
+                // Both codes failed - add to No WMS
+                addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
+                showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
+                    'Ambos códigos no encontrados', null);
                 playSound('error');
             } else if (item.isBlocked) {
-                addBox('blocked', {
-                    raw: STATE.pendingCode1.raw,
-                    code: code2,
-                    scan1: STATE.pendingCode1.raw,
-                    scan2: rawCode2,
-                    location: item.cellNo || '-',
-                    sku: item.sku || '-',
-                    product: item.productName || '-',
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                showResultBox('blocked', code2, 'BLOQUEADO (Código 2)', 
-                    'Validado con Código 2 - Inventario bloqueado', item);
+                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
+                showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
+                    'Validado con Código 2 - Bloqueado', item);
                 playSound('warning');
             } else {
-                addBox('ok', {
-                    raw: STATE.pendingCode1.raw,
-                    code: code2,
-                    scan1: STATE.pendingCode1.raw,
-                    scan2: rawCode2,
-                    location: item.cellNo || '-',
-                    sku: item.sku || '-',
-                    product: item.productName || '-',
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                showResultBox('success', code2, 'OK (Código 2)', 
+                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
+                showResultBox('success', code2, 'OK (Código 2)',
                     'Validado correctamente con Código 2', item);
                 playSound('success');
             }
 
             STATE.pendingCode1 = null;
+            flashInput('success');
+            document.getElementById('scan-input').focus();
+        }
+
+        function forceInsert() {
+            if (!STATE.pendingCode1) {
+                showNotification('⚠️ Primero escanea un código', 'warning');
+                return;
+            }
+
+            const code2Value = document.getElementById('code2-input').value.trim();
+
+            addBox('nowms', createBoxData(
+                STATE.pendingCode1.raw,
+                STATE.pendingCode1.code,
+                code2Value,
+                null
+            ));
+
+            showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)',
+                'Registro forzado - No encontrado en WMS', null);
+
+            document.getElementById('code2-container').classList.remove('show');
+            document.getElementById('code2-input').value = '';
+            STATE.pendingCode1 = null;
+
+            playSound('warning');
+            flashInput('warning');
+            document.getElementById('scan-input').focus();
+            showNotification('⚡ Registro insertado forzosamente', 'warning');
+        }
+
+        function createBoxData(raw, code, scan2, item) {
+            return {
+                raw,
+                code,
+                scan1: raw,
+                scan2: scan2 || '',
+                location: item?.cellNo || '-',
+                sku: item?.sku || '-',
+                product: item?.productName || '-',
+                timestamp: new Date().toLocaleTimeString()
+            };
         }
 
         function normalizeCode(raw) {
             let code = raw.trim().toUpperCase();
             code = code.replace(/(\d)-(\d)/g, '$1/$2');
-            
+
             const patterns = [
                 /\[id\[.*?\[([^\[]+)\[/i,
                 /¨id¨.*?¨([^¨]+)¨/i,
                 /"id"\s*:\s*"([^"]+)"/i
             ];
-            
+
             for (const pattern of patterns) {
                 const match = code.match(pattern);
                 if (match) return match[1];
             }
-            
+
             return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
         }
 
-        function showResultBox(type, code, title, message, item, showCode2Input = false) {
+        function showResultBox(type, code, title, message, item) {
             const box = document.getElementById('result-box');
-            const icon = document.getElementById('result-icon');
-            const titleEl = document.getElementById('result-title');
-            const codeEl = document.getElementById('result-code');
-            const detailsEl = document.getElementById('result-details');
-            const code2Container = document.getElementById('code2-container');
+            const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' };
 
             box.className = `result-box show ${type}`;
-            
-            const icons = {
-                success: '✅',
-                warning: '⚠️',
-                blocked: '⚠️',
-                error: '❌'
-            };
-            
-            icon.textContent = icons[type] || '📦';
-            titleEl.textContent = title;
-            codeEl.textContent = code;
+            document.getElementById('result-icon').textContent = icons[type] || '📦';
+            document.getElementById('result-title').textContent = title;
+            document.getElementById('result-code').textContent = code;
 
+            const detailsEl = document.getElementById('result-details');
             if (item) {
                 detailsEl.innerHTML = `
-                    <div class="result-detail">
-                        <div class="result-label">Ubicación</div>
-                        <div class="result-value">${item.cellNo || '-'}</div>
-                    </div>
-                    <div class="result-detail">
-                        <div class="result-label">SKU</div>
-                        <div class="result-value">${item.sku || '-'}</div>
-                    </div>
-                    <div class="result-detail">
-                        <div class="result-label">Producto</div>
-                        <div class="result-value">${item.productName || '-'}</div>
-                    </div>
-                    <div class="result-detail">
-                        <div class="result-label">Stock Disponible</div>
-                        <div class="result-value">${item.availableStock || 0}</div>
-                    </div>
-                    <div class="result-detail">
-                        <div class="result-label">Stock Bloqueado</div>
-                        <div class="result-value">${item.lockedInventory || 0}</div>
-                    </div>
+                    <div><span class="result-detail-label">Ubicación</span><div class="result-detail-value">${item.cellNo || '-'}</div></div>
+                    <div><span class="result-detail-label">SKU</span><div class="result-detail-value">${item.sku || '-'}</div></div>
+                    <div><span class="result-detail-label">Producto</span><div class="result-detail-value">${item.productName || '-'}</div></div>
+                    <div><span class="result-detail-label">Stock</span><div class="result-detail-value">${item.availableStock || 0}</div></div>
                 `;
             } else {
-                detailsEl.innerHTML = `<p style="color: var(--text-light)">${message}</p>`;
-            }
-
-            if (showCode2Input) {
-                code2Container.classList.remove('hidden');
-            } else {
-                code2Container.classList.add('hidden');
+                detailsEl.innerHTML = `<div style="grid-column: 1/-1; color: #666;">${message}</div>`;
             }
         }
 
+        function flashInput(type) {
+            const input = document.getElementById('scan-input');
+            input.classList.remove('success', 'error');
+            input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
+            setTimeout(() => input.classList.remove('success', 'error'), 500);
+        }
+
+        // ==================== BOX MANAGEMENT ====================
         function addBox(category, boxData) {
-            STATE.boxes[category].push(boxData);
+            STATE.pallets[category].boxes.push(boxData);
             saveToStorage();
             updateUI();
         }
 
         function deleteBox(category, index) {
             if (confirm('¿Eliminar esta caja?')) {
-                STATE.boxes[category].splice(index, 1);
+                STATE.pallets[category].boxes.splice(index, 1);
                 saveToStorage();
                 updateUI();
                 showNotification('Caja eliminada', 'info');
             }
         }
 
-        // UI UPDATES
+        // ==================== UI UPDATES ====================
         function updateUI() {
             updateCounts();
             updateLists();
-            updateFinalizeButton();
+            updateSidebar();
         }
 
         function updateCounts() {
-            document.getElementById('ok-count').textContent = STATE.boxes.ok.length;
-            document.getElementById('blocked-count').textContent = STATE.boxes.blocked.length;
-            document.getElementById('nowms-count').textContent = STATE.boxes.nowms.length;
-            
-            document.getElementById('final-ok-count').textContent = STATE.boxes.ok.length;
-            document.getElementById('final-blocked-count').textContent = STATE.boxes.blocked.length;
-            document.getElementById('final-nowms-count').textContent = STATE.boxes.nowms.length;
+            document.getElementById('ok-count').textContent = STATE.pallets.ok.boxes.length;
+            document.getElementById('blocked-count').textContent = STATE.pallets.blocked.boxes.length;
+            document.getElementById('nowms-count').textContent = STATE.pallets.nowms.boxes.length;
+
+            document.getElementById('ok-pallet').textContent = STATE.pallets.ok.id;
+            document.getElementById('blocked-pallet').textContent = STATE.pallets.blocked.id;
+            document.getElementById('nowms-pallet').textContent = STATE.pallets.nowms.id;
         }
 
         function updateLists() {
@@ -1437,7 +1649,7 @@
 
         function updateList(category) {
             const listEl = document.getElementById(`${category}-list`);
-            const boxes = STATE.boxes[category];
+            const boxes = STATE.pallets[category].boxes;
 
             if (boxes.length === 0) {
                 listEl.innerHTML = `
@@ -1451,192 +1663,231 @@
 
             listEl.innerHTML = boxes.map((box, index) => `
                 <div class="box-item">
-                    <div>
+                    <div class="box-info">
                         <div class="box-code">${box.code}</div>
-                        <div style="font-size: 0.85rem; color: var(--text-light)">
-                            ${box.location} • ${box.timestamp}
-                        </div>
+                        <div class="box-meta">${box.location} • ${box.timestamp}</div>
                     </div>
                     <button class="box-delete" onclick="deleteBox('${category}', ${index})">✕</button>
                 </div>
             `).join('');
         }
 
-        function updateFinalizeButton() {
-            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
-            document.getElementById('finalize-btn').disabled = total === 0;
+        function updateSidebar() {
+            document.getElementById('sidebar-ok-count').textContent = STATE.pallets.ok.boxes.length;
+            document.getElementById('sidebar-blocked-count').textContent = STATE.pallets.blocked.boxes.length;
+            document.getElementById('sidebar-nowms-count').textContent = STATE.pallets.nowms.boxes.length;
+
+            document.getElementById('sidebar-ok-pallet').textContent = STATE.pallets.ok.id;
+            document.getElementById('sidebar-blocked-pallet').textContent = STATE.pallets.blocked.id;
+            document.getElementById('sidebar-nowms-pallet').textContent = STATE.pallets.nowms.id;
         }
 
-        // PALLET MANAGEMENT
-        function generatePalletId() {
-            const timestamp = Date.now();
+        // ==================== PALLET MANAGEMENT ====================
+        function generatePalletId(prefix = 'PD') {
+            const timestamp = Date.now().toString(36).toUpperCase();
             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            return `PALLET-${timestamp}-${random}`;
+            return `${prefix}-${timestamp}-${random}`;
         }
 
-        function newPallet() {
-            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
-            
+        function newSession() {
+            const total = STATE.pallets.ok.boxes.length +
+                          STATE.pallets.blocked.boxes.length +
+                          STATE.pallets.nowms.boxes.length;
+
             if (total > 0) {
-                if (!confirm(`Hay ${total} cajas escaneadas. ¿Crear nuevo pallet sin guardar?`)) {
+                if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin finalizar?`)) {
                     return;
                 }
             }
 
-            STATE.currentPallet = generatePalletId();
-            STATE.boxes = { ok: [], blocked: [], nowms: [] };
+            STATE.pallets = {
+                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+            };
             STATE.pendingCode1 = null;
-            
-            document.getElementById('pallet-number').textContent = STATE.currentPallet;
+
             document.getElementById('result-box').classList.remove('show');
-            
+            document.getElementById('code2-container').classList.remove('show');
+            document.getElementById('location-ok').value = '';
+            document.getElementById('location-blocked').value = '';
+            document.getElementById('location-nowms').value = '';
+
             saveToStorage();
             updateUI();
-            showNotification('Nuevo pallet creado', 'success');
+            showNotification('✅ Nueva sesión iniciada', 'success');
+            document.getElementById('scan-input').focus();
         }
 
-        function clearPallet() {
-            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
-            
-            if (total === 0) {
-                showNotification('No hay cajas para limpiar', 'info');
+        async function finalizePallets() {
+            const locationOk = document.getElementById('location-ok').value.trim();
+            const locationBlocked = document.getElementById('location-blocked').value.trim();
+            const locationNowms = document.getElementById('location-nowms').value.trim();
+
+            const hasOk = STATE.pallets.ok.boxes.length > 0;
+            const hasBlocked = STATE.pallets.blocked.boxes.length > 0;
+            const hasNowms = STATE.pallets.nowms.boxes.length > 0;
+
+            // Validate locations
+            if (hasOk && !locationOk) {
+                showNotification('⚠️ Ingresa ubicación para tarima OK', 'warning');
+                document.getElementById('location-ok').focus();
+                return;
+            }
+            if (hasBlocked && !locationBlocked) {
+                showNotification('⚠️ Ingresa ubicación para tarima Bloqueado', 'warning');
+                document.getElementById('location-blocked').focus();
+                return;
+            }
+            if (hasNowms && !locationNowms) {
+                showNotification('⚠️ Ingresa ubicación para tarima No WMS', 'warning');
+                document.getElementById('location-nowms').focus();
                 return;
             }
 
-            if (confirm(`¿Limpiar todas las ${total} cajas del pallet actual?`)) {
-                STATE.boxes = { ok: [], blocked: [], nowms: [] };
-                STATE.pendingCode1 = null;
-                saveToStorage();
-                updateUI();
-                showNotification('Pallet limpiado', 'info');
-            }
-        }
-
-        async function finalizePallet() {
-            const destination = document.getElementById('destination-input').value.trim();
-            const note = document.getElementById('note-input').value.trim();
-
-            if (!destination) {
-                showNotification('⚠️ La ubicación de destino es obligatoria', 'warning');
-                document.getElementById('destination-input').focus();
+            if (!hasOk && !hasBlocked && !hasNowms) {
+                showNotification('⚠️ No hay cajas para finalizar', 'warning');
                 return;
             }
 
-            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
-            if (total === 0) {
-                showNotification('No hay cajas para finalizar', 'warning');
-                return;
-            }
-
-            showNotification('Guardando transferencias...', 'info');
+            showNotification('💾 Guardando...', 'info');
 
             const now = new Date();
             const dateStr = now.toISOString().slice(0, 10);
             const timeStr = now.toTimeString().slice(0, 8);
             const records = [];
 
-            // Process all boxes
-            [...STATE.boxes.ok, ...STATE.boxes.blocked, ...STATE.boxes.nowms].forEach(box => {
-                let status = 'OK';
-                if (STATE.boxes.blocked.includes(box)) status = 'BLOQUEADO';
-                if (STATE.boxes.nowms.includes(box)) status = 'NO WMS';
+            // Process each pallet
+            const palletConfigs = [
+                { key: 'ok', location: locationOk, status: 'OK' },
+                { key: 'blocked', location: locationBlocked, status: 'BLOQUEADO' },
+                { key: 'nowms', location: locationNowms, status: 'NO WMS' }
+            ];
 
-                records.push({
-                    date: dateStr,
-                    time: timeStr,
-                    user: STATE.user?.name || 'Usuario',
-                    scan1: box.scan1 || box.raw,
-                    scan2: box.scan2 || '',
-                    location: destination,
-                    status,
-                    note: note || '',
-                    pallet: STATE.currentPallet
-                });
-            });
+            for (const config of palletConfigs) {
+                const pallet = STATE.pallets[config.key];
+                for (const box of pallet.boxes) {
+                    records.push({
+                        date: dateStr,
+                        time: timeStr,
+                        user: CURRENT_USER || 'Usuario',
+                        scan1: box.scan1 || box.raw,
+                        scan2: box.scan2 || '',
+                        location: config.location,
+                        status: config.status,
+                        note: '',
+                        pallet: pallet.id
+                    });
+                }
+            }
 
+            // Add to history
             STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-            if (STATE.isOnline && gapi.client.getToken()) {
-                try {
-                    await writeToSheets(records);
-                    showNotification(`✅ ${records.length} transferencias guardadas`, 'success');
-                } catch (e) {
-                    console.error('Error writing to sheets:', e);
-                    STATE.pendingSync = [...STATE.pendingSync, ...records];
-                    showNotification('⚠️ Guardado localmente (sin conexión)', 'warning');
-                }
+            // Add to pending sync
+            PENDING_SYNC = [...PENDING_SYNC, ...records];
+            SyncManager.save();
+
+            // Try to sync immediately
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                await SyncManager.sync();
             } else {
-                STATE.pendingSync = [...STATE.pendingSync, ...records];
-                showNotification('⚠️ Guardado localmente (sin conexión)', 'warning');
+                showNotification(`⚠️ ${records.length} registros guardados localmente`, 'warning');
+                SyncManager.updateUI(false);
             }
 
-            // Reset for new pallet
-            STATE.currentPallet = generatePalletId();
-            STATE.boxes = { ok: [], blocked: [], nowms: [] };
-            STATE.pendingCode1 = null;
-            
-            document.getElementById('pallet-number').textContent = STATE.currentPallet;
-            document.getElementById('destination-input').value = '';
-            document.getElementById('note-input').value = '';
+            // Reset pallets
+            STATE.pallets = {
+                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+            };
+
             document.getElementById('result-box').classList.remove('show');
+            document.getElementById('location-ok').value = '';
+            document.getElementById('location-blocked').value = '';
+            document.getElementById('location-nowms').value = '';
 
             saveToStorage();
-            updateConnectionStatus();
             updateUI();
             playSound('success');
+            document.getElementById('scan-input').focus();
         }
 
-        async function writeToSheets(records) {
-            const values = records.map(r => [
-                r.date,
-                r.time,
-                r.user,
-                r.scan1,
-                r.scan2,
-                r.location,
-                r.status,
-                r.note,
-                r.pallet
-            ]);
-
-            await gapi.client.sheets.spreadsheets.values.append({
-                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                range: 'BD!A:I',
-                valueInputOption: 'USER_ENTERED',
-                insertDataOption: 'INSERT_ROWS',
-                resource: { values }
+        // ==================== CONNECTION ====================
+        function setupConnectionMonitor() {
+            window.addEventListener('online', () => {
+                IS_ONLINE = true;
+                showConnectionBanner('online');
+                updateConnectionIndicator();
+                showNotification('✅ Conexión restaurada', 'success');
+                setTimeout(() => SyncManager.sync(), 1000);
             });
+
+            window.addEventListener('offline', () => {
+                IS_ONLINE = false;
+                showConnectionBanner('offline');
+                updateConnectionIndicator();
+                showNotification('⚠️ Sin conexión - Modo offline', 'warning');
+            });
+
+            updateConnectionIndicator();
         }
 
-        // SYNC
-        async function syncPendingData() {
-            if (!STATE.isOnline || !gapi.client.getToken() || STATE.pendingSync.length === 0) return;
-
-            try {
-                await writeToSheets(STATE.pendingSync);
-                showNotification(`✅ ${STATE.pendingSync.length} registros sincronizados`, 'success');
-                STATE.pendingSync = [];
-                saveToStorage();
-                updateConnectionStatus();
-            } catch (e) {
-                console.error('Error syncing:', e);
-                showNotification('Error sincronizando datos', 'error');
+        function showConnectionBanner(status) {
+            const banner = document.getElementById('connection-banner');
+            banner.className = `connection-banner ${status}`;
+            banner.textContent = status === 'online' ? '✅ Conexión restaurada' :
+                                 status === 'offline' ? '⚠️ Sin conexión a internet' :
+                                 '🔄 Sincronizando...';
+            if (status === 'online') {
+                setTimeout(() => banner.style.display = 'none', 3000);
             }
         }
 
-        // STORAGE
+        function updateConnectionIndicator(syncing = false) {
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+
+            if (!dot || !text) return;
+
+            if (syncing) {
+                dot.className = 'connection-dot syncing';
+                text.textContent = 'Sincronizando...';
+            } else if (IS_ONLINE) {
+                dot.className = 'connection-dot online';
+                text.textContent = 'En línea';
+            } else {
+                dot.className = 'connection-dot offline';
+                text.textContent = 'Sin conexión';
+            }
+        }
+
+        function toggleConnection() {
+            if (gapi?.client?.getToken()) {
+                if (confirm('¿Desconectar de Google?')) {
+                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                    gapi.client.setToken(null);
+                    showNotification('Desconectado de Google', 'info');
+                    updateConnectionIndicator();
+                }
+            } else {
+                handleLogin();
+            }
+        }
+
+        // ==================== STORAGE ====================
         async function loadFromStorage() {
             try {
-                const saved = localStorage.getItem('inventory_system_state');
+                const saved = localStorage.getItem('pd_system_state');
                 if (saved) {
                     const data = JSON.parse(saved);
                     if (data.inventory) STATE.inventory = new Map(data.inventory);
                     STATE.inventoryLastUpdate = data.inventoryLastUpdate;
-                    STATE.currentPallet = data.currentPallet || generatePalletId();
-                    STATE.boxes = data.boxes || { ok: [], blocked: [], nowms: [] };
-                    STATE.pendingSync = data.pendingSync || [];
+                    if (data.pallets) STATE.pallets = data.pallets;
                     STATE.history = data.history || [];
                 }
+                updateBdInfo();
             } catch (e) {
                 console.error('Error loading from storage:', e);
             }
@@ -1647,62 +1898,16 @@
                 const data = {
                     inventory: Array.from(STATE.inventory.entries()),
                     inventoryLastUpdate: STATE.inventoryLastUpdate,
-                    currentPallet: STATE.currentPallet,
-                    boxes: STATE.boxes,
-                    pendingSync: STATE.pendingSync,
+                    pallets: STATE.pallets,
                     history: STATE.history.slice(0, 1000)
                 };
-                localStorage.setItem('inventory_system_state', JSON.stringify(data));
+                localStorage.setItem('pd_system_state', JSON.stringify(data));
             } catch (e) {
                 console.error('Error saving to storage:', e);
             }
         }
 
-        // CONNECTION
-        function setupConnectionMonitor() {
-            window.addEventListener('online', () => {
-                STATE.isOnline = true;
-                updateConnectionStatus();
-                showNotification('✅ Conexión restaurada', 'success');
-                syncPendingData();
-            });
-
-            window.addEventListener('offline', () => {
-                STATE.isOnline = false;
-                updateConnectionStatus();
-                showNotification('⚠️ Sin conexión - Modo offline', 'warning');
-            });
-
-            updateConnectionStatus();
-        }
-
-        function updateConnectionStatus(forceStatus = null) {
-            const statusEl = document.getElementById('connection-status');
-            const textEl = document.getElementById('connection-text');
-
-            if (forceStatus === 'syncing') {
-                statusEl.className = 'connection-badge syncing';
-                textEl.textContent = 'Sincronizando...';
-                return;
-            }
-
-            if (!STATE.isOnline) {
-                statusEl.className = 'connection-badge offline';
-                textEl.textContent = 'Sin conexión';
-            } else if (STATE.pendingSync.length > 0) {
-                statusEl.className = 'connection-badge syncing';
-                textEl.textContent = `${STATE.pendingSync.length} pendientes`;
-            } else {
-                statusEl.className = 'connection-badge online';
-                textEl.textContent = 'Conectado';
-            }
-        }
-
-        async function refreshInventory() {
-            await loadInventory();
-        }
-
-        // EXPORT
+        // ==================== EXPORT ====================
         function exportData() {
             if (STATE.history.length === 0) {
                 showNotification('No hay datos para exportar', 'warning');
@@ -1722,28 +1927,20 @@
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.download = `pd_export_${new Date().toISOString().slice(0, 10)}.csv`;
             link.click();
 
             showNotification('✅ Datos exportados', 'success');
         }
 
-        // UTILITIES
+        // ==================== UTILITIES ====================
         function showNotification(message, type = 'info') {
             const container = document.getElementById('notifications');
-            const icons = {
-                success: '✅',
-                error: '❌',
-                warning: '⚠️',
-                info: 'ℹ️'
-            };
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
 
             const notification = document.createElement('div');
             notification.className = `notification ${type}`;
-            notification.innerHTML = `
-                <span class="notification-icon">${icons[type]}</span>
-                <span class="notification-text">${message}</span>
-            `;
+            notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`;
 
             container.appendChild(notification);
             setTimeout(() => notification.remove(), 4000);
@@ -1751,7 +1948,7 @@
 
         function playSound(type) {
             if (!audioCtx) return;
-            
+
             try {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
@@ -1773,13 +1970,7 @@
                     osc.start();
                     osc.stop(audioCtx.currentTime + 0.1);
                 }
-            } catch (e) {
-                console.log('Audio error:', e);
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('modal').classList.remove('show');
+            } catch (e) {}
         }
     </script>
 </body>
