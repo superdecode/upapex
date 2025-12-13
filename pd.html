@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema PD - Picking y Distribución</title>
+    <title>Sistema Inventario</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -149,6 +149,35 @@
             letter-spacing: 0.5px;
         }
 
+        .sidebar-btn {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+
+        .sidebar-btn:hover {
+            transform: translateX(3px);
+        }
+
+        .sidebar-btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .sidebar-btn-secondary {
+            background: #555;
+            color: white;
+        }
+
         /* Sync Status */
         .sync-status {
             padding: 10px 12px;
@@ -212,6 +241,26 @@
             color: #aaa;
             word-break: break-all;
         }
+
+        .pallet-send-btn {
+            margin-top: 6px;
+            padding: 5px 10px;
+            font-size: 0.7em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: 600;
+        }
+
+        .pallet-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pallet-send-btn.ok { background: var(--success); color: white; }
+        .pallet-send-btn.blocked { background: var(--blocked); color: white; }
+        .pallet-send-btn.nowms { background: var(--error); color: white; }
 
         /* User Footer */
         .user-footer {
@@ -517,6 +566,35 @@
             color: var(--primary);
         }
 
+        .column-location-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-top: 6px;
+        }
+
+        .column-send-btn {
+            margin-top: 8px;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            font-size: 0.85em;
+        }
+
+        .column-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .column.ok .column-send-btn { background: var(--success); color: white; }
+        .column.blocked .column-send-btn { background: var(--blocked); color: white; }
+        .column.nowms .column-send-btn { background: var(--error); color: white; }
+
         .column-list {
             flex: 1;
             overflow-y: auto;
@@ -575,42 +653,6 @@
 
         .empty-icon { font-size: 2.5em; margin-bottom: 8px; opacity: 0.5; }
 
-        /* Finalize Section */
-        .finalize-section {
-            background: white;
-            border-radius: 12px;
-            padding: 12px 15px;
-            margin-top: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .finalize-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr) auto;
-            gap: 10px;
-            align-items: flex-end;
-        }
-
-        .finalize-input-group label {
-            display: block;
-            font-size: 0.8em;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .finalize-input {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid var(--border);
-            border-radius: 6px;
-            font-size: 0.95em;
-        }
-
-        .finalize-input:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
         /* Buttons */
         .btn {
             padding: 10px 18px;
@@ -644,12 +686,6 @@
 
         .btn-small { padding: 6px 12px; font-size: 0.85em; }
         .btn-full { width: 100%; }
-
-        .btn-finalize {
-            padding: 12px 25px;
-            font-size: 1em;
-            background: linear-gradient(135deg, var(--success), #45a049);
-        }
 
         /* Notifications */
         .notification-container {
@@ -700,8 +736,10 @@
             background: white;
             padding: 25px;
             border-radius: 12px;
-            max-width: 450px;
-            width: 90%;
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
         }
 
@@ -710,7 +748,20 @@
             font-weight: 700;
             margin-bottom: 15px;
             color: var(--primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
+
+        .popup-close {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .popup-close:hover { color: #333; }
 
         .popup-buttons {
             display: flex;
@@ -719,18 +770,85 @@
             margin-top: 15px;
         }
 
+        /* Resumen Module */
+        .resumen-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .resumen-stat {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f5f5f5;
+        }
+
+        .resumen-stat-number {
+            font-size: 2em;
+            font-weight: 700;
+        }
+
+        .resumen-stat-label {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        .resumen-stat.ok { border: 2px solid var(--success); }
+        .resumen-stat.ok .resumen-stat-number { color: var(--success); }
+
+        .resumen-stat.blocked { border: 2px solid var(--blocked); }
+        .resumen-stat.blocked .resumen-stat-number { color: var(--blocked); }
+
+        .resumen-stat.nowms { border: 2px solid var(--error); }
+        .resumen-stat.nowms .resumen-stat-number { color: var(--error); }
+
+        .resumen-stat.pending { border: 2px solid var(--warning); }
+        .resumen-stat.pending .resumen-stat-number { color: var(--warning); }
+
+        .resumen-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+        }
+
+        .resumen-table th, .resumen-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .resumen-table th {
+            background: #f5f5f5;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+        }
+
+        .resumen-table-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .resumen-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
         .hidden { display: none !important; }
 
         /* Responsive */
         @media (max-width: 1024px) {
             .sidebar { width: 180px; }
             .columns-container { grid-template-columns: 1fr; }
+            .resumen-stats { grid-template-columns: repeat(2, 1fr); }
         }
 
         @media (max-width: 768px) {
             .main-container { flex-direction: column; }
             .sidebar { width: 100%; max-height: 200px; }
-            .finalize-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -742,8 +860,8 @@
     <div class="login-screen" id="login-screen">
         <div class="login-card">
             <div class="login-icon">📦</div>
-            <h1 class="login-title">Sistema PD</h1>
-            <p class="login-subtitle">Picking y Distribución</p>
+            <h1 class="login-title">Sistema Inventario</h1>
+            <p class="login-subtitle">Control y gestión de mercancía</p>
             <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
                 🔐 Iniciar sesión con Google
             </button>
@@ -756,13 +874,26 @@
             <!-- SIDEBAR -->
             <div class="sidebar">
                 <div class="sidebar-header">
-                    <h2>📦 PD</h2>
-                    <p>Picking y Distribución</p>
+                    <h2>📦 Inventario</h2>
+                    <p>Sistema de gestión</p>
                 </div>
 
                 <!-- Sync Status -->
                 <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">
                     ✅ Sincronizado
+                </div>
+
+                <!-- Menu -->
+                <div class="sidebar-section">
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
+                        📊 Resumen
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
+                        ➕ Nueva Sesión
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
+                        📥 Exportar
+                    </button>
                 </div>
 
                 <!-- Pallets por estatus -->
@@ -822,10 +953,6 @@
                 <!-- Header -->
                 <div class="header">
                     <h1>📸 Área de Escaneo</h1>
-                    <div class="header-actions">
-                        <button class="btn btn-warning btn-small" onclick="newSession()">➕ Nueva Sesión</button>
-                        <button class="btn btn-secondary btn-small" onclick="exportData()">📥 Exportar</button>
-                    </div>
                 </div>
 
                 <!-- Scan Section -->
@@ -872,7 +999,11 @@
                             <span class="column-count" id="ok-count">0</span>
                         </div>
                         <div class="column-pallet-info">
-                            Pallet: <span class="column-pallet-code" id="ok-pallet">-</span>
+                            <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-ok" placeholder="📍 Ubicación destino...">
+                            <button class="column-send-btn" onclick="sendPallet('ok')" id="send-ok-btn" disabled>
+                                📤 Enviar Tarima OK
+                            </button>
                         </div>
                         <div class="column-list" id="ok-list">
                             <div class="empty-state">
@@ -889,7 +1020,11 @@
                             <span class="column-count" id="blocked-count">0</span>
                         </div>
                         <div class="column-pallet-info">
-                            Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span>
+                            <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-blocked" placeholder="📍 Ubicación destino...">
+                            <button class="column-send-btn" onclick="sendPallet('blocked')" id="send-blocked-btn" disabled>
+                                📤 Enviar Tarima Bloqueado
+                            </button>
                         </div>
                         <div class="column-list" id="blocked-list">
                             <div class="empty-state">
@@ -906,7 +1041,11 @@
                             <span class="column-count" id="nowms-count">0</span>
                         </div>
                         <div class="column-pallet-info">
-                            Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span>
+                            <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-nowms" placeholder="📍 Ubicación destino...">
+                            <button class="column-send-btn" onclick="sendPallet('nowms')" id="send-nowms-btn" disabled>
+                                📤 Enviar Tarima No WMS
+                            </button>
                         </div>
                         <div class="column-list" id="nowms-list">
                             <div class="empty-state">
@@ -916,27 +1055,59 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- Finalize Section -->
-                <div class="finalize-section">
-                    <div class="finalize-grid">
-                        <div class="finalize-input-group">
-                            <label>📍 Ubicación OK</label>
-                            <input type="text" class="finalize-input" id="location-ok" placeholder="Ej: A1-01">
-                        </div>
-                        <div class="finalize-input-group">
-                            <label>📍 Ubicación Bloqueado</label>
-                            <input type="text" class="finalize-input" id="location-blocked" placeholder="Ej: B2-03">
-                        </div>
-                        <div class="finalize-input-group">
-                            <label>📍 Ubicación No WMS</label>
-                            <input type="text" class="finalize-input" id="location-nowms" placeholder="Ej: C3-05">
-                        </div>
-                        <button class="btn btn-finalize" onclick="finalizePallets()" id="finalize-btn">
-                            ✅ FINALIZAR
-                        </button>
-                    </div>
+    <!-- RESUMEN POPUP -->
+    <div class="popup-overlay" id="resumen-popup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <span>📊 Resumen de Sesión</span>
+                <button class="popup-close" onclick="closeResumen()">×</button>
+            </div>
+
+            <div class="resumen-stats">
+                <div class="resumen-stat ok">
+                    <div class="resumen-stat-number" id="resumen-ok">0</div>
+                    <div class="resumen-stat-label">OK</div>
                 </div>
+                <div class="resumen-stat blocked">
+                    <div class="resumen-stat-number" id="resumen-blocked">0</div>
+                    <div class="resumen-stat-label">Bloqueado</div>
+                </div>
+                <div class="resumen-stat nowms">
+                    <div class="resumen-stat-number" id="resumen-nowms">0</div>
+                    <div class="resumen-stat-label">No WMS</div>
+                </div>
+                <div class="resumen-stat pending">
+                    <div class="resumen-stat-number" id="resumen-pending">0</div>
+                    <div class="resumen-stat-label">Pendientes Sync</div>
+                </div>
+            </div>
+
+            <div class="resumen-actions">
+                <button class="btn btn-primary btn-small" onclick="refreshInventory(); closeResumen();">🔄 Recargar BD</button>
+                <button class="btn btn-success btn-small" onclick="SyncManager.sync(); updateResumen();">🔄 Sincronizar</button>
+                <button class="btn btn-secondary btn-small" onclick="exportData();">📥 Exportar</button>
+            </div>
+
+            <h3 style="margin-bottom: 10px; font-size: 1em;">📋 Historial Reciente</h3>
+            <div class="resumen-table-container">
+                <table class="resumen-table">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Código</th>
+                            <th>Código 2</th>
+                            <th>Estatus</th>
+                            <th>Ubicación</th>
+                            <th>Pallet</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resumen-table-body">
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -949,6 +1120,7 @@
             CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
             SPREADSHEET_WRITE: '1aNzMpst7UjRJjDtRXTK3TgF1gRZDpdo8d92wVnr0Rt4',
+            SHEET_NAME: 'BD',  // Nombre de la hoja donde se escriben los datos
             INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
         };
 
@@ -1050,7 +1222,7 @@
 
                     await gapi.client.sheets.spreadsheets.values.append({
                         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                        range: 'BD!A:I',
+                        range: `${CONFIG.SHEET_NAME}!A:I`,
                         valueInputOption: 'USER_ENTERED',
                         insertDataOption: 'INSERT_ROWS',
                         resource: { values }
@@ -1066,7 +1238,7 @@
                 } catch (e) {
                     console.error('Sync error:', e);
                     this.updateUI(false);
-                    if (showMessages) showNotification('❌ Error al sincronizar', 'error');
+                    if (showMessages) showNotification(`❌ Error: ${e.result?.error?.message || e.message || 'Error desconocido'}`, 'error');
                     return { success: false };
                 } finally {
                     this.inProgress = false;
@@ -1110,18 +1282,22 @@
                 const overlay = document.createElement('div');
                 overlay.className = 'popup-overlay show';
                 overlay.innerHTML = `
-                    <div class="popup-content">
-                        <div class="popup-header">📊 Estado de Sincronización</div>
+                    <div class="popup-content" style="max-width: 450px;">
+                        <div class="popup-header">
+                            <span>📊 Estado de Sincronización</span>
+                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        </div>
                         <div style="margin-bottom: 15px;">
-                            <div style="padding: 10px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px; text-align: center;">
                                 <div style="font-size: 0.85em; color: #666;">Pendientes de sincronizar</div>
-                                <div style="font-size: 1.8em; font-weight: 700; color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'};">
+                                <div style="font-size: 2em; font-weight: 700; color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'};">
                                     ${PENDING_SYNC.length}
                                 </div>
                             </div>
-                            <div style="font-size: 0.9em;">
+                            <div style="font-size: 0.9em; padding: 10px; background: #f9f9f9; border-radius: 6px;">
                                 ${IS_ONLINE ? '🟢 Conectado a internet' : '🔴 Sin conexión'}<br>
-                                ${gapi?.client?.getToken() ? '🟢 Google conectado' : '🔴 Google desconectado'}
+                                ${gapi?.client?.getToken() ? '🟢 Google conectado' : '🔴 Google desconectado'}<br>
+                                📄 Hoja destino: <strong>${CONFIG.SHEET_NAME}</strong>
                             </div>
                         </div>
                         <div class="popup-buttons">
@@ -1252,7 +1428,7 @@
             const overlay = document.createElement('div');
             overlay.className = 'popup-overlay show alias-popup';
             overlay.innerHTML = `
-                <div class="popup-content">
+                <div class="popup-content" style="max-width: 400px;">
                     <div class="popup-header">👤 ¿Cómo te llamamos?</div>
                     <p style="margin-bottom: 15px; color: #666;">
                         Hola <strong>${USER_GOOGLE_NAME}</strong>, elige cómo aparecerá tu nombre en los registros:
@@ -1370,7 +1546,7 @@
                             code,
                             boxType: cols[0] || '',
                             warehouse: cols[3] || '',
-                            cellNo: cols[7] || '',
+                            cellNo: cols[6] || '',  // Columna G (índice 6)
                             area: cols[8] || '',
                             availableStock,
                             lockedInventory,
@@ -1422,7 +1598,7 @@
                 if (e.key === 'Enter' && scanInput.value.trim()) {
                     e.preventDefault();
                     processScan(scanInput.value.trim());
-                    scanInput.value = '';
+                    scanInput.value = '';  // Limpiar automáticamente
                 }
             });
 
@@ -1431,7 +1607,7 @@
                 if (e.key === 'Enter' && code2Input.value.trim()) {
                     e.preventDefault();
                     processCode2(code2Input.value.trim());
-                    code2Input.value = '';
+                    code2Input.value = '';  // Limpiar automáticamente
                 }
             });
         }
@@ -1498,10 +1674,10 @@
             document.getElementById('code2-container').classList.remove('show');
 
             if (!item) {
-                // Both codes failed - add to No WMS
+                // Both codes failed - add to No WMS with BOTH codes
                 addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
                 showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
-                    'Ambos códigos no encontrados', null);
+                    `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
                 playSound('error');
             } else if (item.isBlocked) {
                 addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
@@ -1528,15 +1704,19 @@
 
             const code2Value = document.getElementById('code2-input').value.trim();
 
+            // Guardar AMBOS códigos
             addBox('nowms', createBoxData(
                 STATE.pendingCode1.raw,
                 STATE.pendingCode1.code,
-                code2Value,
+                code2Value,  // Puede estar vacío o tener valor
                 null
             ));
 
-            showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)',
-                'Registro forzado - No encontrado en WMS', null);
+            const msg = code2Value
+                ? `Insertado con códigos: ${STATE.pendingCode1.code} y ${code2Value}`
+                : `Insertado con código: ${STATE.pendingCode1.code}`;
+
+            showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', msg, null);
 
             document.getElementById('code2-container').classList.remove('show');
             document.getElementById('code2-input').value = '';
@@ -1624,11 +1804,77 @@
             }
         }
 
+        // ==================== SEND INDIVIDUAL PALLET ====================
+        async function sendPallet(category) {
+            const pallet = STATE.pallets[category];
+            const locationInput = document.getElementById(`location-${category}`);
+            const location = locationInput.value.trim();
+
+            if (pallet.boxes.length === 0) {
+                showNotification('⚠️ No hay cajas en esta tarima', 'warning');
+                return;
+            }
+
+            if (!location) {
+                showNotification('⚠️ Ingresa la ubicación destino', 'warning');
+                locationInput.focus();
+                return;
+            }
+
+            const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10);
+            const timeStr = now.toTimeString().slice(0, 8);
+
+            const records = pallet.boxes.map(box => ({
+                date: dateStr,
+                time: timeStr,
+                user: CURRENT_USER || 'Usuario',
+                scan1: box.scan1 || box.raw,
+                scan2: box.scan2 || '',
+                location: location,
+                status: statusMap[category],
+                note: '',
+                pallet: pallet.id
+            }));
+
+            // Add to history
+            STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+            // Add to pending sync
+            PENDING_SYNC = [...PENDING_SYNC, ...records];
+            SyncManager.save();
+
+            showNotification(`💾 ${records.length} registros agregados`, 'info');
+
+            // Try to sync immediately
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                await SyncManager.sync();
+            } else {
+                SyncManager.updateUI(false);
+            }
+
+            // Reset only this pallet
+            const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+            STATE.pallets[category] = {
+                id: generatePalletId(prefixes[category]),
+                boxes: [],
+                location: ''
+            };
+            locationInput.value = '';
+
+            saveToStorage();
+            updateUI();
+            playSound('success');
+            document.getElementById('scan-input').focus();
+        }
+
         // ==================== UI UPDATES ====================
         function updateUI() {
             updateCounts();
             updateLists();
             updateSidebar();
+            updateSendButtons();
         }
 
         function updateCounts() {
@@ -1664,7 +1910,7 @@
             listEl.innerHTML = boxes.map((box, index) => `
                 <div class="box-item">
                     <div class="box-info">
-                        <div class="box-code">${box.code}</div>
+                        <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
                         <div class="box-meta">${box.location} • ${box.timestamp}</div>
                     </div>
                     <button class="box-delete" onclick="deleteBox('${category}', ${index})">✕</button>
@@ -1682,6 +1928,12 @@
             document.getElementById('sidebar-nowms-pallet').textContent = STATE.pallets.nowms.id;
         }
 
+        function updateSendButtons() {
+            document.getElementById('send-ok-btn').disabled = STATE.pallets.ok.boxes.length === 0;
+            document.getElementById('send-blocked-btn').disabled = STATE.pallets.blocked.boxes.length === 0;
+            document.getElementById('send-nowms-btn').disabled = STATE.pallets.nowms.boxes.length === 0;
+        }
+
         // ==================== PALLET MANAGEMENT ====================
         function generatePalletId(prefix = 'PD') {
             const timestamp = Date.now().toString(36).toUpperCase();
@@ -1695,7 +1947,7 @@
                           STATE.pallets.nowms.boxes.length;
 
             if (total > 0) {
-                if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin finalizar?`)) {
+                if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin enviar?`)) {
                     return;
                 }
             }
@@ -1719,99 +1971,40 @@
             document.getElementById('scan-input').focus();
         }
 
-        async function finalizePallets() {
-            const locationOk = document.getElementById('location-ok').value.trim();
-            const locationBlocked = document.getElementById('location-blocked').value.trim();
-            const locationNowms = document.getElementById('location-nowms').value.trim();
+        // ==================== RESUMEN MODULE ====================
+        function showResumen() {
+            updateResumen();
+            document.getElementById('resumen-popup').classList.add('show');
+        }
 
-            const hasOk = STATE.pallets.ok.boxes.length > 0;
-            const hasBlocked = STATE.pallets.blocked.boxes.length > 0;
-            const hasNowms = STATE.pallets.nowms.boxes.length > 0;
+        function closeResumen() {
+            document.getElementById('resumen-popup').classList.remove('show');
+        }
 
-            // Validate locations
-            if (hasOk && !locationOk) {
-                showNotification('⚠️ Ingresa ubicación para tarima OK', 'warning');
-                document.getElementById('location-ok').focus();
-                return;
-            }
-            if (hasBlocked && !locationBlocked) {
-                showNotification('⚠️ Ingresa ubicación para tarima Bloqueado', 'warning');
-                document.getElementById('location-blocked').focus();
-                return;
-            }
-            if (hasNowms && !locationNowms) {
-                showNotification('⚠️ Ingresa ubicación para tarima No WMS', 'warning');
-                document.getElementById('location-nowms').focus();
-                return;
-            }
+        function updateResumen() {
+            document.getElementById('resumen-ok').textContent = STATE.pallets.ok.boxes.length;
+            document.getElementById('resumen-blocked').textContent = STATE.pallets.blocked.boxes.length;
+            document.getElementById('resumen-nowms').textContent = STATE.pallets.nowms.boxes.length;
+            document.getElementById('resumen-pending').textContent = PENDING_SYNC.length;
 
-            if (!hasOk && !hasBlocked && !hasNowms) {
-                showNotification('⚠️ No hay cajas para finalizar', 'warning');
-                return;
-            }
+            // Update table
+            const tbody = document.getElementById('resumen-table-body');
+            const recentHistory = STATE.history.slice(0, 50);
 
-            showNotification('💾 Guardando...', 'info');
-
-            const now = new Date();
-            const dateStr = now.toISOString().slice(0, 10);
-            const timeStr = now.toTimeString().slice(0, 8);
-            const records = [];
-
-            // Process each pallet
-            const palletConfigs = [
-                { key: 'ok', location: locationOk, status: 'OK' },
-                { key: 'blocked', location: locationBlocked, status: 'BLOQUEADO' },
-                { key: 'nowms', location: locationNowms, status: 'NO WMS' }
-            ];
-
-            for (const config of palletConfigs) {
-                const pallet = STATE.pallets[config.key];
-                for (const box of pallet.boxes) {
-                    records.push({
-                        date: dateStr,
-                        time: timeStr,
-                        user: CURRENT_USER || 'Usuario',
-                        scan1: box.scan1 || box.raw,
-                        scan2: box.scan2 || '',
-                        location: config.location,
-                        status: config.status,
-                        note: '',
-                        pallet: pallet.id
-                    });
-                }
-            }
-
-            // Add to history
-            STATE.history = [...records, ...STATE.history].slice(0, 1000);
-
-            // Add to pending sync
-            PENDING_SYNC = [...PENDING_SYNC, ...records];
-            SyncManager.save();
-
-            // Try to sync immediately
-            if (IS_ONLINE && gapi?.client?.getToken()) {
-                await SyncManager.sync();
+            if (recentHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Sin registros recientes</td></tr>';
             } else {
-                showNotification(`⚠️ ${records.length} registros guardados localmente`, 'warning');
-                SyncManager.updateUI(false);
+                tbody.innerHTML = recentHistory.map(r => `
+                    <tr>
+                        <td>${r.time}</td>
+                        <td><code>${r.scan1}</code></td>
+                        <td><code>${r.scan2 || '-'}</code></td>
+                        <td><span style="color: ${r.status === 'OK' ? 'var(--success)' : r.status === 'BLOQUEADO' ? 'var(--blocked)' : 'var(--error)'}">${r.status}</span></td>
+                        <td>${r.location}</td>
+                        <td style="font-size: 0.8em;">${r.pallet}</td>
+                    </tr>
+                `).join('');
             }
-
-            // Reset pallets
-            STATE.pallets = {
-                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-            };
-
-            document.getElementById('result-box').classList.remove('show');
-            document.getElementById('location-ok').value = '';
-            document.getElementById('location-blocked').value = '';
-            document.getElementById('location-nowms').value = '';
-
-            saveToStorage();
-            updateUI();
-            playSound('success');
-            document.getElementById('scan-input').focus();
         }
 
         // ==================== CONNECTION ====================
@@ -1927,7 +2120,7 @@
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `pd_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`;
             link.click();
 
             showNotification('✅ Datos exportados', 'success');
