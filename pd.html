@@ -1,0 +1,1786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Inventario</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --blocked: #f97316;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* LOGIN */
+        .login-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .login-card {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .login-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            color: var(--text-light);
+            margin-bottom: 2rem;
+        }
+
+        /* HEADER */
+        .app-header {
+            background: white;
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-logo {
+            font-size: 1.8rem;
+        }
+
+        .header-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .connection-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .connection-badge.online {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .connection-badge.offline {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+        }
+
+        .connection-badge.syncing {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .user-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg);
+            border-radius: 50px;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        /* MAIN CONTAINER */
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* SCAN AREA */
+        .scan-section {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .scan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .scan-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .pallet-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .scan-input-container {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .scan-input {
+            width: 100%;
+            padding: 1.5rem 1.5rem 1.5rem 3.5rem;
+            font-size: 1.5rem;
+            border: 3px solid var(--border);
+            border-radius: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            transition: all 0.3s;
+            background: var(--bg);
+        }
+
+        .scan-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+            background: white;
+        }
+
+        .scan-icon {
+            position: absolute;
+            left: 1.2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.5rem;
+            color: var(--text-light);
+        }
+
+        /* RESULT BOX */
+        .result-box {
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            display: none;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-box.show {
+            display: block;
+        }
+
+        .result-box.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid var(--success);
+        }
+
+        .result-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 2px solid var(--warning);
+        }
+
+        .result-box.blocked {
+            background: rgba(249, 115, 22, 0.1);
+            border: 2px solid var(--blocked);
+        }
+
+        .result-box.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 2px solid var(--error);
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .result-icon {
+            font-size: 2rem;
+        }
+
+        .result-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        .result-code {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .result-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .result-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .result-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-light);
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .result-value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .code2-input-container {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 2px dashed currentColor;
+        }
+
+        .code2-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--error);
+        }
+
+        .code2-input {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.2rem;
+            border: 2px solid var(--error);
+            border-radius: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .code2-input:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
+        }
+
+        /* COLUMNS */
+        .columns-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .column {
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .column-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .column-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .column-count {
+            background: var(--bg);
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .column.ok .column-title { color: var(--success); }
+        .column.ok .column-count { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+
+        .column.blocked .column-title { color: var(--blocked); }
+        .column.blocked .column-count { background: rgba(249, 115, 22, 0.1); color: var(--blocked); }
+
+        .column.nowms .column-title { color: var(--error); }
+        .column.nowms .column-count { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+
+        .column-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .box-item {
+            padding: 0.75rem;
+            background: var(--bg);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .box-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .box-code {
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+        }
+
+        .box-delete {
+            background: none;
+            border: none;
+            color: var(--error);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .box-delete:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-light);
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.5;
+        }
+
+        /* FINALIZE SECTION */
+        .finalize-section {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .finalize-header {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .finalize-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+
+        .input-required {
+            color: var(--error);
+        }
+
+        .input-field {
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        textarea.input-field {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        /* BUTTONS */
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-google {
+            background: #4285F4;
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--error);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--text-light);
+            color: white;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .btn-large {
+            padding: 1.25rem 2.5rem;
+            font-size: 1.1rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        /* UTILITY BUTTONS */
+        .utility-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn-small {
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalSlideUp 0.3s ease-out;
+        }
+
+        @keyframes modalSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .modal-body {
+            margin-bottom: 1.5rem;
+        }
+
+        /* NOTIFICATIONS */
+        .notification-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .notification {
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            min-width: 300px;
+            animation: slideInRight 0.3s ease-out;
+            border-left: 4px solid;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(400px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .notification.success { border-color: var(--success); }
+        .notification.error { border-color: var(--error); }
+        .notification.warning { border-color: var(--warning); }
+        .notification.info { border-color: var(--primary); }
+
+        .notification-icon {
+            font-size: 1.5rem;
+        }
+
+        .notification-text {
+            flex: 1;
+            font-weight: 600;
+        }
+
+        /* STATS SUMMARY */
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--bg);
+            padding: 1rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .stat-card.ok .stat-value { color: var(--success); }
+        .stat-card.blocked .stat-value { color: var(--blocked); }
+        .stat-card.nowms .stat-value { color: var(--error); }
+
+        /* RESPONSIVE */
+        @media (max-width: 968px) {
+            .columns-container {
+                grid-template-columns: 1fr;
+            }
+
+            .finalize-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .app-header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- NOTIFICATION CONTAINER -->
+    <div class="notification-container" id="notifications"></div>
+
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="login-screen">
+        <div class="login-card">
+            <div class="login-icon">📦</div>
+            <h1 class="login-title">Sistema de Inventario</h1>
+            <p class="login-subtitle">Control y clasificación de mercancía</p>
+            <button class="btn btn-google btn-full btn-large" onclick="handleLogin()">
+                🔐 Iniciar sesión con Google
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="main-app" class="hidden">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-left">
+                <span class="header-logo">📦</span>
+                <h1 class="header-title">Sistema de Inventario</h1>
+            </div>
+            <div class="header-right">
+                <div class="connection-badge online" id="connection-status">
+                    <span class="connection-dot"></span>
+                    <span id="connection-text">Conectado</span>
+                </div>
+                <div class="user-badge">
+                    <div class="user-avatar" id="user-avatar">U</div>
+                    <span class="user-name" id="user-name">Usuario</span>
+                </div>
+                <button class="btn btn-danger btn-small" onclick="handleLogout()">🚪 Salir</button>
+            </div>
+        </header>
+
+        <!-- MAIN CONTAINER -->
+        <div class="main-container">
+            <!-- SCAN SECTION -->
+            <div class="scan-section">
+                <div class="scan-header">
+                    <h2 class="scan-title">📸 Área de Escaneo</h2>
+                    <div class="pallet-info" id="pallet-info">
+                        <span>🎯</span>
+                        <span id="pallet-number">PALLET-001</span>
+                    </div>
+                </div>
+
+                <div class="utility-buttons">
+                    <button class="btn btn-primary btn-small" onclick="refreshInventory()">🔄 Actualizar BD</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportData()">📥 Exportar</button>
+                    <button class="btn btn-warning btn-small" onclick="newPallet()">➕ Nuevo Pallet</button>
+                </div>
+
+                <div class="scan-input-container">
+                    <span class="scan-icon">🔍</span>
+                    <input 
+                        type="text" 
+                        class="scan-input" 
+                        id="scan-input" 
+                        placeholder="Escanea o ingresa código..."
+                        autocomplete="off"
+                    >
+                </div>
+
+                <!-- RESULT BOX -->
+                <div class="result-box" id="result-box">
+                    <div class="result-header">
+                        <span class="result-icon" id="result-icon">✅</span>
+                        <div>
+                            <div class="result-title" id="result-title">Estado</div>
+                            <div class="result-code" id="result-code">CÓDIGO</div>
+                        </div>
+                    </div>
+                    <div class="result-details" id="result-details"></div>
+                    <div class="code2-input-container hidden" id="code2-container">
+                        <div class="code2-label">⚠️ Código no encontrado en WMS. Ingresa el Código 2:</div>
+                        <input 
+                            type="text" 
+                            class="code2-input" 
+                            id="code2-input" 
+                            placeholder="Código 2..."
+                            autocomplete="off"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUMNS -->
+            <div class="columns-container">
+                <!-- OK COLUMN -->
+                <div class="column ok">
+                    <div class="column-header">
+                        <h3 class="column-title">
+                            <span>✅</span>
+                            <span>Tarima Activa (OK)</span>
+                        </h3>
+                        <span class="column-count" id="ok-count">0</span>
+                    </div>
+                    <div class="column-list" id="ok-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <div>Sin cajas</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BLOCKED COLUMN -->
+                <div class="column blocked">
+                    <div class="column-header">
+                        <h3 class="column-title">
+                            <span>⚠️</span>
+                            <span>Bloqueadas</span>
+                        </h3>
+                        <span class="column-count" id="blocked-count">0</span>
+                    </div>
+                    <div class="column-list" id="blocked-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <div>Sin cajas</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NO WMS COLUMN -->
+                <div class="column nowms">
+                    <div class="column-header">
+                        <h3 class="column-title">
+                            <span>❌</span>
+                            <span>No WMS</span>
+                        </h3>
+                        <span class="column-count" id="nowms-count">0</span>
+                    </div>
+                    <div class="column-list" id="nowms-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <div>Sin cajas</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FINALIZE SECTION -->
+            <div class="finalize-section">
+                <h3 class="finalize-header">
+                    <span>✅</span>
+                    <span>Finalizar y Asignar Ubicación</span>
+                </h3>
+
+                <div class="stats-summary">
+                    <div class="stat-card ok">
+                        <div class="stat-value" id="final-ok-count">0</div>
+                        <div class="stat-label">OK</div>
+                    </div>
+                    <div class="stat-card blocked">
+                        <div class="stat-value" id="final-blocked-count">0</div>
+                        <div class="stat-label">Bloqueadas</div>
+                    </div>
+                    <div class="stat-card nowms">
+                        <div class="stat-value" id="final-nowms-count">0</div>
+                        <div class="stat-label">No WMS</div>
+                    </div>
+                </div>
+
+                <div class="finalize-grid">
+                    <div class="input-group">
+                        <label class="input-label">
+                            📍 Ubicación Destino <span class="input-required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            class="input-field" 
+                            id="destination-input" 
+                            placeholder="Ej: A1-01-02"
+                        >
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">📝 Nota (opcional)</label>
+                        <textarea 
+                            class="input-field" 
+                            id="note-input" 
+                            placeholder="Observaciones..."
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-danger" onclick="clearPallet()">🗑️ Limpiar Todo</button>
+                    <button class="btn btn-success btn-full btn-large" onclick="finalizePallet()" id="finalize-btn" disabled>
+                        ✅ FINALIZAR Y ASIGNAR UBICACIÓN
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modal-title">Confirmación</div>
+            <div class="modal-body" id="modal-body">¿Estás seguro?</div>
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                <button class="btn btn-primary" id="modal-confirm" onclick="closeModal()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script>
+        // CONFIG
+        const CONFIG = {
+            CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
+            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
+            SPREADSHEET_WRITE: '1aNzMpst7UjRJjDtRXTK3TgF1gRZDpdo8d92wVnr0Rt4',
+            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
+        };
+
+        // STATE
+        let STATE = {
+            user: null,
+            isOnline: navigator.onLine,
+            inventory: new Map(),
+            inventoryLastUpdate: null,
+            currentPallet: generatePalletId(),
+            boxes: {
+                ok: [],
+                blocked: [],
+                nowms: []
+            },
+            pendingSync: [],
+            history: [],
+            pendingCode1: null
+        };
+
+        let TOKEN_CLIENT = null;
+        let audioCtx = null;
+
+        // INIT
+        document.addEventListener('DOMContentLoaded', () => {
+            initAudio();
+            loadFromStorage();
+            setupEventListeners();
+            setupConnectionMonitor();
+            gapi.load('client', initGAPI);
+        });
+
+        function initAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                document.addEventListener('click', () => {
+                    if (audioCtx?.state === 'suspended') audioCtx.resume();
+                }, { once: true });
+            } catch (e) {
+                console.log('Audio not available');
+            }
+        }
+
+        async function initGAPI() {
+            try {
+                await gapi.client.init({
+                    discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
+                });
+                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                    client_id: CONFIG.CLIENT_ID,
+                    scope: CONFIG.SCOPES,
+                    callback: handleAuthCallback
+                });
+            } catch (e) {
+                showNotification('Error inicializando API', 'error');
+            }
+        }
+
+        async function handleAuthCallback(response) {
+            if (response?.access_token) {
+                gapi.client.setToken(response);
+                await getUserProfile();
+                await loadInventory();
+                await syncPendingData();
+                showApp();
+            }
+        }
+
+        function handleLogin() {
+            TOKEN_CLIENT?.requestAccessToken();
+        }
+
+        async function getUserProfile() {
+            try {
+                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
+                });
+                const data = await response.json();
+                STATE.user = {
+                    name: data.name || 'Usuario',
+                    email: data.email,
+                    picture: data.picture
+                };
+            } catch (e) {
+                STATE.user = { name: 'Usuario', email: 'unknown' };
+            }
+        }
+
+        function showApp() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('user-name').textContent = STATE.user.name;
+            document.getElementById('user-avatar').textContent = STATE.user.name.charAt(0).toUpperCase();
+            document.getElementById('pallet-number').textContent = STATE.currentPallet;
+            showNotification(`¡Bienvenido, ${STATE.user.name}!`, 'success');
+            updateUI();
+        }
+
+        function handleLogout() {
+            if (confirm('¿Cerrar sesión?')) {
+                if (gapi.client.getToken()) {
+                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                    gapi.client.setToken(null);
+                }
+                STATE.user = null;
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-app').classList.add('hidden');
+            }
+        }
+
+        // INVENTORY MANAGEMENT
+        async function loadInventory() {
+            try {
+                showNotification('Cargando inventario...', 'info');
+                updateConnectionStatus('syncing');
+
+                const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const csv = await response.text();
+                if (!csv || csv.trim().length === 0) {
+                    throw new Error('CSV vacío');
+                }
+
+                parseInventoryCSV(csv);
+                await saveToStorage();
+                showNotification(`Inventario cargado: ${STATE.inventory.size} cajas`, 'success');
+                updateConnectionStatus();
+            } catch (e) {
+                console.error('Error cargando inventario:', e);
+                showNotification(`Error: ${e.message}`, 'error');
+                updateConnectionStatus();
+                
+                if (STATE.inventory.size > 0) {
+                    showNotification(`Usando ${STATE.inventory.size} cajas en caché`, 'info');
+                }
+            }
+        }
+
+        function parseInventoryCSV(csv) {
+            const lines = csv.split('\n').filter(line => line.trim().length > 0);
+            STATE.inventory.clear();
+
+            if (lines.length === 0) return;
+
+            // Skip header row
+            for (let i = 1; i < lines.length; i++) {
+                const cols = parseCSVLine(lines[i]);
+                
+                if (cols.length >= 11) {
+                    const code = (cols[1] || '').toString().trim().toUpperCase(); // Columna B (índice 1)
+                    
+                    if (code && code.length > 0) {
+                        const availableStock = parseFloat(cols[9]) || 0; // Columna J (índice 9)
+                        const lockedInventory = parseFloat(cols[10]) || 0; // Columna K (índice 10)
+                        
+                        STATE.inventory.set(code, {
+                            code,
+                            boxType: cols[0] || '',
+                            warehouse: cols[3] || '',
+                            cellNo: cols[7] || '',
+                            area: cols[8] || '',
+                            availableStock,
+                            lockedInventory,
+                            sku: cols[12] || '',
+                            productName: cols[13] || '',
+                            isAvailable: availableStock > 0,
+                            isBlocked: lockedInventory > 0
+                        });
+                    }
+                }
+            }
+
+            STATE.inventoryLastUpdate = new Date().toLocaleString();
+            console.log(`Inventario procesado: ${STATE.inventory.size} cajas`);
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        // SCAN PROCESSING
+        function setupEventListeners() {
+            const scanInput = document.getElementById('scan-input');
+            scanInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && scanInput.value.trim()) {
+                    e.preventDefault();
+                    processScan(scanInput.value.trim());
+                    scanInput.value = '';
+                }
+            });
+
+            const code2Input = document.getElementById('code2-input');
+            code2Input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && code2Input.value.trim()) {
+                    e.preventDefault();
+                    processCode2(code2Input.value.trim());
+                    code2Input.value = '';
+                }
+            });
+        }
+
+        function processScan(rawCode) {
+            const code = normalizeCode(rawCode);
+            
+            // Check duplicates
+            const allBoxes = [...STATE.boxes.ok, ...STATE.boxes.blocked, ...STATE.boxes.nowms];
+            if (allBoxes.some(b => b.code === code)) {
+                showNotification('⚠️ Código duplicado', 'warning');
+                playSound('warning');
+                return;
+            }
+
+            const item = STATE.inventory.get(code);
+
+            if (!item) {
+                // NO WMS - need Code 2
+                STATE.pendingCode1 = { raw: rawCode, code };
+                showResultBox('error', code, 'NO WMS', 
+                    'Código no encontrado en sistema. Se requiere Código 2 para validación.', 
+                    null, true);
+                playSound('error');
+                setTimeout(() => document.getElementById('code2-input').focus(), 100);
+                return;
+            }
+
+            // Check if blocked
+            if (item.isBlocked) {
+                addBox('blocked', {
+                    raw: rawCode,
+                    code,
+                    scan1: rawCode,
+                    scan2: '',
+                    location: item.cellNo || '-',
+                    sku: item.sku || '-',
+                    product: item.productName || '-',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                showResultBox('blocked', code, 'BLOQUEADO', 
+                    'Esta caja tiene inventario bloqueado', item);
+                playSound('warning');
+            } else if (item.isAvailable) {
+                addBox('ok', {
+                    raw: rawCode,
+                    code,
+                    scan1: rawCode,
+                    scan2: '',
+                    location: item.cellNo || '-',
+                    sku: item.sku || '-',
+                    product: item.productName || '-',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                showResultBox('success', code, 'OK', 
+                    'Caja validada correctamente', item);
+                playSound('success');
+            } else {
+                addBox('blocked', {
+                    raw: rawCode,
+                    code,
+                    scan1: rawCode,
+                    scan2: '',
+                    location: item.cellNo || '-',
+                    sku: item.sku || '-',
+                    product: item.productName || '-',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                showResultBox('blocked', code, 'SIN STOCK', 
+                    'Caja sin stock disponible', item);
+                playSound('warning');
+            }
+        }
+
+        function processCode2(rawCode2) {
+            if (!STATE.pendingCode1) return;
+
+            const code2 = normalizeCode(rawCode2);
+            const item = STATE.inventory.get(code2);
+
+            if (!item) {
+                addBox('nowms', {
+                    raw: STATE.pendingCode1.raw,
+                    code: STATE.pendingCode1.code,
+                    scan1: STATE.pendingCode1.raw,
+                    scan2: rawCode2,
+                    location: '-',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                showResultBox('error', STATE.pendingCode1.code, 'NO WMS CONFIRMADO', 
+                    'Código 2 tampoco encontrado en sistema', null);
+                playSound('error');
+            } else if (item.isBlocked) {
+                addBox('blocked', {
+                    raw: STATE.pendingCode1.raw,
+                    code: code2,
+                    scan1: STATE.pendingCode1.raw,
+                    scan2: rawCode2,
+                    location: item.cellNo || '-',
+                    sku: item.sku || '-',
+                    product: item.productName || '-',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                showResultBox('blocked', code2, 'BLOQUEADO (Código 2)', 
+                    'Validado con Código 2 - Inventario bloqueado', item);
+                playSound('warning');
+            } else {
+                addBox('ok', {
+                    raw: STATE.pendingCode1.raw,
+                    code: code2,
+                    scan1: STATE.pendingCode1.raw,
+                    scan2: rawCode2,
+                    location: item.cellNo || '-',
+                    sku: item.sku || '-',
+                    product: item.productName || '-',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                showResultBox('success', code2, 'OK (Código 2)', 
+                    'Validado correctamente con Código 2', item);
+                playSound('success');
+            }
+
+            STATE.pendingCode1 = null;
+        }
+
+        function normalizeCode(raw) {
+            let code = raw.trim().toUpperCase();
+            code = code.replace(/(\d)-(\d)/g, '$1/$2');
+            
+            const patterns = [
+                /\[id\[.*?\[([^\[]+)\[/i,
+                /¨id¨.*?¨([^¨]+)¨/i,
+                /"id"\s*:\s*"([^"]+)"/i
+            ];
+            
+            for (const pattern of patterns) {
+                const match = code.match(pattern);
+                if (match) return match[1];
+            }
+            
+            return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+        }
+
+        function showResultBox(type, code, title, message, item, showCode2Input = false) {
+            const box = document.getElementById('result-box');
+            const icon = document.getElementById('result-icon');
+            const titleEl = document.getElementById('result-title');
+            const codeEl = document.getElementById('result-code');
+            const detailsEl = document.getElementById('result-details');
+            const code2Container = document.getElementById('code2-container');
+
+            box.className = `result-box show ${type}`;
+            
+            const icons = {
+                success: '✅',
+                warning: '⚠️',
+                blocked: '⚠️',
+                error: '❌'
+            };
+            
+            icon.textContent = icons[type] || '📦';
+            titleEl.textContent = title;
+            codeEl.textContent = code;
+
+            if (item) {
+                detailsEl.innerHTML = `
+                    <div class="result-detail">
+                        <div class="result-label">Ubicación</div>
+                        <div class="result-value">${item.cellNo || '-'}</div>
+                    </div>
+                    <div class="result-detail">
+                        <div class="result-label">SKU</div>
+                        <div class="result-value">${item.sku || '-'}</div>
+                    </div>
+                    <div class="result-detail">
+                        <div class="result-label">Producto</div>
+                        <div class="result-value">${item.productName || '-'}</div>
+                    </div>
+                    <div class="result-detail">
+                        <div class="result-label">Stock Disponible</div>
+                        <div class="result-value">${item.availableStock || 0}</div>
+                    </div>
+                    <div class="result-detail">
+                        <div class="result-label">Stock Bloqueado</div>
+                        <div class="result-value">${item.lockedInventory || 0}</div>
+                    </div>
+                `;
+            } else {
+                detailsEl.innerHTML = `<p style="color: var(--text-light)">${message}</p>`;
+            }
+
+            if (showCode2Input) {
+                code2Container.classList.remove('hidden');
+            } else {
+                code2Container.classList.add('hidden');
+            }
+        }
+
+        function addBox(category, boxData) {
+            STATE.boxes[category].push(boxData);
+            saveToStorage();
+            updateUI();
+        }
+
+        function deleteBox(category, index) {
+            if (confirm('¿Eliminar esta caja?')) {
+                STATE.boxes[category].splice(index, 1);
+                saveToStorage();
+                updateUI();
+                showNotification('Caja eliminada', 'info');
+            }
+        }
+
+        // UI UPDATES
+        function updateUI() {
+            updateCounts();
+            updateLists();
+            updateFinalizeButton();
+        }
+
+        function updateCounts() {
+            document.getElementById('ok-count').textContent = STATE.boxes.ok.length;
+            document.getElementById('blocked-count').textContent = STATE.boxes.blocked.length;
+            document.getElementById('nowms-count').textContent = STATE.boxes.nowms.length;
+            
+            document.getElementById('final-ok-count').textContent = STATE.boxes.ok.length;
+            document.getElementById('final-blocked-count').textContent = STATE.boxes.blocked.length;
+            document.getElementById('final-nowms-count').textContent = STATE.boxes.nowms.length;
+        }
+
+        function updateLists() {
+            updateList('ok');
+            updateList('blocked');
+            updateList('nowms');
+        }
+
+        function updateList(category) {
+            const listEl = document.getElementById(`${category}-list`);
+            const boxes = STATE.boxes[category];
+
+            if (boxes.length === 0) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <div>Sin cajas</div>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = boxes.map((box, index) => `
+                <div class="box-item">
+                    <div>
+                        <div class="box-code">${box.code}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-light)">
+                            ${box.location} • ${box.timestamp}
+                        </div>
+                    </div>
+                    <button class="box-delete" onclick="deleteBox('${category}', ${index})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function updateFinalizeButton() {
+            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
+            document.getElementById('finalize-btn').disabled = total === 0;
+        }
+
+        // PALLET MANAGEMENT
+        function generatePalletId() {
+            const timestamp = Date.now();
+            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            return `PALLET-${timestamp}-${random}`;
+        }
+
+        function newPallet() {
+            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
+            
+            if (total > 0) {
+                if (!confirm(`Hay ${total} cajas escaneadas. ¿Crear nuevo pallet sin guardar?`)) {
+                    return;
+                }
+            }
+
+            STATE.currentPallet = generatePalletId();
+            STATE.boxes = { ok: [], blocked: [], nowms: [] };
+            STATE.pendingCode1 = null;
+            
+            document.getElementById('pallet-number').textContent = STATE.currentPallet;
+            document.getElementById('result-box').classList.remove('show');
+            
+            saveToStorage();
+            updateUI();
+            showNotification('Nuevo pallet creado', 'success');
+        }
+
+        function clearPallet() {
+            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
+            
+            if (total === 0) {
+                showNotification('No hay cajas para limpiar', 'info');
+                return;
+            }
+
+            if (confirm(`¿Limpiar todas las ${total} cajas del pallet actual?`)) {
+                STATE.boxes = { ok: [], blocked: [], nowms: [] };
+                STATE.pendingCode1 = null;
+                saveToStorage();
+                updateUI();
+                showNotification('Pallet limpiado', 'info');
+            }
+        }
+
+        async function finalizePallet() {
+            const destination = document.getElementById('destination-input').value.trim();
+            const note = document.getElementById('note-input').value.trim();
+
+            if (!destination) {
+                showNotification('⚠️ La ubicación de destino es obligatoria', 'warning');
+                document.getElementById('destination-input').focus();
+                return;
+            }
+
+            const total = STATE.boxes.ok.length + STATE.boxes.blocked.length + STATE.boxes.nowms.length;
+            if (total === 0) {
+                showNotification('No hay cajas para finalizar', 'warning');
+                return;
+            }
+
+            showNotification('Guardando transferencias...', 'info');
+
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10);
+            const timeStr = now.toTimeString().slice(0, 8);
+            const records = [];
+
+            // Process all boxes
+            [...STATE.boxes.ok, ...STATE.boxes.blocked, ...STATE.boxes.nowms].forEach(box => {
+                let status = 'OK';
+                if (STATE.boxes.blocked.includes(box)) status = 'BLOQUEADO';
+                if (STATE.boxes.nowms.includes(box)) status = 'NO WMS';
+
+                records.push({
+                    date: dateStr,
+                    time: timeStr,
+                    user: STATE.user?.name || 'Usuario',
+                    scan1: box.scan1 || box.raw,
+                    scan2: box.scan2 || '',
+                    location: destination,
+                    status,
+                    note: note || '',
+                    pallet: STATE.currentPallet
+                });
+            });
+
+            STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+            if (STATE.isOnline && gapi.client.getToken()) {
+                try {
+                    await writeToSheets(records);
+                    showNotification(`✅ ${records.length} transferencias guardadas`, 'success');
+                } catch (e) {
+                    console.error('Error writing to sheets:', e);
+                    STATE.pendingSync = [...STATE.pendingSync, ...records];
+                    showNotification('⚠️ Guardado localmente (sin conexión)', 'warning');
+                }
+            } else {
+                STATE.pendingSync = [...STATE.pendingSync, ...records];
+                showNotification('⚠️ Guardado localmente (sin conexión)', 'warning');
+            }
+
+            // Reset for new pallet
+            STATE.currentPallet = generatePalletId();
+            STATE.boxes = { ok: [], blocked: [], nowms: [] };
+            STATE.pendingCode1 = null;
+            
+            document.getElementById('pallet-number').textContent = STATE.currentPallet;
+            document.getElementById('destination-input').value = '';
+            document.getElementById('note-input').value = '';
+            document.getElementById('result-box').classList.remove('show');
+
+            saveToStorage();
+            updateConnectionStatus();
+            updateUI();
+            playSound('success');
+        }
+
+        async function writeToSheets(records) {
+            const values = records.map(r => [
+                r.date,
+                r.time,
+                r.user,
+                r.scan1,
+                r.scan2,
+                r.location,
+                r.status,
+                r.note,
+                r.pallet
+            ]);
+
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                range: 'BD!A:I',
+                valueInputOption: 'USER_ENTERED',
+                insertDataOption: 'INSERT_ROWS',
+                resource: { values }
+            });
+        }
+
+        // SYNC
+        async function syncPendingData() {
+            if (!STATE.isOnline || !gapi.client.getToken() || STATE.pendingSync.length === 0) return;
+
+            try {
+                await writeToSheets(STATE.pendingSync);
+                showNotification(`✅ ${STATE.pendingSync.length} registros sincronizados`, 'success');
+                STATE.pendingSync = [];
+                saveToStorage();
+                updateConnectionStatus();
+            } catch (e) {
+                console.error('Error syncing:', e);
+                showNotification('Error sincronizando datos', 'error');
+            }
+        }
+
+        // STORAGE
+        async function loadFromStorage() {
+            try {
+                const saved = localStorage.getItem('inventory_system_state');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    if (data.inventory) STATE.inventory = new Map(data.inventory);
+                    STATE.inventoryLastUpdate = data.inventoryLastUpdate;
+                    STATE.currentPallet = data.currentPallet || generatePalletId();
+                    STATE.boxes = data.boxes || { ok: [], blocked: [], nowms: [] };
+                    STATE.pendingSync = data.pendingSync || [];
+                    STATE.history = data.history || [];
+                }
+            } catch (e) {
+                console.error('Error loading from storage:', e);
+            }
+        }
+
+        async function saveToStorage() {
+            try {
+                const data = {
+                    inventory: Array.from(STATE.inventory.entries()),
+                    inventoryLastUpdate: STATE.inventoryLastUpdate,
+                    currentPallet: STATE.currentPallet,
+                    boxes: STATE.boxes,
+                    pendingSync: STATE.pendingSync,
+                    history: STATE.history.slice(0, 1000)
+                };
+                localStorage.setItem('inventory_system_state', JSON.stringify(data));
+            } catch (e) {
+                console.error('Error saving to storage:', e);
+            }
+        }
+
+        // CONNECTION
+        function setupConnectionMonitor() {
+            window.addEventListener('online', () => {
+                STATE.isOnline = true;
+                updateConnectionStatus();
+                showNotification('✅ Conexión restaurada', 'success');
+                syncPendingData();
+            });
+
+            window.addEventListener('offline', () => {
+                STATE.isOnline = false;
+                updateConnectionStatus();
+                showNotification('⚠️ Sin conexión - Modo offline', 'warning');
+            });
+
+            updateConnectionStatus();
+        }
+
+        function updateConnectionStatus(forceStatus = null) {
+            const statusEl = document.getElementById('connection-status');
+            const textEl = document.getElementById('connection-text');
+
+            if (forceStatus === 'syncing') {
+                statusEl.className = 'connection-badge syncing';
+                textEl.textContent = 'Sincronizando...';
+                return;
+            }
+
+            if (!STATE.isOnline) {
+                statusEl.className = 'connection-badge offline';
+                textEl.textContent = 'Sin conexión';
+            } else if (STATE.pendingSync.length > 0) {
+                statusEl.className = 'connection-badge syncing';
+                textEl.textContent = `${STATE.pendingSync.length} pendientes`;
+            } else {
+                statusEl.className = 'connection-badge online';
+                textEl.textContent = 'Conectado';
+            }
+        }
+
+        async function refreshInventory() {
+            await loadInventory();
+        }
+
+        // EXPORT
+        function exportData() {
+            if (STATE.history.length === 0) {
+                showNotification('No hay datos para exportar', 'warning');
+                return;
+            }
+
+            const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION', 'ESTATUS', 'NOTA', 'PALLET'];
+            const rows = STATE.history.map(r => [
+                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet
+            ]);
+
+            const csv = '\ufeff' + [
+                headers.join(','),
+                ...rows.map(r => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+
+            showNotification('✅ Datos exportados', 'success');
+        }
+
+        // UTILITIES
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notifications');
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <span class="notification-icon">${icons[type]}</span>
+                <span class="notification-text">${message}</span>
+            `;
+
+            container.appendChild(notification);
+            setTimeout(() => notification.remove(), 4000);
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+
+                if (type === 'success') {
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.15);
+                } else if (type === 'error') {
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.35);
+                } else if (type === 'warning') {
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                }
+            } catch (e) {
+                console.log('Audio error:', e);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+        }
+    </script>
+</body>
+</html>
