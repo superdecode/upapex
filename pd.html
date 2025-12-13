@@ -1732,8 +1732,8 @@
             return {
                 raw,
                 code,
-                scan1: raw,
-                scan2: scan2 || '',
+                scan1: normalizeCode(raw),        // Valor limpio para BD
+                scan2: scan2 ? normalizeCode(scan2) : '',  // Valor limpio para BD
                 location: item?.cellNo || '-',
                 sku: item?.sku || '-',
                 product: item?.productName || '-',
