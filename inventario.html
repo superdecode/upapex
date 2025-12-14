@@ -2365,11 +2365,15 @@
         }
 
         function handleLogin() {
-            if (gapi.client.getToken() === null) {
-                TOKEN_CLIENT.requestAccessToken();
-            } else {
-                TOKEN_CLIENT.requestAccessToken();
+            // 🔑 CORRECCIÓN CLAVE: Verifica que TOKEN_CLIENT esté inicializado
+            if (!TOKEN_CLIENT) {
+                showNotification('❌ El sistema de autenticación no está listo. Intenta recargar la página o espera un momento.', 'error');
+                console.error("Error: TOKEN_CLIENT no ha sido inicializado.");
+                return; 
             }
+            
+            // Si el cliente está listo, solicita el token de acceso.
+            TOKEN_CLIENT.requestAccessToken();
         }
 
         async function handleAuthResult(authResult) {
