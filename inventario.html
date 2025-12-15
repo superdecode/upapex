@@ -2386,42 +2386,45 @@
         }
         
         async function handleAuthCallback(tokenResponse) {
-            console.log('🔐 Auth callback recibido:', tokenResponse);
+        console.log('🔐 Auth callback recibido:', tokenResponse);
+        
+        if (tokenResponse && tokenResponse.access_token) {
+            gapi.client.setToken(tokenResponse);
             
-            if (tokenResponse && tokenResponse.access_token) {
-                gapi.client.setToken(tokenResponse);
-                
-                try {
-                    // Obtener información del usuario
-                    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                        headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-                    });
-                    
-                    const data = await response.json();
-                    USER_EMAIL = data.email || '';
-                    USER_GOOGLE_NAME = data.name || 'Usuario';
-                    
-                    console.log('✅ Usuario autenticado:', USER_EMAIL);
-                    
-                    const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
-                    if (savedAlias) {
-                        CURRENT_USER = savedAlias;
-                        showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
-                        updateUserFooter();
-                    } else {
-                        showAliasPopup();
-                    }
-                    
-                    // Mostrar app y cargar inventario
-                    showApp();
-                    await loadInventory();
-                    SyncManager.init();
-                    
-                    // Sincronizar pendientes
-                    if (PENDING_SYNC.length > 0) SyncManager.sync();
-                    if (PENDING_SYNC_QUICK.length > 0) SyncManager.syncQuick();
-                    
-                } catch (error) {
+        try {
+            // Obtener información del usuario
+            const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+            });
+            
+            const data = await response.json();
+            USER_EMAIL = data.email || '';
+            USER_GOOGLE_NAME = data.name || 'Usuario';
+            
+            console.log('✅ Usuario autenticado:', USER_EMAIL);
+            
+            // Mostrar app PRIMERO
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            
+            const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
+            if (savedAlias) {
+                CURRENT_USER = savedAlias;
+                showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
+                updateUserFooter();
+            } else {
+                showAliasPopup();
+            }
+            
+            // Cargar inventario DESPUÉS de mostrar la app
+            await loadInventory();
+            SyncManager.init();
+            
+            // Sincronizar pendientes
+            if (PENDING_SYNC.length > 0) SyncManager.sync(false);
+            if (PENDING_SYNC_QUICK.length > 0) SyncManager.syncQuick(false);
+            
+        } catch (error) {
                     console.error('❌ Error obteniendo datos del usuario:', error);
                     CURRENT_USER = 'Usuario';
                     updateUserFooter();
@@ -2535,57 +2538,67 @@
         function parseInventoryCSV(csv) {
             const lines = csv.split('\n').filter(line => line.trim().length > 0);
             STATE.inventory.clear();
-
-            // Find header to correctly map columns (assuming first row is header)
-            const headers = parseCSVLine(lines[0]);
+        
+            if (lines.length === 0) {
+                console.error('CSV vacío o sin líneas');
+                return;
+            }
+        
+            // Parsear header
+            const headers = parseCSVLine(lines[0]).map(h => h.trim().toUpperCase());
+            console.log('Headers encontrados:', headers);
+            
+            // Mapeo flexible de columnas
             const columnMap = {
-                boxType: headers.findIndex(h => h.includes('TIPO DE CAJA')),
-                code: headers.findIndex(h => h.includes('CÓDIGO PRINCIPAL')),
-                code2: headers.findIndex(h => h.includes('CÓDIGO ALTERNATIVO')),
-                cellNo: headers.findIndex(h => h.includes('UBICACIÓN')),
+                boxType: headers.findIndex(h => h.includes('TIPO') && h.includes('CAJA')),
+                code: headers.findIndex(h => h.includes('CÓDIGO') && h.includes('PRINCIPAL')),
+                code2: headers.findIndex(h => h.includes('CÓDIGO') && h.includes('ALTERNATIVO')),
+                cellNo: headers.findIndex(h => h.includes('UBICACIÓN') || h.includes('CELDA')),
                 sku: headers.findIndex(h => h.includes('SKU')),
-                productName: headers.findIndex(h => h.includes('PRODUCTO')),
-                availableStock: headers.findIndex(h => h.includes('STOCK DISPONIBLE')),
-                lockedInventory: headers.findIndex(h => h.includes('STOCK BLOQUEADO')),
-                isAvailable: headers.findIndex(h => h.includes('DISPONIBLE (SI/NO)')),
-                isBlocked: headers.findIndex(h => h.includes('BLOQUEADO (SI/NO)')),
+                productName: headers.findIndex(h => h.includes('PRODUCTO') || h.includes('NOMBRE')),
+                availableStock: headers.findIndex(h => h.includes('STOCK') && h.includes('DISPONIBLE')),
+                lockedInventory: headers.findIndex(h => h.includes('STOCK') && h.includes('BLOQUEADO')),
+                isAvailable: headers.findIndex(h => h.includes('DISPONIBLE') && (h.includes('SI') || h.includes('NO'))),
+                isBlocked: headers.findIndex(h => h.includes('BLOQUEADO') && (h.includes('SI') || h.includes('NO'))),
             };
-
-
+        
+            console.log('Mapeo de columnas:', columnMap);
+        
+            let processedCount = 0;
             for (let i = 1; i < lines.length; i++) {
                 const cols = parseCSVLine(lines[i]);
-
+                
                 const codeIndex = columnMap.code;
-                const code2Index = columnMap.code2;
-                const availableStockIndex = columnMap.availableStock;
-                const lockedInventoryIndex = columnMap.lockedInventory;
-                const isAvailableIndex = columnMap.isAvailable;
-                const isBlockedIndex = columnMap.isBlocked;
-
-
-                if (cols.length > Math.max(...Object.values(columnMap).filter(v => v !== -1))) {
-                    const code = (cols[codeIndex] || '').toString().trim().toUpperCase();
-                    if (code && code.length > 0) {
-                        const availableStock = parseFloat(cols[availableStockIndex]) || 0;
-                        const lockedInventory = parseFloat(cols[lockedInventoryIndex]) || 0;
-                        const isAvailable = (cols[isAvailableIndex] || '').toUpperCase() === 'SI' && (availableStock > 0);
-                        const isBlocked = (cols[isBlockedIndex] || '').toUpperCase() === 'SI' || (lockedInventory > 0);
-
-                        STATE.inventory.set(code, {
-                            code,
-                            code2: cols[code2Index] || '',
-                            boxType: cols[columnMap.boxType] || '',
-                            cellNo: cols[columnMap.cellNo] || '',
-                            sku: cols[columnMap.sku] || '',
-                            productName: cols[columnMap.productName] || '',
-                            availableStock,
-                            lockedInventory,
-                            isAvailable,
-                            isBlocked
-                        });
-                    }
-                }
+                if (codeIndex === -1 || !cols[codeIndex]) continue;
+        
+                const code = cols[codeIndex].toString().trim().toUpperCase();
+                if (code.length === 0) continue;
+        
+                const availableStock = parseFloat(cols[columnMap.availableStock]) || 0;
+                const lockedInventory = parseFloat(cols[columnMap.lockedInventory]) || 0;
+                
+                const isAvailableText = columnMap.isAvailable !== -1 ? (cols[columnMap.isAvailable] || '').toUpperCase() : '';
+                const isBlockedText = columnMap.isBlocked !== -1 ? (cols[columnMap.isBlocked] || '').toUpperCase() : '';
+                
+                const isAvailable = isAvailableText === 'SI' || (availableStock > 0 && isBlockedText !== 'SI');
+                const isBlocked = isBlockedText === 'SI' || (lockedInventory > 0);
+        
+                STATE.inventory.set(code, {
+                    code,
+                    code2: columnMap.code2 !== -1 ? (cols[columnMap.code2] || '') : '',
+                    boxType: columnMap.boxType !== -1 ? (cols[columnMap.boxType] || '') : '',
+                    cellNo: columnMap.cellNo !== -1 ? (cols[columnMap.cellNo] || '') : '',
+                    sku: columnMap.sku !== -1 ? (cols[columnMap.sku] || '') : '',
+                    productName: columnMap.productName !== -1 ? (cols[columnMap.productName] || '') : '',
+                    availableStock,
+                    lockedInventory,
+                    isAvailable,
+                    isBlocked
+                });
+                processedCount++;
             }
+            
+            console.log(`✅ Procesados ${processedCount} códigos de ${lines.length - 1} líneas`);
         }
 
         // ==================== UTILITIES ====================
@@ -2746,6 +2759,30 @@
             if (nameEl) nameEl.textContent = CURRENT_USER || 'Usuario';
         }
 
+        function showAliasPopup() {
+            const popup = document.getElementById('alias-popup-overlay');
+            if (popup) popup.classList.add('show');
+        }
+        
+        function saveAlias() {
+            const input = document.getElementById('alias-input');
+            const alias = input.value.trim().toUpperCase();
+            
+            if (!alias || alias.length < 2) {
+                showNotification('❌ El alias debe tener al menos 2 caracteres', 'warning');
+                return;
+            }
+            
+            CURRENT_USER = alias;
+            localStorage.setItem(`pd_alias_${USER_EMAIL}`, alias);
+            
+            const popup = document.getElementById('alias-popup-overlay');
+            if (popup) popup.classList.remove('show');
+            
+            updateUserFooter();
+            showNotification(`✅ Alias guardado: ${alias}`, 'success');
+        }
+
         function showResumen() {
             document.getElementById('tab-content-area').classList.add('hidden');
             document.getElementById('resumen-screen').classList.remove('hidden');
@@ -2753,6 +2790,8 @@
         }
 
         function showApp() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
             document.getElementById('tab-content-area').classList.remove('hidden');
             document.getElementById('resumen-screen').classList.add('hidden');
         }
@@ -2884,13 +2923,16 @@
         }
 
         function init() {
-        console.log('🚀 Iniciando aplicación...');
-        loadFromStorage().then(() => {
-            TabManager.init();
-            updateUI();
-        });
-        setupConnectionMonitor();
-        updateConnectionIndicator();
+            console.log('🚀 Iniciando aplicación...');
+            loadFromStorage().then(() => {
+                // Solo inicializar tabs si ya hay sesión activa
+                if (gapi?.client?.getToken()) {
+                    TabManager.init();
+                    updateUI();
+                }
+            });
+            setupConnectionMonitor();
+            updateConnectionIndicator();
         }
     
     // Initialize the app on page load
