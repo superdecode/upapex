@@ -994,8 +994,8 @@
             <div class="login-icon">📦</div>
             <h1 class="login-title">Sistema Inventario</h1>
             <p class="login-subtitle">Control y gestión de mercancía</p>
-            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
-                🔐 Iniciar sesión con Google
+            <button class="btn btn-google btn-full" onclick="handleLogin()" id="login-btn" style="padding: 15px; font-size: 1.1em;" disabled>
+                ⏳ Cargando...
             </button>
         </div>
     </div>
@@ -1260,7 +1260,14 @@
                 }
             } catch (e) { }
         }
-
+        function enableLoginButton() {
+            const btn = document.getElementById('login-btn');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '🔐 Iniciar sesión con Google';
+            }
+        }
+        
         /**
          * Genera un ID de Pallet basado en el estatus. (ADAPTADO)
          * @param {string} status El estatus ('OK', 'BLK', 'NW').
@@ -2422,14 +2429,25 @@
                         }
                     },
                 });
+                
+                // NUEVO: Habilitar el botón una vez que TOKEN_CLIENT está listo
+                enableLoginButton(); 
+                
                 checkAuthStatus();
             }).catch(e => {
                 console.error("GAPI init error", e);
+                showNotification('❌ Error al inicializar GAPI. Revisa tu consola.', 'error');
                 checkAuthStatus(false);
             });
         }
 
         async function handleLogin() {
+            // NUEVO: Bloqueo si TOKEN_CLIENT aún no está listo
+            if (!TOKEN_CLIENT) {
+                showNotification('⚠️ Aún cargando el sistema de autenticación. Intenta de nuevo en un momento.', 'warning');
+                return;
+            }
+
             if (gapi.client.getToken()) {
                 TOKEN_CLIENT.requestAccessToken();
             } else {
