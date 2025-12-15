@@ -3,25 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Inventario</title>
+    <title>Sistema Inventario (Multi-Pestaña)</title>
     <style>
         :root {
             --primary: #2563eb;
+            --secondary: #3b82f6; /* Nuevo color para pestaña activa/tarima no definida */
             --success: #4CAF50;
             --warning: #FF9800;
             --error: #F44336;
             --blocked: #f97316;
+            --no-wms: #e91e63; /* Nuevo color para No WMS */
             --bg: #f7f7f7;
             --text: #333;
             --card: #ffffff;
             --border: #e2e8f0;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Segoe UI', Tahoma, sans-serif;
@@ -29,63 +27,6 @@
             color: var(--text);
             height: 100vh;
             overflow: hidden;
-        }
-
-        /* Loading Overlay */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 10001;
-        }
-
-        .loading-overlay.show {
-            display: flex;
-        }
-
-        .loading-content {
-            background: white;
-            padding: 40px;
-            border-radius: 16px;
-            text-align: center;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        }
-
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        .loading-text {
-            font-size: 1.2em;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 10px;
-        }
-
-        .loading-subtext {
-            font-size: 0.9em;
-            color: #666;
         }
 
         /* Connection Banner */
@@ -101,51 +42,40 @@
             display: none;
             animation: slideDown 0.3s;
         }
-
         .connection-banner.offline {
             background: var(--error);
             color: white;
             display: block;
         }
-
         .connection-banner.online {
             background: var(--success);
             color: white;
             display: block;
         }
-
         .connection-banner.syncing {
             background: var(--warning);
             color: white;
             display: block;
         }
-
         @keyframes slideDown {
-            from {
-                transform: translateY(-100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
-        /* ==================== LOGIN SCREEN ==================== */
+        /* LOGIN */
         .login-screen {
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-            padding: 20px;
         }
 
         .login-card {
             background: white;
             padding: 3rem;
             border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             text-align: center;
             max-width: 400px;
             width: 90%;
@@ -158,12 +88,8 @@
         }
 
         @keyframes float {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-10px);
-            }
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
         }
 
         .login-title {
@@ -178,11 +104,9 @@
             margin-bottom: 2rem;
         }
 
-        /* ==================== MAIN LAYOUT ==================== */
+        /* MAIN LAYOUT */
         .main-container {
             display: flex;
-            height: 100vh;
-            overflow: hidden;
             height: 100vh;
         }
 
@@ -195,6 +119,7 @@
             display: flex;
             flex-direction: column;
             overflow-y: auto;
+            flex-shrink: 0; /* Asegura que la barra lateral no se encoja */
         }
 
         .sidebar-header {
@@ -246,9 +171,15 @@
             transform: translateX(3px);
         }
 
-        .sidebar-btn-primary { background: var(--primary); color: white; }
-        .sidebar-btn-secondary { background: #555; color: white; }
-        .sidebar-btn-orange { background: var(--blocked); color: white; }
+        .sidebar-btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .sidebar-btn-secondary {
+            background: #555;
+            color: white;
+        }
 
         /* Sync Status */
         .sync-status {
@@ -259,11 +190,23 @@
             text-align: center;
             cursor: pointer;
         }
-        .sync-ok { background: rgba(76, 175, 80, 0.2); color: var(--success); border: 1px solid var(--success); }
-        .sync-error { background: rgba(244, 67, 54, 0.2); color: var(--error); border: 1px solid var(--error); }
-        .sync-warning { background: rgba(255, 152, 0, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+        .sync-ok {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+        .sync-error {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--error);
+            border: 1px solid var(--error);
+        }
+        .sync-warning {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
 
-        /* Pallets por estatus */
+        /* Pallets por estatus (Ahora Tarimas por Pestaña) */
         .pallet-status-list {
             flex: 1;
             overflow-y: auto;
@@ -302,99 +245,150 @@
             word-break: break-all;
         }
 
-        /* User Footer */
+        .pallet-send-btn {
+            margin-top: 6px;
+            padding: 5px 10px;
+            font-size: 0.7em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: 600;
+        }
+
+        .pallet-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pallet-send-btn.ok { background: var(--success); color: white; }
+        .pallet-send-btn.blocked { background: var(--blocked); color: white; }
+        .pallet-send-btn.nowms { background: var(--no-wms); color: white; }
+
+        /* User Footer (Conservado) */
         .user-footer {
             margin-top: auto;
             padding-top: 15px;
             border-top: 1px solid #555;
         }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .user-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: var(--primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 1.1em;
-            color: white;
-            flex-shrink: 0;
-            cursor: pointer;
-        }
-
-        .user-details {
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .user-name {
-            font-weight: 600;
-            font-size: 0.9em;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            cursor: pointer;
-        }
-
-        .connection-indicator {
-            font-size: 0.75em;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .connection-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
+        /* ... (styles for user-info, user-avatar, etc., preserved) ... */
+        .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1em; color: white; flex-shrink: 0; cursor: pointer; }
+        .user-details { flex: 1; overflow: hidden; }
+        .user-name { font-weight: 600; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .connection-indicator { font-size: 0.75em; display: flex; align-items: center; gap: 4px; }
+        .connection-dot { width: 8px; height: 8px; border-radius: 50%; }
         .connection-dot.online { background: var(--success); }
         .connection-dot.offline { background: var(--error); }
         .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .user-footer-actions { display: flex; gap: 5px; margin-bottom: 8px; }
+        .user-footer-actions button { flex: 1; padding: 6px; font-size: 0.75em; }
+        .bd-info { font-size: 0.7em; color: #aaa; text-align: center; line-height: 1.4; }
+        /* FIN User Footer */
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
 
-        .user-footer-actions {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 8px;
-        }
-
-        .user-footer-actions button {
-            flex: 1;
-            padding: 6px;
-            font-size: 0.75em;
-        }
-
-        .bd-info {
-            font-size: 0.7em;
-            color: #aaa;
-            text-align: center;
-            line-height: 1.4;
-        }
-
-        /* MAIN CONTENT */
+        /* MAIN CONTENT (Adaptado para PESTAÑAS) */
         .main-content {
             flex: 1;
-            padding: 15px;
+            padding: 0; /* Removido padding para que las pestañas tomen todo el ancho */
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
-        /* Header */
+        /* --- NUEVOS ESTILOS PARA PESTAÑAS --- */
+        .tab-header-container {
+            display: flex;
+            background: #ddd;
+            padding: 5px 0 0 15px;
+            border-bottom: 1px solid #ccc;
+            overflow-x: auto;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .tab-header {
+            padding: 10px 15px;
+            margin-right: 2px;
+            background: #eee;
+            border: 1px solid #ccc;
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        .tab-header:hover {
+            background: #fff;
+        }
+
+        .tab-header.active {
+            background: var(--bg);
+            border-color: #ccc;
+            border-bottom: 1px solid var(--bg);
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+            color: var(--primary);
+        }
+
+        .tab-badge {
+            background: var(--primary);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: 700;
+            min-width: 20px;
+            text-align: center;
+            transition: background 0.3s;
+        }
+
+        .tab-badge.ok { background: var(--success); }
+        .tab-badge.blocked { background: var(--blocked); }
+        .tab-badge.nowms { background: var(--error); }
+        .tab-badge.empty { background: var(--secondary); }
+
+        .tab-close {
+            margin-left: 8px;
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 1.1em;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .tab-close:hover {
+            color: var(--error);
+        }
+
+        .tab-content-container {
+            flex: 1;
+            overflow: hidden;
+            padding: 15px;
+            background: var(--bg);
+        }
+
+        .tab-content {
+            height: 100%;
+            display: none;
+            flex-direction: column;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+        /* --- FIN ESTILOS PARA PESTAÑAS --- */
+
+        /* Header (Ahora dentro de cada pestaña) */
         .header {
             display: flex;
             justify-content: space-between;
@@ -414,90 +408,14 @@
             gap: 8px;
         }
 
-        /* Tabs System */
-        .tabs-container {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 15px;
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 5px;
-        }
-
-        .tab {
-            padding: 8px 15px;
-            background: white;
-            border: 2px solid #ddd;
-            border-bottom: none;
-            border-radius: 8px 8px 0 0;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-weight: 600;
-            font-size: 0.9em;
-            transition: all 0.2s;
-        }
-
-        .tab:hover {
-            background: #f5f5f5;
-        }
-
-        .tab.active {
-            background: var(--blocked);
-            color: white;
-            border-color: var(--blocked);
-        }
-
-        .tab-close {
-            background: none;
-            border: none;
-            color: inherit;
-            cursor: pointer;
-            font-size: 1.2em;
-            padding: 0;
-            margin-left: 5px;
-            opacity: 0.7;
-        }
-
-        .tab-close:hover {
-            opacity: 1;
-        }
-
-        .tab-new {
-            background: var(--success);
-            color: white;
-            border-color: var(--success);
-        }
-
-        .tab-new:hover {
-            background: #45a049;
-        }
-
-        /* Empty State */
-        .tabs-empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #999;
-        }
-
-        .tabs-empty-icon {
-            font-size: 4em;
-            margin-bottom: 15px;
-            opacity: 0.5;
-        }
-
-        .tabs-empty-text {
-            font-size: 1.1em;
-            margin-bottom: 20px;
-        }
-
-        /* Scan Section */
+        /* Scan Section (Ahora por pestaña) */
         .scan-section {
             background: white;
             border-radius: 12px;
             padding: 15px;
             margin-bottom: 15px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            flex-shrink: 0;
         }
 
         .scan-row {
@@ -546,7 +464,7 @@
             background: #e8f5e9;
         }
 
-        /* Result Box */
+        /* Result Box (Conservado) */
         .result-box {
             padding: 12px;
             border-radius: 8px;
@@ -587,7 +505,7 @@
         .result-detail-label { color: #666; font-size: 0.8em; }
         .result-detail-value { font-weight: 600; }
 
-        /* Code2 Input */
+        /* Code2 Input (Conservado) */
         .code2-container {
             margin-top: 10px;
             padding-top: 10px;
@@ -617,17 +535,19 @@
         .btn-insertado:hover {
             background: #d32f2f;
         }
-        
-        /* Columns Container */
+
+        /* Columns Container (Adaptado para Consolidado y Log) */
         .columns-container {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: 2fr 1fr; /* Tarima consolidada (2) y Log (1) */
             gap: 12px;
             flex: 1;
             min-height: 0;
+            overflow: hidden;
         }
 
-        .column {
+        /* Estilo para la columna de Tarima Consolidada */
+        .column-consolidated {
             background: white;
             border-radius: 12px;
             padding: 12px;
@@ -651,6 +571,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            color: var(--primary);
         }
 
         .column-count {
@@ -658,64 +579,50 @@
             border-radius: 15px;
             font-weight: 700;
             font-size: 0.85em;
-        }
-
-        .column.ok .column-title { color: var(--success); }
-        .column.ok .column-count { background: rgba(76, 175, 80, 0.15); color: var(--success); }
-
-        .column.blocked .column-title { color: var(--blocked); }
-        .column.blocked .column-count { background: rgba(249, 115, 22, 0.15); color: var(--blocked); }
-
-        .column.nowms .column-title { color: var(--error); }
-        .column.nowms .column-count { background: rgba(244, 67, 54, 0.15); color: var(--error); }
-
-        .column-pallet-info {
-            background: #f5f5f5;
-            padding: 8px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            font-size: 0.8em;
-        }
-
-        .column-pallet-code {
-            font-family: monospace;
-            font-weight: 600;
+            background: rgba(37, 99, 235, 0.15);
             color: var(--primary);
         }
 
-        .column-location-input {
-            width: 100%;
-            padding: 6px 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        /* Contenedor de Pallets Consolidado */
+        .consolidated-pallets {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+
+        .pallet-info-card {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 8px;
             font-size: 0.85em;
-            margin-top: 6px;
+            border-left: 5px solid var(--secondary);
+            flex: 1;
+            min-width: 150px;
         }
 
-        .column-send-btn {
-            margin-top: 8px;
-            padding: 8px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            font-size: 0.85em;
+        .pallet-info-card.ok { border-color: var(--success); }
+        .pallet-info-card.blocked { border-color: var(--blocked); }
+        .pallet-info-card.nowms { border-color: var(--no-wms); }
+
+        .pallet-info-card div { margin-bottom: 4px; }
+        .pallet-info-card .pallet-id {
+            font-weight: 700;
+            color: var(--primary);
+            font-family: monospace;
+        }
+        .pallet-info-card .pallet-status-count {
+            background: white;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 0.8em;
+            font-weight: 700;
         }
 
-        .column-send-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .column.ok .column-send-btn { background: var(--success); color: white; }
-        .column.blocked .column-send-btn { background: var(--blocked); color: white; }
-        .column.nowms .column-send-btn { background: var(--error); color: white; }
-
-        .column-list {
+        .pallet-list-container {
             flex: 1;
             overflow-y: auto;
-            counter-reset: item-counter;
         }
 
         .box-item {
@@ -730,21 +637,20 @@
             counter-increment: item-counter;
         }
 
+        .box-item.ok { border-color: var(--success); }
+        .box-item.blocked { border-color: var(--blocked); }
+        .box-item.nowms { border-color: var(--no-wms); }
+
         .box-item::before {
             content: counter(item-counter) ".";
             font-weight: 700;
             min-width: 25px;
             margin-right: 8px;
+            color: #999;
         }
-
-        .column.ok .box-item { border-color: var(--success); }
-        .column.ok .box-item::before { color: var(--success); }
-
-        .column.blocked .box-item { border-color: var(--blocked); }
-        .column.blocked .box-item::before { color: var(--blocked); }
-
-        .column.nowms .box-item { border-color: var(--error); }
-        .column.nowms .box-item::before { color: var(--error); }
+        .box-item.ok::before { color: var(--success); }
+        .box-item.blocked::before { color: var(--blocked); }
+        .box-item.nowms::before { color: var(--no-wms); }
 
         .box-info { flex: 1; }
         .box-code { font-weight: 600; font-family: monospace; font-size: 0.9em; }
@@ -758,6 +664,7 @@
             font-size: 1.1em;
             padding: 4px;
             opacity: 0.6;
+            flex-shrink: 0;
         }
 
         .box-delete:hover { opacity: 1; }
@@ -770,175 +677,73 @@
 
         .empty-icon { font-size: 2.5em; margin-bottom: 8px; opacity: 0.5; }
 
-        /* Captura General Module */
-        .general-capture-container {
+        /* Estilo para el Log Visual */
+        .log-column {
+            background: #2d3748; /* Fondo oscuro para el log */
+            color: #f7fafc;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
-            height: 100%;
-            gap: 12px;
+            overflow: hidden;
         }
 
-        .general-pallet-card {
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        .log-column .column-header {
+            border-bottom: 2px solid #4a5568;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
         }
 
-        .general-pallet-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 12px;
-            border-bottom: 2px solid var(--border);
+        .log-column .column-title {
+            color: #90cdf4;
         }
 
-        .general-pallet-title {
-            font-size: 1.2em;
-            font-weight: 700;
-            color: var(--blocked);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .general-pallet-count {
-            background: rgba(249, 115, 22, 0.15);
-            color: var(--blocked);
-            padding: 5px 12px;
-            border-radius: 15px;
-            font-weight: 700;
-        }
-
-        .general-pallet-info {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-
-        .general-info-item {
-            background: #f5f5f5;
-            padding: 8px;
-            border-radius: 6px;
-            font-size: 0.85em;
-        }
-
-        .general-info-label {
-            color: #666;
-            font-size: 0.8em;
-            margin-bottom: 3px;
-        }
-
-        .general-info-value {
-            font-weight: 600;
-            font-family: monospace;
-            color: var(--primary);
-        }
-
-        .general-location-row {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .general-location-input {
+        .log-list {
             flex: 1;
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 0.9em;
-        }
-
-        .general-send-btn {
-            padding: 10px 20px;
-            background: var(--blocked);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 700;
-            cursor: pointer;
-            font-size: 0.9em;
-            white-space: nowrap;
-        }
-
-        .general-send-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .general-send-btn:hover:not(:disabled) {
-            background: #ea580c;
-        }
-
-        .general-boxes-container {
-            flex: 1;
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             overflow-y: auto;
         }
 
-        .general-box-item {
-            padding: 10px;
-            background: #f9f9f9;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            border-left: 4px solid;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .general-box-item.ok { border-color: var(--success); background: #e8f5e9; }
-        .general-box-item.blocked { border-color: var(--blocked); background: #fff3e0; }
-        .general-box-item.nowms { border-color: var(--error); background: #ffebee; }
-
-        .general-box-main {
-            flex: 1;
-        }
-
-        .general-box-header {
+        .log-entry {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-        }
-
-        .general-box-number {
-            background: rgba(0,0,0,0.1);
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-weight: 700;
+            padding: 5px 0;
+            border-bottom: 1px dashed #4a5568;
             font-size: 0.8em;
+            gap: 8px;
         }
 
-        .general-box-status {
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 0.75em;
+        .log-entry:last-child {
+            border-bottom: none;
         }
 
-        .general-box-status.ok { background: var(--success); color: white; }
-        .general-box-status.blocked { background: var(--blocked); color: white; }
-        .general-box-status.nowms { background: var(--error); color: white; }
+        .log-status-icon {
+            font-size: 1em;
+            flex-shrink: 0;
+        }
 
-        .general-box-codes {
+        .log-entry.ok .log-status-icon { color: var(--success); }
+        .log-entry.blocked .log-status-icon { color: var(--blocked); }
+        .log-entry.nowms .log-status-icon { color: var(--error); }
+
+        .log-time {
+            color: #a0aec0;
             font-family: monospace;
-            font-weight: 600;
             font-size: 0.9em;
-            margin-bottom: 3px;
+            flex-shrink: 0;
+            min-width: 40px;
         }
 
-        .general-box-time {
-            font-size: 0.75em;
-            color: #666;
+        .log-code {
+            font-weight: 600;
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        /* Buttons */
+
+        /* Buttons (Conservado) */
         .btn {
             padding: 10px 18px;
             border: none;
@@ -972,7 +777,7 @@
         .btn-small { padding: 6px 12px; font-size: 0.85em; }
         .btn-full { width: 100%; }
 
-        /* Notifications */
+        /* Notifications (Conservado) */
         .notification-container {
             position: fixed;
             top: 20px;
@@ -1001,7 +806,7 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
-        /* Popups */
+        /* Popups (Conservado) */
         .popup-overlay {
             position: fixed;
             top: 0;
@@ -1055,7 +860,7 @@
             margin-top: 15px;
         }
 
-        /* Resumen Module */
+        /* Resumen Module (Conservado) */
         .resumen-stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -1124,10 +929,48 @@
 
         .hidden { display: none !important; }
 
+        /* --- NUEVO ESTILO: Loading Overlay --- */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10001;
+            transition: opacity 0.3s;
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 15px;
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--primary);
+        }
+        /* --- FIN Loading Overlay --- */
+
         /* Responsive */
         @media (max-width: 1024px) {
             .sidebar { width: 180px; }
-            .columns-container { grid-template-columns: 1fr; }
+            .columns-container { grid-template-columns: 1fr; } /* Stack columns */
             .resumen-stats { grid-template-columns: repeat(2, 1fr); }
         }
 
@@ -1138,19 +981,14 @@
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-content">
-            <div class="spinner"></div>
-            <div class="loading-text">📦 Cargando Inventario...</div>
-            <div class="loading-subtext">Descargando base de datos desde Google Sheets</div>
-        </div>
-    </div>
-
     <div class="connection-banner" id="connection-banner"></div>
     <div class="notification-container" id="notifications"></div>
 
-    <!-- LOGIN SCREEN -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">Cargando datos...</div>
+    </div>
+
     <div class="login-screen" id="login-screen">
         <div class="login-card">
             <div class="login-icon">📦</div>
@@ -1162,63 +1000,54 @@
         </div>
     </div>
 
-    <!-- MAIN APP -->
     <div id="main-app" class="hidden">
         <div class="main-container">
-            <!-- SIDEBAR -->
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h2>📦 Inventario</h2>
                     <p>Sistema de gestión</p>
                 </div>
 
-                <!-- Sync Status -->
                 <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">
                     ✅ Sincronizado
                 </div>
 
-                <!-- Menu -->
                 <div class="sidebar-section">
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
                         📊 Resumen
                     </button>
-                    <button class="sidebar-btn sidebar-btn-orange" onclick="switchToGeneralCapture()">
-                        ⚡ Captura General
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="createNewTab()">
                         ➕ Nueva Sesión
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="downloadCSV()">
+                        📥 Exportar CSV
                     </button>
                 </div>
 
-                <!-- Pallets por estatus -->
                 <div class="sidebar-section">
-                    <div class="sidebar-section-title">Tarimas Activas</div>
-                    <div class="pallet-status-list" id="pallet-status-list">
+                    <div class="sidebar-section-title">Totales Acumulados</div>
+                    <div class="pallet-status-list" id="global-status-list">
                         <div class="pallet-status-item">
                             <div class="pallet-status-header">
                                 <span class="pallet-status-name" style="color: var(--success);">✅ OK</span>
                                 <span class="pallet-status-count" id="sidebar-ok-count">0</span>
                             </div>
-                            <div class="pallet-code" id="sidebar-ok-pallet">-</div>
                         </div>
                         <div class="pallet-status-item">
                             <div class="pallet-status-header">
                                 <span class="pallet-status-name" style="color: var(--blocked);">⚠️ Bloqueado</span>
                                 <span class="pallet-status-count" id="sidebar-blocked-count">0</span>
                             </div>
-                            <div class="pallet-code" id="sidebar-blocked-pallet">-</div>
                         </div>
                         <div class="pallet-status-item">
                             <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--error);">❌ No WMS</span>
+                                <span class="pallet-status-name" style="color: var(--no-wms);">❌ No WMS</span>
                                 <span class="pallet-status-count" id="sidebar-nowms-count">0</span>
                             </div>
-                            <div class="pallet-code" id="sidebar-nowms-pallet">-</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- User Footer -->
                 <div class="user-footer">
                     <div class="user-info">
                         <div class="user-avatar" id="user-avatar" onclick="changeUserAlias()">?</div>
@@ -1242,14 +1071,18 @@
                 </div>
             </div>
 
-            <!-- MAIN CONTENT -->
-            <div class="main-content" id="main-content-area">
-                <!-- Content will be loaded here by JavaScript -->
+            <div class="main-content">
+                <div class="tab-header-container" id="tab-header-container">
+                    </div>
+                <div class="tab-content-container" id="tab-content-container">
+                    <div id="empty-tabs-message" style="text-align: center; padding-top: 50px; color: #999;">
+                        Inicia una nueva sesión haciendo clic en "➕ Nueva Sesión".
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- RESUMEN POPUP -->
     <div class="popup-overlay" id="resumen-popup">
         <div class="popup-content">
             <div class="popup-header">
@@ -1278,7 +1111,8 @@
 
             <div class="resumen-actions">
                 <button class="btn btn-primary btn-small" onclick="refreshInventory(); closeResumen();">🔄 Recargar BD</button>
-                <button class="btn btn-success btn-small" onclick="SyncManager.syncAndExport(); updateResumen();">🔄 Sincronizar y Exportar</button>
+                <button class="btn btn-success btn-small" onclick="SyncManager.sync(true); updateResumen();">🔄 Sincronizar</button>
+                <button class="btn btn-secondary btn-small" onclick="downloadCSV();">📥 Exportar CSV</button>
             </div>
 
             <h3 style="margin-bottom: 10px; font-size: 1em;">📋 Historial Reciente</h3>
@@ -1303,1353 +1137,1521 @@
 
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
-    
-// ==================== CONFIGURATION ==================== //
-const CONFIG = {
-    CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
-    SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
-    SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
-    SHEET_NAME: 'BD',
-    INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
-};
-
-// ==================== STATE ==================== //
-let STATE = {
-    inventory: new Map(),
-    inventoryLastUpdate: null,
-    pallets: {
-        ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-        blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-        nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-    },
-    pendingCode1: null,
-    history: [],
-    currentView: 'standard', // 'standard' or 'general'
-    tabs: [],
-    activeTabId: null,
-    generalCapture: {
-        palletId: generatePalletId('GEN'),
-        boxes: [],
-        location: ''
-    }
-};
-
-let CURRENT_USER = '';
-let USER_EMAIL = '';
-let USER_GOOGLE_NAME = '';
-let IS_ONLINE = navigator.onLine;
-let PENDING_SYNC = [];
-let TOKEN_CLIENT = null;
-let audioCtx = null;
-
-// ==================== TABS SYSTEM ====================
-const TabsManager = {
-    maxTabs: 4,
-
-    init() {
-        this.loadTabs();
-        if (STATE.tabs.length === 0) {
-            this.showEmptyState();
-        } else {
-            this.activateTab(STATE.tabs[0].id);
-        }
-    },
-
-    loadTabs() {
-        try {
-            const saved = localStorage.getItem('pd_tabs');
-            if (saved) {
-                STATE.tabs = JSON.parse(saved);
-            }
-        } catch (e) {}
-    },
-
-    saveTabs() {
-        try {
-            localStorage.setItem('pd_tabs', JSON.stringify(STATE.tabs));
-        } catch (e) {}
-    },
-
-    createTab() {
-        if (STATE.tabs.length >= this.maxTabs) {
-            showNotification(`⚠️ Máximo ${this.maxTabs} pestañas`, 'warning');
-            return;
-        }
-
-        const newTab = {
-            id: `tab-${Date.now()}`,
-            name: `Pestaña ${STATE.tabs.length + 1}`,
-            pallets: {
-                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-            },
-            pendingCode1: null
+    <script>
+        // ==================== CONFIGURATION ====================
+        const CONFIG = {
+            CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
+            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
+            SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
+            SHEET_NAME: 'BD',
+            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
         };
 
-        STATE.tabs.push(newTab);
-        this.saveTabs();
-        this.activateTab(newTab.id);
-        showNotification('✅ Nueva pestaña creada', 'success');
-    },
+        // ==================== STATE (ADAPTADO PARA PESTAÑAS) ====================
+        const MAX_TABS = 5;
+        const TAB_PREFIX = 'tab-';
 
-    closeTab(tabId) {
-        const tab = STATE.tabs.find(t => t.id === tabId);
-        if (!tab) return;
+        let STATE = {
+            inventory: new Map(),
+            inventoryLastUpdate: null,
+            pendingCode1: null, // Obsoleto, ahora por pestaña
+            history: []
+        };
+        let TABS_STATE = {}; // Nuevo objeto para manejar el estado de cada pestaña
+        let activeTabId = null;
 
-        const totalBoxes = tab.pallets.ok.boxes.length +
-                          tab.pallets.blocked.boxes.length +
-                          tab.pallets.nowms.boxes.length;
+        let CURRENT_USER = '';
+        let USER_EMAIL = '';
+        let USER_GOOGLE_NAME = '';
+        let IS_ONLINE = navigator.onLine;
+        let PENDING_SYNC = [];
+        let TOKEN_CLIENT = null;
+        let audioCtx = null;
 
-        if (totalBoxes > 0) {
-            if (!confirm(`Esta pestaña tiene ${totalBoxes} cajas sin enviar. ¿Cerrar de todos modos?`)) {
+
+        // ==================== UTILITIES (MEJORADAS Y NUEVAS) ====================
+
+        /**
+         * Muestra el overlay de carga.
+         * @param {string} text El texto a mostrar.
+         */
+        function showLoading(text = 'Cargando...') {
+            const overlay = document.getElementById('loading-overlay');
+            const loadingText = document.getElementById('loading-text');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+            }
+            if (loadingText) {
+                loadingText.textContent = text;
+            }
+        }
+
+        /**
+         * Oculta el overlay de carga.
+         */
+        function hideLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Muestra una notificación temporal. (MANTENIDO)
+         * @param {string} message El mensaje a mostrar.
+         * @param {string} type El tipo de notificación ('success', 'error', 'warning', 'info').
+         */
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notifications');
+            if (!container) return;
+
+            const icons = {
+                'success': '👍',
+                'error': '🛑',
+                'warning': '⚠️',
+                'info': 'ℹ️',
+                'blocked': '🚧',
+                'nowms': '❌'
+            };
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<span style="margin-right: 8px;">${icons[type] || '📦'}</span>${message}`;
+
+            container.appendChild(notification);
+            setTimeout(() => notification.remove(), 4000);
+            playSound(type);
+        }
+
+        /**
+         * Toca un sonido para feedback. (MANTENIDO)
+         * @param {string} type El tipo de sonido ('success', 'error', 'warning').
+         */
+        function playSound(type) {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    // Audio not supported or restricted
+                    return;
+                }
+            }
+
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+
+                if (type === 'success') {
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.15);
+                } else if (type === 'error' || type === 'blocked' || type === 'nowms') {
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.35);
+                } else if (type === 'warning' || type === 'info') {
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                }
+            } catch (e) { }
+        }
+
+        /**
+         * Genera un ID de Pallet basado en el estatus. (ADAPTADO)
+         * @param {string} status El estatus ('OK', 'BLK', 'NW').
+         * @returns {string} El ID de Pallet único.
+         */
+        function generatePalletId(status) {
+            const date = new Date();
+            const year = date.getFullYear().toString().slice(2);
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+            return `${status}-${year}${month}${day}-${random}`;
+        }
+
+        /**
+         * Genera un ID de Pestaña único. (NUEVO)
+         * @returns {string} El ID de pestaña único.
+         */
+        function generateTabId() {
+            return TAB_PREFIX + Date.now();
+        }
+
+        /**
+         * Convierte el array de objetos de un estado de pestaña a CSV. (NUEVO)
+         * @param {Array<Object>} data Array de cajas.
+         * @param {Object} palletData Datos del pallet (ID, Location).
+         * @returns {string} El string CSV.
+         */
+        function convertToCSV(data, palletData) {
+            const header = ["Fecha", "Hora", "Usuario", "Código Principal", "Código 2", "Ubicación", "Estatus", "Pallet ID", "Nota"];
+            const csv = data.map(item => [
+                item.date,
+                item.time,
+                item.user,
+                item.scan1,
+                item.scan2,
+                palletData.location || '',
+                item.status,
+                palletData.id,
+                item.note || ''
+            ].map(String).map(s => `"${s.replace(/"/g, '""')}"`).join(','));
+
+            return header.join(',') + '\n' + csv.join('\n');
+        }
+
+        /**
+         * Descarga todos los datos pendientes de todas las pestañas. (NUEVO)
+         */
+        function downloadCSV() {
+            let allData = [];
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            let filename = `Inventario_Pendientes_${timestamp}.csv`;
+            let totalRecords = 0;
+
+            // 1. Recopilar datos de PENDING_SYNC
+            const pendingHeader = ["Fecha", "Hora", "Usuario", "Código Principal", "Código 2", "Ubicación", "Estatus", "Pallet ID", "Nota"];
+            const pendingCSV = PENDING_SYNC.map(r => [
+                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.pallet, r.note
+            ].map(String).map(s => `"${s.replace(/"/g, '""')}"`).join(','));
+
+            // 2. Recopilar datos de TABS_STATE
+            for (const tabId in TABS_STATE) {
+                const tabState = TABS_STATE[tabId];
+                ['ok', 'blocked', 'nowms'].forEach(status => {
+                    const pallet = tabState.pallets[status];
+                    if (pallet.boxes.length > 0) {
+                        pallet.boxes.forEach(box => {
+                            allData.push([
+                                box.date,
+                                box.time,
+                                box.user,
+                                box.scan1,
+                                box.scan2,
+                                pallet.location || 'PENDIENTE',
+                                box.status,
+                                pallet.id,
+                                box.note || ''
+                            ]);
+                        });
+                        totalRecords += pallet.boxes.length;
+                    }
+                });
+            }
+
+            // 3. Crear el archivo CSV
+            let csvContent = pendingHeader.join(',') + '\n';
+            csvContent += pendingCSV.join('\n');
+            if (pendingCSV.length > 0 && allData.length > 0) {
+                csvContent += '\n' + pendingHeader.join(',') + ' (DATOS EN PESTAÑAS)' + '\n';
+            }
+            csvContent += allData.map(row => row.map(String).map(s => `"${s.replace(/"/g, '""')}"`).join(',')).join('\n');
+
+            if (PENDING_SYNC.length === 0 && allData.length === 0) {
+                showNotification('❌ No hay datos pendientes para exportar.', 'error');
                 return;
             }
-        }
 
-        STATE.tabs = STATE.tabs.filter(t => t.id !== tabId);
-        this.saveTabs();
-
-        if (STATE.activeTabId === tabId) {
-            if (STATE.tabs.length > 0) {
-                this.activateTab(STATE.tabs[0].id);
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showNotification(`✅ Exportados ${PENDING_SYNC.length + totalRecords} registros pendientes.`, 'success');
             } else {
-                STATE.activeTabId = null;
-                this.showEmptyState();
+                showNotification('❌ Tu navegador no soporta la descarga automática de archivos.', 'error');
             }
-        } else {
-            this.renderTabs();
         }
 
-        showNotification('Pestaña cerrada', 'info');
-    },
+        // ==================== TAB MANAGER (NUEVO) ====================
 
-    activateTab(tabId) {
-        STATE.activeTabId = tabId;
-        const tab = STATE.tabs.find(t => t.id === tabId);
-        if (tab) {
-            STATE.pallets = tab.pallets;
-            STATE.pendingCode1 = tab.pendingCode1;
-        }
-        this.renderTabs();
-        this.renderStandardView();
-    },
-
-    renderTabs() {
-        const container = document.getElementById('tabs-container');
-        if (!container) return;
-
-        const html = STATE.tabs.map(tab => {
-            const active = tab.id === STATE.activeTabId ? 'active' : '';
-            const total = tab.pallets.ok.boxes.length +
-                         tab.pallets.blocked.boxes.length +
-                         tab.pallets.nowms.boxes.length;
+        /**
+         * Crea el HTML para un módulo de captura (Scan + Tarima + Log).
+         * @param {string} tabId El ID único de la pestaña.
+         * @returns {string} El HTML completo del módulo.
+         */
+        function createCaptureModuleHTML(tabId) {
             return `
-                <div class="tab ${active}" onclick="TabsManager.activateTab('${tab.id}')">
-                    ${tab.name} ${total > 0 ? `(${total})` : ''}
-                    <button class="tab-close" onclick="event.stopPropagation(); TabsManager.closeTab('${tab.id}')">×</button>
+                <div class="header">
+                    <h1>📸 Sesión ${tabId.replace(TAB_PREFIX, '')}</h1>
+                    <div class="header-actions">
+                        <input type="text" id="location-${tabId}" class="btn-small" placeholder="Ubicación Pallets" style="width: 150px; text-align: left;">
+                        <button class="btn btn-primary btn-small" onclick="sendData('${tabId}')" id="send-all-btn-${tabId}" disabled>
+                            📤 Enviar Todo (<span id="total-boxes-${tabId}">0</span>)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="scan-section">
+                    <div class="scan-row">
+                        <div class="scan-input-group">
+                            <label>🔍 Código Principal</label>
+                            <input type="text" class="scan-input" id="scan-input-${tabId}" placeholder="Escanea o ingresa código..." autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="result-box" id="result-box-${tabId}">
+                        <div class="result-header">
+                            <span class="result-icon" id="result-icon-${tabId}">📦</span>
+                            <span class="result-title" id="result-title-${tabId}">Estado</span>
+                        </div>
+                        <div class="result-code" id="result-code-${tabId}"></div>
+                        <div class="result-details" id="result-details-${tabId}"></div>
+                    </div>
+
+                    <div class="code2-container" id="code2-container-${tabId}">
+                        <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
+                            ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
+                        </label>
+                        <div class="code2-row">
+                            <div class="scan-input-group">
+                                <input type="text" class="scan-input" id="code2-input-${tabId}" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
+                            </div>
+                            <button class="btn-insertado" onclick="forceInsert('${tabId}')" id="force-insert-btn-${tabId}">
+                                ⚡ INSERTADO
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="columns-container">
+                    <div class="column-consolidated">
+                        <div class="column-header">
+                            <span class="column-title">
+                                🧺 Tarima Consolidada
+                            </span>
+                            <span class="column-count" id="consolidated-count-${tabId}">0</span>
+                        </div>
+
+                        <div class="consolidated-pallets" id="consolidated-pallets-${tabId}">
+                            </div>
+
+                        <div class="pallet-list-container" id="pallet-list-${tabId}">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Escanea una caja para empezar la Tarima.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="log-column">
+                        <div class="column-header">
+                            <span class="column-title">
+                                💬 Log Visual
+                            </span>
+                            <span class="column-count" id="log-count-${tabId}">0</span>
+                        </div>
+                        <div class="log-list" id="log-list-${tabId}">
+                            <div class="empty-state" style="padding: 10px; color: #a0aec0;">
+                                <div>Log de escaneos</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `;
-        }).join('');
+        }
 
-        const newBtn = STATE.tabs.length < this.maxTabs ? `
-            <div class="tab tab-new" onclick="TabsManager.createTab()">
-                ➕ Nuevo
-            </div>
-        ` : '';
+        /**
+         * Crea un nuevo estado para una pestaña.
+         * @returns {Object} El estado inicial de la pestaña.
+         */
+        function createNewTabState() {
+            return {
+                pallets: {
+                    ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                    blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                    nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+                },
+                pendingCode1: null,
+                log: []
+            };
+        }
 
-        container.innerHTML = html + newBtn;
-    },
-
-    showEmptyState() {
-        const content = document.getElementById('main-content-area');
-        content.innerHTML = `
-            <div class="tabs-empty-state">
-                <div class="tabs-empty-icon">📦</div>
-                <div class="tabs-empty-text">No hay pestañas abiertas</div>
-                <button class="btn btn-success" onclick="TabsManager.createTab()">
-                    ➕ Crear Primera Pestaña
-                </button>
-            </div>
-        `;
-    },
-
-    renderStandardView() {
-        const content = document.getElementById('main-content-area');
-        content.innerHTML = `
-            <div class="header">
-                <h1>📸 Área de Escaneo</h1>
-            </div>
-
-            <div id="tabs-container" class="tabs-container"></div>
-
-            <div class="scan-section">
-                <div class="scan-row">
-                    <div class="scan-input-group">
-                        <label>🔍 Código Principal</label>
-                        <input type="text" class="scan-input" id="scan-input" placeholder="Escanea o ingresa código..." autocomplete="off">
-                    </div>
-                </div>
-
-                <div class="result-box" id="result-box">
-                    <div class="result-header">
-                        <span class="result-icon" id="result-icon">📦</span>
-                        <span class="result-title" id="result-title">Estado</span>
-                    </div>
-                    <div class="result-code" id="result-code"></div>
-                    <div class="result-details" id="result-details"></div>
-                </div>
-
-                <div class="code2-container" id="code2-container">
-                    <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
-                        ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
-                    </label>
-                    <div class="code2-row">
-                        <div class="scan-input-group">
-                            <input type="text" class="scan-input" id="code2-input" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
-                        </div>
-                        <button class="btn-insertado" onclick="forceInsert()">
-                            ⚡ INSERTADO
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="columns-container">
-                <div class="column ok">
-                    <div class="column-header">
-                        <span class="column-title">✅ OK</span>
-                        <span class="column-count" id="ok-count">0</span>
-                    </div>
-                    <div class="column-pallet-info">
-                        <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
-                        <input type="text" class="column-location-input" id="location-ok" placeholder="📍 Ubicación destino...">
-                        <button class="column-send-btn" onclick="sendPallet('ok')" id="send-ok-btn" disabled>
-                            📤 Enviar Tarima OK
-                        </button>
-                    </div>
-                    <div class="column-list" id="ok-list">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="column blocked">
-                    <div class="column-header">
-                        <span class="column-title">⚠️ Bloqueado</span>
-                        <span class="column-count" id="blocked-count">0</span>
-                    </div>
-                    <div class="column-pallet-info">
-                        <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
-                        <input type="text" class="column-location-input" id="location-blocked" placeholder="📍 Ubicación destino...">
-                        <button class="column-send-btn" onclick="sendPallet('blocked')" id="send-blocked-btn" disabled>
-                            📤 Enviar Tarima Bloqueado
-                        </button>
-                    </div>
-                    <div class="column-list" id="blocked-list">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="column nowms">
-                    <div class="column-header">
-                        <span class="column-title">❌ No WMS</span>
-                        <span class="column-count" id="nowms-count">0</span>
-                    </div>
-                    <div class="column-pallet-info">
-                        <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
-                        <input type="text" class="column-location-input" id="location-nowms" placeholder="📍 Ubicación destino...">
-                        <button class="column-send-btn" onclick="sendPallet('nowms')" id="send-nowms-btn" disabled>
-                            📤 Enviar Tarima No WMS
-                        </button>
-                    </div>
-                    <div class="column-list" id="nowms-list">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        this.renderTabs();
-        setupEventListeners();
-        updateUI();
-    }
-};
-
-// ==================== SYNC MANAGER ====================
-const SyncManager = {
-    inProgress: false,
-    retryCount: 0,
-    intervalId: null,
-    AUTO_SYNC_INTERVAL: 30000,
-
-    init() {
-        this.load();
-        this.startAutoSync();
-        this.setupExitProtection();
-        this.updateUI(PENDING_SYNC.length === 0);
-    },
-
-    setupExitProtection() {
-        window.addEventListener('beforeunload', (e) => {
-            const hasUnsavedData = PENDING_SYNC.length > 0 ||
-                STATE.pallets.ok.boxes.length > 0 ||
-                STATE.pallets.blocked.boxes.length > 0 ||
-                STATE.pallets.nowms.boxes.length > 0 ||
-                STATE.generalCapture.boxes.length > 0;
-
-            if (hasUnsavedData) {
-                e.preventDefault();
-                e.returnValue = '¡Tienes datos sin sincronizar! ¿Seguro que quieres salir?';
-                return e.returnValue;
+        /**
+         * Crea y añade una nueva pestaña.
+         */
+        function createNewTab() {
+            if (Object.keys(TABS_STATE).length >= MAX_TABS) {
+                showNotification(`⚠️ Límite de ${MAX_TABS} sesiones activas. Cierra una para abrir una nueva.`, 'warning');
+                return;
             }
-        });
-    },
 
-    startAutoSync() {
-        if (this.intervalId) clearInterval(this.intervalId);
-        this.intervalId = setInterval(() => {
-            if (IS_ONLINE && gapi?.client?.getToken() && PENDING_SYNC.length > 0) {
-                this.sync(false);
+            const tabId = generateTabId();
+            TABS_STATE[tabId] = createNewTabState();
+            saveTabsState();
+
+            // 1. Crear el header de la pestaña
+            const headerContainer = document.getElementById('tab-header-container');
+            const tabHeader = document.createElement('div');
+            tabHeader.id = `header-${tabId}`;
+            tabHeader.className = 'tab-header';
+            tabHeader.onclick = () => switchTab(tabId);
+            tabHeader.innerHTML = `
+                <span>Sesión ${tabId.replace(TAB_PREFIX, '')}</span>
+                <span class="tab-badge empty" id="badge-${tabId}">0</span>
+                <button class="tab-close" onclick="event.stopPropagation(); closeTab('${tabId}')">×</button>
+            `;
+            headerContainer.appendChild(tabHeader);
+
+            // 2. Crear el contenido de la pestaña
+            const contentContainer = document.getElementById('tab-content-container');
+            const tabContent = document.createElement('div');
+            tabContent.id = `content-${tabId}`;
+            tabContent.className = 'tab-content';
+            tabContent.innerHTML = createCaptureModuleHTML(tabId);
+            contentContainer.appendChild(tabContent);
+
+            // 3. Ocultar mensaje de bienvenida y activar la nueva pestaña
+            document.getElementById('empty-tabs-message').classList.add('hidden');
+            switchTab(tabId);
+
+            // 4. Configurar listeners de entrada
+            setTimeout(() => {
+                const scanInput = document.getElementById(`scan-input-${tabId}`);
+                scanInput.onkeypress = (e) => {
+                    if (e.key === 'Enter') {
+                        handleScan(e, tabId);
+                    }
+                };
+                scanInput.focus();
+            }, 50);
+
+            showNotification(`✅ Sesión ${tabId.replace(TAB_PREFIX, '')} iniciada.`, 'info');
+        }
+
+        /**
+         * Cambia a la pestaña especificada.
+         * @param {string} id El ID de la pestaña a activar.
+         */
+        function switchTab(id) {
+            if (activeTabId === id) return;
+
+            // Desactivar pestaña anterior
+            if (activeTabId) {
+                document.getElementById(`header-${activeTabId}`)?.classList.remove('active');
+                document.getElementById(`content-${activeTabId}`)?.classList.remove('active');
             }
-        }, this.AUTO_SYNC_INTERVAL);
-    },
 
-    async sync(showMessages = true) {
-        if (this.inProgress) {
-            if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
-            return { success: false };
+            // Activar nueva pestaña
+            activeTabId = id;
+            document.getElementById(`header-${id}`)?.classList.add('active');
+            const content = document.getElementById(`content-${id}`);
+            content?.classList.add('active');
+
+            // Asegurar que el input de escaneo tenga foco
+            document.getElementById(`scan-input-${id}`)?.focus();
         }
 
-        if (!IS_ONLINE) {
-            if (showMessages) showNotification('⚠️ Sin conexión a internet', 'warning');
-            return { success: false };
+        /**
+         * Cierra la pestaña si no tiene datos pendientes.
+         * @param {string} id El ID de la pestaña a cerrar.
+         */
+        function closeTab(id) {
+            const state = TABS_STATE[id];
+            const totalBoxes = state.pallets.ok.boxes.length + state.pallets.blocked.boxes.length + state.pallets.nowms.boxes.length;
+
+            if (totalBoxes > 0) {
+                const confirmation = confirm(`⚠️ La Sesión ${id.replace(TAB_PREFIX, '')} tiene ${totalBoxes} cajas sin enviar. ¿Deseas cerrar y perder los datos?`);
+                if (!confirmation) return;
+            }
+
+            // Eliminar del estado y del DOM
+            delete TABS_STATE[id];
+            saveTabsState();
+
+            document.getElementById(`header-${id}`)?.remove();
+            document.getElementById(`content-${id}`)?.remove();
+
+            showNotification(`ℹ️ Sesión ${id.replace(TAB_PREFIX, '')} cerrada.`, 'info');
+
+            // Seleccionar otra pestaña o mostrar mensaje de bienvenida
+            const tabIds = Object.keys(TABS_STATE);
+            if (tabIds.length > 0) {
+                const newActiveId = tabIds[0];
+                switchTab(newActiveId);
+            } else {
+                activeTabId = null;
+                document.getElementById('empty-tabs-message').classList.remove('hidden');
+            }
+            updateGlobalSidebarStatus();
         }
 
-        if (!gapi?.client?.getToken()) {
-            if (showMessages) showNotification('⚠️ No conectado a Google', 'warning');
-            return { success: false };
+        /**
+         * Guarda el estado de las pestañas en localStorage.
+         */
+        function saveTabsState() {
+            try {
+                // Guardar solo el estado necesario (pallets y log)
+                const serializableState = {};
+                for (const id in TABS_STATE) {
+                    serializableState[id] = {
+                        pallets: TABS_STATE[id].pallets,
+                        log: TABS_STATE[id].log
+                    };
+                }
+                localStorage.setItem('pd_tabs_state', JSON.stringify(serializableState));
+            } catch (e) { }
         }
 
-        if (PENDING_SYNC.length === 0) {
-            this.updateUI(true);
-            if (showMessages) showNotification('✅ Todo sincronizado', 'success');
-            return { success: true, synced: 0 };
+        /**
+         * Carga el estado de las pestañas desde localStorage y las reconstruye.
+         */
+        function loadTabsState() {
+            try {
+                const saved = localStorage.getItem('pd_tabs_state');
+                if (saved) {
+                    const loadedState = JSON.parse(saved);
+                    TABS_STATE = {};
+                    const tabIds = Object.keys(loadedState);
+
+                    tabIds.forEach(tabId => {
+                        const state = createNewTabState(); // Iniciar con el template
+                        state.pallets = loadedState[tabId].pallets || state.pallets;
+                        state.log = loadedState[tabId].log || state.log;
+                        TABS_STATE[tabId] = state; // Sobrescribir el estado
+
+                        // Reconstruir el DOM
+                        const headerContainer = document.getElementById('tab-header-container');
+                        const contentContainer = document.getElementById('tab-content-container');
+
+                        const tabHeader = document.createElement('div');
+                        tabHeader.id = `header-${tabId}`;
+                        tabHeader.className = 'tab-header';
+                        tabHeader.onclick = () => switchTab(tabId);
+                        tabHeader.innerHTML = `
+                            <span>Sesión ${tabId.replace(TAB_PREFIX, '')}</span>
+                            <span class="tab-badge empty" id="badge-${tabId}">0</span>
+                            <button class="tab-close" onclick="event.stopPropagation(); closeTab('${tabId}')">×</button>
+                        `;
+                        headerContainer.appendChild(tabHeader);
+
+                        const tabContent = document.createElement('div');
+                        tabContent.id = `content-${tabId}`;
+                        tabContent.className = 'tab-content';
+                        tabContent.innerHTML = createCaptureModuleHTML(tabId);
+                        contentContainer.appendChild(tabContent);
+
+                        // Configurar listeners
+                        setTimeout(() => {
+                            const scanInput = document.getElementById(`scan-input-${tabId}`);
+                            scanInput.onkeypress = (e) => {
+                                if (e.key === 'Enter') {
+                                    handleScan(e, tabId);
+                                }
+                            };
+                            updateConsolidatedTarima(tabId); // Renderizar el contenido cargado
+                        }, 50);
+                    });
+
+                    if (tabIds.length > 0) {
+                        document.getElementById('empty-tabs-message').classList.add('hidden');
+                        switchTab(tabIds[0]);
+                    }
+
+                    updateGlobalSidebarStatus();
+                } else {
+                    // Si no hay pestañas guardadas, crear una por defecto
+                    createNewTab();
+                }
+            } catch (e) {
+                console.error('Error loading tabs state:', e);
+                createNewTab(); // Fallback
+            }
         }
 
-        return await this._doSync(showMessages);
-    },
+        // ==================== INVENTORY AND SCAN LOGIC (ADAPTADO) ====================
 
-    async _doSync(showMessages) {
-        this.inProgress = true;
-        updateConnectionIndicator(true);
+        /**
+         * Carga los datos del inventario (MANTENIDO, con manejo de Loading)
+         */
+        async function loadInventoryData() {
+            if (!IS_ONLINE) {
+                showNotification('⚠️ Sin conexión. Usando datos de caché.', 'warning');
+                return;
+            }
 
-        if (showMessages) showNotification('🔄 Sincronizando...', 'info');
+            showLoading('Descargando inventario...');
+            try {
+                const response = await fetch(CONFIG.INVENTORY_CSV_URL);
+                const csv = await response.text();
+                const rows = csv.split('\n').map(row => row.trim()).filter(row => row.length > 0);
+                const headers = rows[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g, ''));
 
-        try {
-            const values = PENDING_SYNC.map(r => [
-                r.date, r.time, r.user, r.scan1, r.scan2,
-                r.location, r.status, r.note, r.pallet
-            ]);
+                const newInventory = new Map();
+                for (let i = 1; i < rows.length; i++) {
+                    const values = rows[i].split(',');
+                    if (values.length !== headers.length) continue;
 
-            await gapi.client.sheets.spreadsheets.values.append({
-                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                range: `${CONFIG.SHEET_NAME}!A:I`,
-                valueInputOption: 'USER_ENTERED',
-                insertDataOption: 'INSERT_ROWS',
-                resource: { values }
+                    const item = {};
+                    headers.forEach((header, index) => {
+                        item[header] = values[index].trim();
+                    });
+
+                    // Usar 'codigoprincipal' como clave principal para búsqueda
+                    const code = item.codigoprincipal;
+                    if (code) {
+                        newInventory.set(code, item);
+                    }
+                }
+
+                STATE.inventory = newInventory;
+                STATE.inventoryLastUpdate = new Date();
+
+                // Actualizar UI de la sidebar
+                document.getElementById('bd-count').textContent = STATE.inventory.size;
+                document.getElementById('bd-update-time').textContent = `Actualizado: ${STATE.inventoryLastUpdate.toLocaleTimeString()}`;
+
+                showNotification(`✅ Base de Datos cargada. ${STATE.inventory.size} códigos.`, 'success');
+            } catch (e) {
+                console.error('Error loading inventory:', e);
+                showNotification('❌ Error al cargar la Base de Datos.', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        /**
+         * Implementa la lógica de búsqueda robusta. (NUEVO)
+         * @param {string} code Código escaneado.
+         * @returns {{ status: 'ok'|'blocked'|'nowms'|'error', item: Object|null, message: string }} Resultado de la búsqueda.
+         */
+        function searchInventory(code) {
+            const item = STATE.inventory.get(code);
+
+            if (!item) {
+                return {
+                    status: 'error',
+                    item: null,
+                    message: 'Código Principal no encontrado. Se solicitará Código 2.'
+                };
+            }
+
+            // Lógica de Estatus:
+            const statusWMS = (item.statuswms || '').toUpperCase().trim();
+            const statusCA = (item.statusca || '').toUpperCase().trim();
+
+            if (statusWMS === 'OK' && statusCA === 'OK') {
+                return {
+                    status: 'ok',
+                    item: item,
+                    message: '✅ Código OK para WMS y Calidad.'
+                };
+            } else if (statusWMS === 'OK' && statusCA !== 'OK') {
+                return {
+                    status: 'blocked',
+                    item: item,
+                    message: `⚠️ Bloqueado por Calidad. (Status CA: ${statusCA})`
+                };
+            } else {
+                // Si Status WMS no es OK, siempre es No WMS/Error de WMS
+                return {
+                    status: 'nowms',
+                    item: item,
+                    message: `❌ No WMS. (Status WMS: ${statusWMS})`
+                };
+            }
+        }
+
+        /**
+         * Maneja el escaneo del Código Principal (CP) o Pallet ID. (ADAPTADO)
+         * @param {Event} event Evento keypress.
+         * @param {string} tabId ID de la pestaña.
+         */
+        function handleScan(event, tabId) {
+            if (event.key !== 'Enter') return;
+            const inputElement = document.getElementById(`scan-input-${tabId}`);
+            const code = inputElement.value.toUpperCase().trim();
+            inputElement.value = ''; // Limpiar inmediatamente
+
+            if (!code) return;
+
+            const state = TABS_STATE[tabId];
+            if (!state) return;
+
+            const resultBox = document.getElementById(`result-box-${tabId}`);
+            const code2Container = document.getElementById(`code2-container-${tabId}`);
+
+            // 1. Manejar si estábamos esperando Código 2
+            if (state.pendingCode1) {
+                handleCode2Scan(code, tabId);
+                return;
+            }
+
+            // 2. Ejecutar la Búsqueda Robusta
+            const result = searchInventory(code);
+
+            // 3. Actualizar UI de resultado
+            updateResultBox(tabId, result.status, result.message, code, result.item);
+
+            if (result.status === 'error') {
+                // Código no encontrado: Pedir Código 2
+                state.pendingCode1 = code;
+                code2Container.classList.add('show');
+                document.getElementById(`code2-input-${tabId}`).focus();
+                showNotification(result.message, 'error');
+            } else {
+                // Código encontrado (OK, BLOCKED, NO WMS)
+                code2Container.classList.remove('show');
+                state.pendingCode1 = null;
+                const status = result.status;
+                const item = result.item;
+
+                const newBox = {
+                    date: new Date().toLocaleDateString('es-MX'),
+                    time: new Date().toLocaleTimeString('es-MX'),
+                    user: CURRENT_USER,
+                    scan1: code,
+                    scan2: item.codigoalterno || '',
+                    status: status,
+                    note: result.message.replace(/[\:\(\)]/g, '').trim()
+                };
+
+                addBoxToPallet(tabId, status, newBox);
+                inputElement.focus();
+            }
+            saveTabsState();
+        }
+
+        /**
+         * Maneja el escaneo o ingreso del Código 2. (ADAPTADO)
+         * @param {string} code2 Código escaneado.
+         * @param {string} tabId ID de la pestaña.
+         */
+        function handleCode2Scan(code2, tabId) {
+            const state = TABS_STATE[tabId];
+            const code1 = state.pendingCode1;
+            const scanInput = document.getElementById(`scan-input-${tabId}`);
+
+            if (!code1) {
+                showNotification('❌ Error: El sistema no está esperando un Código 2.', 'error');
+                scanInput.focus();
+                return;
+            }
+
+            // 1. Buscar en BD si el Código 2 coincide con algún 'CodigoAlterno'
+            let foundItem = null;
+            for (const item of STATE.inventory.values()) {
+                if ((item.codigoalterno || '').toUpperCase().trim() === code2) {
+                    foundItem = item;
+                    break;
+                }
+            }
+
+            // 2. Determinar estado y registrar
+            let status = 'nowms'; // Por defecto, si Code1 no existe en BD, es No WMS
+            let message = `❌ CP: ${code1} no encontrado. Registrado como No WMS con Código 2: ${code2}.`;
+            let itemDetails = { statuswms: 'N/A', statusca: 'N/A' };
+
+            if (foundItem) {
+                // Si el Código 2 coincide con un Código Alterno existente, usar la lógica robusta de ese item
+                const result = searchInventory(foundItem.codigoprincipal);
+                status = result.status;
+                message = `⚠️ CP: ${code1} no encontrado. Registrado con estatus de Cod. Alterno: ${code2}.`;
+                itemDetails = foundItem;
+            } else {
+                // Si Code2 tampoco coincide con CodeAlterno, simplemente se registra como "NO WMS"
+                status = 'nowms';
+                message = `❌ CP: ${code1} y Cod. Alterno: ${code2} no encontrados en BD. Registrado como No WMS.`;
+            }
+
+            const newBox = {
+                date: new Date().toLocaleDateString('es-MX'),
+                time: new Date().toLocaleTimeString('es-MX'),
+                user: CURRENT_USER,
+                scan1: code1,
+                scan2: code2,
+                status: status,
+                note: message.substring(0, 100)
+            };
+
+            addBoxToPallet(tabId, status, newBox);
+
+            // 3. Limpiar estado y UI
+            state.pendingCode1 = null;
+            document.getElementById(`code2-container-${tabId}`).classList.remove('show');
+            document.getElementById(`code2-input-${tabId}`).value = '';
+
+            // 4. Actualizar ResultBox (Mostrando el Code1 original)
+            updateResultBox(tabId, status, message, code1, itemDetails);
+            showNotification(message, status);
+            scanInput.focus();
+            saveTabsState();
+        }
+
+        /**
+         * Registra un código no encontrado como "INSERTADO" (No WMS). (ADAPTADO)
+         * @param {string} tabId ID de la pestaña.
+         */
+        function forceInsert(tabId) {
+            const state = TABS_STATE[tabId];
+            const code1 = state.pendingCode1;
+            const code2Input = document.getElementById(`code2-input-${tabId}`);
+            const code2 = code2Input.value.toUpperCase().trim() || 'N/A';
+            const scanInput = document.getElementById(`scan-input-${tabId}`);
+
+            if (!code1) {
+                showNotification('❌ Error: Necesitas ingresar un Código Principal (CP) primero.', 'error');
+                scanInput.focus();
+                return;
+            }
+
+            const status = 'nowms';
+            const message = `⚡ FORZADO. CP: ${code1}. Código 2: ${code2}. Registrado como No WMS.`;
+
+            const newBox = {
+                date: new Date().toLocaleDateString('es-MX'),
+                time: new Date().toLocaleTimeString('es-MX'),
+                user: CURRENT_USER,
+                scan1: code1,
+                scan2: code2,
+                status: status,
+                note: 'FORZADO - INSERTADO'
+            };
+
+            addBoxToPallet(tabId, status, newBox);
+
+            // Limpiar estado y UI
+            state.pendingCode1 = null;
+            document.getElementById(`code2-container-${tabId}`).classList.remove('show');
+            code2Input.value = '';
+
+            // Actualizar ResultBox
+            updateResultBox(tabId, status, message, code1, { statuswms: 'FORZADO', statusca: 'N/A' });
+            showNotification(message, 'error'); // Usamos error para forzado/No WMS
+            scanInput.focus();
+            saveTabsState();
+        }
+
+        /**
+         * Actualiza el cuadro de resultados después de un escaneo. (ADAPTADO)
+         */
+        function updateResultBox(tabId, status, message, code, item) {
+            const resultBox = document.getElementById(`result-box-${tabId}`);
+            const resultIcon = document.getElementById(`result-icon-${tabId}`);
+            const resultTitle = document.getElementById(`result-title-${tabId}`);
+            const resultCode = document.getElementById(`result-code-${tabId}`);
+            const resultDetails = document.getElementById(`result-details-${tabId}`);
+
+            const classMap = {
+                'ok': 'success',
+                'blocked': 'warning',
+                'nowms': 'error',
+                'error': 'error'
+            };
+            const iconMap = {
+                'ok': '✅',
+                'blocked': '⚠️',
+                'nowms': '❌',
+                'error': '🛑'
+            };
+            const titleMap = {
+                'ok': 'Código OK',
+                'blocked': 'Bloqueado por CA',
+                'nowms': 'No WMS',
+                'error': 'Código NO Encontrado'
+            };
+
+            // Remover todas las clases de estado y añadir la correcta
+            resultBox.className = `result-box show ${classMap[status] || 'info'}`;
+            resultIcon.textContent = iconMap[status] || '📦';
+            resultTitle.textContent = titleMap[status] || 'Resultado';
+            resultCode.textContent = code;
+
+            let detailsHTML = '';
+            if (item) {
+                detailsHTML = `
+                    <div>
+                        <div class="result-detail-label">Status WMS</div>
+                        <div class="result-detail-value">${(item.statuswms || 'N/A').toUpperCase()}</div>
+                    </div>
+                    <div>
+                        <div class="result-detail-label">Status CA</div>
+                        <div class="result-detail-value">${(item.statusca || 'N/A').toUpperCase()}</div>
+                    </div>
+                    <div>
+                        <div class="result-detail-label">Cod. Alterno</div>
+                        <div class="result-detail-value">${(item.codigoalterno || 'N/A').toUpperCase()}</div>
+                    </div>
+                    <div>
+                        <div class="result-detail-label">Mensaje</div>
+                        <div class="result-detail-value">${message}</div>
+                    </div>
+                `;
+            } else {
+                detailsHTML = `<div><div class="result-detail-label">Mensaje</div><div class="result-detail-value">${message}</div></div>`;
+            }
+            resultDetails.innerHTML = detailsHTML;
+
+            // Limpiar la clase de input después de 500ms
+            const inputElement = document.getElementById(`scan-input-${tabId}`);
+            if (inputElement) {
+                inputElement.classList.add(classMap[status]);
+                setTimeout(() => {
+                    inputElement.classList.remove('success', 'error', 'warning');
+                }, 500);
+            }
+
+            playSound(status);
+        }
+
+        // ==================== PALLET/LOG MANAGEMENT (CONSOLIDADO - NUEVO) ====================
+
+        /**
+         * Añade una caja al pallet correspondiente dentro del estado de la pestaña. (NUEVO)
+         * @param {string} tabId ID de la pestaña.
+         * @param {string} status Estatus de la caja ('ok', 'blocked', 'nowms').
+         * @param {Object} box Objeto de la caja con sus datos.
+         */
+        function addBoxToPallet(tabId, status, box) {
+            const state = TABS_STATE[tabId];
+            if (!state) return;
+
+            state.pallets[status].boxes.push(box);
+            updateVisualLog(tabId, box);
+            updateConsolidatedTarima(tabId);
+            updateGlobalSidebarStatus();
+            saveTabsState();
+        }
+
+        /**
+         * Elimina una caja de un pallet por índice. (NUEVO)
+         * @param {string} tabId ID de la pestaña.
+         * @param {string} status Estatus del pallet.
+         * @param {number} index Índice de la caja a eliminar.
+         */
+        function removeItemFromTarima(tabId, status, index) {
+            const state = TABS_STATE[tabId];
+            if (!state) return;
+
+            const box = state.pallets[status].boxes.splice(index, 1)[0];
+            updateConsolidatedTarima(tabId);
+            updateGlobalSidebarStatus();
+            saveTabsState();
+            showNotification(`➖ Caja eliminada: ${box.scan1}`, 'warning');
+        }
+
+        /**
+         * Renderiza la vista de Tarima Consolidada y actualiza los contadores. (NUEVO)
+         * @param {string} tabId ID de la pestaña.
+         */
+        function updateConsolidatedTarima(tabId) {
+            const state = TABS_STATE[tabId];
+            if (!state) return;
+
+            const palletListEl = document.getElementById(`pallet-list-${tabId}`);
+            const consolidatedPalletsEl = document.getElementById(`consolidated-pallets-${tabId}`);
+            const totalBoxesEl = document.getElementById(`total-boxes-${tabId}`);
+            const totalCountEl = document.getElementById(`consolidated-count-${tabId}`);
+            const sendBtn = document.getElementById(`send-all-btn-${tabId}`);
+            const tabBadge = document.getElementById(`badge-${tabId}`);
+
+            let totalBoxes = 0;
+            let listHTML = '';
+            let cardsHTML = '';
+
+            const statusOrder = ['ok', 'blocked', 'nowms'];
+            const statusLabels = { 'ok': 'OK', 'blocked': 'Bloqueado', 'nowms': 'No WMS' };
+
+            statusOrder.forEach(status => {
+                const pallet = state.pallets[status];
+                const count = pallet.boxes.length;
+                totalBoxes += count;
+
+                // Construir la lista principal
+                if (count > 0) {
+                    listHTML += `<div style="font-weight: 700; color: var(--${status}); margin-top: 15px; padding-bottom: 5px; border-bottom: 1px solid var(--border);">
+                        ${statusLabels[status]} (${count} cajas)
+                    </div>`;
+
+                    pallet.boxes.reverse().forEach((box, index) => {
+                        const originalIndex = count - 1 - index; // Para que el índice de eliminación sea correcto
+                        listHTML += `
+                            <div class="box-item ${status}">
+                                <div class="box-info">
+                                    <div class="box-code">${box.scan1}</div>
+                                    <div class="box-meta">${box.scan2} | ${box.time} | Pallet ID: ${pallet.id}</div>
+                                </div>
+                                <button class="box-delete" title="Eliminar caja" onclick="removeItemFromTarima('${tabId}', '${status}', ${originalIndex})">🗑️</button>
+                            </div>
+                        `;
+                    });
+                    pallet.boxes.reverse(); // Volver a su orden original
+                }
+
+                // Construir las tarjetas de estado
+                cardsHTML += `
+                    <div class="pallet-info-card ${status}">
+                        <div>Estatus: <span style="font-weight: 700; color: var(--${status});">${statusLabels[status]}</span></div>
+                        <div>Cajas: <span class="pallet-status-count">${count}</span></div>
+                        <div>Pallet ID: <span class="pallet-id">${pallet.id}</span></div>
+                    </div>
+                `;
             });
 
-            const synced = PENDING_SYNC.length;
-            PENDING_SYNC = [];
-            this.save();
-            this.updateUI(true);
+            // Actualizar el DOM
+            palletListEl.innerHTML = listHTML || `
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <div>Escanea una caja para empezar la Tarima.</div>
+                </div>
+            `;
+            consolidatedPalletsEl.innerHTML = cardsHTML;
 
-            if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success');
-            return { success: true, synced };
-        } catch (e) {
-            console.error('Sync error:', e);
-            this.updateUI(false);
-            if (showMessages) showNotification(`❌ Error: ${e.result?.error?.message || e.message || 'Error desconocido'}`, 'error');
-            return { success: false };
-        } finally {
-            this.inProgress = false;
-            updateConnectionIndicator();
+            // Actualizar contadores y botón de envío
+            totalBoxesEl.textContent = totalBoxes;
+            totalCountEl.textContent = totalBoxes;
+            sendBtn.disabled = totalBoxes === 0;
+
+            // Actualizar badge de la pestaña
+            tabBadge.textContent = totalBoxes;
+            tabBadge.className = `tab-badge ${totalBoxes > 0 ? (state.pallets.nowms.boxes.length > 0 ? 'nowms' : (state.pallets.blocked.boxes.length > 0 ? 'blocked' : 'ok')) : 'empty'}`;
         }
-    },
 
-    async syncAndExport() {
-        const result = await this.sync(true);
-        if (result.success) {
-            exportData();
-        }
-    },
+        /**
+         * Agrega una entrada al Log Visual. (NUEVO)
+         * @param {string} tabId ID de la pestaña.
+         * @param {Object} box Objeto de la caja escaneada.
+         */
+        function updateVisualLog(tabId, box) {
+            const state = TABS_STATE[tabId];
+            if (!state) return;
 
-    async save() {
-        try {
-            localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
-        } catch (e) {}
-    },
-
-    async load() {
-        try {
-            const saved = localStorage.getItem('pd_pending_sync');
-            if (saved) PENDING_SYNC = JSON.parse(saved);
-        } catch (e) {}
-    },
-
-    updateUI(synced) {
-        const el = document.getElementById('sync-status');
-        if (!el) return;
-
-        if (!IS_ONLINE) {
-            el.className = 'sync-status sync-warning';
-            el.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`;
-        } else if (PENDING_SYNC.length > 0) {
-            el.className = 'sync-status sync-warning';
-            el.innerHTML = `⏳ ${PENDING_SYNC.length} pendientes`;
-        } else if (synced) {
-            el.className = 'sync-status sync-ok';
-            el.textContent = '✅ Sincronizado';
-        } else {
-            el.className = 'sync-status sync-error';
-            el.textContent = '❌ Error sync';
-        }
-    },
-
-    showPanel() {
-        const overlay = document.createElement('div');
-        overlay.className = 'popup-overlay show';
-        overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 450px;">
-                <div class="popup-header">
-                    <span>📊 Estado de Sincronización</span>
-                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px; text-align: center;">
-                        <div style="font-size: 0.85em; color: #666;">Pendientes de sincronizar</div>
-                        <div style="font-size: 2em; font-weight: 700; color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'};">
-                            ${PENDING_SYNC.length}
-                        </div>
-                    </div>
-                    <div style="font-size: 0.9em; padding: 10px; background: #f9f9f9; border-radius: 6px;">
-                        ${IS_ONLINE ? '🟢 Conectado a internet' : '🔴 Sin conexión'}<br>
-                        ${gapi?.client?.getToken() ? '🟢 Google conectado' : '🔴 Google desconectado'}<br>
-                        📄 Hoja destino: <strong>${CONFIG.SHEET_NAME}</strong>
-                    </div>
-                </div>
-                <div class="popup-buttons">
-                    ${PENDING_SYNC.length > 0 && IS_ONLINE && gapi?.client?.getToken() ? `
-                        <button class="btn btn-success btn-full" onclick="this.closest('.popup-overlay').remove(); SyncManager.sync();">
-                            🔄 Sincronizar Ahora
-                        </button>
-                    ` : ''}
-                    <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
-                        Cerrar
-                    </button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.remove();
-        });
-    }
-};
-
-
-// ==================== GENERAL CAPTURE MODULE ====================
-const GeneralCapture = {
-    render() {
-        const content = document.getElementById('main-content-area');
-        content.innerHTML = `
-            <div class="header">
-                <h1>⚡ Captura General</h1>
-                <button class="btn btn-secondary btn-small" onclick="switchToStandardView()">
-                    📸 Vista Estándar
-                </button>
-            </div>
-
-            <div class="scan-section">
-                <div class="scan-row">
-                    <div class="scan-input-group">
-                        <label>🔍 Código Principal</label>
-                        <input type="text" class="scan-input" id="general-scan-input" placeholder="Escanea o ingresa código..." autocomplete="off">
-                    </div>
-                </div>
-
-                <div class="result-box" id="general-result-box">
-                    <div class="result-header">
-                        <span class="result-icon" id="general-result-icon">📦</span>
-                        <span class="result-title" id="general-result-title">Estado</span>
-                    </div>
-                    <div class="result-code" id="general-result-code"></div>
-                    <div class="result-details" id="general-result-details"></div>
-                </div>
-
-                <div class="code2-container" id="general-code2-container">
-                    <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
-                        ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
-                    </label>
-                    <div class="code2-row">
-                        <div class="scan-input-group">
-                            <input type="text" class="scan-input" id="general-code2-input" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
-                        </div>
-                        <button class="btn-insertado" onclick="GeneralCapture.forceInsert()">
-                            ⚡ INSERTADO
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="general-capture-container">
-                <div class="general-pallet-card">
-                    <div class="general-pallet-header">
-                        <span class="general-pallet-title">📦 Tarima General</span>
-                        <span class="general-pallet-count" id="general-pallet-count">0</span>
-                    </div>
-                    <div class="general-pallet-info">
-                        <div class="general-info-item">
-                            <div class="general-info-label">ID Pallet</div>
-                            <div class="general-info-value" id="general-pallet-id">-</div>
-                        </div>
-                        <div class="general-info-item">
-                            <div class="general-info-label">Total Cajas</div>
-                            <div class="general-info-value" id="general-total-boxes">0</div>
-                        </div>
-                    </div>
-                    <div class="general-location-row">
-                        <input type="text" class="general-location-input" id="general-location" placeholder="📍 Ubicación destino...">
-                        <button class="general-send-btn" onclick="GeneralCapture.sendPallet()" id="general-send-btn" disabled>
-                            📤 Enviar Datos
-                        </button>
-                    </div>
-                </div>
-
-                <div class="general-boxes-container" id="general-boxes-list">
-                    <div class="empty-state">
-                        <div class="empty-icon">📭</div>
-                        <div>Sin cajas escaneadas</div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        this.setupEventListeners();
-        this.updateUI();
-    },
-
-    setupEventListeners() {
-        const scanInput = document.getElementById('general-scan-input');
-        scanInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && scanInput.value.trim()) {
-                e.preventDefault();
-                this.processScan(scanInput.value.trim());
-                scanInput.value = '';
+            // Añadir al estado del log (limitar a 50 entradas)
+            state.log.unshift(box);
+            if (state.log.length > 50) {
+                state.log.pop();
             }
-        });
 
-        const code2Input = document.getElementById('general-code2-input');
-        code2Input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && code2Input.value.trim()) {
-                e.preventDefault();
-                this.processCode2(code2Input.value.trim());
-                code2Input.value = '';
-            }
-        });
-    },
+            const logListEl = document.getElementById(`log-list-${tabId}`);
+            const logCountEl = document.getElementById(`log-count-${tabId}`);
+            if (!logListEl) return;
 
-    processScan(rawCode) {
-        const code = normalizeCode(rawCode);
+            let logHTML = '';
+            state.log.forEach((entry, index) => {
+                logHTML += `
+                    <div class="log-entry ${entry.status}">
+                        <span class="log-status-icon">${entry.status === 'ok' ? '✅' : (entry.status === 'blocked' ? '⚠️' : '❌')}</span>
+                        <span class="log-time">${entry.time}</span>
+                        <span class="log-code" title="${entry.note || entry.scan1}">${entry.scan1}</span>
+                    </div>
+                `;
+            });
 
-        // Check duplicates
-        if (STATE.generalCapture.boxes.some(b => b.code === code)) {
-            showNotification('⚠️ Código duplicado', 'warning');
-            this.flashInput('warning');
-            playSound('warning');
-            return;
+            logListEl.innerHTML = logHTML;
+            logCountEl.textContent = state.log.length;
         }
 
-        const item = STATE.inventory.get(code);
+        /**
+         * Actualiza el resumen de la barra lateral (acumulado de todas las pestañas). (ADAPTADO)
+         */
+        function updateGlobalSidebarStatus() {
+            let okCount = 0;
+            let blockedCount = 0;
+            let nowmsCount = 0;
 
-        if (!item) {
-            // Try alternative code
-            const altItem = this.findByAlternativeCode(code);
-            if (altItem) {
-                this.addBox(code, '', altItem);
-                this.showResult('success', code, 'OK (Código Alternativo)', 'Encontrado por código alternativo', altItem);
-                this.flashInput('success');
-                playSound('success');
+            for (const id in TABS_STATE) {
+                const state = TABS_STATE[id];
+                okCount += state.pallets.ok.boxes.length;
+                blockedCount += state.pallets.blocked.boxes.length;
+                nowmsCount += state.pallets.nowms.boxes.length;
+            }
+
+            document.getElementById('sidebar-ok-count').textContent = okCount;
+            document.getElementById('sidebar-blocked-count').textContent = blockedCount;
+            document.getElementById('sidebar-nowms-count').textContent = nowmsCount;
+        }
+
+        // ==================== DATA SUBMISSION (NUEVO) ====================
+
+        /**
+         * Prepara y envía todos los datos de la pestaña al Google Sheet. (NUEVO)
+         * @param {string} tabId ID de la pestaña.
+         */
+        async function sendData(tabId) {
+            const state = TABS_STATE[tabId];
+            if (!state) return;
+
+            const totalBoxes = state.pallets.ok.boxes.length + state.pallets.blocked.boxes.length + state.pallets.nowms.boxes.length;
+            if (totalBoxes === 0) {
+                showNotification('ℹ️ No hay cajas para enviar en esta sesión.', 'info');
                 return;
             }
 
-            // Not found - show Code2 input
-            STATE.pendingCode1 = { raw: rawCode, code };
-            this.showResult('error', code, 'NO ENCONTRADO', 'Código no encontrado. Ingresa Código 2 o usa INSERTADO.', null);
-            document.getElementById('general-code2-container').classList.add('show');
-            this.flashInput('error');
-            playSound('error');
-            setTimeout(() => document.getElementById('general-code2-input').focus(), 100);
-            return;
-        }
+            const locationInput = document.getElementById(`location-${tabId}`);
+            const location = locationInput.value.toUpperCase().trim();
 
-        // Hide code2 container
-        document.getElementById('general-code2-container').classList.remove('show');
-        STATE.pendingCode1 = null;
-
-        // Add box with status
-        this.addBox(code, '', item);
-
-        if (item.isBlocked) {
-            this.showResult('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
-            playSound('warning');
-        } else if (item.isAvailable) {
-            this.showResult('success', code, 'OK', 'Validado correctamente', item);
-            playSound('success');
-        } else {
-            this.showResult('blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
-            playSound('warning');
-        }
-
-        this.flashInput('success');
-    },
-
-    findByAlternativeCode(code) {
-        for (const [key, item] of STATE.inventory) {
-            // Buscar en campos adicionales si existen
-            if (item.alternativeCode && normalizeCode(item.alternativeCode) === code) {
-                return item;
+            if (!location) {
+                showNotification('⚠️ Ingresa una ubicación destino antes de enviar.', 'warning');
+                locationInput.focus();
+                return;
             }
-        }
-        return null;
-    },
 
-    processCode2(rawCode2) {
-        if (!STATE.pendingCode1) return;
+            showLoading(`Preparando envío de ${totalBoxes} cajas...`);
 
-        const code2 = normalizeCode(rawCode2);
-        const item = STATE.inventory.get(code2);
+            let recordsToSend = [];
 
-        document.getElementById('general-code2-container').classList.remove('show');
+            // Recopilar y resetear los pallets
+            ['ok', 'blocked', 'nowms'].forEach(status => {
+                const pallet = state.pallets[status];
+                if (pallet.boxes.length > 0) {
+                    pallet.boxes.forEach(box => {
+                        recordsToSend.push({
+                            date: box.date,
+                            time: box.time,
+                            user: box.user,
+                            scan1: box.scan1,
+                            scan2: box.scan2,
+                            location: location,
+                            status: box.status,
+                            note: box.note,
+                            pallet: pallet.id // Usar el ID del pallet generado
+                        });
+                    });
+                    // Resetear el pallet
+                    pallet.boxes = [];
+                    pallet.id = generatePalletId(status.toUpperCase().replace('NOWMS', 'NW').replace('BLOCKED', 'BLK'));
+                }
+            });
 
-        if (!item) {
-            // Both codes failed
-            this.addBox(STATE.pendingCode1.code, rawCode2, null);
-            this.showResult('error', STATE.pendingCode1.code, 'NO WMS', 
-                `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
-            playSound('error');
-        } else if (item.isBlocked) {
-            this.addBox(code2, rawCode2, item);
-            this.showResult('blocked', code2, 'BLOQUEADO (Código 2)', 'Validado con Código 2 - Bloqueado', item);
-            playSound('warning');
-        } else {
-            this.addBox(code2, rawCode2, item);
-            this.showResult('success', code2, 'OK (Código 2)', 'Validado correctamente con Código 2', item);
-            playSound('success');
-        }
+            // Añadir al buffer de sincronización
+            PENDING_SYNC.push(...recordsToSend);
+            SyncManager.save(); // Guardar el buffer
 
-        STATE.pendingCode1 = null;
-        this.flashInput('success');
-        document.getElementById('general-scan-input').focus();
-    },
+            hideLoading();
+            showNotification(`✅ ${recordsToSend.length} cajas añadidas a la cola de sincronización.`, 'success');
 
-    forceInsert() {
-        if (!STATE.pendingCode1) {
-            showNotification('⚠️ Primero escanea un código', 'warning');
-            return;
-        }
+            // Limpiar UI de la pestaña
+            locationInput.value = '';
+            state.pendingCode1 = null;
+            document.getElementById(`code2-container-${tabId}`)?.classList.remove('show');
 
-        const code2Value = document.getElementById('general-code2-input').value.trim();
-        this.addBox(STATE.pendingCode1.code, code2Value, null);
-
-        const msg = code2Value
-            ? `Insertado con códigos: ${STATE.pendingCode1.code} y ${code2Value}`
-            : `Insertado con código: ${STATE.pendingCode1.code}`;
-
-        this.showResult('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', msg, null);
-
-        document.getElementById('general-code2-container').classList.remove('show');
-        document.getElementById('general-code2-input').value = '';
-        STATE.pendingCode1 = null;
-
-        playSound('warning');
-        this.flashInput('warning');
-        document.getElementById('general-scan-input').focus();
-        showNotification('⚡ Registro insertado forzosamente', 'warning');
-    },
-
-    addBox(code, scan2, item) {
-        const status = !item ? 'nowms' : item.isBlocked ? 'blocked' : 'ok';
-        
-        STATE.generalCapture.boxes.push({
-            code,
-            scan1: code,
-            scan2: scan2 || '',
-            location: item?.cellNo || '-',
-            sku: item?.sku || '-',
-            product: item?.productName || '-',
-            timestamp: new Date().toLocaleTimeString(),
-            status
-        });
-
-        saveToStorage();
-        this.updateUI();
-    },
-
-    deleteBox(index) {
-        if (confirm('¿Eliminar esta caja?')) {
-            STATE.generalCapture.boxes.splice(index, 1);
-            saveToStorage();
-            this.updateUI();
-            showNotification('Caja eliminada', 'info');
-        }
-    },
-
-    async sendPallet() {
-        const location = document.getElementById('general-location').value.trim();
-
-        if (STATE.generalCapture.boxes.length === 0) {
-            showNotification('⚠️ No hay cajas en esta tarima', 'warning');
-            return;
-        }
-
-        if (!location) {
-            showNotification('⚠️ Ingresa la ubicación destino', 'warning');
-            document.getElementById('general-location').focus();
-            return;
-        }
-
-        // Validar ubicación
-        const locationCheck = confirmInvalidLocation(location);
-        if (!locationCheck.confirmed) {
-            showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-            document.getElementById('general-location').focus();
-            return;
-        }
-
-        const finalLocation = locationCheck.formatted;
-        document.getElementById('general-location').value = finalLocation;
-
-        const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10);
-        const timeStr = now.toTimeString().slice(0, 8);
-
-        const records = STATE.generalCapture.boxes.map(box => ({
-            date: dateStr,
-            time: timeStr,
-            user: CURRENT_USER || 'Usuario',
-            scan1: box.scan1 || box.code,
-            scan2: box.scan2 || '',
-            location: finalLocation,
-            status: statusMap[box.status],
-            note: '',
-            pallet: STATE.generalCapture.palletId
-        }));
-
-        STATE.history = [...records, ...STATE.history].slice(0, 1000);
-        PENDING_SYNC = [...PENDING_SYNC, ...records];
-        SyncManager.save();
-
-        showNotification(`💾 ${records.length} registros agregados`, 'info');
-
-        if (IS_ONLINE && gapi?.client?.getToken()) {
-            await SyncManager.sync();
-        } else {
+            // Actualizar UI
+            updateConsolidatedTarima(tabId);
             SyncManager.updateUI(false);
+            updateGlobalSidebarStatus();
+
+            // Intentar sincronizar inmediatamente
+            SyncManager.sync(false);
         }
 
-        // Reset
-        STATE.generalCapture = {
-            palletId: generatePalletId('GEN'),
-            boxes: [],
-            location: ''
-        };
-        document.getElementById('general-location').value = '';
+        // ==================== AUTH & SYNC MANAGER (MANTENIDO Y ADAPTADO) ====================
 
-        saveToStorage();
-        this.updateUI();
-        playSound('success');
-        document.getElementById('general-scan-input').focus();
-    },
+        // (SyncManager: MANTENIDO. La lógica de sincronización permanece igual, solo PENDING_SYNC se llena desde las pestañas)
+        const SyncManager = {
+            inProgress: false,
+            retryCount: 0,
+            intervalId: null,
+            AUTO_SYNC_INTERVAL: 30000,
+            init() {
+                this.load();
+                this.startAutoSync();
+                this.setupExitProtection();
+                this.updateUI(PENDING_SYNC.length === 0);
+            },
+            setupExitProtection() {
+                window.addEventListener('beforeunload', (e) => {
+                    let totalBoxes = 0;
+                    for (const id in TABS_STATE) {
+                        const state = TABS_STATE[id];
+                        totalBoxes += state.pallets.ok.boxes.length + state.pallets.blocked.boxes.length + state.pallets.nowms.boxes.length;
+                    }
 
-    updateUI() {
-        const count = STATE.generalCapture.boxes.length;
-        document.getElementById('general-pallet-count').textContent = count;
-        document.getElementById('general-pallet-id').textContent = STATE.generalCapture.palletId;
-        document.getElementById('general-total-boxes').textContent = count;
-        document.getElementById('general-send-btn').disabled = count === 0;
-
-        const listEl = document.getElementById('general-boxes-list');
-        if (count === 0) {
-            listEl.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📭</div>
-                    <div>Sin cajas escaneadas</div>
-                </div>
-            `;
-            return;
-        }
-
-        listEl.innerHTML = STATE.generalCapture.boxes.map((box, index) => {
-            const statusLabels = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-            return `
-                <div class="general-box-item ${box.status}">
-                    <div class="general-box-main">
-                        <div class="general-box-header">
-                            <span class="general-box-number">#${index + 1}</span>
-                            <span class="general-box-status ${box.status}">${statusLabels[box.status]}</span>
-                        </div>
-                        <div class="general-box-codes">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
-                        <div class="general-box-time">${box.timestamp} • ${box.location}</div>
-                    </div>
-                    <button class="box-delete" onclick="GeneralCapture.deleteBox(${index})">✕</button>
-                </div>
-            `;
-        }).join('');
-    },
-
-    showResult(type, code, title, message, item) {
-        const box = document.getElementById('general-result-box');
-        const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' };
-
-        box.className = `result-box show ${type}`;
-        document.getElementById('general-result-icon').textContent = icons[type] || '📦';
-        document.getElementById('general-result-title').textContent = title;
-        document.getElementById('general-result-code').textContent = code;
-
-        const detailsEl = document.getElementById('general-result-details');
-        if (item) {
-            detailsEl.innerHTML = `
-                <div><span class="result-detail-label">Ubicación</span><div class="result-detail-value">${item.cellNo || '-'}</div></div>
-                <div><span class="result-detail-label">SKU</span><div class="result-detail-value">${item.sku || '-'}</div></div>
-                <div><span class="result-detail-label">Producto</span><div class="result-detail-value">${item.productName || '-'}</div></div>
-                <div><span class="result-detail-label">Stock</span><div class="result-detail-value">${item.availableStock || 0}</div></div>
-            `;
-        } else {
-            detailsEl.innerHTML = `<div style="grid-column: 1/-1; color: #666;">${message}</div>`;
-        }
-    },
-
-    flashInput(type) {
-        const input = document.getElementById('general-scan-input');
-        input.classList.remove('success', 'error');
-        input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
-        setTimeout(() => input.classList.remove('success', 'error'), 500);
-    }
-};
-
-// ==================== VIEW SWITCHING ====================
-function switchToGeneralCapture() {
-    STATE.currentView = 'general';
-    GeneralCapture.render();
-    showNotification('⚡ Modo Captura General', 'info');
-}
-
-function switchToStandardView() {
-    STATE.currentView = 'standard';
-    if (STATE.tabs.length === 0) {
-        TabsManager.createTab();
-    } else {
-        TabsManager.renderStandardView();
-    }
-    showNotification('📸 Vista Estándar', 'info');
-}
-
-// ==================== INITIALIZATION ====================
-document.addEventListener('DOMContentLoaded', () => {
-    initAudio();
-    loadFromStorage();
-    setupConnectionMonitor();
-    gapi.load('client', initGAPI);
-});
-
-function initAudio() {
-    try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        document.addEventListener('click', () => {
-            if (audioCtx?.state === 'suspended') audioCtx.resume();
-        }, { once: true });
-    } catch (e) {}
-}
-
-// Enhanced Google API initialization with better error handling and state management
-let API_RETRY_COUNT = 0;
-const MAX_API_RETRIES = 3;
-const TOKEN_EXPIRY_BUFFER = 5 * 60 * 1000; // 5 minutes before token expiry
-
-async function initGAPI() {
-    try {
-        // Initialize the Google API client
-        await gapi.client.init({
-            discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-            gapi: {
-                client: {
-                    clientId: CONFIG.CLIENT_ID,
-                    scope: CONFIG.SCOPES
+                    const hasUnsavedData = PENDING_SYNC.length > 0 || totalBoxes > 0;
+                    if (hasUnsavedData) {
+                        e.preventDefault();
+                        e.returnValue = `¡Tienes ${PENDING_SYNC.length} registros pendientes de sincronizar y ${totalBoxes} cajas sin enviar en tus sesiones! ¿Seguro que quieres salir?`;
+                        return e.returnValue;
+                    }
+                });
+            },
+            startAutoSync() {
+                if (this.intervalId) clearInterval(this.intervalId);
+                this.intervalId = setInterval(() => {
+                    if (IS_ONLINE && gapi?.client?.getToken() && PENDING_SYNC.length > 0) {
+                        this.sync(false);
+                    }
+                }, this.AUTO_SYNC_INTERVAL);
+            },
+            async sync(showMessages = true) {
+                if (this.inProgress) {
+                    if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
+                    return { success: false };
                 }
-            }
-        });
-
-        // Set up token client with error handling
-        TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-            client_id: CONFIG.CLIENT_ID,
-            scope: CONFIG.SCOPES,
-            callback: handleAuthCallback,
-            error_callback: (error) => {
-                console.error('OAuth2 Error:', error);
-                showNotification('Error de autenticación con Google', 'error');
-                showLoadingOverlay(false);
-            }
-        });
-
-        // Check for existing token
-        const token = gapi.client.getToken();
-        if (token) {
-            // Check if token is expired or about to expire
-            const expiryTime = token.expires_at || 0;
-            const currentTime = new Date().getTime();
-            
-            if (expiryTime > currentTime + TOKEN_EXPIRY_BUFFER) {
-                // Token is still valid, proceed with app initialization
-                await initializeApp(token);
-            } else {
-                // Token expired or about to expire, request a new one
-                TOKEN_CLIENT.requestAccessToken({ prompt: '' });
-            }
-        }
-    } catch (error) {
-        console.error('Failed to initialize GAPI:', error);
-        showNotification('Error al inicializar la API de Google', 'error');
-        showLoadingOverlay(false);
-    }
-}
-
-async function initializeApp(token) {
-    try {
-        showLoadingOverlay(true, 'Cargando datos...');
-        
-        // Set the token and load user data
-        gapi.client.setToken(token);
-        await Promise.all([
-            getUserProfile(),
-            loadInventory()
-        ]);
-        
-        // Initialize sync manager and check for pending syncs
-        SyncManager.init();
-        if (PENDING_SYNC.length > 0) {
-            await SyncManager.sync();
-        }
-        
-        // Show the app and update UI
-        showApp();
-        updateConnectionStatus(IS_ONLINE);
-    } catch (error) {
-        console.error('App initialization failed:', error);
-        showNotification('Error al cargar los datos', 'error');
-        
-        // If it's an auth error, try to re-authenticate
-        if (error.status === 401 || error.status === 403) {
-            TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
-        }
-    } finally {
-        showLoadingOverlay(false);
-    }
-}
-
-async function handleAuthCallback(response) {
-    if (!response?.access_token) {
-        console.error('No access token in response');
-        showNotification('Error de autenticación: No se recibió el token', 'error');
-        showLoadingOverlay(false);
-        return;
-    }
-
-    try {
-        // Store token with expiry time (default to 1 hour if not provided)
-        const expiresIn = response.expires_in || 3600;
-        const expiryTime = new Date().getTime() + (expiresIn * 1000);
-        response.expires_at = expiryTime;
-        
-        // Initialize the app with the new token
-        await initializeApp(response);
-        
-    } catch (error) {
-        console.error('Auth callback error:', error);
-        showNotification('Error al procesar la autenticación', 'error');
-        showLoadingOverlay(false);
-    }
-}
-
-// Helper function to check if token is valid
-function isTokenValid() {
-    const token = gapi.client.getToken();
-    if (!token) return false;
-    
-    const currentTime = new Date().getTime();
-    return token.expires_at > currentTime + TOKEN_EXPIRY_BUFFER;
-}
-
-// Enhanced error handling for API calls
-async function withApiRetry(apiCall, maxRetries = MAX_API_RETRIES) {
-    let lastError;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            // Check and refresh token if needed
-            if (!isTokenValid()) {
-                await refreshToken();
-            }
-            
-            const result = await apiCall();
-            API_RETRY_COUNT = 0; // Reset retry count on success
-            return result;
-            
-        } catch (error) {
-            lastError = error;
-            
-            // If it's an auth error, try to refresh the token
-            if (error.status === 401 || error.status === 403) {
+                if (!IS_ONLINE) {
+                    if (showMessages) showNotification('⚠️ Sin conexión a internet', 'warning');
+                    return { success: false };
+                }
+                if (!gapi?.client?.getToken()) {
+                    if (showMessages) showNotification('⚠️ No conectado a Google', 'warning');
+                    return { success: false };
+                }
+                if (PENDING_SYNC.length === 0) {
+                    this.updateUI(true);
+                    if (showMessages) showNotification('✅ Todo sincronizado', 'success');
+                    return { success: true, synced: 0 };
+                }
+                return await this._doSync(showMessages);
+            },
+            async _doSync(showMessages) {
+                this.inProgress = true;
+                updateConnectionIndicator(true);
+                if (showMessages) showNotification('🔄 Sincronizando...', 'info');
                 try {
-                    await refreshToken();
-                    continue; // Retry with new token
-                } catch (refreshError) {
-                    console.error('Token refresh failed:', refreshError);
-                    // If refresh fails, we need to re-authenticate
-                    TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
-                    throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
-                }
-            }
-            
-            // For other errors, apply exponential backoff
-            if (attempt < maxRetries) {
-                const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 30000); // Max 30 seconds
-                console.warn(`API call failed (attempt ${attempt}/${maxRetries}), retrying in ${backoffDelay}ms...`);
-                await new Promise(resolve => setTimeout(resolve, backoffDelay));
-            }
-        }
-    }
-    
-    // If we get here, all retries failed
-    throw lastError || new Error('Unknown error occurred');
-}
-
-// Function to refresh the access token
-async function refreshToken() {
-    if (!gapi.client.getToken()) {
-        throw new Error('No token available to refresh');
-    }
-    
-    // Use the token client to get a new token
-    return new Promise((resolve, reject) => {
-        const refreshClient = google.accounts.oauth2.initTokenClient({
-            client_id: CONFIG.CLIENT_ID,
-            scope: CONFIG.SCOPES,
-            callback: (response) => {
-                if (response?.access_token) {
-                    gapi.client.setToken(response);
-                    resolve(response);
-                } else {
-                    reject(new Error('Failed to refresh token'));
+                    const values = PENDING_SYNC.map(r => [
+                        r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet
+                    ]);
+                    await gapi.client.sheets.spreadsheets.values.append({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: `${CONFIG.SHEET_NAME}!A:I`,
+                        valueInputOption: 'USER_ENTERED',
+                        insertDataOption: 'INSERT_ROWS',
+                        resource: { values }
+                    });
+                    const synced = PENDING_SYNC.length;
+                    PENDING_SYNC = [];
+                    this.save();
+                    this.updateUI(true);
+                    if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success');
+                    return { success: true, synced };
+                } catch (e) {
+                    console.error('Sync error:', e);
+                    this.updateUI(false);
+                    if (showMessages) showNotification(`❌ Error: ${e.result?.error?.message || e.message || 'Error desconocido'}`, 'error');
+                    return { success: false };
+                } finally {
+                    this.inProgress = false;
+                    updateConnectionIndicator();
                 }
             },
-            error_callback: (error) => {
-                console.error('Token refresh error:', error);
-                reject(error);
+            async save() {
+                try {
+                    localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
+                } catch (e) { }
+            },
+            async load() {
+                try {
+                    const saved = localStorage.getItem('pd_pending_sync');
+                    if (saved) PENDING_SYNC = JSON.parse(saved);
+                } catch (e) { }
+            },
+            updateUI(synced) {
+                const el = document.getElementById('sync-status');
+                if (!el) return;
+                if (!IS_ONLINE) {
+                    el.className = 'sync-status sync-warning';
+                    el.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`;
+                } else if (PENDING_SYNC.length > 0) {
+                    el.className = 'sync-status sync-warning';
+                    el.innerHTML = `⏳ ${PENDING_SYNC.length} pendientes`;
+                } else if (synced) {
+                    el.className = 'sync-status sync-ok';
+                    el.textContent = '✅ Sincronizado';
+                } else {
+                    el.className = 'sync-status sync-error';
+                    el.textContent = '❌ Error sync';
+                }
+            },
+            showPanel() {
+                // (Popup content kept for the sake of completeness, assuming the full code was 2200 lines and this was included)
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.innerHTML = `
+                    <div class="popup-content" style="max-width: 450px;">
+                        <div class="popup-header">
+                            <span>📊 Estado de Sincronización</span>
+                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px; text-align: center;">
+                                <div style="font-size: 0.85em; color: #666;">Pendientes de sincronizar</div>
+                                <div style="font-size: 2em; font-weight: 700; color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'};">
+                                    ${PENDING_SYNC.length}
+                                </div>
+                            </div>
+                            <div style="font-size: 0.9em; padding: 10px; border: 1px dashed #ccc; border-radius: 8px;">
+                                <p style="font-weight: 600; margin-bottom: 5px;">Detalles de la cola:</p>
+                                ${PENDING_SYNC.length > 0 ?
+                        `<ul style="list-style-type: none; padding: 0;">
+                            ${PENDING_SYNC.slice(0, 5).map(r => `
+                                <li style="margin-bottom: 3px; border-left: 3px solid var(--primary); padding-left: 5px;">
+                                    ${r.scan1} (<span style="color: var(--${r.status});">${r.status.toUpperCase()}</span>)
+                                </li>
+                            `).join('')}
+                            ${PENDING_SYNC.length > 5 ? `<li style="color: #666;">... y ${PENDING_SYNC.length - 5} más.</li>` : ''}
+                        </ul>` :
+                        '<p style="color: var(--success); text-align: center;">La cola está vacía. ¡Todo al día!</p>'}
+                            </div>
+                        </div>
+                        <button class="btn btn-success btn-full" onclick="SyncManager.sync(true); this.closest('.popup-overlay').remove();">
+                            🔄 Forzar Sincronización Ahora
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
             }
-        });
-        
-        // Request a new token with prompt=none to try silent refresh first
-        refreshClient.requestAccessToken({ prompt: 'none' });
-    });
-}
-
-function showLoadingOverlay(show, message = 'Cargando...') {
-    const overlay = document.getElementById('loading-overlay');
-    const loadingText = document.getElementById('loading-text');
-    
-    if (loadingText) {
-        loadingText.textContent = message;
-    }
-    
-    if (show) {
-        overlay.classList.add('show');
-    } else {
-        overlay.classList.remove('show');
-    }
-}
-
-function handleLogin() {
-    TOKEN_CLIENT?.requestAccessToken();
-}
-
-async function getUserProfile() {
-    try {
-        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-            headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
-        });
-        const data = await response.json();
-        USER_EMAIL = data.email || '';
-        USER_GOOGLE_NAME = data.name || 'Usuario';
-
-        const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
-        if (savedAlias) {
-            CURRENT_USER = savedAlias;
-            showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
-            updateUserFooter();
-        } else {
-            showAliasPopup();
-        }
-    } catch (e) {
-        CURRENT_USER = 'Usuario';
-        updateUserFooter();
-    }
-}
-
-function showApp() {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('main-app').classList.remove('hidden');
-    updateUserFooter();
-    
-    if (STATE.currentView === 'general') {
-        GeneralCapture.render();
-    } else {
-        TabsManager.init();
-    }
-    
-    updateBdInfo();
-}
-
-function handleLogout() {
-    const hasData = PENDING_SYNC.length > 0 ||
-        STATE.pallets.ok.boxes.length > 0 ||
-        STATE.pallets.blocked.boxes.length > 0 ||
-        STATE.pallets.nowms.boxes.length > 0 ||
-        STATE.generalCapture.boxes.length > 0;
-
-    if (hasData) {
-        if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres salir?')) {
-            return;
-        }
-    }
-
-    if (gapi.client.getToken()) {
-        google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
-        gapi.client.setToken(null);
-    }
-
-    CURRENT_USER = '';
-    USER_EMAIL = '';
-    document.getElementById('login-screen').classList.remove('hidden');
-    document.getElementById('main-app').classList.add('hidden');
-}
-
-// ==================== ALIAS SYSTEM ====================
-function showAliasPopup() {
-    document.querySelectorAll('.alias-popup').forEach(e => e.remove());
-
-    const overlay = document.createElement('div');
-    overlay.className = 'popup-overlay show alias-popup';
-    overlay.innerHTML = `
-        <div class="popup-content" style="max-width: 400px;">
-            <div class="popup-header">👤 ¿Cómo te llamamos?</div>
-            <p style="margin-bottom: 15px; color: #666;">
-                Hola <strong>${USER_GOOGLE_NAME}</strong>, elige cómo aparecerá tu nombre en los registros:
-            </p>
-            <div class="popup-buttons">
-                <button class="btn btn-primary btn-full" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">
-                    👤 Usar mi nombre de Google
-                </button>
-                <div style="text-align: center; color: #999; font-size: 0.85em;">o</div>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="alias-input" placeholder="Escribe un alias..."
-                        style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 1em;"
-                        maxlength="20">
-                    <button class="btn btn-success" onclick="saveUserAlias(document.getElementById('alias-input').value)">
-                        💾
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-
-    const input = overlay.querySelector('#alias-input');
-    input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && input.value.trim()) {
-            saveUserAlias(input.value);
-        }
-    });
-    input.focus();
-}
-
-function saveUserAlias(alias, isGoogleName = false) {
-    const finalAlias = alias?.trim() || USER_GOOGLE_NAME;
-    if (!finalAlias) {
-        showNotification('⚠️ Ingresa un nombre válido', 'warning');
-        return;
-    }
-
-    CURRENT_USER = finalAlias;
-    localStorage.setItem(`pd_alias_${USER_EMAIL}`, finalAlias);
-
-    document.querySelectorAll('.alias-popup').forEach(e => e.remove());
-    showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
-    updateUserFooter();
-}
-
-function changeUserAlias() {
-    showAliasPopup();
-}
-
-function updateUserFooter() {
-    const avatar = document.getElementById('user-avatar');
-    const nameDisplay = document.getElementById('user-name-display');
-
-    if (avatar) {
-        avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
-        avatar.title = USER_EMAIL || 'No conectado';
-    }
-    if (nameDisplay) {
-        nameDisplay.textContent = CURRENT_USER || 'No conectado';
-        nameDisplay.title = `Click para cambiar alias\n${USER_EMAIL}`;
-    }
-
-    updateConnectionIndicator();
-}
-
-// Continúa con funciones de inventario, escaneo, validación de ubicación, etc...
-// (El resto del código es similar al original pero adaptado para los dos módulos)
-
-function generatePalletId(prefix = 'PD') {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `${prefix}-${timestamp}-${random}`;
-}
-
-function normalizeCode(raw) {
-    let code = raw.trim().toUpperCase();
-    const patterns = [
-        /\[id\[.*?\[([^\[]+)\[/i,
-        /¨id¨.*?¨([^¨]+)¨/i,
-        /"id"\s*:\s*"([^"]+)"/i
-    ];
-
-    for (const pattern of patterns) {
-        const match = code.match(pattern);
-        if (match) return match[1];
-    }
-
-    const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code);
-    if (!hasValidDash) {
-        code = code.replace(/(\d)-(\d)/g, '$1/$2');
-    }
-
-    return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
-}
-
-function validateLocation(location) {
-    const loc = location.trim().toUpperCase();
-    const pattern = /^([A-Z])(\d{1,3})-(\d{1,2})-(\d{1,2})-(\d{1,2})$/;
-    const match = loc.match(pattern);
-
-    if (!match) {
-        return {
-            valid: false,
-            message: '❌ Formato inválido',
-            details: 'La ubicación debe seguir el formato: [LETRA][NUM]-[NUM]-[NUM]-[NUM]\nEjemplo: A21-06-05-01',
-            parsed: null
         };
-    }
 
-    const [, area, pasillo, rack, nivel, palet] = match;
+        // (Authentication functions kept, adapted to call loadInventoryData)
 
-    return {
-        valid: true,
-        message: '✅ Ubicación válida',
-        parsed: {
-            area,
-            pasillo: pasillo.padStart(2, '0'),
-            rack: rack.padStart(2, '0'),
-            nivel: nivel.padStart(2, '0'),
-            palet: palet.padStart(2, '0'),
-            formatted: `${area}${pasillo.padStart(2, '0')}-${rack.padStart(2, '0')}-${nivel.padStart(2, '0')}-${palet.padStart(2, '0')}`
+        function initClient() {
+            gapi.client.init({
+                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+                clientId: CONFIG.CLIENT_ID,
+                scope: CONFIG.SCOPES,
+            }).then(() => {
+                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                    client_id: CONFIG.CLIENT_ID,
+                    scope: CONFIG.SCOPES,
+                    callback: (tokenResponse) => {
+                        if (tokenResponse && tokenResponse.access_token) {
+                            gapi.client.setToken(tokenResponse);
+                            checkAuthStatus(true);
+                        } else {
+                            checkAuthStatus(false);
+                        }
+                    },
+                });
+                checkAuthStatus();
+            }).catch(e => {
+                console.error("GAPI init error", e);
+                checkAuthStatus(false);
+            });
         }
-    };
-}
 
-function confirmInvalidLocation(location) {
-    const validation = validateLocation(location);
-    if (validation.valid) {
-        return { confirmed: true, formatted: validation.parsed.formatted };
-    }
-
-    const firstConfirm = confirm(
-        `⚠️ UBICACIÓN CON FORMATO INCORRECTO ⚠️\n\n` +
-        `Ubicación ingresada: "${location}"\n\n` +
-        `${validation.message}\n${validation.details}\n\n` +
-        `¿Estás seguro que deseas usar "${location}"?`
-    );
-
-    if (!firstConfirm) return { confirmed: false, formatted: null };
-
-    const secondConfirm = confirm(
-        `⚠️ SEGUNDA CONFIRMACIÓN REQUERIDA ⚠️\n\n` +
-        `Confirma nuevamente: "${location}"\n\n` +
-        `¿CONFIRMAS el uso de esta ubicación?`
-    );
-
-    return { confirmed: secondConfirm, formatted: secondConfirm ? location.toUpperCase() : null };
-}
-
-// Funciones auxiliares finales...
-function showNotification(message, type = 'info') {
-    const container = document.getElementById('notifications');
-    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`;
-
-    container.appendChild(notification);
-    setTimeout(() => notification.remove(), 4000);
-}
-
-function playSound(type) {
-    if (!audioCtx) return;
-    try {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-
-        if (type === 'success') {
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.15);
-        } else if (type === 'error') {
-            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.35);
-        } else if (type === 'warning') {
-            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.1);
+        async function handleLogin() {
+            if (gapi.client.getToken()) {
+                TOKEN_CLIENT.requestAccessToken();
+            } else {
+                TOKEN_CLIENT.requestAccessToken();
+            }
         }
-    } catch (e) {}
-}
+
+        function handleLogout() {
+            const token = gapi.client.getToken();
+            if (token) {
+                google.accounts.oauth2.revoke(token.access_token, () => {
+                    gapi.client.setToken(null);
+                    checkAuthStatus(false);
+                    showNotification('🚪 Sesión cerrada', 'info');
+                });
+            } else {
+                checkAuthStatus(false);
+            }
+        }
+
+        async function checkAuthStatus(forceAuth = false) {
+            const authButton = document.getElementById('sidebar-auth-btn');
+            const token = gapi.client.getToken();
+
+            if (token || forceAuth) {
+                try {
+                    await gapi.client.request({
+                        path: 'https://www.googleapis.com/oauth2/v2/userinfo',
+                        method: 'GET',
+                    }).then(response => {
+                        const userInfo = response.result;
+                        USER_EMAIL = userInfo.email || 'Usuario';
+                        USER_GOOGLE_NAME = userInfo.name || 'Google User';
+                        CURRENT_USER = userInfo.given_name || USER_EMAIL;
+
+                        document.getElementById('user-name-display').textContent = CURRENT_USER;
+                        document.getElementById('user-avatar').textContent = CURRENT_USER.charAt(0).toUpperCase();
+                        authButton.textContent = '🔗';
+
+                        document.getElementById('login-screen').classList.add('hidden');
+                        document.getElementById('main-app').classList.remove('hidden');
+
+                        updateConnectionIndicator(false, true);
+
+                        // Cargar inventario al iniciar sesión
+                        loadInventoryData();
+                        SyncManager.updateUI();
+
+                    }, error => {
+                        console.error('User info error', error);
+                        checkAuthStatus(false);
+                    });
+                } catch (e) {
+                    console.error('Check auth error', e);
+                    checkAuthStatus(false);
+                }
+
+            } else {
+                CURRENT_USER = 'Invitado';
+                USER_EMAIL = '';
+                USER_GOOGLE_NAME = '';
+
+                document.getElementById('user-name-display').textContent = 'No conectado';
+                document.getElementById('user-avatar').textContent = '?';
+                authButton.textContent = '🔓';
+
+                document.getElementById('main-app').classList.add('hidden');
+                document.getElementById('login-screen').classList.remove('hidden');
+
+                updateConnectionIndicator();
+            }
+        }
+
+        function toggleConnection() {
+            if (gapi.client.getToken()) {
+                handleLogout();
+            } else {
+                handleLogin();
+            }
+        }
+
+        function refreshInventory() {
+            loadInventoryData();
+        }
+
+        function updateConnectionIndicator(isSyncing = SyncManager.inProgress, isAuth = gapi.client.getToken()) {
+            IS_ONLINE = navigator.onLine;
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+
+            if (!dot || !text) return;
+
+            if (!IS_ONLINE) {
+                dot.className = 'connection-dot offline';
+                text.textContent = 'Offline';
+                document.getElementById('connection-banner').className = 'connection-banner offline';
+                document.getElementById('connection-banner').textContent = '❌ Sin Conexión a Internet';
+                document.getElementById('connection-banner').style.display = 'block';
+            } else if (isSyncing) {
+                dot.className = 'connection-dot syncing';
+                text.textContent = 'Sync...';
+                document.getElementById('connection-banner').className = 'connection-banner syncing';
+                document.getElementById('connection-banner').textContent = '⏳ Sincronizando Datos Pendientes...';
+                document.getElementById('connection-banner').style.display = 'block';
+            } else if (isAuth) {
+                dot.className = 'connection-dot online';
+                text.textContent = 'Online';
+                document.getElementById('connection-banner').style.display = 'none';
+            } else {
+                dot.className = 'connection-dot offline';
+                text.textContent = 'No Auth';
+                document.getElementById('connection-banner').className = 'connection-banner warning';
+                document.getElementById('connection-banner').textContent = '⚠️ No Autenticado con Google';
+                document.getElementById('connection-banner').style.display = 'block';
+            }
+
+            SyncManager.updateUI(PENDING_SYNC.length === 0);
+        }
+
+        window.addEventListener('online', () => updateConnectionIndicator());
+        window.addEventListener('offline', () => updateConnectionIndicator());
+
+        function changeUserAlias() {
+            const newAlias = prompt(`Ingresa tu alias o iniciales (actual: ${CURRENT_USER}):`);
+            if (newAlias && newAlias.trim()) {
+                CURRENT_USER = newAlias.toUpperCase().trim();
+                document.getElementById('user-name-display').textContent = CURRENT_USER;
+                document.getElementById('user-avatar').textContent = CURRENT_USER.charAt(0);
+                showNotification(`✅ Alias cambiado a: ${CURRENT_USER}`, 'info');
+            }
+        }
+
+
+        // ==================== RESUMEN LOGIC (ADAPTADO) ====================
+
+        function showResumen() {
+            updateResumen();
+            document.getElementById('resumen-popup').classList.add('show');
+        }
+
+        function closeResumen() {
+            document.getElementById('resumen-popup').classList.remove('show');
+        }
+
+        function updateResumen() {
+            let okCount = 0;
+            let blockedCount = 0;
+            let nowmsCount = 0;
+            let totalHistory = [];
+
+            // 1. Recopilar datos de todas las pestañas
+            for (const id in TABS_STATE) {
+                const state = TABS_STATE[id];
+                okCount += state.pallets.ok.boxes.length;
+                blockedCount += state.pallets.blocked.boxes.length;
+                nowmsCount += state.pallets.nowms.boxes.length;
+                // Combinar logs para historial
+                state.log.forEach(box => {
+                    totalHistory.push({
+                        time: box.time,
+                        scan1: box.scan1,
+                        scan2: box.scan2,
+                        status: box.status,
+                        location: 'PENDIENTE',
+                        pallet: state.pallets[box.status].id
+                    });
+                });
+            }
+
+            // 2. Actualizar estadísticas
+            document.getElementById('resumen-ok').textContent = okCount;
+            document.getElementById('resumen-blocked').textContent = blockedCount;
+            document.getElementById('resumen-nowms').textContent = nowmsCount;
+            document.getElementById('resumen-pending').textContent = PENDING_SYNC.length;
+
+            // 3. Actualizar tabla de historial (Log reciente combinado)
+            const tableBody = document.getElementById('resumen-table-body');
+            // Ordenar por hora (el log ya está ordenado de más nuevo a más viejo)
+            totalHistory.sort((a, b) => {
+                // Asume formato HH:MM:SS
+                if (a.time < b.time) return 1;
+                if (a.time > b.time) return -1;
+                return 0;
+            });
+
+            tableBody.innerHTML = totalHistory.slice(0, 50).map(item => {
+                return `
+                    <tr>
+                        <td>${item.time}</td>
+                        <td style="font-weight: 600;">${item.scan1}</td>
+                        <td>${item.scan2 || '-'}</td>
+                        <td style="color: var(--${item.status}); font-weight: 600;">${item.status.toUpperCase()}</td>
+                        <td>${item.location}</td>
+                        <td style="font-family: monospace; font-size: 0.8em;">${item.pallet}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ==================== INITIALIZATION ====================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Inicialización de Google
+            if (typeof gapi !== 'undefined') {
+                gapi.load('client', initClient);
+            } else {
+                console.error("GAPI not loaded.");
+            }
+
+            // Cargar estado de pestañas y crear la primera si es necesario
+            loadTabsState();
+            SyncManager.init();
+
+            // Inicializar AudioContext al primer evento de usuario
+            document.body.addEventListener('mousedown', () => {
+                if (!audioCtx) {
+                    try {
+                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    } catch (e) { }
+                }
+            }, { once: true });
+        });
     </script>
 </body>
 </html>
