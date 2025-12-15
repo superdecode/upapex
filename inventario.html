@@ -2495,40 +2495,70 @@
 
         // ==================== DATA MANAGEMENT ====================
 
-        async function loadInventory(force = false) {
+       async function loadInventory(force = false) {
+            console.log('📥 Iniciando carga de inventario...', { force, cached: STATE.inventory.size });
+            
             if (!force && STATE.inventoryLastUpdate && (Date.now() - STATE.inventoryLastUpdate < 3600000)) {
-                showNotification(`ⓘ Usando ${STATE.inventory.size} códigos en caché. Última actualización: ${new Date(STATE.inventoryLastUpdate).toLocaleTimeString()}`, 'info');
+                console.log('✅ Usando caché:', STATE.inventory.size, 'códigos');
+                showNotification(`ⓘ Usando ${STATE.inventory.size} códigos en caché`, 'info');
                 updateBdInfo();
                 updateConnectionIndicator();
                 return;
             }
-
-            /* MODIFICADO (PASO 1.4) */
+        
             showLoading('🔄 Cargando Inventario...', 'Descargando base de datos desde Google Sheets');
             updateConnectionIndicator(true);
-
+        
             try {
-                const response = await fetch(CONFIG.INVENTORY_CSV_URL);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                console.log('🌐 Haciendo fetch a:', CONFIG.INVENTORY_CSV_URL);
+                
+                const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
+                    method: 'GET',
+                    cache: 'no-cache',
+                    headers: {
+                        'Accept': 'text/csv'
+                    }
+                });
+                
+                console.log('📡 Response status:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const csv = await response.text();
-                if (!csv || csv.trim().length === 0) throw new Error('CSV vacío');
-
+                console.log('📄 CSV recibido, tamaño:', csv.length, 'caracteres');
+                console.log('📄 Primeras 500 caracteres:', csv.substring(0, 500));
+                
+                if (!csv || csv.trim().length === 0) {
+                    throw new Error('CSV vacío');
+                }
+        
                 parseInventoryCSV(csv);
                 STATE.inventoryLastUpdate = Date.now();
                 await saveToStorage();
-
-                /* MODIFICADO (PASO 1.4) */
+        
                 hideLoading();
-                showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
-
+                
+                if (STATE.inventory.size === 0) {
+                    showNotification('⚠️ No se pudieron procesar los datos del CSV', 'warning');
+                    console.error('❌ Inventario vacío después de parsear');
+                } else {
+                    showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
+                    console.log('✅ Inventario cargado exitosamente:', STATE.inventory.size, 'códigos');
+                }
+        
                 updateBdInfo();
             } catch (e) {
-                /* AGREGADO (PASO 1.4) */
                 hideLoading();
-                console.error('Error cargando inventario:', e);
-                showNotification(`⚠️ Error al cargar inventario: ${e.message}`, 'warning');
+                console.error('❌ Error cargando inventario:', e);
+                console.error('Error completo:', e.message, e.stack);
+                showNotification(`⚠️ Error al cargar inventario: ${e.message}`, 'error');
+                
                 if (STATE.inventory.size > 0) {
                     showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
+                } else {
+                    showNotification('❌ No hay datos disponibles. Verifica la URL del CSV', 'error');
                 }
             } finally {
                 updateConnectionIndicator(false);
@@ -2627,13 +2657,19 @@
         }
 
         function parseCSVLine(line) {
-            // Simple CSV parser for this case (handles commas outside of quotes)
             const result = [];
             let current = '';
             let inQuotes = false;
+            
             for (let i = 0; i < line.length; i++) {
                 const char = line[i];
-                if (char === '"') {
+                const nextChar = line[i + 1];
+                
+                if (char === '"' && inQuotes && nextChar === '"') {
+                    // Comillas dobles escapadas
+                    current += '"';
+                    i++; // Saltar la siguiente comilla
+                } else if (char === '"') {
                     inQuotes = !inQuotes;
                 } else if (char === ',' && !inQuotes) {
                     result.push(current.trim());
@@ -2643,6 +2679,8 @@
                 }
             }
             result.push(current.trim());
+            
+            console.log('Línea parseada:', result.length, 'columnas');
             return result;
         }
 
@@ -2825,26 +2863,109 @@
             }
         }
 
-        function exportData() {
-            const data = JSON.stringify({ state: STATE, pending: PENDING_SYNC, pendingQuick: PENDING_SYNC_QUICK }, (key, value) => {
-                // Custom replacer for Map to Array conversion
-                if (value instanceof Map) {
-                    return Array.from(value.entries());
+        function exportDataCSV() {
+            // --- 1. Conversión de datos a formato CSV ---
+            // NOTA: Esta es una conversión de ejemplo. 
+            // DEBES ajustarla según la estructura exacta de tus variables (STATE, PENDING_SYNC, etc.).
+            // Asumimos que 'STATE' es un Map o un Array de objetos que contiene los datos principales.
+            
+            // Función de ayuda para escapar comillas dentro de los campos CSV
+            const escapeCsv = (value) => {
+                if (value === null || value === undefined) return '';
+                let str = String(value);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    // Escapa comillas doblando las comillas y luego encerrando todo entre comillas
+                    str = str.replace(/"/g, '""');
+                    return `"${str}"`;
                 }
-                return value;
-            }, 2);
-            const blob = new Blob([data], { type: 'application/json' });
+                return str;
+            };
+        
+            let csvData = '';
+            const dataToExport = STATE; // Usamos STATE como la fuente principal de datos.
+        
+            if (dataToExport instanceof Map) {
+                // Opción 1: Si STATE es un Map (clave -> valor)
+                // Ejemplo de CSV: "clave","valor"
+                const headers = ['Clave', 'Valor'];
+                csvData += headers.map(escapeCsv).join(',') + '\n';
+                
+                dataToExport.forEach((value, key) => {
+                    const row = [key, value];
+                    csvData += row.map(escapeCsv).join(',') + '\n';
+                });
+        
+            } else if (Array.isArray(dataToExport) && dataToExport.length > 0) {
+                // Opción 2: Si STATE es un Array de objetos (más común para datos tabulares)
+                
+                // Extraer encabezados (Keys)
+                const headers = Object.keys(dataToExport[0]);
+                csvData += headers.map(escapeCsv).join(',') + '\n';
+                
+                // Escribir filas
+                dataToExport.forEach(item => {
+                    const row = headers.map(header => item[header]);
+                    csvData += row.map(escapeCsv).join(',') + '\n';
+                });
+            } else {
+                // Manejo de otros tipos o datos vacíos
+                // Podrías necesitar un manejo más específico si quieres combinar STATE, PENDING_SYNC, etc.
+                showNotification('❌ No hay datos válidos en STATE para exportar a CSV.', 'error');
+                return;
+            }
+        
+            // --- 2. Creación y descarga del archivo CSV ---
+            const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
+            
             const a = document.createElement('a');
             a.href = url;
-            a.download = `inventario_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            // Cambiamos la extensión a .csv
+            a.download = `inventario_backup_${new Date().toISOString().slice(0, 10)}.csv`; 
+            
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            
             URL.revokeObjectURL(url);
-            showNotification('✅ Datos exportados como JSON', 'success');
+            showNotification('✅ Datos exportados como CSV', 'success');
         }
 
+        function debugInventory() {
+            console.log('=== DEBUG INVENTARIO ===');
+            console.log('URL CSV:', CONFIG.INVENTORY_CSV_URL);
+            console.log('Códigos en memoria:', STATE.inventory.size);
+            console.log('Última actualización:', STATE.inventoryLastUpdate ? new Date(STATE.inventoryLastUpdate).toLocaleString() : 'Nunca');
+            console.log('Sample de 10 códigos:', Array.from(STATE.inventory.entries()).slice(0, 10));
+            
+            // Mostrar en UI
+            const debugInfo = `
+                <div style="background: white; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 0.85em;">
+                    <h3 style="margin-bottom: 10px;">🔍 Debug Inventario</h3>
+                    <p><strong>URL:</strong> ${CONFIG.INVENTORY_CSV_URL}</p>
+                    <p><strong>Códigos:</strong> ${STATE.inventory.size}</p>
+                    <p><strong>Última actualización:</strong> ${STATE.inventoryLastUpdate ? new Date(STATE.inventoryLastUpdate).toLocaleString() : 'Nunca'}</p>
+                    <p><strong>Conexión:</strong> ${IS_ONLINE ? '🟢 Online' : '🔴 Offline'}</p>
+                    <p><strong>Token Google:</strong> ${gapi?.client?.getToken() ? '✅ Presente' : '❌ Ausente'}</p>
+                    <hr style="margin: 10px 0;">
+                    <p style="font-size: 0.9em;"><strong>Primeros 5 códigos:</strong></p>
+                    <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 200px; overflow: auto;">${
+                        Array.from(STATE.inventory.entries()).slice(0, 5).map(([k, v]) => 
+                            `${k}: ${v.productName || 'Sin nombre'} (Stock: ${v.availableStock})`
+                        ).join('\n') || 'No hay códigos'
+                    }</pre>
+                    <button onclick="this.closest('.popup-overlay').remove()" style="margin-top: 10px; padding: 8px 15px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">Cerrar</button>
+                </div>
+            `;
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show';
+            overlay.innerHTML = `<div class="popup-content" style="max-width: 600px;">${debugInfo}</div>`;
+            document.body.appendChild(overlay);
+            
+            showNotification('📋 Ver consola del navegador para más detalles', 'info');
+        }
+        
         async function saveToStorage() { /* REEMPLAZADO (PASO 4.25) */
             try {
                 const data = {
