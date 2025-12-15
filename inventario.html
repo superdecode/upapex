@@ -1332,12 +1332,15 @@
     <script>
         // ==================== GLOBAL STATE ====================
         const CONFIG = {
-            CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
-            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
-            SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
-            SHEET_NAME: 'BD',
-            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
-            MAX_TABS: 4  /* AGREGAR ESTA LÍNEA (PASO 2.4) */
+        CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
+        API_KEY: '', // Deja vacío si no tienes API Key (no es necesaria para Sheets con OAuth)
+        DISCOVERY_DOCS: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+        SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
+        SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
+        SHEET_NAME: 'BD',
+        SHEET_QUICK: 'BD2',  // AGREGADO
+        INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
+        MAX_TABS: 4
         };
 
         const STATE = {
@@ -2341,102 +2344,65 @@
         };
 
         // ==================== GOOGLE AUTH & INIT ====================
-
-        // ==================== GOOGLE AUTH & INIT ====================
-
-// Variables de estado y de Google
-let GAPI_LOADED = false;
-let GIS_LOADED = false;
-let TOKEN_CLIENT = null;
-
-// Funciones llamadas por los scripts de Google
-function gapiLoaded() {
-    GAPI_LOADED = true;
-    maybeInit(); 
-}
-
-function gisLoaded() {
-    GIS_LOADED = true;
-    maybeInit();
-}
-
-// 🔑 FUNCIÓN CRÍTICA: Llama a la inicialización solo cuando ambas librerías cargaron
-function maybeInit() {
-    if (GAPI_LOADED && GIS_LOADED) {
-        // Asegura que el gapi.client (para Google Sheets) esté disponible
-        gapi.load('client', initClient); 
-        // Inicializa el cliente de autenticación (TOKEN_CLIENT)
-        initGoogleSignIn();
+        let GAPI_LOADED = false;
+        let GIS_LOADED = false;
         
-        // Habilita el botón de conexión si estaba deshabilitado
-        const connectBtn = document.getElementById('connect-btn');
-        if (connectBtn) {
-            connectBtn.disabled = false;
-            connectBtn.textContent = 'Conectar Google';
-        }
-    }
-}
-
-// Función que inicializa el cliente de Google APIs (GAPI)
-        function initClient() {
-            gapi.client.init({
-                apiKey: CONFIG.API_KEY,
-                clientId: CONFIG.CLIENT_ID,
-                discoveryDocs: CONFIG.DISCOVERY_DOCS,
-                scope: CONFIG.SCOPES,
-            }).then(() => {
-                // GAPI_CLIENT = gapi.client; // Si necesita una referencia global
-                updateAuthStatus(true);
-            }, (error) => {
-                showNotification(`Error al iniciar GAPI: ${error.details}`, 'error');
-                updateAuthStatus(false);
-            });
+        function gapiLoaded() {
+            console.log('✅ GAPI cargado');
+            GAPI_LOADED = true;
+            maybeInitialize();
         }
         
-        // Función que inicializa el cliente de Sign-In (GIS) para obtener el token
-        function initGoogleSignIn() {
-            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                client_id: CONFIG.CLIENT_ID,
-                scope: CONFIG.SCOPES,
-                callback: (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        gapi.client.setToken(tokenResponse);
-                        updateAuthStatus(true);
-                    } else {
-                        showNotification('Acceso denegado o error de token.', 'error');
-                        updateAuthStatus(false);
+        function gisLoaded() {
+            console.log('✅ GIS cargado');
+            GIS_LOADED = true;
+            maybeInitialize();
+        }
+        
+        function maybeInitialize() {
+            if (GAPI_LOADED && GIS_LOADED) {
+                console.log('🔄 Inicializando Google APIs...');
+                gapi.load('client', async () => {
+                    try {
+                        await gapi.client.init({
+                            discoveryDocs: CONFIG.DISCOVERY_DOCS
+                        });
+                        console.log('✅ GAPI Client inicializado');
+                        
+                        // Inicializar Token Client
+                        TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                            client_id: CONFIG.CLIENT_ID,
+                            scope: CONFIG.SCOPES,
+                            callback: handleAuthCallback
+                        });
+                        console.log('✅ Token Client inicializado');
+                        
+                    } catch (error) {
+                        console.error('❌ Error inicializando GAPI:', error);
+                        showNotification('❌ Error al inicializar Google APIs', 'error');
                     }
-                },
-                error_callback: (error) => {
-                    console.error('Error de autenticación:', error);
-                    showNotification('Error al solicitar token de Google.', 'error');
-                }
-            });
+                });
+            }
         }
         
-        // Función original para el clic del botón (con la verificación que ya habíamos añadido)
-        function handleLogin() {
-            // ⚠️ Esta verificación previene el error 'TOKEN_CLIENT is null'
-            if (!TOKEN_CLIENT) {
-                showNotification('❌ El sistema de autenticación no está listo. Espera un momento o recarga la página.', 'error');
-                console.error("Error: TOKEN_CLIENT no ha sido inicializado. La inicialización falló o es demasiado lenta.");
-                return; 
-            }
+        async function handleAuthCallback(tokenResponse) {
+            console.log('🔐 Auth callback recibido:', tokenResponse);
             
-            // Si el cliente existe, procede a solicitar el token de acceso.
-            TOKEN_CLIENT.requestAccessToken();
-        }
-
-        async function handleAuthResult(authResult) {
-            if (authResult && authResult.access_token) {
-                // Fetch user info
-                await gapi.client.request({
-                    path: 'https://www.googleapis.com/oauth2/v2/userinfo',
-                    method: 'GET'
-                }).then(response => {
-                    const data = response.result;
+            if (tokenResponse && tokenResponse.access_token) {
+                gapi.client.setToken(tokenResponse);
+                
+                try {
+                    // Obtener información del usuario
+                    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                        headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                    });
+                    
+                    const data = await response.json();
                     USER_EMAIL = data.email || '';
                     USER_GOOGLE_NAME = data.name || 'Usuario';
+                    
+                    console.log('✅ Usuario autenticado:', USER_EMAIL);
+                    
                     const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
                     if (savedAlias) {
                         CURRENT_USER = savedAlias;
@@ -2445,75 +2411,83 @@ function maybeInit() {
                     } else {
                         showAliasPopup();
                     }
-                }).catch(error => {
-                    console.error('Error fetching user info:', error);
+                    
+                    // Mostrar app y cargar inventario
+                    showApp();
+                    await loadInventory();
+                    SyncManager.init();
+                    
+                    // Sincronizar pendientes
+                    if (PENDING_SYNC.length > 0) SyncManager.sync();
+                    if (PENDING_SYNC_QUICK.length > 0) SyncManager.syncQuick();
+                    
+                } catch (error) {
+                    console.error('❌ Error obteniendo datos del usuario:', error);
                     CURRENT_USER = 'Usuario';
                     updateUserFooter();
-                });
-
-                updateSigninStatus(true);
-                showApp();
-                await loadInventory();
+                    showApp();
+                    await loadInventory();
+                    SyncManager.init();
+                }
             } else {
-                updateSigninStatus(false);
+                console.error('❌ No se recibió access_token');
+                showNotification('❌ Error de autenticación', 'error');
             }
         }
-
-        function updateSigninStatus(isSignedIn) {
-            if (isSignedIn) {
-                // If signed in, ensure background sync is running
-                SyncManager.init();
+        
+        function handleLogin() {
+            console.log('🔑 Intentando login...');
+            console.log('TOKEN_CLIENT existe:', !!TOKEN_CLIENT);
+            console.log('GAPI_LOADED:', GAPI_LOADED);
+            console.log('GIS_LOADED:', GIS_LOADED);
+            
+            if (!TOKEN_CLIENT) {
+                console.error('❌ TOKEN_CLIENT no inicializado');
+                showNotification('❌ Sistema de autenticación no listo. Recarga la página.', 'error');
+                return;
             }
-            // Logic to show/hide login/app screen is in showApp/handleLogout
-        }
-
-        function showAliasPopup() {
-            document.getElementById('alias-popup-overlay').classList.add('show');
-            document.getElementById('alias-input').value = CURRENT_USER || USER_GOOGLE_NAME.split(' ')[0].toUpperCase();
-            document.getElementById('alias-input').focus();
-        }
-
-        function saveAlias() {
-            const alias = document.getElementById('alias-input').value.trim().toUpperCase();
-            if (alias) {
-                CURRENT_USER = alias;
-                localStorage.setItem(`pd_alias_${USER_EMAIL}`, CURRENT_USER);
-                document.getElementById('alias-popup-overlay').classList.remove('show');
-                showNotification(`✅ Alias guardado: ${CURRENT_USER}`, 'success');
-                updateUserFooter();
-            } else {
-                showNotification('❌ Ingresa un alias válido', 'error');
+            
+            if (!GAPI_LOADED || !GIS_LOADED) {
+                console.error('❌ Google APIs no cargadas completamente');
+                showNotification('❌ Esperando carga de Google APIs...', 'warning');
+                return;
+            }
+            
+            try {
+                console.log('🚀 Solicitando token de acceso...');
+                TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
+            } catch (error) {
+                console.error('❌ Error al solicitar token:', error);
+                showNotification('❌ Error al iniciar sesión', 'error');
             }
         }
-
-        function showApp() {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            updateUserFooter();
-            updateUI();
-        }
-
+        
         function handleLogout() {
-            /* MODIFICADO (PASO 4.6) */
-            const hasData = PENDING_SYNC.length > 0 || PENDING_SYNC_QUICK.length > 0 || TabManager.tabs.some(tab => TabManager.hasPalletData(tab.id));
+            const hasData = PENDING_SYNC.length > 0 || PENDING_SYNC_QUICK.length > 0 || 
+                           TabManager.tabs.some(tab => TabManager.hasPalletData(tab.id));
+            
             if (hasData) {
                 if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres salir?')) {
                     return;
                 }
             }
+            
             if (gapi.client.getToken()) {
-                google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                const token = gapi.client.getToken();
+                google.accounts.oauth2.revoke(token.access_token, () => {
+                    console.log('Token revocado');
+                });
                 gapi.client.setToken(null);
             }
+            
             CURRENT_USER = '';
             USER_EMAIL = '';
             USER_GOOGLE_NAME = '';
-            localStorage.removeItem('pd_tabs_state');
+            
             document.getElementById('main-app').classList.add('hidden');
             document.getElementById('login-screen').classList.remove('hidden');
-            updateSigninStatus(false);
-            SyncManager.intervalId = null; // Stop auto-sync
-            location.reload(); // Simplest way to reset state/UI completely
+            
+            showNotification('✅ Sesión cerrada', 'info');
         }
 
         // ==================== DATA MANAGEMENT ====================
@@ -2910,13 +2884,17 @@ function maybeInit() {
         }
 
         function init() {
-            gapi.load('client:auth2', initClient);
-            loadFromStorage().then(() => {
-                TabManager.init(); /* AGREGADO (PASO 4.4) */
-                updateUI(); // Initial UI update after loading state
-            });
-            setupConnectionMonitor();
+        console.log('🚀 Iniciando aplicación...');
+        loadFromStorage().then(() => {
+            TabManager.init();
+            updateUI();
+        });
+        setupConnectionMonitor();
+        updateConnectionIndicator();
         }
+    
+    // Initialize the app on page load
+    init();
 
         // ==================== UTILITY FUNCTIONS ====================
 
