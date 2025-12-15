@@ -1163,8 +1163,9 @@
             .sidebar { width: 100%; max-height: 200px; }
         }
     </style>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/api.js"></script>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>    
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+    
 </head>
 <body>
     <div class="loading-overlay" id="loading-overlay">
@@ -2341,38 +2342,88 @@
 
         // ==================== GOOGLE AUTH & INIT ====================
 
+        // ==================== GOOGLE AUTH & INIT ====================
+
+// Variables de estado y de Google
+let GAPI_LOADED = false;
+let GIS_LOADED = false;
+let TOKEN_CLIENT = null;
+
+// Funciones llamadas por los scripts de Google
+function gapiLoaded() {
+    GAPI_LOADED = true;
+    maybeInit(); 
+}
+
+function gisLoaded() {
+    GIS_LOADED = true;
+    maybeInit();
+}
+
+// 🔑 FUNCIÓN CRÍTICA: Llama a la inicialización solo cuando ambas librerías cargaron
+function maybeInit() {
+    if (GAPI_LOADED && GIS_LOADED) {
+        // Asegura que el gapi.client (para Google Sheets) esté disponible
+        gapi.load('client', initClient); 
+        // Inicializa el cliente de autenticación (TOKEN_CLIENT)
+        initGoogleSignIn();
+        
+        // Habilita el botón de conexión si estaba deshabilitado
+        const connectBtn = document.getElementById('connect-btn');
+        if (connectBtn) {
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Conectar Google';
+        }
+    }
+}
+
+// Función que inicializa el cliente de Google APIs (GAPI)
         function initClient() {
             gapi.client.init({
-                apiKey: 'YOUR_API_KEY', // Not strictly needed for public sheet CSV, but good practice
+                apiKey: CONFIG.API_KEY,
                 clientId: CONFIG.CLIENT_ID,
+                discoveryDocs: CONFIG.DISCOVERY_DOCS,
                 scope: CONFIG.SCOPES,
-                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
             }).then(() => {
-                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                    client_id: CONFIG.CLIENT_ID,
-                    scope: CONFIG.SCOPES,
-                    callback: (tokenResponse) => {
-                        if (tokenResponse && tokenResponse.access_token) {
-                            gapi.client.setToken(tokenResponse);
-                            handleAuthResult(tokenResponse);
-                        } else {
-                            updateSigninStatus(false);
-                        }
-                    },
-                });
-                updateSigninStatus(gapi.client.getToken() !== null);
+                // GAPI_CLIENT = gapi.client; // Si necesita una referencia global
+                updateAuthStatus(true);
+            }, (error) => {
+                showNotification(`Error al iniciar GAPI: ${error.details}`, 'error');
+                updateAuthStatus(false);
             });
         }
-
+        
+        // Función que inicializa el cliente de Sign-In (GIS) para obtener el token
+        function initGoogleSignIn() {
+            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                client_id: CONFIG.CLIENT_ID,
+                scope: CONFIG.SCOPES,
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        gapi.client.setToken(tokenResponse);
+                        updateAuthStatus(true);
+                    } else {
+                        showNotification('Acceso denegado o error de token.', 'error');
+                        updateAuthStatus(false);
+                    }
+                },
+                error_callback: (error) => {
+                    console.error('Error de autenticación:', error);
+                    showNotification('Error al solicitar token de Google.', 'error');
+                }
+            });
+        }
+        
+        // Función original para el clic del botón (con la verificación que ya habíamos añadido)
         function handleLogin() {
-            // 🔑 CORRECCIÓN CLAVE: Verifica que TOKEN_CLIENT esté inicializado
+            // ⚠️ Esta verificación previene el error 'TOKEN_CLIENT is null'
             if (!TOKEN_CLIENT) {
-                showNotification('❌ El sistema de autenticación no está listo. Intenta recargar la página o espera un momento.', 'error');
-                console.error("Error: TOKEN_CLIENT no ha sido inicializado.");
+                showNotification('❌ El sistema de autenticación no está listo. Espera un momento o recarga la página.', 'error');
+                console.error("Error: TOKEN_CLIENT no ha sido inicializado. La inicialización falló o es demasiado lenta.");
                 return; 
             }
             
-            // Si el cliente está listo, solicita el token de acceso.
+            // Si el cliente existe, procede a solicitar el token de acceso.
             TOKEN_CLIENT.requestAccessToken();
         }
 
