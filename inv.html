@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Inventario (Multi-Pestaña)</title>
+    <title>Sistema Inventario</title>
     <style>
         :root {
             --primary: #2563eb;
-            --secondary: #3b82f6; /* Nuevo color para pestaña activa/tarima no definida */
             --success: #4CAF50;
             --warning: #FF9800;
             --error: #F44336;
             --blocked: #f97316;
-            --no-wms: #e91e63; /* Nuevo color para No WMS */
             --bg: #f7f7f7;
             --text: #333;
             --card: #ffffff;
@@ -119,7 +117,6 @@
             display: flex;
             flex-direction: column;
             overflow-y: auto;
-            flex-shrink: 0; /* Asegura que la barra lateral no se encoja */
         }
 
         .sidebar-header {
@@ -206,7 +203,7 @@
             border: 1px solid var(--warning);
         }
 
-        /* Pallets por estatus (Ahora Tarimas por Pestaña) */
+        /* Pallets por estatus */
         .pallet-status-list {
             flex: 1;
             overflow-y: auto;
@@ -263,132 +260,101 @@
 
         .pallet-send-btn.ok { background: var(--success); color: white; }
         .pallet-send-btn.blocked { background: var(--blocked); color: white; }
-        .pallet-send-btn.nowms { background: var(--no-wms); color: white; }
+        .pallet-send-btn.nowms { background: var(--error); color: white; }
 
-        /* User Footer (Conservado) */
+        /* User Footer */
         .user-footer {
             margin-top: auto;
             padding-top: 15px;
             border-top: 1px solid #555;
         }
-        /* ... (styles for user-info, user-avatar, etc., preserved) ... */
-        .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1em; color: white; flex-shrink: 0; cursor: pointer; }
-        .user-details { flex: 1; overflow: hidden; }
-        .user-name { font-weight: 600; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-        .connection-indicator { font-size: 0.75em; display: flex; align-items: center; gap: 4px; }
-        .connection-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1em;
+            color: white;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .user-details {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+
+        .connection-indicator {
+            font-size: 0.75em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
         .connection-dot.online { background: var(--success); }
         .connection-dot.offline { background: var(--error); }
         .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .user-footer-actions { display: flex; gap: 5px; margin-bottom: 8px; }
-        .user-footer-actions button { flex: 1; padding: 6px; font-size: 0.75em; }
-        .bd-info { font-size: 0.7em; color: #aaa; text-align: center; line-height: 1.4; }
-        /* FIN User Footer */
 
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
 
-        /* MAIN CONTENT (Adaptado para PESTAÑAS) */
+        .user-footer-actions {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 8px;
+        }
+
+        .user-footer-actions button {
+            flex: 1;
+            padding: 6px;
+            font-size: 0.75em;
+        }
+
+        .bd-info {
+            font-size: 0.7em;
+            color: #aaa;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        /* MAIN CONTENT */
         .main-content {
             flex: 1;
-            padding: 0; /* Removido padding para que las pestañas tomen todo el ancho */
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        /* --- NUEVOS ESTILOS PARA PESTAÑAS --- */
-        .tab-header-container {
-            display: flex;
-            background: #ddd;
-            padding: 5px 0 0 15px;
-            border-bottom: 1px solid #ccc;
-            overflow-x: auto;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .tab-header {
-            padding: 10px 15px;
-            margin-right: 2px;
-            background: #eee;
-            border: 1px solid #ccc;
-            border-bottom: none;
-            border-radius: 8px 8px 0 0;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 0.9em;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            position: relative;
-        }
-
-        .tab-header:hover {
-            background: #fff;
-        }
-
-        .tab-header.active {
-            background: var(--bg);
-            border-color: #ccc;
-            border-bottom: 1px solid var(--bg);
-            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
-            color: var(--primary);
-        }
-
-        .tab-badge {
-            background: var(--primary);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 0.75em;
-            font-weight: 700;
-            min-width: 20px;
-            text-align: center;
-            transition: background 0.3s;
-        }
-
-        .tab-badge.ok { background: var(--success); }
-        .tab-badge.blocked { background: var(--blocked); }
-        .tab-badge.nowms { background: var(--error); }
-        .tab-badge.empty { background: var(--secondary); }
-
-        .tab-close {
-            margin-left: 8px;
-            background: none;
-            border: none;
-            color: #666;
-            cursor: pointer;
-            font-weight: 700;
-            font-size: 1.1em;
-            padding: 0;
-            line-height: 1;
-        }
-
-        .tab-close:hover {
-            color: var(--error);
-        }
-
-        .tab-content-container {
-            flex: 1;
-            overflow: hidden;
             padding: 15px;
-            background: var(--bg);
-        }
-
-        .tab-content {
-            height: 100%;
-            display: none;
-            flex-direction: column;
-        }
-
-        .tab-content.active {
             display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        /* --- FIN ESTILOS PARA PESTAÑAS --- */
 
-        /* Header (Ahora dentro de cada pestaña) */
+        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
@@ -408,14 +374,13 @@
             gap: 8px;
         }
 
-        /* Scan Section (Ahora por pestaña) */
+        /* Scan Section */
         .scan-section {
             background: white;
             border-radius: 12px;
             padding: 15px;
             margin-bottom: 15px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            flex-shrink: 0;
         }
 
         .scan-row {
@@ -464,7 +429,7 @@
             background: #e8f5e9;
         }
 
-        /* Result Box (Conservado) */
+        /* Result Box */
         .result-box {
             padding: 12px;
             border-radius: 8px;
@@ -505,7 +470,7 @@
         .result-detail-label { color: #666; font-size: 0.8em; }
         .result-detail-value { font-weight: 600; }
 
-        /* Code2 Input (Conservado) */
+        /* Code2 Input */
         .code2-container {
             margin-top: 10px;
             padding-top: 10px;
@@ -536,18 +501,16 @@
             background: #d32f2f;
         }
 
-        /* Columns Container (Adaptado para Consolidado y Log) */
+        /* Columns Container */
         .columns-container {
             display: grid;
-            grid-template-columns: 2fr 1fr; /* Tarima consolidada (2) y Log (1) */
+            grid-template-columns: repeat(3, 1fr);
             gap: 12px;
             flex: 1;
             min-height: 0;
-            overflow: hidden;
         }
 
-        /* Estilo para la columna de Tarima Consolidada */
-        .column-consolidated {
+        .column {
             background: white;
             border-radius: 12px;
             padding: 12px;
@@ -571,7 +534,6 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            color: var(--primary);
         }
 
         .column-count {
@@ -579,50 +541,64 @@
             border-radius: 15px;
             font-weight: 700;
             font-size: 0.85em;
-            background: rgba(37, 99, 235, 0.15);
-            color: var(--primary);
         }
 
-        /* Contenedor de Pallets Consolidado */
-        .consolidated-pallets {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            flex-shrink: 0;
-        }
+        .column.ok .column-title { color: var(--success); }
+        .column.ok .column-count { background: rgba(76, 175, 80, 0.15); color: var(--success); }
 
-        .pallet-info-card {
+        .column.blocked .column-title { color: var(--blocked); }
+        .column.blocked .column-count { background: rgba(249, 115, 22, 0.15); color: var(--blocked); }
+
+        .column.nowms .column-title { color: var(--error); }
+        .column.nowms .column-count { background: rgba(244, 67, 54, 0.15); color: var(--error); }
+
+        .column-pallet-info {
             background: #f5f5f5;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 0.85em;
-            border-left: 5px solid var(--secondary);
-            flex: 1;
-            min-width: 150px;
-        }
-
-        .pallet-info-card.ok { border-color: var(--success); }
-        .pallet-info-card.blocked { border-color: var(--blocked); }
-        .pallet-info-card.nowms { border-color: var(--no-wms); }
-
-        .pallet-info-card div { margin-bottom: 4px; }
-        .pallet-info-card .pallet-id {
-            font-weight: 700;
-            color: var(--primary);
-            font-family: monospace;
-        }
-        .pallet-info-card .pallet-status-count {
-            background: white;
-            padding: 1px 6px;
-            border-radius: 8px;
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 10px;
             font-size: 0.8em;
-            font-weight: 700;
         }
 
-        .pallet-list-container {
+        .column-pallet-code {
+            font-family: monospace;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .column-location-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-top: 6px;
+        }
+
+        .column-send-btn {
+            margin-top: 8px;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            font-size: 0.85em;
+        }
+
+        .column-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .column.ok .column-send-btn { background: var(--success); color: white; }
+        .column.blocked .column-send-btn { background: var(--blocked); color: white; }
+        .column.nowms .column-send-btn { background: var(--error); color: white; }
+
+        .column-list {
             flex: 1;
             overflow-y: auto;
+            counter-reset: item-counter;
         }
 
         .box-item {
@@ -637,20 +613,21 @@
             counter-increment: item-counter;
         }
 
-        .box-item.ok { border-color: var(--success); }
-        .box-item.blocked { border-color: var(--blocked); }
-        .box-item.nowms { border-color: var(--no-wms); }
-
         .box-item::before {
             content: counter(item-counter) ".";
             font-weight: 700;
             min-width: 25px;
             margin-right: 8px;
-            color: #999;
         }
-        .box-item.ok::before { color: var(--success); }
-        .box-item.blocked::before { color: var(--blocked); }
-        .box-item.nowms::before { color: var(--no-wms); }
+
+        .column.ok .box-item { border-color: var(--success); }
+        .column.ok .box-item::before { color: var(--success); }
+
+        .column.blocked .box-item { border-color: var(--blocked); }
+        .column.blocked .box-item::before { color: var(--blocked); }
+
+        .column.nowms .box-item { border-color: var(--error); }
+        .column.nowms .box-item::before { color: var(--error); }
 
         .box-info { flex: 1; }
         .box-code { font-weight: 600; font-family: monospace; font-size: 0.9em; }
@@ -664,7 +641,6 @@
             font-size: 1.1em;
             padding: 4px;
             opacity: 0.6;
-            flex-shrink: 0;
         }
 
         .box-delete:hover { opacity: 1; }
@@ -677,73 +653,7 @@
 
         .empty-icon { font-size: 2.5em; margin-bottom: 8px; opacity: 0.5; }
 
-        /* Estilo para el Log Visual */
-        .log-column {
-            background: #2d3748; /* Fondo oscuro para el log */
-            color: #f7fafc;
-            border-radius: 12px;
-            padding: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .log-column .column-header {
-            border-bottom: 2px solid #4a5568;
-            margin-bottom: 8px;
-            padding-bottom: 8px;
-        }
-
-        .log-column .column-title {
-            color: #90cdf4;
-        }
-
-        .log-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .log-entry {
-            display: flex;
-            align-items: center;
-            padding: 5px 0;
-            border-bottom: 1px dashed #4a5568;
-            font-size: 0.8em;
-            gap: 8px;
-        }
-
-        .log-entry:last-child {
-            border-bottom: none;
-        }
-
-        .log-status-icon {
-            font-size: 1em;
-            flex-shrink: 0;
-        }
-
-        .log-entry.ok .log-status-icon { color: var(--success); }
-        .log-entry.blocked .log-status-icon { color: var(--blocked); }
-        .log-entry.nowms .log-status-icon { color: var(--error); }
-
-        .log-time {
-            color: #a0aec0;
-            font-family: monospace;
-            font-size: 0.9em;
-            flex-shrink: 0;
-            min-width: 40px;
-        }
-
-        .log-code {
-            font-weight: 600;
-            flex-grow: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-
-        /* Buttons (Conservado) */
+        /* Buttons */
         .btn {
             padding: 10px 18px;
             border: none;
@@ -777,7 +687,7 @@
         .btn-small { padding: 6px 12px; font-size: 0.85em; }
         .btn-full { width: 100%; }
 
-        /* Notifications (Conservado) */
+        /* Notifications */
         .notification-container {
             position: fixed;
             top: 20px;
@@ -806,7 +716,7 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
-        /* Popups (Conservado) */
+        /* Popups */
         .popup-overlay {
             position: fixed;
             top: 0;
@@ -860,7 +770,7 @@
             margin-top: 15px;
         }
 
-        /* Resumen Module (Conservado) */
+        /* Resumen Module */
         .resumen-stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -929,48 +839,10 @@
 
         .hidden { display: none !important; }
 
-        /* --- NUEVO ESTILO: Loading Overlay --- */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.9);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10001;
-            transition: opacity 0.3s;
-        }
-
-        .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
-            border-top: 4px solid var(--primary);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            margin-top: 15px;
-            font-size: 1.1em;
-            font-weight: 600;
-            color: var(--primary);
-        }
-        /* --- FIN Loading Overlay --- */
-
         /* Responsive */
         @media (max-width: 1024px) {
             .sidebar { width: 180px; }
-            .columns-container { grid-template-columns: 1fr; } /* Stack columns */
+            .columns-container { grid-template-columns: 1fr; }
             .resumen-stats { grid-template-columns: repeat(2, 1fr); }
         }
 
@@ -984,70 +856,75 @@
     <div class="connection-banner" id="connection-banner"></div>
     <div class="notification-container" id="notifications"></div>
 
-    <div id="loading-overlay" class="loading-overlay hidden">
-        <div class="spinner"></div>
-        <div class="loading-text" id="loading-text">Cargando datos...</div>
-    </div>
-
+    <!-- LOGIN SCREEN -->
     <div class="login-screen" id="login-screen">
         <div class="login-card">
             <div class="login-icon">📦</div>
             <h1 class="login-title">Sistema Inventario</h1>
             <p class="login-subtitle">Control y gestión de mercancía</p>
-            <button class="btn btn-google btn-full" onclick="handleLogin()" id="login-btn" style="padding: 15px; font-size: 1.1em;" disabled>
-                ⏳ Cargando...
+            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
+                🔐 Iniciar sesión con Google
             </button>
         </div>
     </div>
 
+    <!-- MAIN APP -->
     <div id="main-app" class="hidden">
         <div class="main-container">
+            <!-- SIDEBAR -->
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h2>📦 Inventario</h2>
                     <p>Sistema de gestión</p>
                 </div>
 
+                <!-- Sync Status -->
                 <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">
                     ✅ Sincronizado
                 </div>
 
+                <!-- Menu -->
                 <div class="sidebar-section">
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
                         📊 Resumen
                     </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="createNewTab()">
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
                         ➕ Nueva Sesión
                     </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="downloadCSV()">
-                        📥 Exportar CSV
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
+                        📥 Exportar
                     </button>
                 </div>
 
+                <!-- Pallets por estatus -->
                 <div class="sidebar-section">
-                    <div class="sidebar-section-title">Totales Acumulados</div>
-                    <div class="pallet-status-list" id="global-status-list">
+                    <div class="sidebar-section-title">Tarimas Activas</div>
+                    <div class="pallet-status-list" id="pallet-status-list">
                         <div class="pallet-status-item">
                             <div class="pallet-status-header">
                                 <span class="pallet-status-name" style="color: var(--success);">✅ OK</span>
                                 <span class="pallet-status-count" id="sidebar-ok-count">0</span>
                             </div>
+                            <div class="pallet-code" id="sidebar-ok-pallet">-</div>
                         </div>
                         <div class="pallet-status-item">
                             <div class="pallet-status-header">
                                 <span class="pallet-status-name" style="color: var(--blocked);">⚠️ Bloqueado</span>
                                 <span class="pallet-status-count" id="sidebar-blocked-count">0</span>
                             </div>
+                            <div class="pallet-code" id="sidebar-blocked-pallet">-</div>
                         </div>
                         <div class="pallet-status-item">
                             <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--no-wms);">❌ No WMS</span>
+                                <span class="pallet-status-name" style="color: var(--error);">❌ No WMS</span>
                                 <span class="pallet-status-count" id="sidebar-nowms-count">0</span>
                             </div>
+                            <div class="pallet-code" id="sidebar-nowms-pallet">-</div>
                         </div>
                     </div>
                 </div>
 
+                <!-- User Footer -->
                 <div class="user-footer">
                     <div class="user-info">
                         <div class="user-avatar" id="user-avatar" onclick="changeUserAlias()">?</div>
@@ -1071,18 +948,118 @@
                 </div>
             </div>
 
+            <!-- MAIN CONTENT -->
             <div class="main-content">
-                <div class="tab-header-container" id="tab-header-container">
+                <!-- Header -->
+                <div class="header">
+                    <h1>📸 Área de Escaneo</h1>
+                </div>
+
+                <!-- Scan Section -->
+                <div class="scan-section">
+                    <div class="scan-row">
+                        <div class="scan-input-group">
+                            <label>🔍 Código Principal</label>
+                            <input type="text" class="scan-input" id="scan-input" placeholder="Escanea o ingresa código..." autocomplete="off">
+                        </div>
                     </div>
-                <div class="tab-content-container" id="tab-content-container">
-                    <div id="empty-tabs-message" style="text-align: center; padding-top: 50px; color: #999;">
-                        Inicia una nueva sesión haciendo clic en "➕ Nueva Sesión".
+
+                    <!-- Result Box -->
+                    <div class="result-box" id="result-box">
+                        <div class="result-header">
+                            <span class="result-icon" id="result-icon">📦</span>
+                            <span class="result-title" id="result-title">Estado</span>
+                        </div>
+                        <div class="result-code" id="result-code"></div>
+                        <div class="result-details" id="result-details"></div>
+                    </div>
+
+                    <!-- Code2 Container -->
+                    <div class="code2-container" id="code2-container">
+                        <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
+                            ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
+                        </label>
+                        <div class="code2-row">
+                            <div class="scan-input-group">
+                                <input type="text" class="scan-input" id="code2-input" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
+                            </div>
+                            <button class="btn-insertado" onclick="forceInsert()">
+                                ⚡ INSERTADO
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Columns -->
+                <div class="columns-container">
+                    <!-- OK Column -->
+                    <div class="column ok">
+                        <div class="column-header">
+                            <span class="column-title">✅ OK</span>
+                            <span class="column-count" id="ok-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-ok" placeholder="📍 Ubicación destino...">
+                            <button class="column-send-btn" onclick="sendPallet('ok')" id="send-ok-btn" disabled>
+                                📤 Enviar Tarima OK
+                            </button>
+                        </div>
+                        <div class="column-list" id="ok-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Sin cajas</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Blocked Column -->
+                    <div class="column blocked">
+                        <div class="column-header">
+                            <span class="column-title">⚠️ Bloqueado</span>
+                            <span class="column-count" id="blocked-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-blocked" placeholder="📍 Ubicación destino...">
+                            <button class="column-send-btn" onclick="sendPallet('blocked')" id="send-blocked-btn" disabled>
+                                📤 Enviar Tarima Bloqueado
+                            </button>
+                        </div>
+                        <div class="column-list" id="blocked-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Sin cajas</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- No WMS Column -->
+                    <div class="column nowms">
+                        <div class="column-header">
+                            <span class="column-title">❌ No WMS</span>
+                            <span class="column-count" id="nowms-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-nowms" placeholder="📍 Ubicación destino...">
+                            <button class="column-send-btn" onclick="sendPallet('nowms')" id="send-nowms-btn" disabled>
+                                📤 Enviar Tarima No WMS
+                            </button>
+                        </div>
+                        <div class="column-list" id="nowms-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div>Sin cajas</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- RESUMEN POPUP -->
     <div class="popup-overlay" id="resumen-popup">
         <div class="popup-content">
             <div class="popup-header">
@@ -1111,8 +1088,8 @@
 
             <div class="resumen-actions">
                 <button class="btn btn-primary btn-small" onclick="refreshInventory(); closeResumen();">🔄 Recargar BD</button>
-                <button class="btn btn-success btn-small" onclick="SyncManager.sync(true); updateResumen();">🔄 Sincronizar</button>
-                <button class="btn btn-secondary btn-small" onclick="downloadCSV();">📥 Exportar CSV</button>
+                <button class="btn btn-success btn-small" onclick="SyncManager.sync(); updateResumen();">🔄 Sincronizar</button>
+                <button class="btn btn-secondary btn-small" onclick="exportData();">📥 Exportar</button>
             </div>
 
             <h3 style="margin-bottom: 10px; font-size: 1em;">📋 Historial Reciente</h3>
@@ -1143,22 +1120,22 @@
             CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
             SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
-            SHEET_NAME: 'BD',
+            SHEET_NAME: 'BD',  // Nombre de la hoja donde se escriben los datos
             INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv'
         };
 
-        // ==================== STATE (ADAPTADO PARA PESTAÑAS) ====================
-        const MAX_TABS = 5;
-        const TAB_PREFIX = 'tab-';
-
+        // ==================== STATE ====================
         let STATE = {
             inventory: new Map(),
             inventoryLastUpdate: null,
-            pendingCode1: null, // Obsoleto, ahora por pestaña
+            pallets: {
+                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+            },
+            pendingCode1: null,
             history: []
         };
-        let TABS_STATE = {}; // Nuevo objeto para manejar el estado de cada pestaña
-        let activeTabId = null;
 
         let CURRENT_USER = '';
         let USER_EMAIL = '';
@@ -1168,1120 +1145,35 @@
         let TOKEN_CLIENT = null;
         let audioCtx = null;
 
-
-        // ==================== UTILITIES (MEJORADAS Y NUEVAS) ====================
-
-        /**
-         * Muestra el overlay de carga.
-         * @param {string} text El texto a mostrar.
-         */
-        function showLoading(text = 'Cargando...') {
-            const overlay = document.getElementById('loading-overlay');
-            const loadingText = document.getElementById('loading-text');
-            if (overlay) {
-                overlay.classList.remove('hidden');
-            }
-            if (loadingText) {
-                loadingText.textContent = text;
-            }
-        }
-
-        /**
-         * Oculta el overlay de carga.
-         */
-        function hideLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.add('hidden');
-            }
-        }
-
-        /**
-         * Muestra una notificación temporal. (MANTENIDO)
-         * @param {string} message El mensaje a mostrar.
-         * @param {string} type El tipo de notificación ('success', 'error', 'warning', 'info').
-         */
-        function showNotification(message, type = 'info') {
-            const container = document.getElementById('notifications');
-            if (!container) return;
-
-            const icons = {
-                'success': '👍',
-                'error': '🛑',
-                'warning': '⚠️',
-                'info': 'ℹ️',
-                'blocked': '🚧',
-                'nowms': '❌'
-            };
-
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `<span style="margin-right: 8px;">${icons[type] || '📦'}</span>${message}`;
-
-            container.appendChild(notification);
-            setTimeout(() => notification.remove(), 4000);
-            playSound(type);
-        }
-
-        /**
-         * Toca un sonido para feedback. (MANTENIDO)
-         * @param {string} type El tipo de sonido ('success', 'error', 'warning').
-         */
-        function playSound(type) {
-            if (!audioCtx) {
-                try {
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                } catch (e) {
-                    // Audio not supported or restricted
-                    return;
-                }
-            }
-
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-
-                if (type === 'success') {
-                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.15);
-                } else if (type === 'error' || type === 'blocked' || type === 'nowms') {
-                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.35);
-                } else if (type === 'warning' || type === 'info') {
-                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.1);
-                }
-            } catch (e) { }
-        }
-        function enableLoginButton() {
-            const btn = document.getElementById('login-btn');
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = '🔐 Iniciar sesión con Google';
-            }
-        }
-        
-        /**
-         * Genera un ID de Pallet basado en el estatus. (ADAPTADO)
-         * @param {string} status El estatus ('OK', 'BLK', 'NW').
-         * @returns {string} El ID de Pallet único.
-         */
-        function generatePalletId(status) {
-            const date = new Date();
-            const year = date.getFullYear().toString().slice(2);
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const day = date.getDate().toString().padStart(2, '0');
-            const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-            return `${status}-${year}${month}${day}-${random}`;
-        }
-
-        /**
-         * Genera un ID de Pestaña único. (NUEVO)
-         * @returns {string} El ID de pestaña único.
-         */
-        function generateTabId() {
-            return TAB_PREFIX + Date.now();
-        }
-
-        /**
-         * Convierte el array de objetos de un estado de pestaña a CSV. (NUEVO)
-         * @param {Array<Object>} data Array de cajas.
-         * @param {Object} palletData Datos del pallet (ID, Location).
-         * @returns {string} El string CSV.
-         */
-        function convertToCSV(data, palletData) {
-            const header = ["Fecha", "Hora", "Usuario", "Código Principal", "Código 2", "Ubicación", "Estatus", "Pallet ID", "Nota"];
-            const csv = data.map(item => [
-                item.date,
-                item.time,
-                item.user,
-                item.scan1,
-                item.scan2,
-                palletData.location || '',
-                item.status,
-                palletData.id,
-                item.note || ''
-            ].map(String).map(s => `"${s.replace(/"/g, '""')}"`).join(','));
-
-            return header.join(',') + '\n' + csv.join('\n');
-        }
-
-        /**
-         * Descarga todos los datos pendientes de todas las pestañas. (NUEVO)
-         */
-        function downloadCSV() {
-            let allData = [];
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            let filename = `Inventario_Pendientes_${timestamp}.csv`;
-            let totalRecords = 0;
-
-            // 1. Recopilar datos de PENDING_SYNC
-            const pendingHeader = ["Fecha", "Hora", "Usuario", "Código Principal", "Código 2", "Ubicación", "Estatus", "Pallet ID", "Nota"];
-            const pendingCSV = PENDING_SYNC.map(r => [
-                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.pallet, r.note
-            ].map(String).map(s => `"${s.replace(/"/g, '""')}"`).join(','));
-
-            // 2. Recopilar datos de TABS_STATE
-            for (const tabId in TABS_STATE) {
-                const tabState = TABS_STATE[tabId];
-                ['ok', 'blocked', 'nowms'].forEach(status => {
-                    const pallet = tabState.pallets[status];
-                    if (pallet.boxes.length > 0) {
-                        pallet.boxes.forEach(box => {
-                            allData.push([
-                                box.date,
-                                box.time,
-                                box.user,
-                                box.scan1,
-                                box.scan2,
-                                pallet.location || 'PENDIENTE',
-                                box.status,
-                                pallet.id,
-                                box.note || ''
-                            ]);
-                        });
-                        totalRecords += pallet.boxes.length;
-                    }
-                });
-            }
-
-            // 3. Crear el archivo CSV
-            let csvContent = pendingHeader.join(',') + '\n';
-            csvContent += pendingCSV.join('\n');
-            if (pendingCSV.length > 0 && allData.length > 0) {
-                csvContent += '\n' + pendingHeader.join(',') + ' (DATOS EN PESTAÑAS)' + '\n';
-            }
-            csvContent += allData.map(row => row.map(String).map(s => `"${s.replace(/"/g, '""')}"`).join(',')).join('\n');
-
-            if (PENDING_SYNC.length === 0 && allData.length === 0) {
-                showNotification('❌ No hay datos pendientes para exportar.', 'error');
-                return;
-            }
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            if (link.download !== undefined) {
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                showNotification(`✅ Exportados ${PENDING_SYNC.length + totalRecords} registros pendientes.`, 'success');
-            } else {
-                showNotification('❌ Tu navegador no soporta la descarga automática de archivos.', 'error');
-            }
-        }
-
-        // ==================== TAB MANAGER (NUEVO) ====================
-
-        /**
-         * Crea el HTML para un módulo de captura (Scan + Tarima + Log).
-         * @param {string} tabId El ID único de la pestaña.
-         * @returns {string} El HTML completo del módulo.
-         */
-        function createCaptureModuleHTML(tabId) {
-            return `
-                <div class="header">
-                    <h1>📸 Sesión ${tabId.replace(TAB_PREFIX, '')}</h1>
-                    <div class="header-actions">
-                        <input type="text" id="location-${tabId}" class="btn-small" placeholder="Ubicación Pallets" style="width: 150px; text-align: left;">
-                        <button class="btn btn-primary btn-small" onclick="sendData('${tabId}')" id="send-all-btn-${tabId}" disabled>
-                            📤 Enviar Todo (<span id="total-boxes-${tabId}">0</span>)
-                        </button>
-                    </div>
-                </div>
-
-                <div class="scan-section">
-                    <div class="scan-row">
-                        <div class="scan-input-group">
-                            <label>🔍 Código Principal</label>
-                            <input type="text" class="scan-input" id="scan-input-${tabId}" placeholder="Escanea o ingresa código..." autocomplete="off">
-                        </div>
-                    </div>
-
-                    <div class="result-box" id="result-box-${tabId}">
-                        <div class="result-header">
-                            <span class="result-icon" id="result-icon-${tabId}">📦</span>
-                            <span class="result-title" id="result-title-${tabId}">Estado</span>
-                        </div>
-                        <div class="result-code" id="result-code-${tabId}"></div>
-                        <div class="result-details" id="result-details-${tabId}"></div>
-                    </div>
-
-                    <div class="code2-container" id="code2-container-${tabId}">
-                        <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
-                            ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
-                        </label>
-                        <div class="code2-row">
-                            <div class="scan-input-group">
-                                <input type="text" class="scan-input" id="code2-input-${tabId}" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
-                            </div>
-                            <button class="btn-insertado" onclick="forceInsert('${tabId}')" id="force-insert-btn-${tabId}">
-                                ⚡ INSERTADO
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="columns-container">
-                    <div class="column-consolidated">
-                        <div class="column-header">
-                            <span class="column-title">
-                                🧺 Tarima Consolidada
-                            </span>
-                            <span class="column-count" id="consolidated-count-${tabId}">0</span>
-                        </div>
-
-                        <div class="consolidated-pallets" id="consolidated-pallets-${tabId}">
-                            </div>
-
-                        <div class="pallet-list-container" id="pallet-list-${tabId}">
-                            <div class="empty-state">
-                                <div class="empty-icon">📭</div>
-                                <div>Escanea una caja para empezar la Tarima.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="log-column">
-                        <div class="column-header">
-                            <span class="column-title">
-                                💬 Log Visual
-                            </span>
-                            <span class="column-count" id="log-count-${tabId}">0</span>
-                        </div>
-                        <div class="log-list" id="log-list-${tabId}">
-                            <div class="empty-state" style="padding: 10px; color: #a0aec0;">
-                                <div>Log de escaneos</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        /**
-         * Crea un nuevo estado para una pestaña.
-         * @returns {Object} El estado inicial de la pestaña.
-         */
-        function createNewTabState() {
-            return {
-                pallets: {
-                    ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-                    blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-                    nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-                },
-                pendingCode1: null,
-                log: []
-            };
-        }
-
-        /**
-         * Crea y añade una nueva pestaña.
-         */
-        function createNewTab() {
-            if (Object.keys(TABS_STATE).length >= MAX_TABS) {
-                showNotification(`⚠️ Límite de ${MAX_TABS} sesiones activas. Cierra una para abrir una nueva.`, 'warning');
-                return;
-            }
-
-            const tabId = generateTabId();
-            TABS_STATE[tabId] = createNewTabState();
-            saveTabsState();
-
-            // 1. Crear el header de la pestaña
-            const headerContainer = document.getElementById('tab-header-container');
-            const tabHeader = document.createElement('div');
-            tabHeader.id = `header-${tabId}`;
-            tabHeader.className = 'tab-header';
-            tabHeader.onclick = () => switchTab(tabId);
-            tabHeader.innerHTML = `
-                <span>Sesión ${tabId.replace(TAB_PREFIX, '')}</span>
-                <span class="tab-badge empty" id="badge-${tabId}">0</span>
-                <button class="tab-close" onclick="event.stopPropagation(); closeTab('${tabId}')">×</button>
-            `;
-            headerContainer.appendChild(tabHeader);
-
-            // 2. Crear el contenido de la pestaña
-            const contentContainer = document.getElementById('tab-content-container');
-            const tabContent = document.createElement('div');
-            tabContent.id = `content-${tabId}`;
-            tabContent.className = 'tab-content';
-            tabContent.innerHTML = createCaptureModuleHTML(tabId);
-            contentContainer.appendChild(tabContent);
-
-            // 3. Ocultar mensaje de bienvenida y activar la nueva pestaña
-            document.getElementById('empty-tabs-message').classList.add('hidden');
-            switchTab(tabId);
-
-            // 4. Configurar listeners de entrada
-            setTimeout(() => {
-                const scanInput = document.getElementById(`scan-input-${tabId}`);
-                scanInput.onkeypress = (e) => {
-                    if (e.key === 'Enter') {
-                        handleScan(e, tabId);
-                    }
-                };
-                scanInput.focus();
-            }, 50);
-
-            showNotification(`✅ Sesión ${tabId.replace(TAB_PREFIX, '')} iniciada.`, 'info');
-        }
-
-        /**
-         * Cambia a la pestaña especificada.
-         * @param {string} id El ID de la pestaña a activar.
-         */
-        function switchTab(id) {
-            if (activeTabId === id) return;
-
-            // Desactivar pestaña anterior
-            if (activeTabId) {
-                document.getElementById(`header-${activeTabId}`)?.classList.remove('active');
-                document.getElementById(`content-${activeTabId}`)?.classList.remove('active');
-            }
-
-            // Activar nueva pestaña
-            activeTabId = id;
-            document.getElementById(`header-${id}`)?.classList.add('active');
-            const content = document.getElementById(`content-${id}`);
-            content?.classList.add('active');
-
-            // Asegurar que el input de escaneo tenga foco
-            document.getElementById(`scan-input-${id}`)?.focus();
-        }
-
-        /**
-         * Cierra la pestaña si no tiene datos pendientes.
-         * @param {string} id El ID de la pestaña a cerrar.
-         */
-        function closeTab(id) {
-            const state = TABS_STATE[id];
-            const totalBoxes = state.pallets.ok.boxes.length + state.pallets.blocked.boxes.length + state.pallets.nowms.boxes.length;
-
-            if (totalBoxes > 0) {
-                const confirmation = confirm(`⚠️ La Sesión ${id.replace(TAB_PREFIX, '')} tiene ${totalBoxes} cajas sin enviar. ¿Deseas cerrar y perder los datos?`);
-                if (!confirmation) return;
-            }
-
-            // Eliminar del estado y del DOM
-            delete TABS_STATE[id];
-            saveTabsState();
-
-            document.getElementById(`header-${id}`)?.remove();
-            document.getElementById(`content-${id}`)?.remove();
-
-            showNotification(`ℹ️ Sesión ${id.replace(TAB_PREFIX, '')} cerrada.`, 'info');
-
-            // Seleccionar otra pestaña o mostrar mensaje de bienvenida
-            const tabIds = Object.keys(TABS_STATE);
-            if (tabIds.length > 0) {
-                const newActiveId = tabIds[0];
-                switchTab(newActiveId);
-            } else {
-                activeTabId = null;
-                document.getElementById('empty-tabs-message').classList.remove('hidden');
-            }
-            updateGlobalSidebarStatus();
-        }
-
-        /**
-         * Guarda el estado de las pestañas en localStorage.
-         */
-        function saveTabsState() {
-            try {
-                // Guardar solo el estado necesario (pallets y log)
-                const serializableState = {};
-                for (const id in TABS_STATE) {
-                    serializableState[id] = {
-                        pallets: TABS_STATE[id].pallets,
-                        log: TABS_STATE[id].log
-                    };
-                }
-                localStorage.setItem('pd_tabs_state', JSON.stringify(serializableState));
-            } catch (e) { }
-        }
-
-        /**
-         * Carga el estado de las pestañas desde localStorage y las reconstruye.
-         */
-        function loadTabsState() {
-            try {
-                const saved = localStorage.getItem('pd_tabs_state');
-                if (saved) {
-                    const loadedState = JSON.parse(saved);
-                    TABS_STATE = {};
-                    const tabIds = Object.keys(loadedState);
-
-                    tabIds.forEach(tabId => {
-                        const state = createNewTabState(); // Iniciar con el template
-                        state.pallets = loadedState[tabId].pallets || state.pallets;
-                        state.log = loadedState[tabId].log || state.log;
-                        TABS_STATE[tabId] = state; // Sobrescribir el estado
-
-                        // Reconstruir el DOM
-                        const headerContainer = document.getElementById('tab-header-container');
-                        const contentContainer = document.getElementById('tab-content-container');
-
-                        const tabHeader = document.createElement('div');
-                        tabHeader.id = `header-${tabId}`;
-                        tabHeader.className = 'tab-header';
-                        tabHeader.onclick = () => switchTab(tabId);
-                        tabHeader.innerHTML = `
-                            <span>Sesión ${tabId.replace(TAB_PREFIX, '')}</span>
-                            <span class="tab-badge empty" id="badge-${tabId}">0</span>
-                            <button class="tab-close" onclick="event.stopPropagation(); closeTab('${tabId}')">×</button>
-                        `;
-                        headerContainer.appendChild(tabHeader);
-
-                        const tabContent = document.createElement('div');
-                        tabContent.id = `content-${tabId}`;
-                        tabContent.className = 'tab-content';
-                        tabContent.innerHTML = createCaptureModuleHTML(tabId);
-                        contentContainer.appendChild(tabContent);
-
-                        // Configurar listeners
-                        setTimeout(() => {
-                            const scanInput = document.getElementById(`scan-input-${tabId}`);
-                            scanInput.onkeypress = (e) => {
-                                if (e.key === 'Enter') {
-                                    handleScan(e, tabId);
-                                }
-                            };
-                            updateConsolidatedTarima(tabId); // Renderizar el contenido cargado
-                        }, 50);
-                    });
-
-                    if (tabIds.length > 0) {
-                        document.getElementById('empty-tabs-message').classList.add('hidden');
-                        switchTab(tabIds[0]);
-                    }
-
-                    updateGlobalSidebarStatus();
-                } else {
-                    // Si no hay pestañas guardadas, crear una por defecto
-                    createNewTab();
-                }
-            } catch (e) {
-                console.error('Error loading tabs state:', e);
-                createNewTab(); // Fallback
-            }
-        }
-
-        // ==================== INVENTORY AND SCAN LOGIC (ADAPTADO) ====================
-
-        /**
-         * Carga los datos del inventario (MANTENIDO, con manejo de Loading)
-         */
-        async function loadInventoryData() {
-            if (!IS_ONLINE) {
-                showNotification('⚠️ Sin conexión. Usando datos de caché.', 'warning');
-                return;
-            }
-
-            showLoading('Descargando inventario...');
-            try {
-                const response = await fetch(CONFIG.INVENTORY_CSV_URL);
-                const csv = await response.text();
-                const rows = csv.split('\n').map(row => row.trim()).filter(row => row.length > 0);
-                const headers = rows[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g, ''));
-
-                const newInventory = new Map();
-                for (let i = 1; i < rows.length; i++) {
-                    const values = rows[i].split(',');
-                    if (values.length !== headers.length) continue;
-
-                    const item = {};
-                    headers.forEach((header, index) => {
-                        item[header] = values[index].trim();
-                    });
-
-                    // Usar 'codigoprincipal' como clave principal para búsqueda
-                    const code = item.codigoprincipal;
-                    if (code) {
-                        newInventory.set(code, item);
-                    }
-                }
-
-                STATE.inventory = newInventory;
-                STATE.inventoryLastUpdate = new Date();
-
-                // Actualizar UI de la sidebar
-                document.getElementById('bd-count').textContent = STATE.inventory.size;
-                document.getElementById('bd-update-time').textContent = `Actualizado: ${STATE.inventoryLastUpdate.toLocaleTimeString()}`;
-
-                showNotification(`✅ Base de Datos cargada. ${STATE.inventory.size} códigos.`, 'success');
-            } catch (e) {
-                console.error('Error loading inventory:', e);
-                showNotification('❌ Error al cargar la Base de Datos.', 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        /**
-         * Implementa la lógica de búsqueda robusta. (NUEVO)
-         * @param {string} code Código escaneado.
-         * @returns {{ status: 'ok'|'blocked'|'nowms'|'error', item: Object|null, message: string }} Resultado de la búsqueda.
-         */
-        function searchInventory(code) {
-            const item = STATE.inventory.get(code);
-
-            if (!item) {
-                return {
-                    status: 'error',
-                    item: null,
-                    message: 'Código Principal no encontrado. Se solicitará Código 2.'
-                };
-            }
-
-            // Lógica de Estatus:
-            const statusWMS = (item.statuswms || '').toUpperCase().trim();
-            const statusCA = (item.statusca || '').toUpperCase().trim();
-
-            if (statusWMS === 'OK' && statusCA === 'OK') {
-                return {
-                    status: 'ok',
-                    item: item,
-                    message: '✅ Código OK para WMS y Calidad.'
-                };
-            } else if (statusWMS === 'OK' && statusCA !== 'OK') {
-                return {
-                    status: 'blocked',
-                    item: item,
-                    message: `⚠️ Bloqueado por Calidad. (Status CA: ${statusCA})`
-                };
-            } else {
-                // Si Status WMS no es OK, siempre es No WMS/Error de WMS
-                return {
-                    status: 'nowms',
-                    item: item,
-                    message: `❌ No WMS. (Status WMS: ${statusWMS})`
-                };
-            }
-        }
-
-        /**
-         * Maneja el escaneo del Código Principal (CP) o Pallet ID. (ADAPTADO)
-         * @param {Event} event Evento keypress.
-         * @param {string} tabId ID de la pestaña.
-         */
-        function handleScan(event, tabId) {
-            if (event.key !== 'Enter') return;
-            const inputElement = document.getElementById(`scan-input-${tabId}`);
-            const code = inputElement.value.toUpperCase().trim();
-            inputElement.value = ''; // Limpiar inmediatamente
-
-            if (!code) return;
-
-            const state = TABS_STATE[tabId];
-            if (!state) return;
-
-            const resultBox = document.getElementById(`result-box-${tabId}`);
-            const code2Container = document.getElementById(`code2-container-${tabId}`);
-
-            // 1. Manejar si estábamos esperando Código 2
-            if (state.pendingCode1) {
-                handleCode2Scan(code, tabId);
-                return;
-            }
-
-            // 2. Ejecutar la Búsqueda Robusta
-            const result = searchInventory(code);
-
-            // 3. Actualizar UI de resultado
-            updateResultBox(tabId, result.status, result.message, code, result.item);
-
-            if (result.status === 'error') {
-                // Código no encontrado: Pedir Código 2
-                state.pendingCode1 = code;
-                code2Container.classList.add('show');
-                document.getElementById(`code2-input-${tabId}`).focus();
-                showNotification(result.message, 'error');
-            } else {
-                // Código encontrado (OK, BLOCKED, NO WMS)
-                code2Container.classList.remove('show');
-                state.pendingCode1 = null;
-                const status = result.status;
-                const item = result.item;
-
-                const newBox = {
-                    date: new Date().toLocaleDateString('es-MX'),
-                    time: new Date().toLocaleTimeString('es-MX'),
-                    user: CURRENT_USER,
-                    scan1: code,
-                    scan2: item.codigoalterno || '',
-                    status: status,
-                    note: result.message.replace(/[\:\(\)]/g, '').trim()
-                };
-
-                addBoxToPallet(tabId, status, newBox);
-                inputElement.focus();
-            }
-            saveTabsState();
-        }
-
-        /**
-         * Maneja el escaneo o ingreso del Código 2. (ADAPTADO)
-         * @param {string} code2 Código escaneado.
-         * @param {string} tabId ID de la pestaña.
-         */
-        function handleCode2Scan(code2, tabId) {
-            const state = TABS_STATE[tabId];
-            const code1 = state.pendingCode1;
-            const scanInput = document.getElementById(`scan-input-${tabId}`);
-
-            if (!code1) {
-                showNotification('❌ Error: El sistema no está esperando un Código 2.', 'error');
-                scanInput.focus();
-                return;
-            }
-
-            // 1. Buscar en BD si el Código 2 coincide con algún 'CodigoAlterno'
-            let foundItem = null;
-            for (const item of STATE.inventory.values()) {
-                if ((item.codigoalterno || '').toUpperCase().trim() === code2) {
-                    foundItem = item;
-                    break;
-                }
-            }
-
-            // 2. Determinar estado y registrar
-            let status = 'nowms'; // Por defecto, si Code1 no existe en BD, es No WMS
-            let message = `❌ CP: ${code1} no encontrado. Registrado como No WMS con Código 2: ${code2}.`;
-            let itemDetails = { statuswms: 'N/A', statusca: 'N/A' };
-
-            if (foundItem) {
-                // Si el Código 2 coincide con un Código Alterno existente, usar la lógica robusta de ese item
-                const result = searchInventory(foundItem.codigoprincipal);
-                status = result.status;
-                message = `⚠️ CP: ${code1} no encontrado. Registrado con estatus de Cod. Alterno: ${code2}.`;
-                itemDetails = foundItem;
-            } else {
-                // Si Code2 tampoco coincide con CodeAlterno, simplemente se registra como "NO WMS"
-                status = 'nowms';
-                message = `❌ CP: ${code1} y Cod. Alterno: ${code2} no encontrados en BD. Registrado como No WMS.`;
-            }
-
-            const newBox = {
-                date: new Date().toLocaleDateString('es-MX'),
-                time: new Date().toLocaleTimeString('es-MX'),
-                user: CURRENT_USER,
-                scan1: code1,
-                scan2: code2,
-                status: status,
-                note: message.substring(0, 100)
-            };
-
-            addBoxToPallet(tabId, status, newBox);
-
-            // 3. Limpiar estado y UI
-            state.pendingCode1 = null;
-            document.getElementById(`code2-container-${tabId}`).classList.remove('show');
-            document.getElementById(`code2-input-${tabId}`).value = '';
-
-            // 4. Actualizar ResultBox (Mostrando el Code1 original)
-            updateResultBox(tabId, status, message, code1, itemDetails);
-            showNotification(message, status);
-            scanInput.focus();
-            saveTabsState();
-        }
-
-        /**
-         * Registra un código no encontrado como "INSERTADO" (No WMS). (ADAPTADO)
-         * @param {string} tabId ID de la pestaña.
-         */
-        function forceInsert(tabId) {
-            const state = TABS_STATE[tabId];
-            const code1 = state.pendingCode1;
-            const code2Input = document.getElementById(`code2-input-${tabId}`);
-            const code2 = code2Input.value.toUpperCase().trim() || 'N/A';
-            const scanInput = document.getElementById(`scan-input-${tabId}`);
-
-            if (!code1) {
-                showNotification('❌ Error: Necesitas ingresar un Código Principal (CP) primero.', 'error');
-                scanInput.focus();
-                return;
-            }
-
-            const status = 'nowms';
-            const message = `⚡ FORZADO. CP: ${code1}. Código 2: ${code2}. Registrado como No WMS.`;
-
-            const newBox = {
-                date: new Date().toLocaleDateString('es-MX'),
-                time: new Date().toLocaleTimeString('es-MX'),
-                user: CURRENT_USER,
-                scan1: code1,
-                scan2: code2,
-                status: status,
-                note: 'FORZADO - INSERTADO'
-            };
-
-            addBoxToPallet(tabId, status, newBox);
-
-            // Limpiar estado y UI
-            state.pendingCode1 = null;
-            document.getElementById(`code2-container-${tabId}`).classList.remove('show');
-            code2Input.value = '';
-
-            // Actualizar ResultBox
-            updateResultBox(tabId, status, message, code1, { statuswms: 'FORZADO', statusca: 'N/A' });
-            showNotification(message, 'error'); // Usamos error para forzado/No WMS
-            scanInput.focus();
-            saveTabsState();
-        }
-
-        /**
-         * Actualiza el cuadro de resultados después de un escaneo. (ADAPTADO)
-         */
-        function updateResultBox(tabId, status, message, code, item) {
-            const resultBox = document.getElementById(`result-box-${tabId}`);
-            const resultIcon = document.getElementById(`result-icon-${tabId}`);
-            const resultTitle = document.getElementById(`result-title-${tabId}`);
-            const resultCode = document.getElementById(`result-code-${tabId}`);
-            const resultDetails = document.getElementById(`result-details-${tabId}`);
-
-            const classMap = {
-                'ok': 'success',
-                'blocked': 'warning',
-                'nowms': 'error',
-                'error': 'error'
-            };
-            const iconMap = {
-                'ok': '✅',
-                'blocked': '⚠️',
-                'nowms': '❌',
-                'error': '🛑'
-            };
-            const titleMap = {
-                'ok': 'Código OK',
-                'blocked': 'Bloqueado por CA',
-                'nowms': 'No WMS',
-                'error': 'Código NO Encontrado'
-            };
-
-            // Remover todas las clases de estado y añadir la correcta
-            resultBox.className = `result-box show ${classMap[status] || 'info'}`;
-            resultIcon.textContent = iconMap[status] || '📦';
-            resultTitle.textContent = titleMap[status] || 'Resultado';
-            resultCode.textContent = code;
-
-            let detailsHTML = '';
-            if (item) {
-                detailsHTML = `
-                    <div>
-                        <div class="result-detail-label">Status WMS</div>
-                        <div class="result-detail-value">${(item.statuswms || 'N/A').toUpperCase()}</div>
-                    </div>
-                    <div>
-                        <div class="result-detail-label">Status CA</div>
-                        <div class="result-detail-value">${(item.statusca || 'N/A').toUpperCase()}</div>
-                    </div>
-                    <div>
-                        <div class="result-detail-label">Cod. Alterno</div>
-                        <div class="result-detail-value">${(item.codigoalterno || 'N/A').toUpperCase()}</div>
-                    </div>
-                    <div>
-                        <div class="result-detail-label">Mensaje</div>
-                        <div class="result-detail-value">${message}</div>
-                    </div>
-                `;
-            } else {
-                detailsHTML = `<div><div class="result-detail-label">Mensaje</div><div class="result-detail-value">${message}</div></div>`;
-            }
-            resultDetails.innerHTML = detailsHTML;
-
-            // Limpiar la clase de input después de 500ms
-            const inputElement = document.getElementById(`scan-input-${tabId}`);
-            if (inputElement) {
-                inputElement.classList.add(classMap[status]);
-                setTimeout(() => {
-                    inputElement.classList.remove('success', 'error', 'warning');
-                }, 500);
-            }
-
-            playSound(status);
-        }
-
-        // ==================== PALLET/LOG MANAGEMENT (CONSOLIDADO - NUEVO) ====================
-
-        /**
-         * Añade una caja al pallet correspondiente dentro del estado de la pestaña. (NUEVO)
-         * @param {string} tabId ID de la pestaña.
-         * @param {string} status Estatus de la caja ('ok', 'blocked', 'nowms').
-         * @param {Object} box Objeto de la caja con sus datos.
-         */
-        function addBoxToPallet(tabId, status, box) {
-            const state = TABS_STATE[tabId];
-            if (!state) return;
-
-            state.pallets[status].boxes.push(box);
-            updateVisualLog(tabId, box);
-            updateConsolidatedTarima(tabId);
-            updateGlobalSidebarStatus();
-            saveTabsState();
-        }
-
-        /**
-         * Elimina una caja de un pallet por índice. (NUEVO)
-         * @param {string} tabId ID de la pestaña.
-         * @param {string} status Estatus del pallet.
-         * @param {number} index Índice de la caja a eliminar.
-         */
-        function removeItemFromTarima(tabId, status, index) {
-            const state = TABS_STATE[tabId];
-            if (!state) return;
-
-            const box = state.pallets[status].boxes.splice(index, 1)[0];
-            updateConsolidatedTarima(tabId);
-            updateGlobalSidebarStatus();
-            saveTabsState();
-            showNotification(`➖ Caja eliminada: ${box.scan1}`, 'warning');
-        }
-
-        /**
-         * Renderiza la vista de Tarima Consolidada y actualiza los contadores. (NUEVO)
-         * @param {string} tabId ID de la pestaña.
-         */
-        function updateConsolidatedTarima(tabId) {
-            const state = TABS_STATE[tabId];
-            if (!state) return;
-
-            const palletListEl = document.getElementById(`pallet-list-${tabId}`);
-            const consolidatedPalletsEl = document.getElementById(`consolidated-pallets-${tabId}`);
-            const totalBoxesEl = document.getElementById(`total-boxes-${tabId}`);
-            const totalCountEl = document.getElementById(`consolidated-count-${tabId}`);
-            const sendBtn = document.getElementById(`send-all-btn-${tabId}`);
-            const tabBadge = document.getElementById(`badge-${tabId}`);
-
-            let totalBoxes = 0;
-            let listHTML = '';
-            let cardsHTML = '';
-
-            const statusOrder = ['ok', 'blocked', 'nowms'];
-            const statusLabels = { 'ok': 'OK', 'blocked': 'Bloqueado', 'nowms': 'No WMS' };
-
-            statusOrder.forEach(status => {
-                const pallet = state.pallets[status];
-                const count = pallet.boxes.length;
-                totalBoxes += count;
-
-                // Construir la lista principal
-                if (count > 0) {
-                    listHTML += `<div style="font-weight: 700; color: var(--${status}); margin-top: 15px; padding-bottom: 5px; border-bottom: 1px solid var(--border);">
-                        ${statusLabels[status]} (${count} cajas)
-                    </div>`;
-
-                    pallet.boxes.reverse().forEach((box, index) => {
-                        const originalIndex = count - 1 - index; // Para que el índice de eliminación sea correcto
-                        listHTML += `
-                            <div class="box-item ${status}">
-                                <div class="box-info">
-                                    <div class="box-code">${box.scan1}</div>
-                                    <div class="box-meta">${box.scan2} | ${box.time} | Pallet ID: ${pallet.id}</div>
-                                </div>
-                                <button class="box-delete" title="Eliminar caja" onclick="removeItemFromTarima('${tabId}', '${status}', ${originalIndex})">🗑️</button>
-                            </div>
-                        `;
-                    });
-                    pallet.boxes.reverse(); // Volver a su orden original
-                }
-
-                // Construir las tarjetas de estado
-                cardsHTML += `
-                    <div class="pallet-info-card ${status}">
-                        <div>Estatus: <span style="font-weight: 700; color: var(--${status});">${statusLabels[status]}</span></div>
-                        <div>Cajas: <span class="pallet-status-count">${count}</span></div>
-                        <div>Pallet ID: <span class="pallet-id">${pallet.id}</span></div>
-                    </div>
-                `;
-            });
-
-            // Actualizar el DOM
-            palletListEl.innerHTML = listHTML || `
-                <div class="empty-state">
-                    <div class="empty-icon">📭</div>
-                    <div>Escanea una caja para empezar la Tarima.</div>
-                </div>
-            `;
-            consolidatedPalletsEl.innerHTML = cardsHTML;
-
-            // Actualizar contadores y botón de envío
-            totalBoxesEl.textContent = totalBoxes;
-            totalCountEl.textContent = totalBoxes;
-            sendBtn.disabled = totalBoxes === 0;
-
-            // Actualizar badge de la pestaña
-            tabBadge.textContent = totalBoxes;
-            tabBadge.className = `tab-badge ${totalBoxes > 0 ? (state.pallets.nowms.boxes.length > 0 ? 'nowms' : (state.pallets.blocked.boxes.length > 0 ? 'blocked' : 'ok')) : 'empty'}`;
-        }
-
-        /**
-         * Agrega una entrada al Log Visual. (NUEVO)
-         * @param {string} tabId ID de la pestaña.
-         * @param {Object} box Objeto de la caja escaneada.
-         */
-        function updateVisualLog(tabId, box) {
-            const state = TABS_STATE[tabId];
-            if (!state) return;
-
-            // Añadir al estado del log (limitar a 50 entradas)
-            state.log.unshift(box);
-            if (state.log.length > 50) {
-                state.log.pop();
-            }
-
-            const logListEl = document.getElementById(`log-list-${tabId}`);
-            const logCountEl = document.getElementById(`log-count-${tabId}`);
-            if (!logListEl) return;
-
-            let logHTML = '';
-            state.log.forEach((entry, index) => {
-                logHTML += `
-                    <div class="log-entry ${entry.status}">
-                        <span class="log-status-icon">${entry.status === 'ok' ? '✅' : (entry.status === 'blocked' ? '⚠️' : '❌')}</span>
-                        <span class="log-time">${entry.time}</span>
-                        <span class="log-code" title="${entry.note || entry.scan1}">${entry.scan1}</span>
-                    </div>
-                `;
-            });
-
-            logListEl.innerHTML = logHTML;
-            logCountEl.textContent = state.log.length;
-        }
-
-        /**
-         * Actualiza el resumen de la barra lateral (acumulado de todas las pestañas). (ADAPTADO)
-         */
-        function updateGlobalSidebarStatus() {
-            let okCount = 0;
-            let blockedCount = 0;
-            let nowmsCount = 0;
-
-            for (const id in TABS_STATE) {
-                const state = TABS_STATE[id];
-                okCount += state.pallets.ok.boxes.length;
-                blockedCount += state.pallets.blocked.boxes.length;
-                nowmsCount += state.pallets.nowms.boxes.length;
-            }
-
-            document.getElementById('sidebar-ok-count').textContent = okCount;
-            document.getElementById('sidebar-blocked-count').textContent = blockedCount;
-            document.getElementById('sidebar-nowms-count').textContent = nowmsCount;
-        }
-
-        // ==================== DATA SUBMISSION (NUEVO) ====================
-
-        /**
-         * Prepara y envía todos los datos de la pestaña al Google Sheet. (NUEVO)
-         * @param {string} tabId ID de la pestaña.
-         */
-        async function sendData(tabId) {
-            const state = TABS_STATE[tabId];
-            if (!state) return;
-
-            const totalBoxes = state.pallets.ok.boxes.length + state.pallets.blocked.boxes.length + state.pallets.nowms.boxes.length;
-            if (totalBoxes === 0) {
-                showNotification('ℹ️ No hay cajas para enviar en esta sesión.', 'info');
-                return;
-            }
-
-            const locationInput = document.getElementById(`location-${tabId}`);
-            const location = locationInput.value.toUpperCase().trim();
-
-            if (!location) {
-                showNotification('⚠️ Ingresa una ubicación destino antes de enviar.', 'warning');
-                locationInput.focus();
-                return;
-            }
-
-            showLoading(`Preparando envío de ${totalBoxes} cajas...`);
-
-            let recordsToSend = [];
-
-            // Recopilar y resetear los pallets
-            ['ok', 'blocked', 'nowms'].forEach(status => {
-                const pallet = state.pallets[status];
-                if (pallet.boxes.length > 0) {
-                    pallet.boxes.forEach(box => {
-                        recordsToSend.push({
-                            date: box.date,
-                            time: box.time,
-                            user: box.user,
-                            scan1: box.scan1,
-                            scan2: box.scan2,
-                            location: location,
-                            status: box.status,
-                            note: box.note,
-                            pallet: pallet.id // Usar el ID del pallet generado
-                        });
-                    });
-                    // Resetear el pallet
-                    pallet.boxes = [];
-                    pallet.id = generatePalletId(status.toUpperCase().replace('NOWMS', 'NW').replace('BLOCKED', 'BLK'));
-                }
-            });
-
-            // Añadir al buffer de sincronización
-            PENDING_SYNC.push(...recordsToSend);
-            SyncManager.save(); // Guardar el buffer
-
-            hideLoading();
-            showNotification(`✅ ${recordsToSend.length} cajas añadidas a la cola de sincronización.`, 'success');
-
-            // Limpiar UI de la pestaña
-            locationInput.value = '';
-            state.pendingCode1 = null;
-            document.getElementById(`code2-container-${tabId}`)?.classList.remove('show');
-
-            // Actualizar UI
-            updateConsolidatedTarima(tabId);
-            SyncManager.updateUI(false);
-            updateGlobalSidebarStatus();
-
-            // Intentar sincronizar inmediatamente
-            SyncManager.sync(false);
-        }
-
-        // ==================== AUTH & SYNC MANAGER (MANTENIDO Y ADAPTADO) ====================
-
-        // (SyncManager: MANTENIDO. La lógica de sincronización permanece igual, solo PENDING_SYNC se llena desde las pestañas)
+        // ==================== SYNC MANAGER ====================
         const SyncManager = {
             inProgress: false,
             retryCount: 0,
             intervalId: null,
             AUTO_SYNC_INTERVAL: 30000,
+
             init() {
                 this.load();
                 this.startAutoSync();
                 this.setupExitProtection();
                 this.updateUI(PENDING_SYNC.length === 0);
             },
+
             setupExitProtection() {
                 window.addEventListener('beforeunload', (e) => {
-                    let totalBoxes = 0;
-                    for (const id in TABS_STATE) {
-                        const state = TABS_STATE[id];
-                        totalBoxes += state.pallets.ok.boxes.length + state.pallets.blocked.boxes.length + state.pallets.nowms.boxes.length;
-                    }
+                    const hasUnsavedData = PENDING_SYNC.length > 0 ||
+                        STATE.pallets.ok.boxes.length > 0 ||
+                        STATE.pallets.blocked.boxes.length > 0 ||
+                        STATE.pallets.nowms.boxes.length > 0;
 
-                    const hasUnsavedData = PENDING_SYNC.length > 0 || totalBoxes > 0;
                     if (hasUnsavedData) {
                         e.preventDefault();
-                        e.returnValue = `¡Tienes ${PENDING_SYNC.length} registros pendientes de sincronizar y ${totalBoxes} cajas sin enviar en tus sesiones! ¿Seguro que quieres salir?`;
+                        e.returnValue = '¡Tienes datos sin sincronizar! ¿Seguro que quieres salir?';
                         return e.returnValue;
                     }
                 });
             },
+
             startAutoSync() {
                 if (this.intervalId) clearInterval(this.intervalId);
                 this.intervalId = setInterval(() => {
@@ -2290,34 +1182,44 @@
                     }
                 }, this.AUTO_SYNC_INTERVAL);
             },
+
             async sync(showMessages = true) {
                 if (this.inProgress) {
                     if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
                     return { success: false };
                 }
+
                 if (!IS_ONLINE) {
                     if (showMessages) showNotification('⚠️ Sin conexión a internet', 'warning');
                     return { success: false };
                 }
+
                 if (!gapi?.client?.getToken()) {
                     if (showMessages) showNotification('⚠️ No conectado a Google', 'warning');
                     return { success: false };
                 }
+
                 if (PENDING_SYNC.length === 0) {
                     this.updateUI(true);
                     if (showMessages) showNotification('✅ Todo sincronizado', 'success');
                     return { success: true, synced: 0 };
                 }
+
                 return await this._doSync(showMessages);
             },
+
             async _doSync(showMessages) {
                 this.inProgress = true;
                 updateConnectionIndicator(true);
+
                 if (showMessages) showNotification('🔄 Sincronizando...', 'info');
+
                 try {
                     const values = PENDING_SYNC.map(r => [
-                        r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet
+                        r.date, r.time, r.user, r.scan1, r.scan2,
+                        r.location, r.status, r.note, r.pallet
                     ]);
+
                     await gapi.client.sheets.spreadsheets.values.append({
                         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
                         range: `${CONFIG.SHEET_NAME}!A:I`,
@@ -2325,10 +1227,12 @@
                         insertDataOption: 'INSERT_ROWS',
                         resource: { values }
                     });
+
                     const synced = PENDING_SYNC.length;
                     PENDING_SYNC = [];
                     this.save();
                     this.updateUI(true);
+
                     if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success');
                     return { success: true, synced };
                 } catch (e) {
@@ -2341,20 +1245,24 @@
                     updateConnectionIndicator();
                 }
             },
+
             async save() {
                 try {
                     localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
-                } catch (e) { }
+                } catch (e) {}
             },
+
             async load() {
                 try {
                     const saved = localStorage.getItem('pd_pending_sync');
                     if (saved) PENDING_SYNC = JSON.parse(saved);
-                } catch (e) { }
+                } catch (e) {}
             },
+
             updateUI(synced) {
                 const el = document.getElementById('sync-status');
                 if (!el) return;
+
                 if (!IS_ONLINE) {
                     el.className = 'sync-status sync-warning';
                     el.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`;
@@ -2369,8 +1277,8 @@
                     el.textContent = '❌ Error sync';
                 }
             },
+
             showPanel() {
-                // (Popup content kept for the sake of completeness, assuming the full code was 2200 lines and this was included)
                 const overlay = document.createElement('div');
                 overlay.className = 'popup-overlay show';
                 overlay.innerHTML = `
@@ -2386,203 +1294,789 @@
                                     ${PENDING_SYNC.length}
                                 </div>
                             </div>
-                            <div style="font-size: 0.9em; padding: 10px; border: 1px dashed #ccc; border-radius: 8px;">
-                                <p style="font-weight: 600; margin-bottom: 5px;">Detalles de la cola:</p>
-                                ${PENDING_SYNC.length > 0 ?
-                        `<ul style="list-style-type: none; padding: 0;">
-                            ${PENDING_SYNC.slice(0, 5).map(r => `
-                                <li style="margin-bottom: 3px; border-left: 3px solid var(--primary); padding-left: 5px;">
-                                    ${r.scan1} (<span style="color: var(--${r.status});">${r.status.toUpperCase()}</span>)
-                                </li>
-                            `).join('')}
-                            ${PENDING_SYNC.length > 5 ? `<li style="color: #666;">... y ${PENDING_SYNC.length - 5} más.</li>` : ''}
-                        </ul>` :
-                        '<p style="color: var(--success); text-align: center;">La cola está vacía. ¡Todo al día!</p>'}
+                            <div style="font-size: 0.9em; padding: 10px; background: #f9f9f9; border-radius: 6px;">
+                                ${IS_ONLINE ? '🟢 Conectado a internet' : '🔴 Sin conexión'}<br>
+                                ${gapi?.client?.getToken() ? '🟢 Google conectado' : '🔴 Google desconectado'}<br>
+                                📄 Hoja destino: <strong>${CONFIG.SHEET_NAME}</strong>
                             </div>
                         </div>
-                        <button class="btn btn-success btn-full" onclick="SyncManager.sync(true); this.closest('.popup-overlay').remove();">
-                            🔄 Forzar Sincronización Ahora
-                        </button>
+                        <div class="popup-buttons">
+                            ${PENDING_SYNC.length > 0 && IS_ONLINE && gapi?.client?.getToken() ? `
+                                <button class="btn btn-success btn-full" onclick="this.closest('.popup-overlay').remove(); SyncManager.sync();">
+                                    🔄 Sincronizar Ahora
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                                Cerrar
+                            </button>
+                        </div>
                     </div>
                 `;
                 document.body.appendChild(overlay);
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) overlay.remove();
+                });
             }
         };
 
-        // (Authentication functions kept, adapted to call loadInventoryData)
+        // ==================== INITIALIZATION ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            initAudio();
+            loadFromStorage();
+            setupEventListeners();
+            setupConnectionMonitor();
+            gapi.load('client', initGAPI);
+        });
 
-        function initClient() {
-            gapi.client.init({
-                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-                clientId: CONFIG.CLIENT_ID,
-                scope: CONFIG.SCOPES,
-            }).then(() => {
+        function initAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                document.addEventListener('click', () => {
+                    if (audioCtx?.state === 'suspended') audioCtx.resume();
+                }, { once: true });
+            } catch (e) {}
+        }
+
+        async function initGAPI() {
+            try {
+                await gapi.client.init({
+                    discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
+                });
                 TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
                     client_id: CONFIG.CLIENT_ID,
                     scope: CONFIG.SCOPES,
-                    callback: (tokenResponse) => {
-                        if (tokenResponse && tokenResponse.access_token) {
-                            gapi.client.setToken(tokenResponse);
-                            checkAuthStatus(true);
-                        } else {
-                            checkAuthStatus(false);
-                        }
-                    },
+                    callback: handleAuthCallback
                 });
-                
-                // NUEVO: Habilitar el botón una vez que TOKEN_CLIENT está listo
-                enableLoginButton(); 
-                
-                checkAuthStatus();
-            }).catch(e => {
-                console.error("GAPI init error", e);
-                showNotification('❌ Error al inicializar GAPI. Revisa tu consola.', 'error');
-                checkAuthStatus(false);
-            });
+            } catch (e) {
+                showNotification('Error inicializando API', 'error');
+            }
         }
 
-        async function handleLogin() {
-            // NUEVO: Bloqueo si TOKEN_CLIENT aún no está listo
-            if (!TOKEN_CLIENT) {
-                showNotification('⚠️ Aún cargando el sistema de autenticación. Intenta de nuevo en un momento.', 'warning');
-                return;
+        async function handleAuthCallback(response) {
+            if (response?.access_token) {
+                gapi.client.setToken(response);
+                await getUserProfile();
+                await loadInventory();
+                SyncManager.init();
+                if (PENDING_SYNC.length > 0) SyncManager.sync();
+                showApp();
             }
+        }
 
-            if (gapi.client.getToken()) {
-                TOKEN_CLIENT.requestAccessToken();
-            } else {
-                TOKEN_CLIENT.requestAccessToken();
+        function handleLogin() {
+            TOKEN_CLIENT?.requestAccessToken();
+        }
+
+        async function getUserProfile() {
+            try {
+                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
+                });
+                const data = await response.json();
+                USER_EMAIL = data.email || '';
+                USER_GOOGLE_NAME = data.name || 'Usuario';
+
+                const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
+                if (savedAlias) {
+                    CURRENT_USER = savedAlias;
+                    showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
+                    updateUserFooter();
+                } else {
+                    showAliasPopup();
+                }
+            } catch (e) {
+                CURRENT_USER = 'Usuario';
+                updateUserFooter();
             }
+        }
+
+        function showApp() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            updateUserFooter();
+            updateUI();
+            document.getElementById('scan-input').focus();
         }
 
         function handleLogout() {
-            const token = gapi.client.getToken();
-            if (token) {
-                google.accounts.oauth2.revoke(token.access_token, () => {
-                    gapi.client.setToken(null);
-                    checkAuthStatus(false);
-                    showNotification('🚪 Sesión cerrada', 'info');
-                });
-            } else {
-                checkAuthStatus(false);
+            const hasData = PENDING_SYNC.length > 0 ||
+                STATE.pallets.ok.boxes.length > 0 ||
+                STATE.pallets.blocked.boxes.length > 0 ||
+                STATE.pallets.nowms.boxes.length > 0;
+
+            if (hasData) {
+                if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres salir?')) {
+                    return;
+                }
             }
+
+            if (gapi.client.getToken()) {
+                google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                gapi.client.setToken(null);
+            }
+
+            CURRENT_USER = '';
+            USER_EMAIL = '';
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
         }
 
-        async function checkAuthStatus(forceAuth = false) {
-            const authButton = document.getElementById('sidebar-auth-btn');
-            const token = gapi.client.getToken();
+        // ==================== ALIAS/NICKNAME SYSTEM ====================
+        function showAliasPopup() {
+            document.querySelectorAll('.alias-popup').forEach(e => e.remove());
 
-            if (token || forceAuth) {
-                try {
-                    await gapi.client.request({
-                        path: 'https://www.googleapis.com/oauth2/v2/userinfo',
-                        method: 'GET',
-                    }).then(response => {
-                        const userInfo = response.result;
-                        USER_EMAIL = userInfo.email || 'Usuario';
-                        USER_GOOGLE_NAME = userInfo.name || 'Google User';
-                        CURRENT_USER = userInfo.given_name || USER_EMAIL;
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show alias-popup';
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 400px;">
+                    <div class="popup-header">👤 ¿Cómo te llamamos?</div>
+                    <p style="margin-bottom: 15px; color: #666;">
+                        Hola <strong>${USER_GOOGLE_NAME}</strong>, elige cómo aparecerá tu nombre en los registros:
+                    </p>
+                    <div class="popup-buttons">
+                        <button class="btn btn-primary btn-full" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">
+                            👤 Usar mi nombre de Google
+                        </button>
+                        <div style="text-align: center; color: #999; font-size: 0.85em;">o</div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="alias-input" placeholder="Escribe un alias..."
+                                style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 1em;"
+                                maxlength="20">
+                            <button class="btn btn-success" onclick="saveUserAlias(document.getElementById('alias-input').value)">
+                                💾
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
 
-                        document.getElementById('user-name-display').textContent = CURRENT_USER;
-                        document.getElementById('user-avatar').textContent = CURRENT_USER.charAt(0).toUpperCase();
-                        authButton.textContent = '🔗';
-
-                        document.getElementById('login-screen').classList.add('hidden');
-                        document.getElementById('main-app').classList.remove('hidden');
-
-                        updateConnectionIndicator(false, true);
-
-                        // Cargar inventario al iniciar sesión
-                        loadInventoryData();
-                        SyncManager.updateUI();
-
-                    }, error => {
-                        console.error('User info error', error);
-                        checkAuthStatus(false);
-                    });
-                } catch (e) {
-                    console.error('Check auth error', e);
-                    checkAuthStatus(false);
+            const input = overlay.querySelector('#alias-input');
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && input.value.trim()) {
+                    saveUserAlias(input.value);
                 }
+            });
+            input.focus();
+        }
 
-            } else {
-                CURRENT_USER = 'Invitado';
-                USER_EMAIL = '';
-                USER_GOOGLE_NAME = '';
+        function saveUserAlias(alias, isGoogleName = false) {
+            const finalAlias = alias?.trim() || USER_GOOGLE_NAME;
+            if (!finalAlias) {
+                showNotification('⚠️ Ingresa un nombre válido', 'warning');
+                return;
+            }
 
-                document.getElementById('user-name-display').textContent = 'No conectado';
-                document.getElementById('user-avatar').textContent = '?';
-                authButton.textContent = '🔓';
+            CURRENT_USER = finalAlias;
+            localStorage.setItem(`pd_alias_${USER_EMAIL}`, finalAlias);
 
-                document.getElementById('main-app').classList.add('hidden');
-                document.getElementById('login-screen').classList.remove('hidden');
+            document.querySelectorAll('.alias-popup').forEach(e => e.remove());
+            showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
+            updateUserFooter();
+        }
 
+        function changeUserAlias() {
+            showAliasPopup();
+        }
+
+        function updateUserFooter() {
+            const avatar = document.getElementById('user-avatar');
+            const nameDisplay = document.getElementById('user-name-display');
+
+            if (avatar) {
+                avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
+                avatar.title = USER_EMAIL || 'No conectado';
+            }
+            if (nameDisplay) {
+                nameDisplay.textContent = CURRENT_USER || 'No conectado';
+                nameDisplay.title = `Click para cambiar alias\n${USER_EMAIL}`;
+            }
+
+            updateConnectionIndicator();
+        }
+
+        // ==================== INVENTORY ====================
+        async function loadInventory() {
+            try {
+                showNotification('📦 Cargando inventario...', 'info');
+                updateConnectionIndicator(true);
+
+                const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const csv = await response.text();
+                if (!csv || csv.trim().length === 0) throw new Error('CSV vacío');
+
+                parseInventoryCSV(csv);
+                await saveToStorage();
+                showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
+                updateBdInfo();
+            } catch (e) {
+                console.error('Error cargando inventario:', e);
+                showNotification(`⚠️ ${e.message}`, 'warning');
+
+                if (STATE.inventory.size > 0) {
+                    showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
+                }
+            } finally {
                 updateConnectionIndicator();
             }
         }
 
-        function toggleConnection() {
-            if (gapi.client.getToken()) {
-                handleLogout();
-            } else {
-                handleLogin();
+        function parseInventoryCSV(csv) {
+            const lines = csv.split('\n').filter(line => line.trim().length > 0);
+            STATE.inventory.clear();
+
+            for (let i = 1; i < lines.length; i++) {
+                const cols = parseCSVLine(lines[i]);
+
+                if (cols.length >= 11) {
+                    const code = (cols[1] || '').toString().trim().toUpperCase();
+
+                    if (code && code.length > 0) {
+                        const availableStock = parseFloat(cols[9]) || 0;
+                        const lockedInventory = parseFloat(cols[10]) || 0;
+
+                        STATE.inventory.set(code, {
+                            code,
+                            boxType: cols[0] || '',
+                            warehouse: cols[3] || '',
+                            cellNo: cols[6] || '',  // Columna G (índice 6)
+                            area: cols[8] || '',
+                            availableStock,
+                            lockedInventory,
+                            sku: cols[12] || '',
+                            productName: cols[13] || '',
+                            isAvailable: availableStock > 0,
+                            isBlocked: lockedInventory > 0
+                        });
+                    }
+                }
             }
+
+            STATE.inventoryLastUpdate = new Date().toLocaleString();
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
         }
 
         function refreshInventory() {
-            loadInventoryData();
+            loadInventory();
         }
 
-        function updateConnectionIndicator(isSyncing = SyncManager.inProgress, isAuth = gapi.client.getToken()) {
-            IS_ONLINE = navigator.onLine;
-            const dot = document.getElementById('connection-dot');
-            const text = document.getElementById('connection-text');
+        function updateBdInfo() {
+            document.getElementById('bd-count').textContent = STATE.inventory.size.toLocaleString();
+            document.getElementById('bd-update-time').textContent = STATE.inventoryLastUpdate || 'Sin actualizar';
+        }
 
-            if (!dot || !text) return;
+        // ==================== SCAN PROCESSING ====================
+        function setupEventListeners() {
+            const scanInput = document.getElementById('scan-input');
+            scanInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && scanInput.value.trim()) {
+                    e.preventDefault();
+                    processScan(scanInput.value.trim());
+                    scanInput.value = '';  // Limpiar automáticamente
+                }
+            });
 
-            if (!IS_ONLINE) {
-                dot.className = 'connection-dot offline';
-                text.textContent = 'Offline';
-                document.getElementById('connection-banner').className = 'connection-banner offline';
-                document.getElementById('connection-banner').textContent = '❌ Sin Conexión a Internet';
-                document.getElementById('connection-banner').style.display = 'block';
-            } else if (isSyncing) {
-                dot.className = 'connection-dot syncing';
-                text.textContent = 'Sync...';
-                document.getElementById('connection-banner').className = 'connection-banner syncing';
-                document.getElementById('connection-banner').textContent = '⏳ Sincronizando Datos Pendientes...';
-                document.getElementById('connection-banner').style.display = 'block';
-            } else if (isAuth) {
-                dot.className = 'connection-dot online';
-                text.textContent = 'Online';
-                document.getElementById('connection-banner').style.display = 'none';
+            const code2Input = document.getElementById('code2-input');
+            code2Input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && code2Input.value.trim()) {
+                    e.preventDefault();
+                    processCode2(code2Input.value.trim());
+                    code2Input.value = '';  // Limpiar automáticamente
+                }
+            });
+        }
+
+        function processScan(rawCode) {
+            const code = normalizeCode(rawCode);
+
+            // Check duplicates across all pallets
+            const allBoxes = [
+                ...STATE.pallets.ok.boxes,
+                ...STATE.pallets.blocked.boxes,
+                ...STATE.pallets.nowms.boxes
+            ];
+
+            if (allBoxes.some(b => b.code === code)) {
+                showNotification('⚠️ Código duplicado', 'warning');
+                flashInput('warning');
+                playSound('warning');
+                return;
+            }
+
+            const item = STATE.inventory.get(code);
+
+            if (!item) {
+                // Not found - show Code2 input
+                STATE.pendingCode1 = { raw: rawCode, code };
+                showResultBox('error', code, 'NO ENCONTRADO',
+                    'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.', null);
+                document.getElementById('code2-container').classList.add('show');
+                flashInput('error');
+                playSound('error');
+                setTimeout(() => document.getElementById('code2-input').focus(), 100);
+                return;
+            }
+
+            // Hide code2 container
+            document.getElementById('code2-container').classList.remove('show');
+            STATE.pendingCode1 = null;
+
+            // Determine status and add to appropriate pallet
+            if (item.isBlocked) {
+                addBox('blocked', createBoxData(rawCode, code, '', item));
+                showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
+                playSound('warning');
+            } else if (item.isAvailable) {
+                addBox('ok', createBoxData(rawCode, code, '', item));
+                showResultBox('success', code, 'OK', 'Validado correctamente', item);
+                playSound('success');
             } else {
-                dot.className = 'connection-dot offline';
-                text.textContent = 'No Auth';
-                document.getElementById('connection-banner').className = 'connection-banner warning';
-                document.getElementById('connection-banner').textContent = '⚠️ No Autenticado con Google';
-                document.getElementById('connection-banner').style.display = 'block';
+                addBox('blocked', createBoxData(rawCode, code, '', item));
+                showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
+                playSound('warning');
             }
 
-            SyncManager.updateUI(PENDING_SYNC.length === 0);
+            flashInput('success');
         }
 
-        window.addEventListener('online', () => updateConnectionIndicator());
-        window.addEventListener('offline', () => updateConnectionIndicator());
+        function processCode2(rawCode2) {
+            if (!STATE.pendingCode1) return;
 
-        function changeUserAlias() {
-            const newAlias = prompt(`Ingresa tu alias o iniciales (actual: ${CURRENT_USER}):`);
-            if (newAlias && newAlias.trim()) {
-                CURRENT_USER = newAlias.toUpperCase().trim();
-                document.getElementById('user-name-display').textContent = CURRENT_USER;
-                document.getElementById('user-avatar').textContent = CURRENT_USER.charAt(0);
-                showNotification(`✅ Alias cambiado a: ${CURRENT_USER}`, 'info');
+            const code2 = normalizeCode(rawCode2);
+            const item = STATE.inventory.get(code2);
+
+            document.getElementById('code2-container').classList.remove('show');
+
+            if (!item) {
+                // Both codes failed - add to No WMS with BOTH codes
+                addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
+                showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
+                    `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
+                playSound('error');
+            } else if (item.isBlocked) {
+                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
+                showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
+                    'Validado con Código 2 - Bloqueado', item);
+                playSound('warning');
+            } else {
+                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
+                showResultBox('success', code2, 'OK (Código 2)',
+                    'Validado correctamente con Código 2', item);
+                playSound('success');
+            }
+
+            STATE.pendingCode1 = null;
+            flashInput('success');
+            document.getElementById('scan-input').focus();
+        }
+
+        function forceInsert() {
+            if (!STATE.pendingCode1) {
+                showNotification('⚠️ Primero escanea un código', 'warning');
+                return;
+            }
+
+            const code2Value = document.getElementById('code2-input').value.trim();
+
+            // Guardar AMBOS códigos
+            addBox('nowms', createBoxData(
+                STATE.pendingCode1.raw,
+                STATE.pendingCode1.code,
+                code2Value,  // Puede estar vacío o tener valor
+                null
+            ));
+
+            const msg = code2Value
+                ? `Insertado con códigos: ${STATE.pendingCode1.code} y ${code2Value}`
+                : `Insertado con código: ${STATE.pendingCode1.code}`;
+
+            showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', msg, null);
+
+            document.getElementById('code2-container').classList.remove('show');
+            document.getElementById('code2-input').value = '';
+            STATE.pendingCode1 = null;
+
+            playSound('warning');
+            flashInput('warning');
+            document.getElementById('scan-input').focus();
+            showNotification('⚡ Registro insertado forzosamente', 'warning');
+        }
+
+        function createBoxData(raw, code, scan2, item) {
+            return {
+                raw,
+                code,
+                scan1: raw,
+                scan2: scan2 || '',
+                location: item?.cellNo || '-',
+                sku: item?.sku || '-',
+                product: item?.productName || '-',
+                timestamp: new Date().toLocaleTimeString()
+            };
+        }
+
+        function normalizeCode(raw) {
+            let code = raw.trim().toUpperCase();
+
+            // Patrones de extracción especiales (JSON, etc)
+            const patterns = [
+                /\[id\[.*?\[([^\[]+)\[/i,
+                /¨id¨.*?¨([^¨]+)¨/i,
+                /"id"\s*:\s*"([^"]+)"/i
+            ];
+
+            for (const pattern of patterns) {
+                const match = code.match(pattern);
+                if (match) return match[1];
+            }
+
+            // CRÍTICO: Preservar guiones ANTES de convertir - a /
+            // Detectar patrones tipo: LETRAS+NÚMEROS+GUION+NÚMEROS (ej: BY9888548520-07)
+            const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code);
+
+            if (!hasValidDash) {
+                // Solo si NO es un patrón válido con guion, entonces convertir - a /
+                code = code.replace(/(\d)-(\d)/g, '$1/$2');
+            }
+
+            // Limpiar caracteres especiales excepto guiones, diagonales y letras/números
+            return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+        }
+
+        // ==================== VALIDADOR DE UBICACIONES ====================
+        /**
+         * Valida el formato de ubicación del almacén
+         * Formato: [LETRA][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
+         * Ejemplo: A21-06-05-01, B27-01-04-01
+         */
+        function validateLocation(location) {
+            const loc = location.trim().toUpperCase();
+
+            // Patrón: LETRA + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS
+            const pattern = /^([A-Z])(\d{1,3})-(\d{1,2})-(\d{1,2})-(\d{1,2})$/;
+            const match = loc.match(pattern);
+
+            if (!match) {
+                return {
+                    valid: false,
+                    message: '❌ Formato inválido',
+                    details: 'La ubicación debe seguir el formato: [LETRA][NUM]-[NUM]-[NUM]-[NUM]\nEjemplo: A21-06-05-01',
+                    parsed: null
+                };
+            }
+
+            const [, area, pasillo, rack, nivel, palet] = match;
+
+            return {
+                valid: true,
+                message: '✅ Ubicación válida',
+                parsed: {
+                    area: area,
+                    pasillo: pasillo.padStart(2, '0'),
+                    rack: rack.padStart(2, '0'),
+                    nivel: nivel.padStart(2, '0'),
+                    palet: palet.padStart(2, '0'),
+                    formatted: `${area}${pasillo.padStart(2, '0')}-${rack.padStart(2, '0')}-${nivel.padStart(2, '0')}-${palet.padStart(2, '0')}`
+                }
+            };
+        }
+
+        /**
+         * Muestra diálogo de confirmación para ubicación inválida (doble confirmación)
+         */
+        function confirmInvalidLocation(location) {
+            const validation = validateLocation(location);
+
+            if (validation.valid) {
+                return { confirmed: true, formatted: validation.parsed.formatted };
+            }
+
+            // Primera confirmación
+            const firstConfirm = confirm(
+                `⚠️ UBICACIÓN CON FORMATO INCORRECTO ⚠️\n\n` +
+                `Ubicación ingresada: "${location}"\n\n` +
+                `${validation.message}\n` +
+                `${validation.details}\n\n` +
+                `Formato correcto:\n` +
+                `• Área (letra): A, B, C, etc.\n` +
+                `• Pasillo (números): 01-99\n` +
+                `• Rack (números): 01-99\n` +
+                `• Nivel (números): 01-99\n` +
+                `• Palet (números): 01-99\n\n` +
+                `Ejemplos válidos:\n` +
+                `• A21-06-05-01\n` +
+                `• B27-01-04-01\n` +
+                `• C15-03-02-05\n\n` +
+                `¿Estás seguro que deseas usar "${location}"?`
+            );
+
+            if (!firstConfirm) {
+                return { confirmed: false, formatted: null };
+            }
+
+            // Segunda confirmación (doble check)
+            const secondConfirm = confirm(
+                `⚠️ SEGUNDA CONFIRMACIÓN REQUERIDA ⚠️\n\n` +
+                `Confirma nuevamente que deseas registrar esta ubicación:\n\n` +
+                `"${location}"\n\n` +
+                `Esta ubicación NO cumple con el formato estándar del almacén.\n\n` +
+                `¿CONFIRMAS el uso de esta ubicación?`
+            );
+
+            return { confirmed: secondConfirm, formatted: secondConfirm ? location.toUpperCase() : null };
+        }
+
+        function showResultBox(type, code, title, message, item) {
+            const box = document.getElementById('result-box');
+            const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' };
+
+            box.className = `result-box show ${type}`;
+            document.getElementById('result-icon').textContent = icons[type] || '📦';
+            document.getElementById('result-title').textContent = title;
+            document.getElementById('result-code').textContent = code;
+
+            const detailsEl = document.getElementById('result-details');
+            if (item) {
+                detailsEl.innerHTML = `
+                    <div><span class="result-detail-label">Ubicación</span><div class="result-detail-value">${item.cellNo || '-'}</div></div>
+                    <div><span class="result-detail-label">SKU</span><div class="result-detail-value">${item.sku || '-'}</div></div>
+                    <div><span class="result-detail-label">Producto</span><div class="result-detail-value">${item.productName || '-'}</div></div>
+                    <div><span class="result-detail-label">Stock</span><div class="result-detail-value">${item.availableStock || 0}</div></div>
+                `;
+            } else {
+                detailsEl.innerHTML = `<div style="grid-column: 1/-1; color: #666;">${message}</div>`;
             }
         }
 
+        function flashInput(type) {
+            const input = document.getElementById('scan-input');
+            input.classList.remove('success', 'error');
+            input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
+            setTimeout(() => input.classList.remove('success', 'error'), 500);
+        }
 
-        // ==================== RESUMEN LOGIC (ADAPTADO) ====================
+        // ==================== BOX MANAGEMENT ====================
+        function addBox(category, boxData) {
+            STATE.pallets[category].boxes.push(boxData);
+            saveToStorage();
+            updateUI();
+        }
 
+        function deleteBox(category, index) {
+            if (confirm('¿Eliminar esta caja?')) {
+                STATE.pallets[category].boxes.splice(index, 1);
+                saveToStorage();
+                updateUI();
+                showNotification('Caja eliminada', 'info');
+            }
+        }
+
+        // ==================== SEND INDIVIDUAL PALLET ====================
+        async function sendPallet(category) {
+            const pallet = STATE.pallets[category];
+            const locationInput = document.getElementById(`location-${category}`);
+            const location = locationInput.value.trim();
+
+            if (pallet.boxes.length === 0) {
+                showNotification('⚠️ No hay cajas en esta tarima', 'warning');
+                return;
+            }
+
+            if (!location) {
+                showNotification('⚠️ Ingresa la ubicación destino', 'warning');
+                locationInput.focus();
+                return;
+            }
+
+            // Validar formato de ubicación con doble confirmación si es inválida
+            const locationCheck = confirmInvalidLocation(location);
+            if (!locationCheck.confirmed) {
+                showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
+                locationInput.focus();
+                return;
+            }
+
+            // Usar la ubicación formateada (normalizada si es válida)
+            const finalLocation = locationCheck.formatted;
+            locationInput.value = finalLocation; // Actualizar el input con formato correcto
+
+            const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10);
+            const timeStr = now.toTimeString().slice(0, 8);
+
+            const records = pallet.boxes.map(box => ({
+                date: dateStr,
+                time: timeStr,
+                user: CURRENT_USER || 'Usuario',
+                scan1: box.scan1 || box.raw,
+                scan2: box.scan2 || '',
+                location: finalLocation,
+                status: statusMap[category],
+                note: '',
+                pallet: pallet.id
+            }));
+
+            // Add to history
+            STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+            // Add to pending sync
+            PENDING_SYNC = [...PENDING_SYNC, ...records];
+            SyncManager.save();
+
+            showNotification(`💾 ${records.length} registros agregados`, 'info');
+
+            // Try to sync immediately
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                await SyncManager.sync();
+            } else {
+                SyncManager.updateUI(false);
+            }
+
+            // Reset only this pallet
+            const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+            STATE.pallets[category] = {
+                id: generatePalletId(prefixes[category]),
+                boxes: [],
+                location: ''
+            };
+            locationInput.value = '';
+
+            saveToStorage();
+            updateUI();
+            playSound('success');
+            document.getElementById('scan-input').focus();
+        }
+
+        // ==================== UI UPDATES ====================
+        function updateUI() {
+            updateCounts();
+            updateLists();
+            updateSidebar();
+            updateSendButtons();
+        }
+
+        function updateCounts() {
+            document.getElementById('ok-count').textContent = STATE.pallets.ok.boxes.length;
+            document.getElementById('blocked-count').textContent = STATE.pallets.blocked.boxes.length;
+            document.getElementById('nowms-count').textContent = STATE.pallets.nowms.boxes.length;
+
+            document.getElementById('ok-pallet').textContent = STATE.pallets.ok.id;
+            document.getElementById('blocked-pallet').textContent = STATE.pallets.blocked.id;
+            document.getElementById('nowms-pallet').textContent = STATE.pallets.nowms.id;
+        }
+
+        function updateLists() {
+            updateList('ok');
+            updateList('blocked');
+            updateList('nowms');
+        }
+
+        function updateList(category) {
+            const listEl = document.getElementById(`${category}-list`);
+            const boxes = STATE.pallets[category].boxes;
+
+            if (boxes.length === 0) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <div>Sin cajas</div>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = boxes.map((box, index) => `
+                <div class="box-item">
+                    <div class="box-info">
+                        <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
+                        <div class="box-meta">${box.location} • ${box.timestamp}</div>
+                    </div>
+                    <button class="box-delete" onclick="deleteBox('${category}', ${index})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function updateSidebar() {
+            document.getElementById('sidebar-ok-count').textContent = STATE.pallets.ok.boxes.length;
+            document.getElementById('sidebar-blocked-count').textContent = STATE.pallets.blocked.boxes.length;
+            document.getElementById('sidebar-nowms-count').textContent = STATE.pallets.nowms.boxes.length;
+
+            document.getElementById('sidebar-ok-pallet').textContent = STATE.pallets.ok.id;
+            document.getElementById('sidebar-blocked-pallet').textContent = STATE.pallets.blocked.id;
+            document.getElementById('sidebar-nowms-pallet').textContent = STATE.pallets.nowms.id;
+        }
+
+        function updateSendButtons() {
+            document.getElementById('send-ok-btn').disabled = STATE.pallets.ok.boxes.length === 0;
+            document.getElementById('send-blocked-btn').disabled = STATE.pallets.blocked.boxes.length === 0;
+            document.getElementById('send-nowms-btn').disabled = STATE.pallets.nowms.boxes.length === 0;
+        }
+
+        // ==================== PALLET MANAGEMENT ====================
+        function generatePalletId(prefix = 'PD') {
+            const timestamp = Date.now().toString(36).toUpperCase();
+            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            return `${prefix}-${timestamp}-${random}`;
+        }
+
+        function newSession() {
+            const total = STATE.pallets.ok.boxes.length +
+                          STATE.pallets.blocked.boxes.length +
+                          STATE.pallets.nowms.boxes.length;
+
+            if (total > 0) {
+                if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin enviar?`)) {
+                    return;
+                }
+            }
+
+            STATE.pallets = {
+                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+            };
+            STATE.pendingCode1 = null;
+
+            document.getElementById('result-box').classList.remove('show');
+            document.getElementById('code2-container').classList.remove('show');
+            document.getElementById('location-ok').value = '';
+            document.getElementById('location-blocked').value = '';
+            document.getElementById('location-nowms').value = '';
+
+            saveToStorage();
+            updateUI();
+            showNotification('✅ Nueva sesión iniciada', 'success');
+            document.getElementById('scan-input').focus();
+        }
+
+        // ==================== RESUMEN MODULE ====================
         function showResumen() {
             updateResumen();
             document.getElementById('resumen-popup').classList.add('show');
@@ -2593,83 +2087,189 @@
         }
 
         function updateResumen() {
-            let okCount = 0;
-            let blockedCount = 0;
-            let nowmsCount = 0;
-            let totalHistory = [];
-
-            // 1. Recopilar datos de todas las pestañas
-            for (const id in TABS_STATE) {
-                const state = TABS_STATE[id];
-                okCount += state.pallets.ok.boxes.length;
-                blockedCount += state.pallets.blocked.boxes.length;
-                nowmsCount += state.pallets.nowms.boxes.length;
-                // Combinar logs para historial
-                state.log.forEach(box => {
-                    totalHistory.push({
-                        time: box.time,
-                        scan1: box.scan1,
-                        scan2: box.scan2,
-                        status: box.status,
-                        location: 'PENDIENTE',
-                        pallet: state.pallets[box.status].id
-                    });
-                });
-            }
-
-            // 2. Actualizar estadísticas
-            document.getElementById('resumen-ok').textContent = okCount;
-            document.getElementById('resumen-blocked').textContent = blockedCount;
-            document.getElementById('resumen-nowms').textContent = nowmsCount;
+            document.getElementById('resumen-ok').textContent = STATE.pallets.ok.boxes.length;
+            document.getElementById('resumen-blocked').textContent = STATE.pallets.blocked.boxes.length;
+            document.getElementById('resumen-nowms').textContent = STATE.pallets.nowms.boxes.length;
             document.getElementById('resumen-pending').textContent = PENDING_SYNC.length;
 
-            // 3. Actualizar tabla de historial (Log reciente combinado)
-            const tableBody = document.getElementById('resumen-table-body');
-            // Ordenar por hora (el log ya está ordenado de más nuevo a más viejo)
-            totalHistory.sort((a, b) => {
-                // Asume formato HH:MM:SS
-                if (a.time < b.time) return 1;
-                if (a.time > b.time) return -1;
-                return 0;
-            });
+            // Update table
+            const tbody = document.getElementById('resumen-table-body');
+            const recentHistory = STATE.history.slice(0, 50);
 
-            tableBody.innerHTML = totalHistory.slice(0, 50).map(item => {
-                return `
+            if (recentHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Sin registros recientes</td></tr>';
+            } else {
+                tbody.innerHTML = recentHistory.map(r => `
                     <tr>
-                        <td>${item.time}</td>
-                        <td style="font-weight: 600;">${item.scan1}</td>
-                        <td>${item.scan2 || '-'}</td>
-                        <td style="color: var(--${item.status}); font-weight: 600;">${item.status.toUpperCase()}</td>
-                        <td>${item.location}</td>
-                        <td style="font-family: monospace; font-size: 0.8em;">${item.pallet}</td>
+                        <td>${r.time}</td>
+                        <td><code>${r.scan1}</code></td>
+                        <td><code>${r.scan2 || '-'}</code></td>
+                        <td><span style="color: ${r.status === 'OK' ? 'var(--success)' : r.status === 'BLOQUEADO' ? 'var(--blocked)' : 'var(--error)'}">${r.status}</span></td>
+                        <td>${r.location}</td>
+                        <td style="font-size: 0.8em;">${r.pallet}</td>
                     </tr>
-                `;
-            }).join('');
+                `).join('');
+            }
         }
 
-        // ==================== INITIALIZATION ====================
+        // ==================== CONNECTION ====================
+        function setupConnectionMonitor() {
+            window.addEventListener('online', () => {
+                IS_ONLINE = true;
+                showConnectionBanner('online');
+                updateConnectionIndicator();
+                showNotification('✅ Conexión restaurada', 'success');
+                setTimeout(() => SyncManager.sync(), 1000);
+            });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            // Inicialización de Google
-            if (typeof gapi !== 'undefined') {
-                gapi.load('client', initClient);
+            window.addEventListener('offline', () => {
+                IS_ONLINE = false;
+                showConnectionBanner('offline');
+                updateConnectionIndicator();
+                showNotification('⚠️ Sin conexión - Modo offline', 'warning');
+            });
+
+            updateConnectionIndicator();
+        }
+
+        function showConnectionBanner(status) {
+            const banner = document.getElementById('connection-banner');
+            banner.className = `connection-banner ${status}`;
+            banner.textContent = status === 'online' ? '✅ Conexión restaurada' :
+                                 status === 'offline' ? '⚠️ Sin conexión a internet' :
+                                 '🔄 Sincronizando...';
+            if (status === 'online') {
+                setTimeout(() => banner.style.display = 'none', 3000);
+            }
+        }
+
+        function updateConnectionIndicator(syncing = false) {
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+
+            if (!dot || !text) return;
+
+            if (syncing) {
+                dot.className = 'connection-dot syncing';
+                text.textContent = 'Sincronizando...';
+            } else if (IS_ONLINE) {
+                dot.className = 'connection-dot online';
+                text.textContent = 'En línea';
             } else {
-                console.error("GAPI not loaded.");
+                dot.className = 'connection-dot offline';
+                text.textContent = 'Sin conexión';
+            }
+        }
+
+        function toggleConnection() {
+            if (gapi?.client?.getToken()) {
+                if (confirm('¿Desconectar de Google?')) {
+                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+                    gapi.client.setToken(null);
+                    showNotification('Desconectado de Google', 'info');
+                    updateConnectionIndicator();
+                }
+            } else {
+                handleLogin();
+            }
+        }
+
+        // ==================== STORAGE ====================
+        async function loadFromStorage() {
+            try {
+                const saved = localStorage.getItem('pd_system_state');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    if (data.inventory) STATE.inventory = new Map(data.inventory);
+                    STATE.inventoryLastUpdate = data.inventoryLastUpdate;
+                    if (data.pallets) STATE.pallets = data.pallets;
+                    STATE.history = data.history || [];
+                }
+                updateBdInfo();
+            } catch (e) {
+                console.error('Error loading from storage:', e);
+            }
+        }
+
+        async function saveToStorage() {
+            try {
+                const data = {
+                    inventory: Array.from(STATE.inventory.entries()),
+                    inventoryLastUpdate: STATE.inventoryLastUpdate,
+                    pallets: STATE.pallets,
+                    history: STATE.history.slice(0, 1000)
+                };
+                localStorage.setItem('pd_system_state', JSON.stringify(data));
+            } catch (e) {
+                console.error('Error saving to storage:', e);
+            }
+        }
+
+        // ==================== EXPORT ====================
+        function exportData() {
+            if (STATE.history.length === 0) {
+                showNotification('No hay datos para exportar', 'warning');
+                return;
             }
 
-            // Cargar estado de pestañas y crear la primera si es necesario
-            loadTabsState();
-            SyncManager.init();
+            const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION', 'ESTATUS', 'NOTA', 'PALLET'];
+            const rows = STATE.history.map(r => [
+                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet
+            ]);
 
-            // Inicializar AudioContext al primer evento de usuario
-            document.body.addEventListener('mousedown', () => {
-                if (!audioCtx) {
-                    try {
-                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    } catch (e) { }
+            const csv = '\ufeff' + [
+                headers.join(','),
+                ...rows.map(r => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+
+            showNotification('✅ Datos exportados', 'success');
+        }
+
+        // ==================== UTILITIES ====================
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notifications');
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`;
+
+            container.appendChild(notification);
+            setTimeout(() => notification.remove(), 4000);
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+
+                if (type === 'success') {
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.15);
+                } else if (type === 'error') {
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.35);
+                } else if (type === 'warning') {
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
                 }
-            }, { once: true });
-        });
+            } catch (e) {}
+        }
     </script>
 </body>
 </html>
