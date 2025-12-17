@@ -839,6 +839,128 @@
 
         .hidden { display: none !important; }
 
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10001;
+            flex-direction: column;
+        }
+
+        .loading-overlay.show {
+            display: flex;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(255, 255, 255, 0.2);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: white;
+            font-size: 1.2em;
+            font-weight: 600;
+            text-align: center;
+            max-width: 300px;
+        }
+
+        .loading-subtext {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9em;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        /* Ubicación Física de Origen */
+        .origin-location-bar {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .origin-location-bar label {
+            color: white;
+            font-weight: 600;
+            font-size: 0.9em;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .origin-location-input {
+            flex: 1;
+            max-width: 200px;
+            padding: 10px 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(255, 255, 255, 0.95);
+            transition: all 0.2s;
+        }
+
+        .origin-location-input:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.3);
+        }
+
+        .origin-location-input::placeholder {
+            color: #a0aec0;
+            font-weight: 400;
+        }
+
+        /* Contador Global de Cajas */
+        .global-counter {
+            background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+            padding: 8px 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .global-counter-label {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        .global-counter-value {
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1.1em;
+            min-width: 40px;
+            text-align: center;
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .sidebar { width: 180px; }
@@ -855,6 +977,13 @@
 <body>
     <div class="connection-banner" id="connection-banner"></div>
     <div class="notification-container" id="notifications"></div>
+
+    <!-- LOADING OVERLAY -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">📦 Cargando Inventario...</div>
+        <div class="loading-subtext">Descargando base de datos desde Google Sheets</div>
+    </div>
 
     <!-- LOGIN SCREEN -->
     <div class="login-screen" id="login-screen">
@@ -950,6 +1079,20 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
+                <!-- Ubicación Física de Origen -->
+                <div class="origin-location-bar">
+                    <label>
+                        📍 Ubicación Física de Origen:
+                    </label>
+                    <input type="text" class="origin-location-input" id="origin-location"
+                           placeholder="Ej: A21-06-05-01" autocomplete="off"
+                           title="Ubicación donde se encuentra la mercancía actualmente">
+                    <div class="global-counter">
+                        <span class="global-counter-label">Total Cajas Sesión:</span>
+                        <span class="global-counter-value" id="global-box-count">0</span>
+                    </div>
+                </div>
+
                 <!-- Header -->
                 <div class="header">
                     <h1>📸 Área de Escaneo</h1>
@@ -1101,7 +1244,8 @@
                             <th>Código</th>
                             <th>Código 2</th>
                             <th>Estatus</th>
-                            <th>Ubicación</th>
+                            <th>Destino</th>
+                            <th>Origen</th>
                             <th>Pallet</th>
                         </tr>
                     </thead>
@@ -1215,14 +1359,15 @@
                 if (showMessages) showNotification('🔄 Sincronizando...', 'info');
 
                 try {
+                    // Columnas: A-J (incluye Ubicación Física de Origen en columna J)
                     const values = PENDING_SYNC.map(r => [
                         r.date, r.time, r.user, r.scan1, r.scan2,
-                        r.location, r.status, r.note, r.pallet
+                        r.location, r.status, r.note, r.pallet, r.originLocation || ''
                     ]);
 
                     await gapi.client.sheets.spreadsheets.values.append({
                         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                        range: `${CONFIG.SHEET_NAME}!A:I`,
+                        range: `${CONFIG.SHEET_NAME}!A:J`,
                         valueInputOption: 'USER_ENTERED',
                         insertDataOption: 'INSERT_ROWS',
                         resource: { values }
@@ -1496,9 +1641,20 @@
         }
 
         // ==================== INVENTORY ====================
+        function showLoadingOverlay(show = true) {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                if (show) {
+                    overlay.classList.add('show');
+                } else {
+                    overlay.classList.remove('show');
+                }
+            }
+        }
+
         async function loadInventory() {
             try {
-                showNotification('📦 Cargando inventario...', 'info');
+                showLoadingOverlay(true);
                 updateConnectionIndicator(true);
 
                 const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
@@ -1524,6 +1680,7 @@
                     showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
                 }
             } finally {
+                showLoadingOverlay(false);
                 updateConnectionIndicator();
             }
         }
@@ -1729,11 +1886,13 @@
         }
 
         function createBoxData(raw, code, scan2, item) {
+            const cleanScan2 = scan2 ? normalizeCode(scan2) : '';
             return {
                 raw,
                 code,
                 scan1: raw,
-                scan2: scan2 || '',
+                scan2: cleanScan2,  // Código limpio del segundo escaneo
+                rawScan2: scan2 || '',  // Valor raw para referencia
                 location: item?.cellNo || '-',
                 sku: item?.sku || '-',
                 product: item?.productName || '-',
@@ -1902,6 +2061,8 @@
             const pallet = STATE.pallets[category];
             const locationInput = document.getElementById(`location-${category}`);
             const location = locationInput.value.trim();
+            const originLocationInput = document.getElementById('origin-location');
+            const originLocation = originLocationInput.value.trim().toUpperCase();
 
             if (pallet.boxes.length === 0) {
                 showNotification('⚠️ No hay cajas en esta tarima', 'warning');
@@ -1931,16 +2092,18 @@
             const dateStr = now.toISOString().slice(0, 10);
             const timeStr = now.toTimeString().slice(0, 8);
 
+            // Incluye columna J: Ubicación Física de Origen
             const records = pallet.boxes.map(box => ({
                 date: dateStr,
                 time: timeStr,
                 user: CURRENT_USER || 'Usuario',
-                scan1: box.scan1 || box.raw,
+                scan1: box.code,  // Código limpio (parseado)
                 scan2: box.scan2 || '',
                 location: finalLocation,
                 status: statusMap[category],
                 note: '',
-                pallet: pallet.id
+                pallet: pallet.id,
+                originLocation: originLocation  // Columna J: Ubicación Física de Origen
             }));
 
             // Add to history
@@ -1971,7 +2134,10 @@
             saveToStorage();
             updateUI();
             playSound('success');
-            document.getElementById('scan-input').focus();
+
+            // Mover foco al campo de ubicación de origen para actualizar
+            originLocationInput.focus();
+            originLocationInput.select();
         }
 
         // ==================== UI UPDATES ====================
@@ -1980,6 +2146,17 @@
             updateLists();
             updateSidebar();
             updateSendButtons();
+            updateGlobalCounter();
+        }
+
+        function updateGlobalCounter() {
+            const total = STATE.pallets.ok.boxes.length +
+                          STATE.pallets.blocked.boxes.length +
+                          STATE.pallets.nowms.boxes.length;
+            const counterEl = document.getElementById('global-box-count');
+            if (counterEl) {
+                counterEl.textContent = total;
+            }
         }
 
         function updateCounts() {
@@ -2069,11 +2246,12 @@
             document.getElementById('location-ok').value = '';
             document.getElementById('location-blocked').value = '';
             document.getElementById('location-nowms').value = '';
+            document.getElementById('origin-location').value = '';
 
             saveToStorage();
             updateUI();
             showNotification('✅ Nueva sesión iniciada', 'success');
-            document.getElementById('scan-input').focus();
+            document.getElementById('origin-location').focus();
         }
 
         // ==================== RESUMEN MODULE ====================
@@ -2097,7 +2275,7 @@
             const recentHistory = STATE.history.slice(0, 50);
 
             if (recentHistory.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Sin registros recientes</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">Sin registros recientes</td></tr>';
             } else {
                 tbody.innerHTML = recentHistory.map(r => `
                     <tr>
@@ -2106,6 +2284,7 @@
                         <td><code>${r.scan2 || '-'}</code></td>
                         <td><span style="color: ${r.status === 'OK' ? 'var(--success)' : r.status === 'BLOQUEADO' ? 'var(--blocked)' : 'var(--error)'}">${r.status}</span></td>
                         <td>${r.location}</td>
+                        <td>${r.originLocation || '-'}</td>
                         <td style="font-size: 0.8em;">${r.pallet}</td>
                     </tr>
                 `).join('');
@@ -2212,9 +2391,9 @@
                 return;
             }
 
-            const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION', 'ESTATUS', 'NOTA', 'PALLET'];
+            const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION DESTINO', 'ESTATUS', 'NOTA', 'PALLET', 'UBICACION FISICA ORIGEN'];
             const rows = STATE.history.map(r => [
-                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet
+                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet, r.originLocation || ''
             ]);
 
             const csv = '\ufeff' + [
