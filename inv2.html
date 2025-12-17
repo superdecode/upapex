@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Inventario</title>
+    <title>Sistema Inventario v2</title>
     <style>
         :root {
             --primary: #2563eb;
             --success: #4CAF50;
+            --success-light: #e8f5e9;
             --warning: #FF9800;
             --error: #F44336;
             --blocked: #f97316;
@@ -15,2918 +16,476 @@
             --text: #333;
             --card: #ffffff;
             --border: #e2e8f0;
-            --tab-active: #f97316;
         }
-
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        /* Loading Indicator */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
-        }
-
-        .loading-overlay.show {
-            display: flex;
-        }
-
-        .loading-content {
-            background: white;
-            padding: 40px;
-            border-radius: 16px;
-            text-align: center;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        }
-
-        .loading-spinner {
-            width: 60px;
-            height: 60px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            font-size: 1.2em;
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .loading-subtext {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 10px;
-        }
-
-        /* Connection Banner */
-        .connection-banner {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            padding: 10px;
-            text-align: center;
-            font-weight: 700;
-            z-index: 10000;
-            display: none;
-            animation: slideDown 0.3s;
-        }
-        .connection-banner.offline {
-            background: var(--error);
-            color: white;
-            display: block;
-        }
-        .connection-banner.online {
-            background: var(--success);
-            color: white;
-            display: block;
-        }
-        .connection-banner.syncing {
-            background: var(--warning);
-            color: white;
-            display: block;
-        }
-        @keyframes slideDown {
-            from { transform: translateY(-100%); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        /* LOGIN */
-        .login-screen {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        }
-
-        .login-card {
-            background: white;
-            padding: 3rem;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            text-align: center;
-            max-width: 400px;
-            width: 90%;
-        }
-
-        .login-icon {
-            font-size: 4rem;
-            margin-bottom: 1.5rem;
-            animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-
-        .login-title {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--text);
-            margin-bottom: 0.5rem;
-        }
-
-        .login-subtitle {
-            color: #666;
-            margin-bottom: 2rem;
-        }
-
-        /* MAIN LAYOUT */
-        .main-container {
-            display: flex;
-            height: 100vh;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-            width: 220px;
-            background: #333;
-            color: white;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
-
-        .sidebar-header {
-            text-align: center;
-            margin-bottom: 15px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #555;
-        }
-
-        .sidebar-header h2 {
-            color: var(--primary);
-            font-size: 1.3em;
-            margin-bottom: 5px;
-        }
-
-        .sidebar-header p {
-            font-size: 0.8em;
-            color: #aaa;
-        }
-
-        .sidebar-section {
-            margin-bottom: 15px;
-        }
-
-        .sidebar-section-title {
-            font-size: 0.75em;
-            color: #888;
-            text-transform: uppercase;
-            margin-bottom: 8px;
-            letter-spacing: 0.5px;
-        }
-
-        .sidebar-btn {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 8px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.85em;
-        }
-
-        .sidebar-btn:hover {
-            transform: translateX(3px);
-        }
-
-        .sidebar-btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .sidebar-btn-secondary {
-            background: #555;
-            color: white;
-        }
-
-        .sidebar-btn-quick {
-            background: var(--tab-active);
-            color: white;
-        }
-
-        /* Sync Status */
-        .sync-status {
-            padding: 10px 12px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            font-size: 0.85em;
-            text-align: center;
-            cursor: pointer;
-        }
-        .sync-ok {
-            background: rgba(76, 175, 80, 0.2);
-            color: var(--success);
-            border: 1px solid var(--success);
-        }
-        .sync-error {
-            background: rgba(244, 67, 54, 0.2);
-            color: var(--error);
-            border: 1px solid var(--error);
-        }
-        .sync-warning {
-            background: rgba(255, 152, 0, 0.2);
-            color: var(--warning);
-            border: 1px solid var(--warning);
-        }
-
-        /* Pallets por estatus */
-        .pallet-status-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .pallet-status-item {
-            background: #444;
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 8px;
-        }
-
-        .pallet-status-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-
-        .pallet-status-name {
-            font-weight: 600;
-            font-size: 0.9em;
-        }
-
-        .pallet-status-count {
-            background: rgba(255,255,255,0.2);
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.75em;
-        }
-
-        .pallet-code {
-            font-family: monospace;
-            font-size: 0.7em;
-            color: #aaa;
-            word-break: break-all;
-        }
-
-        /* User Footer */
-        .user-footer {
-            margin-top: auto;
-            padding-top: 15px;
-            border-top: 1px solid #555;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .user-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: var(--primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 1.1em;
-            color: white;
-            flex-shrink: 0;
-            cursor: pointer;
-        }
-
-        .user-details {
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .user-name {
-            font-weight: 600;
-            font-size: 0.9em;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            cursor: pointer;
-        }
-
-        .connection-indicator {
-            font-size: 0.75em;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .connection-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+        .connection-banner { position: fixed; top: 0; left: 0; right: 0; padding: 10px; text-align: center; font-weight: 700; z-index: 10000; display: none; animation: slideDown 0.3s; }
+        .connection-banner.offline { background: var(--error); color: white; display: block; }
+        .connection-banner.online { background: var(--success); color: white; display: block; }
+        .connection-banner.syncing { background: var(--warning); color: white; display: block; }
+        @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
+        .login-card { background: white; padding: 3rem; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; max-width: 400px; width: 90%; }
+        .login-icon { font-size: 4rem; margin-bottom: 1.5rem; animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .login-title { font-size: 1.8rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem; }
+        .login-subtitle { color: #666; margin-bottom: 2rem; }
+        .main-container { display: flex; height: 100vh; }
+        .sidebar { width: 220px; background: #333; color: white; padding: 15px; display: flex; flex-direction: column; overflow-y: auto; }
+        .sidebar-header { text-align: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #555; }
+        .sidebar-header h2 { color: var(--primary); font-size: 1.3em; margin-bottom: 5px; }
+        .sidebar-header p { font-size: 0.8em; color: #aaa; }
+        .sidebar-section { margin-bottom: 15px; }
+        .sidebar-section-title { font-size: 0.75em; color: #888; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .sidebar-btn { width: 100%; padding: 10px; margin-bottom: 8px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; font-size: 0.85em; }
+        .sidebar-btn:hover { transform: translateX(3px); }
+        .sidebar-btn-primary { background: var(--primary); color: white; }
+        .sidebar-btn-secondary { background: #555; color: white; }
+        .sync-status { padding: 10px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.85em; text-align: center; cursor: pointer; }
+        .sync-ok { background: rgba(76, 175, 80, 0.2); color: var(--success); border: 1px solid var(--success); }
+        .sync-error { background: rgba(244, 67, 54, 0.2); color: var(--error); border: 1px solid var(--error); }
+        .sync-warning { background: rgba(255, 152, 0, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+        .pallet-status-list { flex: 1; overflow-y: auto; }
+        .pallet-status-item { background: #444; border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
+        .pallet-status-item:hover { background: #555; }
+        .pallet-status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .pallet-status-name { font-weight: 600; font-size: 0.9em; }
+        .pallet-status-count { background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; font-size: 0.75em; }
+        .pallet-code { font-family: monospace; font-size: 0.7em; color: #aaa; word-break: break-all; }
+        .user-footer { margin-top: auto; padding-top: 15px; border-top: 1px solid #555; }
+        .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1em; color: white; flex-shrink: 0; cursor: pointer; }
+        .user-details { flex: 1; overflow: hidden; }
+        .user-name { font-weight: 600; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .connection-indicator { font-size: 0.75em; display: flex; align-items: center; gap: 4px; }
+        .connection-dot { width: 8px; height: 8px; border-radius: 50%; }
         .connection-dot.online { background: var(--success); }
         .connection-dot.offline { background: var(--error); }
         .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .user-footer-actions {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 8px;
-        }
-
-        .user-footer-actions button {
-            flex: 1;
-            padding: 6px;
-            font-size: 0.75em;
-        }
-
-        .bd-info {
-            font-size: 0.7em;
-            color: #aaa;
-            text-align: center;
-            line-height: 1.4;
-        }
-
-        /* MAIN CONTENT */
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        /* Tabs Container */
-        .tabs-container {
-            background: white;
-            border-bottom: 2px solid var(--border);
-            display: flex;
-            align-items: center;
-            padding: 8px 15px;
-            gap: 8px;
-        }
-
-        .tab-new-btn {
-            padding: 8px 15px;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.85em;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            transition: all 0.2s;
-        }
-
-        .tab-new-btn:hover {
-            background: #1d4ed8;
-        }
-
-        .tabs-list {
-            display: flex;
-            gap: 5px;
-            flex: 1;
-            overflow-x: auto;
-        }
-
-        .tab-item {
-            padding: 8px 15px;
-            background: white;
-            border: 2px solid #ddd;
-            border-radius: 6px 6px 0 0;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            white-space: nowrap;
-            transition: all 0.2s;
-            font-size: 0.85em;
-            min-width: 150px;
-        }
-
-        .tab-item.active {
-            background: var(--tab-active);
-            color: white;
-            border-color: var(--tab-active);
-            font-weight: 600;
-        }
-
-        .tab-item:not(.active):hover {
-            background: #f5f5f5;
-        }
-
-        .tab-close {
-            margin-left: auto;
-            background: none;
-            border: none;
-            color: inherit;
-            cursor: pointer;
-            font-size: 1.1em;
-            padding: 0 4px;
-            opacity: 0.7;
-        }
-
-        .tab-close:hover {
-            opacity: 1;
-        }
-
-        /* Tab Content Area */
-        .tab-content-area {
-            flex: 1;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .tab-content {
-            display: none;
-            height: 100%;
-            overflow: auto;
-            padding: 15px;
-        }
-
-        .tab-content.active {
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Empty State */
-        .empty-workspace {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #999;
-        }
-
-        .empty-workspace-icon {
-            font-size: 5em;
-            margin-bottom: 20px;
-            opacity: 0.3;
-        }
-
-        .empty-workspace-text {
-            font-size: 1.2em;
-            margin-bottom: 10px;
-        }
-
-        .empty-workspace-subtext {
-            font-size: 0.9em;
-        }
-
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .header h1 {
-            color: var(--primary);
-            font-size: 1.4em;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        /* Scan Section */
-        .scan-section {
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .scan-row {
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
-        }
-
-        .scan-input-group {
-            flex: 1;
-        }
-
-        .scan-input-group label {
-            display: block;
-            font-size: 0.85em;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .scan-input {
-            width: 100%;
-            padding: 12px 15px;
-            font-size: 1.3em;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-            font-weight: 600;
-            text-transform: uppercase;
-            text-align: center;
-            background: #fff5ed;
-            transition: all 0.2s;
-        }
-
-        .scan-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-
-        .scan-input.error {
-            border-color: var(--error);
-            background: #ffebee;
-        }
-
-        .scan-input.success {
-            border-color: var(--success);
-            background: #e8f5e9;
-        }
-
-        /* Result Box */
-        .result-box {
-            padding: 12px;
-            border-radius: 8px;
-            margin-top: 10px;
-            display: none;
-            animation: fadeIn 0.3s;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .user-footer-actions { display: flex; gap: 5px; margin-bottom: 8px; }
+        .user-footer-actions button { flex: 1; padding: 6px; font-size: 0.75em; }
+        .bd-info { font-size: 0.7em; color: #aaa; text-align: center; line-height: 1.4; }
+        .main-content { flex: 1; padding: 15px; display: flex; flex-direction: column; overflow: hidden; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+        .header h1 { color: var(--primary); font-size: 1.4em; }
+        .global-counter { display: flex; align-items: center; gap: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 10px 20px; border-radius: 10px; color: white; font-weight: 600; }
+        .global-counter-item { display: flex; align-items: center; gap: 6px; }
+        .global-counter-number { font-size: 1.5em; font-weight: 800; }
+        .global-counter-label { font-size: 0.75em; opacity: 0.9; }
+        .origin-location-bar { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 12px 20px; border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .origin-location-bar label { color: white; font-weight: 600; font-size: 0.9em; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+        .origin-location-input { flex: 1; padding: 10px 15px; border: 2px solid rgba(255,255,255,0.3); border-radius: 8px; font-size: 1em; font-weight: 600; text-transform: uppercase; background: rgba(255,255,255,0.95); max-width: 250px; }
+        .origin-location-input:focus { outline: none; border-color: #4CAF50; box-shadow: 0 0 0 3px rgba(76,175,80,0.3); }
+        .origin-copy-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .origin-copy-btn:hover { background: rgba(255,255,255,0.3); }
+        .scan-section { background: white; border-radius: 12px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .scan-row { display: flex; gap: 10px; align-items: flex-end; }
+        .scan-input-group { flex: 1; }
+        .scan-input-group label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 5px; }
+        .scan-input { width: 100%; padding: 12px 15px; font-size: 1.3em; border: 2px solid var(--border); border-radius: 8px; font-weight: 600; text-transform: uppercase; text-align: center; background: #fff5ed; transition: all 0.2s; }
+        .scan-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        .scan-input.error { border-color: var(--error); background: #ffebee; }
+        .scan-input.success { border-color: var(--success); background: #e8f5e9; }
+        .result-box { padding: 12px; border-radius: 8px; margin-top: 10px; display: none; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
         .result-box.show { display: block; }
         .result-box.success { background: #e8f5e9; border: 2px solid var(--success); }
         .result-box.warning { background: #fff3e0; border: 2px solid var(--warning); }
         .result-box.blocked { background: #fff3e0; border: 2px solid var(--blocked); }
         .result-box.error { background: #ffebee; border: 2px solid var(--error); }
-
-        .result-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
-        }
-
+        .result-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .result-icon { font-size: 1.5rem; }
         .result-title { font-weight: 700; font-size: 1.1em; }
         .result-code { font-family: monospace; font-weight: 600; }
-
-        .result-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 8px;
-            font-size: 0.85em;
-        }
-
+        .result-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 0.85em; }
         .result-detail-label { color: #666; font-size: 0.8em; }
         .result-detail-value { font-weight: 600; }
-
-        /* Code2 Input */
-        .code2-container {
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 2px dashed var(--error);
-            display: none;
-        }
-
+        .code2-container { margin-top: 10px; padding-top: 10px; border-top: 2px dashed var(--error); display: none; }
         .code2-container.show { display: block; }
-
-        .code2-row {
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
-        }
-
-        .btn-insertado {
-            padding: 12px 20px;
-            background: var(--error);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-
-        .btn-insertado:hover {
-            background: #d32f2f;
-        }
-
-        /* Quick Capture Log */
-        .quick-log-container {
-            flex: 1;
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .quick-log-header {
-            font-size: 1.1em;
-            font-weight: 700;
-            margin-bottom: 15px;
-            color: var(--primary);
-        }
-
-        .quick-log-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .quick-log-item {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            border-left: 4px solid;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.9em;
-        }
-
-        .quick-log-item.success {
-            background: #e8f5e9;
-            border-color: var(--success);
-        }
-
-        .quick-log-item.blocked {
-            background: #fff3e0;
-            border-color: var(--blocked);
-        }
-
-        .quick-log-item.nowms {
-            background: #ffebee;
-            border-color: var(--error);
-        }
-
-        .quick-log-info {
-            flex: 1;
-        }
-
-        .quick-log-code {
-            font-family: monospace;
-            font-weight: 600;
-            font-size: 1em;
-        }
-
-        .quick-log-status {
-            font-size: 0.85em;
-            margin-top: 4px;
-        }
-
-        .quick-log-time {
-            font-size: 0.75em;
-            color: #666;
-        }
-
-        /* Columns Container */
-        .columns-container {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            flex: 1;
-            min-height: 0;
-        }
-
-        .column {
-            background: white;
-            border-radius: 12px;
-            padding: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .column-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .column-title {
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .column-count {
-            padding: 3px 10px;
-            border-radius: 15px;
-            font-weight: 700;
-            font-size: 0.85em;
-        }
-
+        .code2-row { display: flex; gap: 10px; align-items: flex-end; }
+        .btn-insertado { padding: 12px 20px; background: var(--error); color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        .btn-insertado:hover { background: #d32f2f; }
+        .columns-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; flex: 1; min-height: 0; }
+        .column { background: white; border-radius: 12px; padding: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        .column-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 2px solid var(--border); flex-wrap: wrap; gap: 5px; }
+        .column-title { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        .column-count { padding: 3px 10px; border-radius: 15px; font-weight: 700; font-size: 0.85em; }
         .column.ok .column-title { color: var(--success); }
         .column.ok .column-count { background: rgba(76, 175, 80, 0.15); color: var(--success); }
-
         .column.blocked .column-title { color: var(--blocked); }
         .column.blocked .column-count { background: rgba(249, 115, 22, 0.15); color: var(--blocked); }
-
         .column.nowms .column-title { color: var(--error); }
         .column.nowms .column-count { background: rgba(244, 67, 54, 0.15); color: var(--error); }
-
-        .column-pallet-info {
-            background: #f5f5f5;
-            padding: 8px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            font-size: 0.8em;
-        }
-
-        .column-pallet-code {
-            font-family: monospace;
-            font-weight: 600;
-            color: var(--primary);
-        }
-
-        .column-location-input {
-            width: 100%;
-            padding: 6px 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.85em;
-            margin-top: 6px;
-        }
-
-        .column-send-btn {
-            margin-top: 8px;
-            padding: 8px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            font-size: 0.85em;
-        }
-
-        .column-send-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
+        .column-status-indicators { display: flex; gap: 6px; }
+        .status-badge { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.7em; color: white; }
+        .status-badge.completed { background: var(--success); }
+        .status-badge.pending { background: var(--error); }
+        .column-pallet-info { background: #f5f5f5; padding: 8px; border-radius: 6px; margin-bottom: 8px; font-size: 0.8em; }
+        .column-pallet-code { font-family: monospace; font-weight: 600; color: var(--primary); }
+        .column-location-input { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85em; margin-top: 6px; }
+        .column-actions { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+        .column-action-btn { flex: 1; min-width: 70px; padding: 5px 6px; border: none; border-radius: 4px; font-size: 0.65em; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 3px; }
+        .column-action-btn:hover { transform: translateY(-1px); }
+        .column-action-btn.copy-codes { background: #e3f2fd; color: #1976d2; }
+        .column-action-btn.copy-location { background: #f3e5f5; color: #7b1fa2; }
+        .column-action-btn.view-detail { background: #fff3e0; color: #f57c00; }
+        .column-send-btn { margin-top: 6px; padding: 8px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; font-size: 0.85em; }
+        .column-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .column.ok .column-send-btn { background: var(--success); color: white; }
         .column.blocked .column-send-btn { background: var(--blocked); color: white; }
         .column.nowms .column-send-btn { background: var(--error); color: white; }
-
-        .column-list {
-            flex: 1;
-            overflow-y: auto;
-            counter-reset: item-counter;
-        }
-
-        .box-item {
-            padding: 8px 10px;
-            background: #f9f9f9;
-            border-radius: 6px;
-            margin-bottom: 6px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-left: 3px solid;
-            counter-increment: item-counter;
-        }
-
-        .box-item::before {
-            content: counter(item-counter) ".";
-            font-weight: 700;
-            min-width: 25px;
-            margin-right: 8px;
-        }
-
+        .column-list { flex: 1; overflow-y: auto; counter-reset: item-counter; }
+        .box-item { padding: 6px 8px; background: #f9f9f9; border-radius: 6px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid; counter-increment: item-counter; transition: all 0.2s; font-size: 0.85em; }
+        .box-item::before { content: counter(item-counter) "."; font-weight: 700; min-width: 22px; margin-right: 6px; font-size: 0.8em; }
+        .box-item.status-ok { background: var(--success-light); }
         .column.ok .box-item { border-color: var(--success); }
         .column.ok .box-item::before { color: var(--success); }
-
         .column.blocked .box-item { border-color: var(--blocked); }
         .column.blocked .box-item::before { color: var(--blocked); }
-
         .column.nowms .box-item { border-color: var(--error); }
         .column.nowms .box-item::before { color: var(--error); }
-
-        .box-info { flex: 1; }
-        .box-code { font-weight: 600; font-family: monospace; font-size: 0.9em; }
-        .box-meta { font-size: 0.75em; color: #666; }
-
-        .box-delete {
-            background: none;
-            border: none;
-            color: var(--error);
-            cursor: pointer;
-            font-size: 1.1em;
-            padding: 4px;
-            opacity: 0.6;
-        }
-
-        .box-delete:hover { opacity: 1; }
-
-        .empty-state {
-            text-align: center;
-            padding: 30px 15px;
-            color: #999;
-        }
-
-        .empty-icon { font-size: 2.5em; margin-bottom: 8px; opacity: 0.5; }
-
-        /* Buttons */
-        .btn {
-            padding: 10px 18px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-        }
-
-        .btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
+        .box-info { flex: 1; min-width: 0; }
+        .box-code { font-weight: 600; font-family: monospace; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .box-meta { font-size: 0.7em; color: #666; }
+        .box-actions { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+        .box-check { width: 18px; height: 18px; cursor: pointer; accent-color: var(--success); }
+        .box-transfer, .box-delete { background: none; border: none; cursor: pointer; font-size: 0.9em; padding: 3px; opacity: 0.6; transition: all 0.2s; }
+        .box-transfer:hover { opacity: 1; color: var(--primary); }
+        .box-delete:hover { opacity: 1; color: var(--error); }
+        .empty-state { text-align: center; padding: 20px 15px; color: #999; }
+        .empty-icon { font-size: 2em; margin-bottom: 8px; opacity: 0.5; }
+        .btn { padding: 10px 18px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-success { background: var(--success); color: white; }
         .btn-warning { background: var(--warning); color: white; }
         .btn-danger { background: var(--error); color: white; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-google { background: #4285F4; color: white; }
-
         .btn-small { padding: 6px 12px; font-size: 0.85em; }
         .btn-full { width: 100%; }
-
-        /* Notifications */
-        .notification-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            max-width: 350px;
-        }
-
-        .notification {
-            background: white;
-            padding: 12px 15px;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-left: 4px solid;
-            animation: slideIn 0.3s;
-        }
-
+        .notification-container { position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 350px; }
+        .notification { background: white; padding: 12px 15px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid; animation: slideIn 0.3s; }
         .notification.success { border-color: var(--success); }
         .notification.error { border-color: var(--error); }
         .notification.warning { border-color: var(--warning); }
         .notification.info { border-color: var(--primary); }
-
-        @keyframes slideIn {
-            from { transform: translateX(400px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        /* Popups */
-        .popup-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.6);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
+        @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 1000; }
         .popup-overlay.show { display: flex; }
-
-        .popup-content {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            max-width: 700px;
-            width: 95%;
-            max-height: 85vh;
-            overflow-y: auto;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        }
-
-        .popup-header {
-            font-size: 1.3em;
-            font-weight: 700;
-            margin-bottom: 15px;
-            color: var(--primary);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .popup-close {
-            background: none;
-            border: none;
-            font-size: 1.5em;
-            cursor: pointer;
-            color: #999;
-        }
-
+        .popup-content { background: white; padding: 25px; border-radius: 12px; max-width: 700px; width: 95%; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        .popup-header { font-size: 1.3em; font-weight: 700; margin-bottom: 15px; color: var(--primary); display: flex; justify-content: space-between; align-items: center; }
+        .popup-close { background: none; border: none; font-size: 1.5em; cursor: pointer; color: #999; }
         .popup-close:hover { color: #333; }
-
-        .popup-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        /* Resumen Module */
-        .resumen-stats {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .resumen-stat {
-            text-align: center;
-            padding: 15px;
-            border-radius: 8px;
-            background: #f5f5f5;
-        }
-
-        .resumen-stat-number {
-            font-size: 2em;
-            font-weight: 700;
-        }
-
-        .resumen-stat-label {
-            font-size: 0.8em;
-            color: #666;
-        }
-
+        .popup-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .duplicate-popup { max-width: 450px; }
+        .duplicate-info { background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid var(--warning); }
+        .duplicate-info-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .duplicate-info-label { color: #666; font-size: 0.9em; }
+        .duplicate-info-value { font-weight: 600; }
+        .validation-popup { max-width: 400px; text-align: center; }
+        .validation-input { width: 100%; padding: 15px; font-size: 2em; text-align: center; border: 3px solid var(--primary); border-radius: 10px; margin: 15px 0; }
+        .validation-input.error { border-color: var(--error); background: #ffebee; animation: shake 0.5s; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+        .validation-compare { display: flex; justify-content: center; gap: 30px; margin: 15px 0; }
+        .validation-compare-item { text-align: center; }
+        .validation-compare-number { font-size: 2.5em; font-weight: 800; }
+        .validation-compare-label { font-size: 0.85em; color: #666; }
+        .validation-compare-item.expected .validation-compare-number { color: var(--success); }
+        .validation-compare-item.entered .validation-compare-number { color: var(--primary); }
+        .validation-compare-item.mismatch .validation-compare-number { color: var(--error); }
+        .detail-modal { max-width: 95vw; width: 1200px; max-height: 90vh; }
+        .detail-modal-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 15px; border-bottom: 2px solid var(--border); margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .detail-modal-title { display: flex; align-items: center; gap: 15px; }
+        .detail-modal-counters { display: flex; gap: 10px; }
+        .detail-filters { background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 0.8em; font-weight: 600; color: #666; }
+        .filter-group input, .filter-group select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9em; }
+        .filter-actions { display: flex; gap: 8px; margin-left: auto; }
+        .detail-table-container { max-height: 50vh; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; }
+        .detail-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        .detail-table th, .detail-table td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #eee; }
+        .detail-table th { background: #f5f5f5; font-weight: 700; position: sticky; top: 0; cursor: pointer; user-select: none; }
+        .detail-table th:hover { background: #e8e8e8; }
+        .detail-table th .sort-icon { margin-left: 5px; opacity: 0.5; }
+        .detail-table th.sorted .sort-icon { opacity: 1; }
+        .detail-table tr:hover { background: #f9f9f9; }
+        .detail-table .row-actions { display: flex; gap: 5px; }
+        .detail-table .action-btn { padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; transition: all 0.2s; }
+        .detail-table .action-btn.transfer { background: #e3f2fd; color: #1976d2; }
+        .detail-table .action-btn.delete { background: #ffebee; color: var(--error); }
+        .detail-table .action-btn.status { background: #e8f5e9; color: var(--success); }
+        .detail-table .action-btn.copy { background: #f3e5f5; color: #7b1fa2; }
+        .detail-table .action-btn:hover { transform: scale(1.05); }
+        .resumen-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .resumen-stat { text-align: center; padding: 15px; border-radius: 8px; background: #f5f5f5; }
+        .resumen-stat-number { font-size: 2em; font-weight: 700; }
+        .resumen-stat-label { font-size: 0.8em; color: #666; }
         .resumen-stat.ok { border: 2px solid var(--success); }
         .resumen-stat.ok .resumen-stat-number { color: var(--success); }
-
         .resumen-stat.blocked { border: 2px solid var(--blocked); }
         .resumen-stat.blocked .resumen-stat-number { color: var(--blocked); }
-
         .resumen-stat.nowms { border: 2px solid var(--error); }
         .resumen-stat.nowms .resumen-stat-number { color: var(--error); }
-
         .resumen-stat.pending { border: 2px solid var(--warning); }
         .resumen-stat.pending .resumen-stat-number { color: var(--warning); }
-
-        .resumen-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85em;
-        }
-
-        .resumen-table th, .resumen-table td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-
-        .resumen-table th {
-            background: #f5f5f5;
-            font-weight: 700;
-            position: sticky;
-            top: 0;
-        }
-
-        .resumen-table-container {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .resumen-actions {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
+        .resumen-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        .resumen-table th, .resumen-table td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        .resumen-table th { background: #f5f5f5; font-weight: 700; position: sticky; top: 0; }
+        .resumen-table-container { max-height: 300px; overflow-y: auto; }
+        .resumen-actions { display: flex; gap: 10px; margin-bottom: 15px; }
         .hidden { display: none !important; }
-
-        /* Responsive */
-        @media (max-width: 1024px) {
-            .sidebar { width: 180px; }
-            .columns-container { grid-template-columns: 1fr; }
-            .resumen-stats { grid-template-columns: repeat(2, 1fr); }
-        }
-
-        @media (max-width: 768px) {
-            .main-container { flex-direction: column; }
-            .sidebar { width: 100%; max-height: 200px; }
-        }
+        @media (max-width: 1024px) { .sidebar { width: 180px; } .columns-container { grid-template-columns: 1fr; } .resumen-stats { grid-template-columns: repeat(2, 1fr); } .global-counter { flex-wrap: wrap; justify-content: center; } }
+        @media (max-width: 768px) { .main-container { flex-direction: column; } .sidebar { width: 100%; max-height: 200px; } .origin-location-bar { flex-wrap: wrap; } .detail-modal { width: 100%; } }
     </style>
 </head>
 <body>
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Cargando Inventario...</div>
-            <div class="loading-subtext">Por favor espera</div>
-        </div>
-    </div>
-
     <div class="connection-banner" id="connection-banner"></div>
     <div class="notification-container" id="notifications"></div>
-
-    <!-- LOGIN SCREEN -->
     <div class="login-screen" id="login-screen">
         <div class="login-card">
             <div class="login-icon">📦</div>
-            <h1 class="login-title">Sistema Inventario</h1>
+            <h1 class="login-title">Sistema Inventario v2</h1>
             <p class="login-subtitle">Control y gestión de mercancía</p>
-            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
-                🔐 Iniciar sesión con Google
-            </button>
+            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">🔐 Iniciar sesión con Google</button>
         </div>
     </div>
-
-    <!-- MAIN APP -->
     <div id="main-app" class="hidden">
         <div class="main-container">
-            <!-- SIDEBAR -->
             <div class="sidebar">
-                <div class="sidebar-header">
-                    <h2>📦 Inventario</h2>
-                    <p>Sistema de gestión</p>
-                </div>
-
-                <!-- Sync Status -->
-                <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">
-                    ✅ Sincronizado
-                </div>
-
-                <!-- Menu -->
+                <div class="sidebar-header"><h2>📦 Inventario</h2><p>Sistema v2</p></div>
+                <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">✅ Sincronizado</div>
                 <div class="sidebar-section">
-                    <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
-                        📊 Resumen
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-quick" onclick="openQuickCapture()">
-                        ⚡ Captura Rápida
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
-                        ➕ Nueva Sesión
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
-                        📥 Exportar
-                    </button>
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">📊 Resumen</button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">➕ Nueva Sesión</button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">📥 Exportar</button>
                 </div>
-
-                <!-- Pallets por estatus -->
                 <div class="sidebar-section">
                     <div class="sidebar-section-title">Tarimas Activas</div>
                     <div class="pallet-status-list" id="pallet-status-list">
-                        <div class="pallet-status-item">
-                            <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--success);">✅ OK</span>
-                                <span class="pallet-status-count" id="sidebar-ok-count">0</span>
-                            </div>
+                        <div class="pallet-status-item" onclick="showDetailModal('ok')">
+                            <div class="pallet-status-header"><span class="pallet-status-name" style="color: var(--success);">✅ OK</span><span class="pallet-status-count" id="sidebar-ok-count">0</span></div>
                             <div class="pallet-code" id="sidebar-ok-pallet">-</div>
                         </div>
-                        <div class="pallet-status-item">
-                            <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--blocked);">⚠️ Bloqueado</span>
-                                <span class="pallet-status-count" id="sidebar-blocked-count">0</span>
-                            </div>
+                        <div class="pallet-status-item" onclick="showDetailModal('blocked')">
+                            <div class="pallet-status-header"><span class="pallet-status-name" style="color: var(--blocked);">⚠️ Bloqueado</span><span class="pallet-status-count" id="sidebar-blocked-count">0</span></div>
                             <div class="pallet-code" id="sidebar-blocked-pallet">-</div>
                         </div>
-                        <div class="pallet-status-item">
-                            <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--error);">❌ No WMS</span>
-                                <span class="pallet-status-count" id="sidebar-nowms-count">0</span>
-                            </div>
+                        <div class="pallet-status-item" onclick="showDetailModal('nowms')">
+                            <div class="pallet-status-header"><span class="pallet-status-name" style="color: var(--error);">❌ No WMS</span><span class="pallet-status-count" id="sidebar-nowms-count">0</span></div>
                             <div class="pallet-code" id="sidebar-nowms-pallet">-</div>
                         </div>
                     </div>
                 </div>
-
-                <!-- User Footer -->
                 <div class="user-footer">
                     <div class="user-info">
                         <div class="user-avatar" id="user-avatar" onclick="changeUserAlias()">?</div>
                         <div class="user-details">
                             <div class="user-name" id="user-name-display" onclick="changeUserAlias()">No conectado</div>
-                            <div class="connection-indicator">
-                                <div class="connection-dot" id="connection-dot"></div>
-                                <span id="connection-text">Offline</span>
-                            </div>
+                            <div class="connection-indicator"><div class="connection-dot" id="connection-dot"></div><span id="connection-text">Offline</span></div>
                         </div>
                     </div>
                     <div class="user-footer-actions">
                         <button class="btn btn-secondary btn-small" onclick="refreshInventory()">🔄 BD</button>
-                        <button class="btn btn-secondary btn-small" onclick="toggleConnection()" id="sidebar-auth-btn">🔗</button>
+                        <button class="btn btn-secondary btn-small" onclick="toggleConnection()">🔗</button>
                         <button class="btn btn-danger btn-small" onclick="handleLogout()">🚪</button>
                     </div>
-                    <div class="bd-info">
-                        <div><span id="bd-count">0</span> códigos cargados</div>
-                        <div id="bd-update-time">Sin actualizar</div>
-                    </div>
+                    <div class="bd-info"><div><span id="bd-count">0</span> códigos</div><div id="bd-update-time">Sin actualizar</div></div>
                 </div>
             </div>
-
-            <!-- MAIN CONTENT -->
             <div class="main-content">
-                <!-- Tabs -->
-                <div class="tabs-container">
-                    <button class="tab-new-btn" onclick="TabManager.createTab()">➕ Nuevo</button>
-                    <div class="tabs-list" id="tabs-list"></div>
+                <div class="header">
+                    <h1>📸 Área de Escaneo</h1>
+                    <div class="global-counter"><div class="global-counter-item"><span class="global-counter-number" id="global-total">0</span><span class="global-counter-label">TOTAL CAJAS</span></div></div>
                 </div>
-
-                <!-- Tab Content Area -->
-                <div class="tab-content-area" id="tab-content-area">
-                    <!-- Empty State -->
-                    <div class="empty-workspace" id="empty-workspace">
-                        <div class="empty-workspace-icon">📦</div>
-                        <div class="empty-workspace-text">No hay pestañas abiertas</div>
-                        <div class="empty-workspace-subtext">Haz clic en "➕ Nuevo" para comenzar</div>
+                <div class="origin-location-bar">
+                    <label>📍 Ubicación Física Origen:</label>
+                    <input type="text" class="origin-location-input" id="origin-location" placeholder="Ej: A21-06-05-01" autocomplete="off">
+                    <button class="origin-copy-btn" onclick="copyOriginLocation()" title="Copiar ubicación">📋 Copiar</button>
+                </div>
+                <div class="scan-section">
+                    <div class="scan-row"><div class="scan-input-group"><label>🔍 Código Principal</label><input type="text" class="scan-input" id="scan-input" placeholder="Escanea o ingresa código..." autocomplete="off"></div></div>
+                    <div class="result-box" id="result-box"><div class="result-header"><span class="result-icon" id="result-icon">📦</span><span class="result-title" id="result-title">Estado</span></div><div class="result-code" id="result-code"></div><div class="result-details" id="result-details"></div></div>
+                    <div class="code2-container" id="code2-container">
+                        <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:</label>
+                        <div class="code2-row"><div class="scan-input-group"><input type="text" class="scan-input" id="code2-input" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;"></div><button class="btn-insertado" onclick="forceInsert()">⚡ INSERTADO</button></div>
+                    </div>
+                </div>
+                <div class="columns-container">
+                    <div class="column ok">
+                        <div class="column-header">
+                            <span class="column-title">✅ OK</span>
+                            <div class="column-status-indicators"><span class="status-badge completed" id="ok-completed-badge" title="Completados">0</span><span class="status-badge pending" id="ok-pending-badge" title="Pendientes">0</span></div>
+                            <span class="column-count" id="ok-count">0</span>
+                        </div>
+                        <div class="column-pallet-info">
+                            <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-ok" placeholder="📍 Ubicación destino...">
+                            <div class="column-actions">
+                                <button class="column-action-btn copy-codes" onclick="copyCodes('ok')">📋 Códigos</button>
+                                <button class="column-action-btn copy-location" onclick="copyColumnLocation('ok')">📍 Ubicación</button>
+                                <button class="column-action-btn view-detail" onclick="showDetailModal('ok')">🔍 Detalle</button>
+                            </div>
+                            <button class="column-send-btn" onclick="initSendPallet('ok')" id="send-ok-btn" disabled>📤 Enviar Tarima OK</button>
+                        </div>
+                        <div class="column-list" id="ok-list"><div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div></div>
+                    </div>
+                    <div class="column blocked">
+                        <div class="column-header"><span class="column-title">⚠️ Bloqueado</span><span class="column-count" id="blocked-count">0</span></div>
+                        <div class="column-pallet-info">
+                            <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-blocked" placeholder="📍 Ubicación destino...">
+                            <div class="column-actions">
+                                <button class="column-action-btn copy-codes" onclick="copyCodes('blocked')">📋 Códigos</button>
+                                <button class="column-action-btn copy-location" onclick="copyColumnLocation('blocked')">📍 Ubicación</button>
+                                <button class="column-action-btn view-detail" onclick="showDetailModal('blocked')">🔍 Detalle</button>
+                            </div>
+                            <button class="column-send-btn" onclick="initSendPallet('blocked')" id="send-blocked-btn" disabled>📤 Enviar Tarima Bloqueado</button>
+                        </div>
+                        <div class="column-list" id="blocked-list"><div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div></div>
+                    </div>
+                    <div class="column nowms">
+                        <div class="column-header"><span class="column-title">❌ No WMS</span><span class="column-count" id="nowms-count">0</span></div>
+                        <div class="column-pallet-info">
+                            <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
+                            <input type="text" class="column-location-input" id="location-nowms" placeholder="📍 Ubicación destino...">
+                            <div class="column-actions">
+                                <button class="column-action-btn copy-codes" onclick="copyCodes('nowms')">📋 Códigos</button>
+                                <button class="column-action-btn copy-location" onclick="copyColumnLocation('nowms')">📍 Ubicación</button>
+                                <button class="column-action-btn view-detail" onclick="showDetailModal('nowms')">🔍 Detalle</button>
+                            </div>
+                            <button class="column-send-btn" onclick="initSendPallet('nowms')" id="send-nowms-btn" disabled>📤 Enviar Tarima No WMS</button>
+                        </div>
+                        <div class="column-list" id="nowms-list"><div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- RESUMEN POPUP -->
-    <div class="popup-overlay" id="resumen-popup">
-        <div class="popup-content">
-            <div class="popup-header">
-                <span>📊 Resumen de Sesión</span>
-                <button class="popup-close" onclick="closeResumen()">×</button>
-            </div>
-
-            <div class="resumen-stats">
-                <div class="resumen-stat ok">
-                    <div class="resumen-stat-number" id="resumen-ok">0</div>
-                    <div class="resumen-stat-label">OK</div>
-                </div>
-                <div class="resumen-stat blocked">
-                    <div class="resumen-stat-number" id="resumen-blocked">0</div>
-                    <div class="resumen-stat-label">Bloqueado</div>
-                </div>
-                <div class="resumen-stat nowms">
-                    <div class="resumen-stat-number" id="resumen-nowms">0</div>
-                    <div class="resumen-stat-label">No WMS</div>
-                </div>
-                <div class="resumen-stat pending">
-                    <div class="resumen-stat-number" id="resumen-pending">0</div>
-                    <div class="resumen-stat-label">Pendientes Sync</div>
-                </div>
-            </div>
-
-            <div class="resumen-actions">
-                <button class="btn btn-primary btn-small" onclick="refreshInventory(); closeResumen();">🔄 Recargar BD</button>
-                <button class="btn btn-success btn-small" onclick="SyncManager.sync(); updateResumen();">🔄 Sincronizar</button>
-                <button class="btn btn-secondary btn-small" onclick="exportData();">📥 Exportar</button>
-            </div>
-
-            <h3 style="margin-bottom: 10px; font-size: 1em;">📋 Historial Reciente</h3>
-            <div class="resumen-table-container">
-                <table class="resumen-table">
-                    <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Código</th>
-                            <th>Código 2</th>
-                            <th>Estatus</th>
-                            <th>Ubicación</th>
-                            <th>Pallet</th>
-                        </tr>
-                    </thead>
-                    <tbody id="resumen-table-body">
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
+    <!-- POPUPS -->
+    <div class="popup-overlay" id="resumen-popup"><div class="popup-content"><div class="popup-header"><span>📊 Resumen de Sesión</span><button class="popup-close" onclick="closeResumen()">×</button></div><div class="resumen-stats"><div class="resumen-stat ok"><div class="resumen-stat-number" id="resumen-ok">0</div><div class="resumen-stat-label">OK</div></div><div class="resumen-stat blocked"><div class="resumen-stat-number" id="resumen-blocked">0</div><div class="resumen-stat-label">Bloqueado</div></div><div class="resumen-stat nowms"><div class="resumen-stat-number" id="resumen-nowms">0</div><div class="resumen-stat-label">No WMS</div></div><div class="resumen-stat pending"><div class="resumen-stat-number" id="resumen-pending">0</div><div class="resumen-stat-label">Pendientes Sync</div></div></div><div class="resumen-actions"><button class="btn btn-primary btn-small" onclick="refreshInventory(); closeResumen();">🔄 Recargar BD</button><button class="btn btn-success btn-small" onclick="SyncManager.sync(); updateResumen();">🔄 Sincronizar</button><button class="btn btn-secondary btn-small" onclick="exportData();">📥 Exportar</button></div><h3 style="margin-bottom: 10px; font-size: 1em;">📋 Historial Reciente</h3><div class="resumen-table-container"><table class="resumen-table"><thead><tr><th>Hora</th><th>Código</th><th>Código 2</th><th>Estatus</th><th>Ubicación</th><th>Pallet</th></tr></thead><tbody id="resumen-table-body"></tbody></table></div></div></div>
+    <div class="popup-overlay" id="duplicate-popup"><div class="popup-content duplicate-popup"><div class="popup-header"><span>⚠️ Código Duplicado</span><button class="popup-close" onclick="closeDuplicatePopup()">×</button></div><div class="duplicate-info"><div class="duplicate-info-row"><span class="duplicate-info-label">Código:</span><span class="duplicate-info-value" id="dup-code">-</span></div><div class="duplicate-info-row"><span class="duplicate-info-label">Escaneado por:</span><span class="duplicate-info-value" id="dup-user">-</span></div><div class="duplicate-info-row"><span class="duplicate-info-label">Hora original:</span><span class="duplicate-info-value" id="dup-time">-</span></div><div class="duplicate-info-row"><span class="duplicate-info-label">Tarima:</span><span class="duplicate-info-value" id="dup-pallet">-</span></div></div><div class="popup-buttons"><button class="btn btn-warning btn-full" onclick="forceInsertDuplicate()">⚡ INGRESO FORZADO</button><button class="btn btn-secondary btn-full" onclick="closeDuplicatePopup()">Cancelar</button></div></div></div>
+    <div class="popup-overlay" id="validation-popup"><div class="popup-content validation-popup"><div class="popup-header"><span>🔢 Validación de Cajas</span><button class="popup-close" onclick="closeValidationPopup()">×</button></div><p style="margin-bottom: 15px; color: #666;">¿Cuántas cajas físicas hay en la tarima?</p><div class="validation-compare"><div class="validation-compare-item expected"><div class="validation-compare-number" id="validation-expected">0</div><div class="validation-compare-label">Escaneadas</div></div><div class="validation-compare-item entered" id="validation-entered-container"><div class="validation-compare-number" id="validation-entered">-</div><div class="validation-compare-label">Ingresadas</div></div></div><input type="number" class="validation-input" id="validation-input" placeholder="Cantidad" min="0"><div id="validation-message" style="margin: 10px 0; font-weight: 600;"></div><div class="popup-buttons"><button class="btn btn-success btn-full" id="validation-confirm-btn" onclick="confirmValidation()" disabled>✅ Confirmar y Enviar</button><button class="btn btn-secondary btn-full" onclick="closeValidationPopup()">Cancelar</button></div></div></div>
+    <div class="popup-overlay" id="transfer-popup"><div class="popup-content" style="max-width: 400px;"><div class="popup-header"><span>🔄 Transferir Caja</span><button class="popup-close" onclick="closeTransferPopup()">×</button></div><p style="margin-bottom: 15px;">Selecciona el destino para la caja:</p><div id="transfer-box-info" style="background: #f5f5f5; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-family: monospace;"></div><div class="popup-buttons" id="transfer-options"></div></div></div>
+    <div class="popup-overlay" id="detail-modal"><div class="popup-content detail-modal"><div class="detail-modal-header"><div class="detail-modal-title"><span id="detail-modal-icon">📦</span><span id="detail-modal-title-text">Detalle de Tarima</span><span id="detail-modal-pallet" style="font-family: monospace; color: var(--primary);"></span></div><div class="detail-modal-counters" id="detail-modal-counters"></div><button class="popup-close" onclick="closeDetailModal()">×</button></div><div class="detail-filters"><div class="filter-group"><label>Fecha/Hora</label><input type="text" id="filter-datetime" placeholder="Buscar..."></div><div class="filter-group"><label>Ubicación</label><input type="text" id="filter-location" placeholder="Buscar..."></div><div class="filter-group"><label>Código</label><input type="text" id="filter-code" placeholder="Buscar..."></div><div class="filter-actions"><button class="btn btn-small btn-primary" onclick="applyDetailFilters()">🔍 Filtrar</button><button class="btn btn-small btn-secondary" onclick="clearDetailFilters()">🗑️ Limpiar</button><button class="btn btn-small" style="background: #f3e5f5; color: #7b1fa2;" onclick="copyAllDetailCodes()">📋 Copiar Todo</button></div></div><div class="detail-table-container"><table class="detail-table"><thead><tr><th onclick="sortDetailTable('index')"># <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('code')">Código <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('scan2')">Código 2 <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('location')">Ubicación <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('timestamp')">Hora <span class="sort-icon">↕</span></th><th>Acciones</th></tr></thead><tbody id="detail-table-body"></tbody></table></div><div class="popup-buttons" style="flex-direction: row; margin-top: 15px;"><button class="btn btn-secondary" onclick="closeDetailModal()">Cerrar</button></div></div></div>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script>
-        // ==================== CONFIGURATION ====================
-        const CONFIG = {
-            CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
-            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
-            SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
-            SHEET_NAME: 'BD',  // Hoja para escaneo normal
-            SHEET_QUICK: 'BD2',  // Hoja para captura rápida
-            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
-            MAX_TABS: 4
-        };
+        const CONFIG = { CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com', SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile', SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8', SHEET_NAME: 'BD', INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv' };
+        let STATE = { inventory: new Map(), inventoryLastUpdate: null, pallets: { ok: { id: generatePalletId('OK'), boxes: [], location: '' }, blocked: { id: generatePalletId('BLK'), boxes: [], location: '' }, nowms: { id: generatePalletId('NW'), boxes: [], location: '' } }, pendingCode1: null, history: [], originLocation: '', boxStatuses: {} };
+        let DUPLICATE_PENDING = null, VALIDATION_CATEGORY = null, TRANSFER_DATA = null, DETAIL_MODAL_CATEGORY = null, DETAIL_SORT_FIELD = null, DETAIL_SORT_ASC = true, DETAIL_FILTERED_DATA = [];
+        let CURRENT_USER = '', USER_EMAIL = '', USER_GOOGLE_NAME = '', IS_ONLINE = navigator.onLine, PENDING_SYNC = [], TOKEN_CLIENT = null, audioCtx = null;
 
-        // ==================== STATE ====================
-        let STATE = {
-            inventory: new Map(),
-            inventoryLastUpdate: null,
-            pallets: {
-                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-            },
-            pendingCode1: null,
-            history: [],
-            quickHistory: []  // Historial separado para captura rápida
-        };
-
-        let CURRENT_USER = '';
-        let USER_EMAIL = '';
-        let USER_GOOGLE_NAME = '';
-        let IS_ONLINE = navigator.onLine;
-        let PENDING_SYNC = [];
-        let PENDING_SYNC_QUICK = [];  // Cola separada para captura rápida
-        let TOKEN_CLIENT = null;
-        let audioCtx = null;
-
-        // ==================== TAB MANAGER ====================
-        const TabManager = {
-            tabs: [],
-            activeTabId: null,
-            nextId: 1,
-
-            init() {
-                this.updateUI();
-            },
-
-            createTab(type = 'normal') {
-                if (this.tabs.length >= CONFIG.MAX_TABS) {
-                    showNotification(`⚠️ Máximo ${CONFIG.MAX_TABS} pestañas`, 'warning');
-                    return null;
-                }
-
-                const tabId = `tab-${this.nextId++}`;
-                const tab = {
-                    id: tabId,
-                    type,  // 'normal' or 'quick'
-                    title: type === 'quick' ? '⚡ Captura Rápida' : '📦 Escaneo',
-                    timestamp: Date.now()
-                };
-
-                this.tabs.push(tab);
-                this.createTabContent(tabId, type);
-                this.setActiveTab(tabId);
-                this.updateUI();
-                this.saveState();
-
-                return tabId;
-            },
-
-            createTabContent(tabId, type) {
-                const contentArea = document.getElementById('tab-content-area');
-                const emptyState = document.getElementById('empty-workspace');
-                if (emptyState) emptyState.style.display = 'none';
-
-                const tabContent = document.createElement('div');
-                tabContent.id = tabId;
-                tabContent.className = 'tab-content';
-
-                if (type === 'quick') {
-                    tabContent.innerHTML = this.getQuickCaptureHTML(tabId);
-                } else {
-                    tabContent.innerHTML = this.getNormalScanHTML(tabId);
-                }
-
-                contentArea.appendChild(tabContent);
-                this.setupTabEventListeners(tabId, type);
-            },
-
-            getNormalScanHTML(tabId) {
-                return `
-                    <div class="header">
-                        <h1>📸 Área de Escaneo</h1>
-                    </div>
-
-                    <div class="scan-section">
-                        <div class="scan-row">
-                            <div class="scan-input-group">
-                                <label>🔍 Código Principal</label>
-                                <input type="text" class="scan-input" id="scan-input-${tabId}" placeholder="Escanea o ingresa código..." autocomplete="off">
-                            </div>
-                        </div>
-
-                        <div class="result-box" id="result-box-${tabId}">
-                            <div class="result-header">
-                                <span class="result-icon" id="result-icon-${tabId}">📦</span>
-                                <span class="result-title" id="result-title-${tabId}">Estado</span>
-                            </div>
-                            <div class="result-code" id="result-code-${tabId}"></div>
-                            <div class="result-details" id="result-details-${tabId}"></div>
-                        </div>
-
-                        <div class="code2-container" id="code2-container-${tabId}">
-                            <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
-                                ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
-                            </label>
-                            <div class="code2-row">
-                                <div class="scan-input-group">
-                                    <input type="text" class="scan-input" id="code2-input-${tabId}" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
-                                </div>
-                                <button class="btn-insertado" onclick="TabManager.forceInsert('${tabId}')">
-                                    ⚡ INSERTADO
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="columns-container">
-                        <div class="column ok">
-                            <div class="column-header">
-                                <span class="column-title">✅ OK</span>
-                                <span class="column-count" id="ok-count-${tabId}">0</span>
-                            </div>
-                            <div class="column-pallet-info">
-                                <div>Pallet: <span class="column-pallet-code" id="ok-pallet-${tabId}">-</span></div>
-                                <input type="text" class="column-location-input" id="location-ok-${tabId}" placeholder="📍 Ubicación destino...">
-                                <button class="column-send-btn" onclick="TabManager.sendPallet('${tabId}', 'ok')" id="send-ok-btn-${tabId}" disabled>
-                                    📤 Enviar Tarima OK
-                                </button>
-                            </div>
-                            <div class="column-list" id="ok-list-${tabId}">
-                                <div class="empty-state">
-                                    <div class="empty-icon">📭</div>
-                                    <div>Sin cajas</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="column blocked">
-                            <div class="column-header">
-                                <span class="column-title">⚠️ Bloqueado</span>
-                                <span class="column-count" id="blocked-count-${tabId}">0</span>
-                            </div>
-                            <div class="column-pallet-info">
-                                <div>Pallet: <span class="column-pallet-code" id="blocked-pallet-${tabId}">-</span></div>
-                                <input type="text" class="column-location-input" id="location-blocked-${tabId}" placeholder="📍 Ubicación destino...">
-                                <button class="column-send-btn" onclick="TabManager.sendPallet('${tabId}', 'blocked')" id="send-blocked-btn-${tabId}" disabled>
-                                    📤 Enviar Tarima Bloqueado
-                                </button>
-                            </div>
-                            <div class="column-list" id="blocked-list-${tabId}">
-                                <div class="empty-state">
-                                    <div class="empty-icon">📭</div>
-                                    <div>Sin cajas</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="column nowms">
-                            <div class="column-header">
-                                <span class="column-title">❌ No WMS</span>
-                                <span class="column-count" id="nowms-count-${tabId}">0</span>
-                            </div>
-                            <div class="column-pallet-info">
-                                <div>Pallet: <span class="column-pallet-code" id="nowms-pallet-${tabId}">-</span></div>
-                                <input type="text" class="column-location-input" id="location-nowms-${tabId}" placeholder="📍 Ubicación destino...">
-                                <button class="column-send-btn" onclick="TabManager.sendPallet('${tabId}', 'nowms')" id="send-nowms-btn-${tabId}" disabled>
-                                    📤 Enviar Tarima No WMS
-                                </button>
-                            </div>
-                            <div class="column-list" id="nowms-list-${tabId}">
-                                <div class="empty-state">
-                                    <div class="empty-icon">📭</div>
-                                    <div>Sin cajas</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            },
-
-            getQuickCaptureHTML(tabId) {
-                return `
-                    <div class="header">
-                        <h1>⚡ Captura Rápida</h1>
-                    </div>
-
-                    <div class="scan-section">
-                        <div class="scan-row">
-                            <div class="scan-input-group">
-                                <label>🔍 Escanear Código</label>
-                                <input type="text" class="scan-input" id="quick-input-${tabId}" placeholder="Escanea código..." autocomplete="off">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="quick-log-container">
-                        <div class="quick-log-header">📋 Log de Escaneos (BD2)</div>
-                        <div class="quick-log-list" id="quick-log-${tabId}">
-                            <div class="empty-state">
-                                <div class="empty-icon">📝</div>
-                                <div>Sin escaneos</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            },
-
-            setupTabEventListeners(tabId, type) {
-                if (type === 'quick') {
-                    const input = document.getElementById(`quick-input-${tabId}`);
-                    if (input) {
-                        input.addEventListener('keydown', (e) => {
-                            if (e.key === 'Enter' && input.value.trim()) {
-                                e.preventDefault();
-                                this.processQuickScan(tabId, input.value.trim());
-                                input.value = '';
-                            }
-                        });
-                    }
-                } else {
-                    const scanInput = document.getElementById(`scan-input-${tabId}`);
-                    if (scanInput) {
-                        scanInput.addEventListener('keydown', (e) => {
-                            if (e.key === 'Enter' && scanInput.value.trim()) {
-                                e.preventDefault();
-                                this.processScan(tabId, scanInput.value.trim());
-                                scanInput.value = '';
-                            }
-                        });
-                    }
-
-                    const code2Input = document.getElementById(`code2-input-${tabId}`);
-                    if (code2Input) {
-                        code2Input.addEventListener('keydown', (e) => {
-                            if (e.key === 'Enter' && code2Input.value.trim()) {
-                                e.preventDefault();
-                                this.processCode2(tabId, code2Input.value.trim());
-                                code2Input.value = '';
-                            }
-                        });
-                    }
-                }
-            },
-
-            processQuickScan(tabId, rawCode) {
-                const code = normalizeCode(rawCode);
-                let item = STATE.inventory.get(code);
-                let usedCode2 = false;
-                let actualCode = code;
-
-                // Si no se encuentra, intentar con código 2 automáticamente
-                if (!item) {
-                    const code2 = normalizeCode(rawCode + '-ALT'); // Aquí podrías implementar lógica más sofisticada
-                    item = STATE.inventory.get(code2);
-                    if (item) {
-                        usedCode2 = true;
-                        actualCode = code2;
-                    }
-                }
-
-                const now = new Date();
-                const dateStr = now.toISOString().slice(0, 10);
-                const timeStr = now.toTimeString().slice(0, 8);
-
-                let status, statusClass;
-
-                if (!item) {
-                    status = 'NO WMS';
-                    statusClass = 'nowms';
-                    playSound('error');
-                } else if (item.isBlocked) {
-                    status = 'BLOQUEADO';
-                    statusClass = 'blocked';
-                    playSound('warning');
-                } else if (item.isAvailable) {
-                    status = 'OK';
-                    statusClass = 'success';
-                    playSound('success');
-                } else {
-                    status = 'SIN STOCK';
-                    statusClass = 'blocked';
-                    playSound('warning');
-                }
-
-                // Guardar en historial rápido
-                const entry = {
-                    date: dateStr,
-                    time: timeStr,
-                    user: CURRENT_USER || 'Usuario',
-                    scan1: rawCode,
-                    scan2: usedCode2 ? actualCode : '',
-                    location: item?.cellNo || '-',
-                    status,
-                    note: usedCode2 ? 'Código 2 usado automáticamente' : '',
-                    pallet: '-',
-                    displayTime: now.toLocaleTimeString()
-                };
-
-                STATE.quickHistory.unshift(entry);
-                STATE.quickHistory = STATE.quickHistory.slice(0, 100);
-
-                // Agregar a cola de sincronización
-                PENDING_SYNC_QUICK.push(entry);
-                SyncManager.save();
-
-                // Actualizar UI
-                this.updateQuickLog(tabId);
-
-                // Sincronizar automáticamente si está online
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    SyncManager.syncQuick(false);
-                }
-            },
-
-            updateQuickLog(tabId) {
-                const logEl = document.getElementById(`quick-log-${tabId}`);
-                if (!logEl) return;
-
-                if (STATE.quickHistory.length === 0) {
-                    logEl.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-icon">📝</div>
-                            <div>Sin escaneos</div>
-                        </div>
-                    `;
-                    return;
-                }
-
-                logEl.innerHTML = STATE.quickHistory.map(entry => `
-                    <div class="quick-log-item ${entry.status === 'OK' ? 'success' : entry.status === 'BLOQUEADO' ? 'blocked' : 'nowms'}">
-                        <div class="quick-log-info">
-                            <div class="quick-log-code">${entry.scan1}${entry.scan2 ? ` → ${entry.scan2}` : ''}</div>
-                            <div class="quick-log-status">
-                                ${entry.status === 'OK' ? '✅' : entry.status === 'BLOQUEADO' ? '⚠️' : '❌'} 
-                                ${entry.status}
-                                ${entry.scan2 ? ' (Código 2)' : ''}
-                            </div>
-                        </div>
-                        <div class="quick-log-time">${entry.displayTime}</div>
-                    </div>
-                `).join('');
-            },
-
-            processScan(tabId, rawCode) {
-                const code = normalizeCode(rawCode);
-
-                // Check duplicates
-                const allBoxes = [
-                    ...STATE.pallets.ok.boxes,
-                    ...STATE.pallets.blocked.boxes,
-                    ...STATE.pallets.nowms.boxes
-                ];
-
-                if (allBoxes.some(b => b.code === code)) {
-                    showNotification('⚠️ Código duplicado', 'warning');
-                    this.flashInput(tabId, 'warning');
-                    playSound('warning');
-                    return;
-                }
-
-                const item = STATE.inventory.get(code);
-
-                if (!item) {
-                    STATE.pendingCode1 = { raw: rawCode, code, tabId };
-                    this.showResultBox(tabId, 'error', code, 'NO ENCONTRADO',
-                        'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.', null);
-                    document.getElementById(`code2-container-${tabId}`).classList.add('show');
-                    this.flashInput(tabId, 'error');
-                    playSound('error');
-                    setTimeout(() => document.getElementById(`code2-input-${tabId}`)?.focus(), 100);
-                    return;
-                }
-
-                document.getElementById(`code2-container-${tabId}`).classList.remove('show');
-                STATE.pendingCode1 = null;
-                this.flashInput(tabId, 'success');
-                document.getElementById(`scan-input-${tabId}`)?.focus();
-                this.updateTabUI(tabId);
-            },
-
-            forceInsert(tabId) {
-                if (!STATE.pendingCode1 || STATE.pendingCode1.tabId !== tabId) {
-                    showNotification('⚠️ Primero escanea un código', 'warning');
-                    return;
-                }
-
-                const code2Value = document.getElementById(`code2-input-${tabId}`)?.value.trim() || '';
-
-                this.addBox('nowms', createBoxData(
-                    STATE.pendingCode1.raw,
-                    STATE.pendingCode1.code,
-                    code2Value,
-                    null
-                ));
-
-                const msg = code2Value
-                    ? `Insertado con códigos: ${STATE.pendingCode1.code} y ${code2Value}`
-                    : `Insertado con código: ${STATE.pendingCode1.code}`;
-
-                this.showResultBox(tabId, 'error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', msg, null);
-
-                document.getElementById(`code2-container-${tabId}`).classList.remove('show');
-                const code2Input = document.getElementById(`code2-input-${tabId}`);
-                if (code2Input) code2Input.value = '';
-                STATE.pendingCode1 = null;
-
-                playSound('warning');
-                this.flashInput(tabId, 'warning');
-                document.getElementById(`scan-input-${tabId}`)?.focus();
-                showNotification('⚡ Registro insertado forzosamente', 'warning');
-                this.updateTabUI(tabId);
-            },
-
-            addBox(category, boxData) {
-                STATE.pallets[category].boxes.push(boxData);
-                saveToStorage();
-                updateUI();
-            },
-
-            showResultBox(tabId, type, code, title, message, item) {
-                const box = document.getElementById(`result-box-${tabId}`);
-                if (!box) return;
-
-                const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' };
-
-                box.className = `result-box show ${type}`;
-                const iconEl = document.getElementById(`result-icon-${tabId}`);
-                const titleEl = document.getElementById(`result-title-${tabId}`);
-                const codeEl = document.getElementById(`result-code-${tabId}`);
-                const detailsEl = document.getElementById(`result-details-${tabId}`);
-
-                if (iconEl) iconEl.textContent = icons[type] || '📦';
-                if (titleEl) titleEl.textContent = title;
-                if (codeEl) codeEl.textContent = code;
-
-                if (detailsEl) {
-                    if (item) {
-                        detailsEl.innerHTML = `
-                            <div><span class="result-detail-label">Ubicación</span><div class="result-detail-value">${item.cellNo || '-'}</div></div>
-                            <div><span class="result-detail-label">SKU</span><div class="result-detail-value">${item.sku || '-'}</div></div>
-                            <div><span class="result-detail-label">Producto</span><div class="result-detail-value">${item.productName || '-'}</div></div>
-                            <div><span class="result-detail-label">Stock</span><div class="result-detail-value">${item.availableStock || 0}</div></div>
-                        `;
-                    } else {
-                        detailsEl.innerHTML = `<div style="grid-column: 1/-1; color: #666;">${message}</div>`;
-                    }
-                }
-            },
-
-            flashInput(tabId, type) {
-                const input = document.getElementById(`scan-input-${tabId}`) || document.getElementById(`quick-input-${tabId}`);
-                if (!input) return;
-                input.classList.remove('success', 'error');
-                input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
-                setTimeout(() => input.classList.remove('success', 'error'), 500);
-            },
-
-            updateTabUI(tabId) {
-                // Update counts
-                const okCount = document.getElementById(`ok-count-${tabId}`);
-                const blockedCount = document.getElementById(`blocked-count-${tabId}`);
-                const nowmsCount = document.getElementById(`nowms-count-${tabId}`);
-
-                if (okCount) okCount.textContent = STATE.pallets.ok.boxes.length;
-                if (blockedCount) blockedCount.textContent = STATE.pallets.blocked.boxes.length;
-                if (nowmsCount) nowmsCount.textContent = STATE.pallets.nowms.boxes.length;
-
-                // Update pallet IDs
-                const okPallet = document.getElementById(`ok-pallet-${tabId}`);
-                const blockedPallet = document.getElementById(`blocked-pallet-${tabId}`);
-                const nowmsPallet = document.getElementById(`nowms-pallet-${tabId}`);
-
-                if (okPallet) okPallet.textContent = STATE.pallets.ok.id;
-                if (blockedPallet) blockedPallet.textContent = STATE.pallets.blocked.id;
-                if (nowmsPallet) nowmsPallet.textContent = STATE.pallets.nowms.id;
-
-                // Update lists
-                this.updateList(tabId, 'ok');
-                this.updateList(tabId, 'blocked');
-                this.updateList(tabId, 'nowms');
-
-                // Update send buttons
-                const sendOkBtn = document.getElementById(`send-ok-btn-${tabId}`);
-                const sendBlockedBtn = document.getElementById(`send-blocked-btn-${tabId}`);
-                const sendNowmsBtn = document.getElementById(`send-nowms-btn-${tabId}`);
-
-                if (sendOkBtn) sendOkBtn.disabled = STATE.pallets.ok.boxes.length === 0;
-                if (sendBlockedBtn) sendBlockedBtn.disabled = STATE.pallets.blocked.boxes.length === 0;
-                if (sendNowmsBtn) sendNowmsBtn.disabled = STATE.pallets.nowms.boxes.length === 0;
-            },
-
-            updateList(tabId, category) {
-                const listEl = document.getElementById(`${category}-list-${tabId}`);
-                if (!listEl) return;
-
-                const boxes = STATE.pallets[category].boxes;
-
-                if (boxes.length === 0) {
-                    listEl.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <div>Sin cajas</div>
-                        </div>
-                    `;
-                    return;
-                }
-
-                listEl.innerHTML = boxes.map((box, index) => `
-                    <div class="box-item">
-                        <div class="box-info">
-                            <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
-                            <div class="box-meta">${box.location} • ${box.timestamp}</div>
-                        </div>
-                        <button class="box-delete" onclick="TabManager.deleteBox('${tabId}', '${category}', ${index})">✕</button>
-                    </div>
-                `).join('');
-            },
-
-            deleteBox(tabId, category, index) {
-                if (confirm('¿Eliminar esta caja?')) {
-                    STATE.pallets[category].boxes.splice(index, 1);
-                    saveToStorage();
-                    this.updateTabUI(tabId);
-                    updateUI();
-                    showNotification('Caja eliminada', 'info');
-                }
-            },
-
-            async sendPallet(tabId, category) {
-                const pallet = STATE.pallets[category];
-                const locationInput = document.getElementById(`location-${category}-${tabId}`);
-                const location = locationInput?.value.trim() || '';
-
-                if (pallet.boxes.length === 0) {
-                    showNotification('⚠️ No hay cajas en esta tarima', 'warning');
-                    return;
-                }
-
-                if (!location) {
-                    showNotification('⚠️ Ingresa la ubicación destino', 'warning');
-                    locationInput?.focus();
-                    return;
-                }
-
-                // Validar formato de ubicación
-                const locationCheck = confirmInvalidLocation(location);
-                if (!locationCheck.confirmed) {
-                    showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-                    locationInput?.focus();
-                    return;
-                }
-
-                const finalLocation = locationCheck.formatted;
-                if (locationInput) locationInput.value = finalLocation;
-
-                const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-                const now = new Date();
-                const dateStr = now.toISOString().slice(0, 10);
-                const timeStr = now.toTimeString().slice(0, 8);
-
-                const records = pallet.boxes.map(box => ({
-                    date: dateStr,
-                    time: timeStr,
-                    user: CURRENT_USER || 'Usuario',
-                    scan1: box.scan1 || box.raw,
-                    scan2: box.scan2 || '',
-                    location: finalLocation,
-                    status: statusMap[category],
-                    note: '',
-                    pallet: pallet.id
-                }));
-
-                STATE.history = [...records, ...STATE.history].slice(0, 1000);
-                PENDING_SYNC = [...PENDING_SYNC, ...records];
-                SyncManager.save();
-
-                showNotification(`💾 ${records.length} registros agregados`, 'info');
-
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    await SyncManager.sync();
-                } else {
-                    SyncManager.updateUI(false);
-                }
-
-                const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-                STATE.pallets[category] = {
-                    id: generatePalletId(prefixes[category]),
-                    boxes: [],
-                    location: ''
-                };
-                if (locationInput) locationInput.value = '';
-
-                saveToStorage();
-                this.updateTabUI(tabId);
-                updateUI();
-                playSound('success');
-                document.getElementById(`scan-input-${tabId}`)?.focus();
-            },
-
-            closeTab(tabId) {
-                const tabIndex = this.tabs.findIndex(t => t.id === tabId);
-                if (tabIndex === -1) return;
-
-                const tab = this.tabs[tabIndex];
-
-                // Check if normal tab has unsent boxes
-                if (tab.type === 'normal') {
-                    const totalBoxes = STATE.pallets.ok.boxes.length +
-                                      STATE.pallets.blocked.boxes.length +
-                                      STATE.pallets.nowms.boxes.length;
-                    if (totalBoxes > 0) {
-                        if (!confirm(`Hay ${totalBoxes} cajas sin enviar. ¿Cerrar de todas formas?`)) {
-                            return;
-                        }
-                    }
-                }
-
-                this.tabs.splice(tabIndex, 1);
-                const contentEl = document.getElementById(tabId);
-                if (contentEl) contentEl.remove();
-
-                if (this.activeTabId === tabId) {
-                    if (this.tabs.length > 0) {
-                        const newActiveTab = this.tabs[Math.max(0, tabIndex - 1)];
-                        this.setActiveTab(newActiveTab.id);
-                    } else {
-                        this.activeTabId = null;
-                        const emptyState = document.getElementById('empty-workspace');
-                        if (emptyState) emptyState.style.display = 'flex';
-                    }
-                }
-
-                this.updateUI();
-                this.saveState();
-            },
-
-            setActiveTab(tabId) {
-                this.activeTabId = tabId;
-                
-                // Update tab content visibility
-                document.querySelectorAll('.tab-content').forEach(el => {
-                    el.classList.toggle('active', el.id === tabId);
-                });
-
-                // Update tab buttons
-                document.querySelectorAll('.tab-item').forEach(el => {
-                    el.classList.toggle('active', el.dataset.tabId === tabId);
-                });
-
-                // Focus input
-                setTimeout(() => {
-                    const tab = this.tabs.find(t => t.id === tabId);
-                    if (tab) {
-                        if (tab.type === 'quick') {
-                            document.getElementById(`quick-input-${tabId}`)?.focus();
-                        } else {
-                            document.getElementById(`scan-input-${tabId}`)?.focus();
-                        }
-                    }
-                }, 100);
-
-                this.saveState();
-            },
-
-            updateUI() {
-                const tabsList = document.getElementById('tabs-list');
-                if (!tabsList) return;
-
-                if (this.tabs.length === 0) {
-                    tabsList.innerHTML = '';
-                    const emptyState = document.getElementById('empty-workspace');
-                    if (emptyState) emptyState.style.display = 'flex';
-                    return;
-                }
-
-                const emptyState = document.getElementById('empty-workspace');
-                if (emptyState) emptyState.style.display = 'none';
-
-                tabsList.innerHTML = this.tabs.map(tab => `
-                    <div class="tab-item ${tab.id === this.activeTabId ? 'active' : ''}" 
-                         data-tab-id="${tab.id}"
-                         onclick="TabManager.setActiveTab('${tab.id}')">
-                        <span>${tab.title}</span>
-                        <button class="tab-close" onclick="event.stopPropagation(); TabManager.closeTab('${tab.id}')">×</button>
-                    </div>
-                `).join('');
-            },
-
-            saveState() {
-                try {
-                    const state = {
-                        tabs: this.tabs,
-                        activeTabId: this.activeTabId,
-                        nextId: this.nextId
-                    };
-                    localStorage.setItem('pd_tabs_state', JSON.stringify(state));
-                } catch (e) {
-                    console.error('Error saving tabs:', e);
-                }
-            },
-
-            loadState() {
-                try {
-                    const saved = localStorage.getItem('pd_tabs_state');
-                    if (saved) {
-                        const state = JSON.parse(saved);
-                        this.nextId = state.nextId || 1;
-                        // Don't restore tabs on load, start fresh
-                    }
-                } catch (e) {
-                    console.error('Error loading tabs:', e);
-                }
-            }
-        };
-
-        // ==================== SYNC MANAGER ====================
         const SyncManager = {
-            inProgress: false,
-            retryCount: 0,
-            intervalId: null,
-            AUTO_SYNC_INTERVAL: 30000,
-
-            init() {
-                this.load();
-                this.startAutoSync();
-                this.setupExitProtection();
-                this.updateUI(PENDING_SYNC.length === 0 && PENDING_SYNC_QUICK.length === 0);
-            },
-
-            setupExitProtection() {
-                window.addEventListener('beforeunload', (e) => {
-                    const hasUnsavedData = PENDING_SYNC.length > 0 ||
-                        PENDING_SYNC_QUICK.length > 0 ||
-                        STATE.pallets.ok.boxes.length > 0 ||
-                        STATE.pallets.blocked.boxes.length > 0 ||
-                        STATE.pallets.nowms.boxes.length > 0;
-
-                    if (hasUnsavedData) {
-                        e.preventDefault();
-                        e.returnValue = '¡Tienes datos sin sincronizar! ¿Seguro que quieres salir?';
-                        return e.returnValue;
-                    }
-                });
-            },
-
-            startAutoSync() {
-                if (this.intervalId) clearInterval(this.intervalId);
-                this.intervalId = setInterval(() => {
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
-                        if (PENDING_SYNC.length > 0) this.sync(false);
-                        if (PENDING_SYNC_QUICK.length > 0) this.syncQuick(false);
-                    }
-                }, this.AUTO_SYNC_INTERVAL);
-            },
-
+            inProgress: false, retryCount: 0, intervalId: null, AUTO_SYNC_INTERVAL: 30000,
+            init() { this.load(); this.startAutoSync(); this.setupExitProtection(); this.updateUI(PENDING_SYNC.length === 0); },
+            setupExitProtection() { window.addEventListener('beforeunload', (e) => { const hasData = PENDING_SYNC.length > 0 || STATE.pallets.ok.boxes.length > 0 || STATE.pallets.blocked.boxes.length > 0 || STATE.pallets.nowms.boxes.length > 0; if (hasData) { e.preventDefault(); e.returnValue = '¡Tienes datos sin sincronizar!'; return e.returnValue; } }); },
+            startAutoSync() { if (this.intervalId) clearInterval(this.intervalId); this.intervalId = setInterval(() => { if (PENDING_SYNC.length > 0 && IS_ONLINE && gapi?.client?.getToken()) this.sync(false); }, this.AUTO_SYNC_INTERVAL); },
             async sync(showMessages = true) {
-                if (this.inProgress) {
-                    if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
-                    return { success: false };
-                }
-
-                if (!IS_ONLINE) {
-                    if (showMessages) showNotification('⚠️ Sin conexión a internet', 'warning');
-                    return { success: false };
-                }
-
-                if (!gapi?.client?.getToken()) {
-                    if (showMessages) showNotification('⚠️ No conectado a Google', 'warning');
-                    return { success: false };
-                }
-
-                if (PENDING_SYNC.length === 0) {
-                    this.updateUI(PENDING_SYNC_QUICK.length === 0);
-                    if (showMessages) showNotification('✅ Todo sincronizado', 'success');
-                    return { success: true, synced: 0 };
-                }
-
-                return await this._doSync(showMessages, CONFIG.SHEET_NAME, PENDING_SYNC, 'PENDING_SYNC');
-            },
-
-            async syncQuick(showMessages = true) {
-                if (this.inProgress) {
-                    if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
-                    return { success: false };
-                }
-
-                if (!IS_ONLINE || !gapi?.client?.getToken()) {
-                    return { success: false };
-                }
-
-                if (PENDING_SYNC_QUICK.length === 0) {
-                    return { success: true, synced: 0 };
-                }
-
-                return await this._doSync(showMessages, CONFIG.SHEET_QUICK, PENDING_SYNC_QUICK, 'PENDING_SYNC_QUICK');
-            },
-
-            async _doSync(showMessages, sheetName, pendingArray, arrayName) {
-                this.inProgress = true;
-                updateConnectionIndicator(true);
-
-                if (showMessages) showNotification('🔄 Sincronizando...', 'info');
-
+                if (this.inProgress || PENDING_SYNC.length === 0) return { success: true };
+                if (!IS_ONLINE) { if (showMessages) showNotification('⚠️ Sin conexión', 'warning'); return { success: false }; }
+                if (!gapi?.client?.getToken()) { if (showMessages) showNotification('⚠️ No autenticado', 'warning'); return { success: false }; }
+                this.inProgress = true; updateConnectionIndicator(true);
                 try {
-                    const values = pendingArray.map(r => [
-                        r.date, r.time, r.user, r.scan1, r.scan2,
-                        r.location, r.status, r.note, r.pallet
-                    ]);
-
-                    await gapi.client.sheets.spreadsheets.values.append({
-                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                        range: `${sheetName}!A:I`,
-                        valueInputOption: 'USER_ENTERED',
-                        insertDataOption: 'INSERT_ROWS',
-                        resource: { values }
-                    });
-
-                    const synced = pendingArray.length;
-                    
-                    if (arrayName === 'PENDING_SYNC') {
-                        PENDING_SYNC = [];
-                    } else {
-                        PENDING_SYNC_QUICK = [];
-                    }
-
-                    this.save();
-                    this.updateUI(PENDING_SYNC.length === 0 && PENDING_SYNC_QUICK.length === 0);
-
-                    if (showMessages) showNotification(`✅ ${synced} registros sincronizados a ${sheetName}`, 'success');
-                    return { success: true, synced };
-                } catch (e) {
-                    console.error('Sync error:', e);
-                    this.updateUI(false);
-                    if (showMessages) showNotification(`❌ Error: ${e.result?.error?.message || e.message || 'Error desconocido'}`, 'error');
-                    return { success: false };
-                } finally {
-                    this.inProgress = false;
-                    updateConnectionIndicator();
-                }
+                    const values = PENDING_SYNC.map(r => [r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet, r.originLocation || '']);
+                    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: CONFIG.SPREADSHEET_WRITE, range: `${CONFIG.SHEET_NAME}!A:J`, valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS', resource: { values } });
+                    const synced = PENDING_SYNC.length; PENDING_SYNC = []; this.save(); this.updateUI(true);
+                    if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success'); return { success: true, synced };
+                } catch (e) { console.error('Sync error:', e); this.updateUI(false); if (showMessages) showNotification(`❌ Error: ${e.result?.error?.message || e.message}`, 'error'); return { success: false }; }
+                finally { this.inProgress = false; updateConnectionIndicator(); }
             },
-
-            async save() {
-                try {
-                    localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
-                    localStorage.setItem('pd_pending_sync_quick', JSON.stringify(PENDING_SYNC_QUICK));
-                } catch (e) {}
-            },
-
-            async load() {
-                try {
-                    const saved = localStorage.getItem('pd_pending_sync');
-                    if (saved) PENDING_SYNC = JSON.parse(saved);
-                    
-                    const savedQuick = localStorage.getItem('pd_pending_sync_quick');
-                    if (savedQuick) PENDING_SYNC_QUICK = JSON.parse(savedQuick);
-                } catch (e) {}
-            },
-
-            updateUI(synced) {
-                const el = document.getElementById('sync-status');
-                if (!el) return;
-
-                const totalPending = PENDING_SYNC.length + PENDING_SYNC_QUICK.length;
-
-                if (!IS_ONLINE) {
-                    el.className = 'sync-status sync-warning';
-                    el.innerHTML = `⚠️ Sin conexión${totalPending > 0 ? ` (${totalPending})` : ''}`;
-                } else if (totalPending > 0) {
-                    el.className = 'sync-status sync-warning';
-                    el.innerHTML = `⏳ ${totalPending} pendientes`;
-                } else if (synced) {
-                    el.className = 'sync-status sync-ok';
-                    el.textContent = '✅ Sincronizado';
-                } else {
-                    el.className = 'sync-status sync-error';
-                    el.textContent = '❌ Error sync';
-                }
-            },
-
-            showPanel() {
-                const totalPending = PENDING_SYNC.length + PENDING_SYNC_QUICK.length;
-                const overlay = document.createElement('div');
-                overlay.className = 'popup-overlay show';
-                overlay.innerHTML = `
-                    <div class="popup-content" style="max-width: 450px;">
-                        <div class="popup-header">
-                            <span>📊 Estado de Sincronización</span>
-                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px; text-align: center;">
-                                <div style="font-size: 0.85em; color: #666;">Pendientes de sincronizar</div>
-                                <div style="font-size: 2em; font-weight: 700; color: ${totalPending > 0 ? 'var(--warning)' : 'var(--success)'};">
-                                    ${totalPending}
-                                </div>
-                                <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
-                                    BD: ${PENDING_SYNC.length} | BD2: ${PENDING_SYNC_QUICK.length}
-                                </div>
-                            </div>
-                            <div style="font-size: 0.9em; padding: 10px; background: #f9f9f9; border-radius: 6px;">
-                                ${IS_ONLINE ? '🟢 Conectado a internet' : '🔴 Sin conexión'}<br>
-                                ${gapi?.client?.getToken() ? '🟢 Google conectado' : '🔴 Google desconectado'}<br>
-                                📄 Hojas destino: <strong>${CONFIG.SHEET_NAME}</strong> y <strong>${CONFIG.SHEET_QUICK}</strong>
-                            </div>
-                        </div>
-                        <div class="popup-buttons">
-                            ${totalPending > 0 && IS_ONLINE && gapi?.client?.getToken() ? `
-                                <button class="btn btn-success btn-full" onclick="this.closest('.popup-overlay').remove(); SyncManager.sync(); SyncManager.syncQuick();">
-                                    🔄 Sincronizar Todo
-                                </button>
-                            ` : ''}
-                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(overlay);
-                overlay.addEventListener('click', (e) => {
-                    if (e.target === overlay) overlay.remove();
-                });
-            }
+            async save() { try { localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC)); } catch (e) {} },
+            async load() { try { const saved = localStorage.getItem('pd_pending_sync'); if (saved) PENDING_SYNC = JSON.parse(saved); } catch (e) {} },
+            updateUI(synced) { const el = document.getElementById('sync-status'); if (!el) return; if (!IS_ONLINE) { el.className = 'sync-status sync-warning'; el.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`; } else if (PENDING_SYNC.length > 0) { el.className = 'sync-status sync-warning'; el.innerHTML = `⏳ ${PENDING_SYNC.length} pendientes`; } else if (synced) { el.className = 'sync-status sync-ok'; el.textContent = '✅ Sincronizado'; } else { el.className = 'sync-status sync-error'; el.textContent = '❌ Error sync'; } },
+            showPanel() { const overlay = document.createElement('div'); overlay.className = 'popup-overlay show'; overlay.innerHTML = `<div class="popup-content" style="max-width: 450px;"><div class="popup-header"><span>📊 Estado de Sincronización</span><button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button></div><div style="margin-bottom: 15px;"><div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px; text-align: center;"><div style="font-size: 0.85em; color: #666;">Pendientes</div><div style="font-size: 2em; font-weight: 700; color: ${PENDING_SYNC.length > 0 ? 'var(--warning)' : 'var(--success)'};">${PENDING_SYNC.length}</div></div><div style="font-size: 0.9em; padding: 10px; background: #f9f9f9; border-radius: 6px;">${IS_ONLINE ? '🟢 Conectado' : '🔴 Sin conexión'}<br>${gapi?.client?.getToken() ? '🟢 Google OK' : '🔴 Google desconectado'}</div></div><div class="popup-buttons">${PENDING_SYNC.length > 0 && IS_ONLINE && gapi?.client?.getToken() ? `<button class="btn btn-success btn-full" onclick="this.closest('.popup-overlay').remove(); SyncManager.sync();">🔄 Sincronizar</button>` : ''}<button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">Cerrar</button></div></div>`; document.body.appendChild(overlay); overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); }); }
         };
 
-        // ==================== INITIALIZATION ====================
-        document.addEventListener('DOMContentLoaded', () => {
-            initAudio();
-            loadFromStorage();
-            setupConnectionMonitor();
-            TabManager.init();
-            gapi.load('client', initGAPI);
-        });
-
-        function initAudio() {
-            try {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                document.addEventListener('click', () => {
-                    if (audioCtx?.state === 'suspended') audioCtx.resume();
-                }, { once: true });
-            } catch (e) {}
+        document.addEventListener('DOMContentLoaded', () => { initAudio(); loadFromStorage(); setupEventListeners(); setupConnectionMonitor(); gapi.load('client', initGAPI); });
+        function initAudio() { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); document.addEventListener('click', () => { if (audioCtx?.state === 'suspended') audioCtx.resume(); }, { once: true }); } catch (e) {} }
+        async function initGAPI() { try { await gapi.client.init({ discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"] }); TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({ client_id: CONFIG.CLIENT_ID, scope: CONFIG.SCOPES, callback: handleAuthCallback }); } catch (e) { showNotification('Error inicializando API', 'error'); } }
+        async function handleAuthCallback(response) { if (response?.access_token) { gapi.client.setToken(response); await getUserProfile(); await loadInventory(); SyncManager.init(); if (PENDING_SYNC.length > 0) SyncManager.sync(); showApp(); } }
+        function handleLogin() { TOKEN_CLIENT?.requestAccessToken(); }
+        async function getUserProfile() { try { const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` } }); const data = await response.json(); USER_EMAIL = data.email || ''; USER_GOOGLE_NAME = data.name || 'Usuario'; const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`); if (savedAlias) { CURRENT_USER = savedAlias; showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success'); updateUserFooter(); } else { showAliasPopup(); } } catch (e) { CURRENT_USER = 'Usuario'; updateUserFooter(); } }
+        function showApp() { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('main-app').classList.remove('hidden'); updateUserFooter(); updateUI(); document.getElementById('scan-input').focus(); }
+        function handleLogout() { const hasData = PENDING_SYNC.length > 0 || STATE.pallets.ok.boxes.length > 0 || STATE.pallets.blocked.boxes.length > 0 || STATE.pallets.nowms.boxes.length > 0; if (hasData && !confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro?')) return; if (gapi.client.getToken()) { google.accounts.oauth2.revoke(gapi.client.getToken().access_token); gapi.client.setToken(null); } CURRENT_USER = ''; USER_EMAIL = ''; document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('main-app').classList.add('hidden'); }
+        function showAliasPopup() { document.querySelectorAll('.alias-popup').forEach(e => e.remove()); const overlay = document.createElement('div'); overlay.className = 'popup-overlay show alias-popup'; overlay.innerHTML = `<div class="popup-content" style="max-width: 400px;"><div class="popup-header">👤 ¿Cómo te llamamos?</div><p style="margin-bottom: 15px; color: #666;">Hola <strong>${USER_GOOGLE_NAME}</strong>:</p><div class="popup-buttons"><button class="btn btn-primary btn-full" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">👤 Usar mi nombre de Google</button><div style="text-align: center; color: #999; font-size: 0.85em;">o</div><div style="display: flex; gap: 8px;"><input type="text" id="alias-input" placeholder="Escribe un alias..." style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px;" maxlength="20"><button class="btn btn-success" onclick="saveUserAlias(document.getElementById('alias-input').value)">💾</button></div></div></div>`; document.body.appendChild(overlay); const input = overlay.querySelector('#alias-input'); input.addEventListener('keypress', (e) => { if (e.key === 'Enter' && input.value.trim()) saveUserAlias(input.value); }); input.focus(); }
+        function saveUserAlias(alias, isGoogleName = false) { const finalAlias = alias?.trim() || USER_GOOGLE_NAME; if (!finalAlias) { showNotification('⚠️ Ingresa un nombre válido', 'warning'); return; } CURRENT_USER = finalAlias; localStorage.setItem(`pd_alias_${USER_EMAIL}`, finalAlias); document.querySelectorAll('.alias-popup').forEach(e => e.remove()); showNotification(`✅ Guardado: ${finalAlias}`, 'success'); updateUserFooter(); }
+        function changeUserAlias() { showAliasPopup(); }
+        function updateUserFooter() { const avatar = document.getElementById('user-avatar'); const nameDisplay = document.getElementById('user-name-display'); if (avatar) { avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?'; avatar.title = USER_EMAIL || 'No conectado'; } if (nameDisplay) { nameDisplay.textContent = CURRENT_USER || 'No conectado'; } updateConnectionIndicator(); }
+        async function loadInventory() { try { showNotification('📦 Cargando inventario...', 'info'); updateConnectionIndicator(true); const response = await fetch(CONFIG.INVENTORY_CSV_URL, { method: 'GET', mode: 'cors', cache: 'no-cache' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const csv = await response.text(); if (!csv || csv.trim().length === 0) throw new Error('CSV vacío'); parseInventoryCSV(csv); await saveToStorage(); showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success'); updateBdInfo(); } catch (e) { console.error('Error cargando inventario:', e); showNotification(`⚠️ ${e.message}`, 'warning'); if (STATE.inventory.size > 0) showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info'); } finally { updateConnectionIndicator(); } }
+        function parseInventoryCSV(csv) { const lines = csv.split('\n').filter(line => line.trim().length > 0); STATE.inventory.clear(); for (let i = 1; i < lines.length; i++) { const cols = parseCSVLine(lines[i]); if (cols.length >= 11) { const code = (cols[1] || '').toString().trim().toUpperCase(); if (code && code.length > 0) { const availableStock = parseFloat(cols[9]) || 0; const lockedInventory = parseFloat(cols[10]) || 0; STATE.inventory.set(code, { code, boxType: cols[0] || '', warehouse: cols[3] || '', cellNo: cols[6] || '', area: cols[8] || '', availableStock, lockedInventory, sku: cols[12] || '', productName: cols[13] || '', isAvailable: availableStock > 0, isBlocked: lockedInventory > 0 }); } } } STATE.inventoryLastUpdate = new Date().toLocaleString(); }
+        function parseCSVLine(line) { const result = []; let current = '', inQuotes = false; for (let i = 0; i < line.length; i++) { const char = line[i]; if (char === '"') inQuotes = !inQuotes; else if (char === ',' && !inQuotes) { result.push(current.trim()); current = ''; } else current += char; } result.push(current.trim()); return result; }
+        function refreshInventory() { loadInventory(); }
+        function updateBdInfo() { document.getElementById('bd-count').textContent = STATE.inventory.size.toLocaleString(); document.getElementById('bd-update-time').textContent = STATE.inventoryLastUpdate || 'Sin actualizar'; }
+        function generatePalletId(prefix = 'PD') { const timestamp = Date.now().toString(36).toUpperCase(); const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0'); return `${prefix}-${timestamp}-${random}`; }
+        function newSession() { const total = STATE.pallets.ok.boxes.length + STATE.pallets.blocked.boxes.length + STATE.pallets.nowms.boxes.length; if (total > 0 && !confirm(`Hay ${total} cajas. ¿Iniciar nueva sesión?`)) return; STATE.pallets = { ok: { id: generatePalletId('OK'), boxes: [], location: '' }, blocked: { id: generatePalletId('BLK'), boxes: [], location: '' }, nowms: { id: generatePalletId('NW'), boxes: [], location: '' } }; STATE.pendingCode1 = null; STATE.boxStatuses = {}; document.getElementById('result-box').classList.remove('show'); document.getElementById('code2-container').classList.remove('show'); document.getElementById('location-ok').value = ''; document.getElementById('location-blocked').value = ''; document.getElementById('location-nowms').value = ''; saveToStorage(); updateUI(); showNotification('✅ Nueva sesión iniciada', 'success'); document.getElementById('scan-input').focus(); }
+        function showResumen() { updateResumen(); document.getElementById('resumen-popup').classList.add('show'); }
+        function closeResumen() { document.getElementById('resumen-popup').classList.remove('show'); }
+        function updateResumen() { document.getElementById('resumen-ok').textContent = STATE.pallets.ok.boxes.length; document.getElementById('resumen-blocked').textContent = STATE.pallets.blocked.boxes.length; document.getElementById('resumen-nowms').textContent = STATE.pallets.nowms.boxes.length; document.getElementById('resumen-pending').textContent = PENDING_SYNC.length; const tbody = document.getElementById('resumen-table-body'); const recentHistory = STATE.history.slice(0, 50); if (recentHistory.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Sin registros</td></tr>'; } else { tbody.innerHTML = recentHistory.map(r => `<tr><td>${r.time}</td><td><code>${r.scan1}</code></td><td><code>${r.scan2 || '-'}</code></td><td><span style="color: ${r.status === 'OK' ? 'var(--success)' : r.status === 'BLOQUEADO' ? 'var(--blocked)' : 'var(--error)'}">${r.status}</span></td><td>${r.location}</td><td style="font-size: 0.8em;">${r.pallet}</td></tr>`).join(''); } }
+        function setupConnectionMonitor() { window.addEventListener('online', () => { IS_ONLINE = true; showConnectionBanner('online'); updateConnectionIndicator(); showNotification('✅ Conexión restaurada', 'success'); setTimeout(() => SyncManager.sync(), 1000); }); window.addEventListener('offline', () => { IS_ONLINE = false; showConnectionBanner('offline'); updateConnectionIndicator(); showNotification('⚠️ Sin conexión', 'warning'); }); updateConnectionIndicator(); }
+        function showConnectionBanner(status) { const banner = document.getElementById('connection-banner'); banner.className = `connection-banner ${status}`; banner.textContent = status === 'online' ? '✅ Conexión restaurada' : status === 'offline' ? '⚠️ Sin conexión' : '🔄 Sincronizando...'; if (status === 'online') setTimeout(() => banner.style.display = 'none', 3000); }
+        function updateConnectionIndicator(syncing = false) { const dot = document.getElementById('connection-dot'); const text = document.getElementById('connection-text'); if (!dot || !text) return; if (syncing) { dot.className = 'connection-dot syncing'; text.textContent = 'Sincronizando...'; } else if (IS_ONLINE) { dot.className = 'connection-dot online'; text.textContent = 'En línea'; } else { dot.className = 'connection-dot offline'; text.textContent = 'Sin conexión'; } }
+        function toggleConnection() { if (gapi?.client?.getToken()) { if (confirm('¿Desconectar de Google?')) { google.accounts.oauth2.revoke(gapi.client.getToken().access_token); gapi.client.setToken(null); showNotification('Desconectado de Google', 'info'); updateConnectionIndicator(); } } else { handleLogin(); } }
+        async function loadFromStorage() { try { const saved = localStorage.getItem('pd_system_state_v2'); if (saved) { const data = JSON.parse(saved); if (data.inventory) STATE.inventory = new Map(data.inventory); STATE.inventoryLastUpdate = data.inventoryLastUpdate; if (data.pallets) STATE.pallets = data.pallets; STATE.history = data.history || []; STATE.originLocation = data.originLocation || ''; STATE.boxStatuses = data.boxStatuses || {}; const originInput = document.getElementById('origin-location'); if (originInput) originInput.value = STATE.originLocation; } updateBdInfo(); } catch (e) { console.error('Error loading from storage:', e); } }
+        async function saveToStorage() { try { const data = { inventory: Array.from(STATE.inventory.entries()), inventoryLastUpdate: STATE.inventoryLastUpdate, pallets: STATE.pallets, history: STATE.history.slice(0, 1000), originLocation: STATE.originLocation, boxStatuses: STATE.boxStatuses }; localStorage.setItem('pd_system_state_v2', JSON.stringify(data)); } catch (e) { console.error('Error saving:', e); } }
+        function setupEventListeners() { 
+            const scanInput = document.getElementById('scan-input'); 
+            scanInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && scanInput.value.trim()) { e.preventDefault(); processScan(scanInput.value.trim()); scanInput.value = ''; } }); 
+            const code2Input = document.getElementById('code2-input'); 
+            code2Input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && code2Input.value.trim()) { e.preventDefault(); processCode2(code2Input.value.trim()); code2Input.value = ''; } }); 
+            const originInput = document.getElementById('origin-location'); 
+            originInput.addEventListener('change', () => { STATE.originLocation = originInput.value.trim().toUpperCase(); originInput.value = STATE.originLocation; saveToStorage(); }); 
+            const validationInput = document.getElementById('validation-input'); 
+            validationInput.addEventListener('input', () => { checkValidationInput(); }); 
+            validationInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!document.getElementById('validation-confirm-btn').disabled) confirmValidation(); } }); 
         }
-
-        async function initGAPI() {
-            try {
-                await gapi.client.init({
-                    discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
-                });
-                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                    client_id: CONFIG.CLIENT_ID,
-                    scope: CONFIG.SCOPES,
-                    callback: handleAuthCallback
-                });
-            } catch (e) {
-                showNotification('Error inicializando API', 'error');
-            }
-        }
-
-        async function handleAuthCallback(response) {
-            if (response?.access_token) {
-                gapi.client.setToken(response);
-                await getUserProfile();
-                await loadInventory();
-                SyncManager.init();
-                if (PENDING_SYNC.length > 0) SyncManager.sync();
-                if (PENDING_SYNC_QUICK.length > 0) SyncManager.syncQuick();
-                showApp();
-            }
-        }
-
-        function handleLogin() {
-            TOKEN_CLIENT?.requestAccessToken();
-        }
-
-        async function getUserProfile() {
-            try {
-                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                    headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
-                });
-                const data = await response.json();
-                USER_EMAIL = data.email || '';
-                USER_GOOGLE_NAME = data.name || 'Usuario';
-
-                const savedAlias = localStorage.getItem(`pd_alias_${USER_EMAIL}`);
-                if (savedAlias) {
-                    CURRENT_USER = savedAlias;
-                    showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
-                    updateUserFooter();
-                } else {
-                    showAliasPopup();
-                }
-            } catch (e) {
-                CURRENT_USER = 'Usuario';
-                updateUserFooter();
-            }
-        }
-
-        function showApp() {
-            hideLoading();
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            updateUserFooter();
-            updateUI();
-        }
-
-        function handleLogout() {
-            const hasData = PENDING_SYNC.length > 0 ||
-                PENDING_SYNC_QUICK.length > 0 ||
-                STATE.pallets.ok.boxes.length > 0 ||
-                STATE.pallets.blocked.boxes.length > 0 ||
-                STATE.pallets.nowms.boxes.length > 0;
-
-            if (hasData) {
-                if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres salir?')) {
-                    return;
-                }
-            }
-
-            if (gapi.client.getToken()) {
-                google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
-                gapi.client.setToken(null);
-            }
-
-            CURRENT_USER = '';
-            USER_EMAIL = '';
-            document.getElementById('login-screen').classList.remove('hidden');
-            document.getElementById('main-app').classList.add('hidden');
-        }
-
-        // ==================== LOADING INDICATOR ====================
-        function showLoading(text = 'Cargando Inventario...', subtext = 'Por favor espera') {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.querySelector('.loading-text').textContent = text;
-                overlay.querySelector('.loading-subtext').textContent = subtext;
-                overlay.classList.add('show');
-            }
-        }
-
-        function hideLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) overlay.classList.remove('show');
-        }
-
-        // ==================== QUICK CAPTURE ====================
-        function openQuickCapture() {
-            const existing = TabManager.tabs.find(t => t.type === 'quick');
-            if (existing) {
-                TabManager.setActiveTab(existing.id);
-                showNotification('⚡ Captura Rápida ya está abierta', 'info');
-            } else {
-                TabManager.createTab('quick');
-                showNotification('⚡ Captura Rápida iniciada', 'success');
-            }
-        }
-
-        // ==================== ALIAS/NICKNAME SYSTEM ====================
-        function showAliasPopup() {
-            document.querySelectorAll('.alias-popup').forEach(e => e.remove());
-
-            const overlay = document.createElement('div');
-            overlay.className = 'popup-overlay show alias-popup';
-            overlay.innerHTML = `
-                <div class="popup-content" style="max-width: 400px;">
-                    <div class="popup-header">👤 ¿Cómo te llamamos?</div>
-                    <p style="margin-bottom: 15px; color: #666;">
-                        Hola <strong>${USER_GOOGLE_NAME}</strong>, elige cómo aparecerá tu nombre en los registros:
-                    </p>
-                    <div class="popup-buttons">
-                        <button class="btn btn-primary btn-full" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">
-                            👤 Usar mi nombre de Google
-                        </button>
-                        <div style="text-align: center; color: #999; font-size: 0.85em;">o</div>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" id="alias-input" placeholder="Escribe un alias..."
-                                style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 1em;"
-                                maxlength="20">
-                            <button class="btn btn-success" onclick="saveUserAlias(document.getElementById('alias-input').value)">
-                                💾
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(overlay);
-
-            const input = overlay.querySelector('#alias-input');
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && input.value.trim()) {
-                    saveUserAlias(input.value);
-                }
-            });
-            input.focus();
-        }
-
-        function saveUserAlias(alias, isGoogleName = false) {
-            const finalAlias = alias?.trim() || USER_GOOGLE_NAME;
-            if (!finalAlias) {
-                showNotification('⚠️ Ingresa un nombre válido', 'warning');
-                return;
-            }
-
-            CURRENT_USER = finalAlias;
-            localStorage.setItem(`pd_alias_${USER_EMAIL}`, finalAlias);
-
-            document.querySelectorAll('.alias-popup').forEach(e => e.remove());
-            showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
-            updateUserFooter();
-        }
-
-        function changeUserAlias() {
-            showAliasPopup();
-        }
-
-        function updateUserFooter() {
-            const avatar = document.getElementById('user-avatar');
-            const nameDisplay = document.getElementById('user-name-display');
-
-            if (avatar) {
-                avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
-                avatar.title = USER_EMAIL || 'No conectado';
-            }
-            if (nameDisplay) {
-                nameDisplay.textContent = CURRENT_USER || 'No conectado';
-                nameDisplay.title = `Click para cambiar alias\n${USER_EMAIL}`;
-            }
-
-            updateConnectionIndicator();
-        }
-
-        // ==================== INVENTORY ====================
-        async function loadInventory() {
-            try {
-                showLoading('📦 Cargando Inventario...', 'Descargando base de datos desde Google Sheets');
-                updateConnectionIndicator(true);
-
-                const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
-                    method: 'GET',
-                    mode: 'cors',
-                    cache: 'no-cache'
-                });
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const csv = await response.text();
-                if (!csv || csv.trim().length === 0) throw new Error('CSV vacío');
-
-                parseInventoryCSV(csv);
-                await saveToStorage();
-                hideLoading();
-                showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
-                updateBdInfo();
-            } catch (e) {
-                console.error('Error cargando inventario:', e);
-                hideLoading();
-                showNotification(`⚠️ ${e.message}`, 'warning');
-
-                if (STATE.inventory.size > 0) {
-                    showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
-                }
-            } finally {
-                updateConnectionIndicator();
-            }
-        }
-
-        function parseInventoryCSV(csv) {
-            const lines = csv.split('\n').filter(line => line.trim().length > 0);
-            STATE.inventory.clear();
-
-            for (let i = 1; i < lines.length; i++) {
-                const cols = parseCSVLine(lines[i]);
-
-                if (cols.length >= 11) {
-                    const code = (cols[1] || '').toString().trim().toUpperCase();
-
-                    if (code && code.length > 0) {
-                        const availableStock = parseFloat(cols[9]) || 0;
-                        const lockedInventory = parseFloat(cols[10]) || 0;
-
-                        STATE.inventory.set(code, {
-                            code,
-                            boxType: cols[0] || '',
-                            warehouse: cols[3] || '',
-                            cellNo: cols[6] || '',
-                            area: cols[8] || '',
-                            availableStock,
-                            lockedInventory,
-                            sku: cols[12] || '',
-                            productName: cols[13] || '',
-                            isAvailable: availableStock > 0,
-                            isBlocked: lockedInventory > 0
-                        });
-                    }
-                }
-            }
-
-            STATE.inventoryLastUpdate = new Date().toLocaleString();
-        }
-
-        function parseCSVLine(line) {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    result.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            result.push(current.trim());
-            return result;
-        }
-
-        function refreshInventory() {
-            loadInventory();
-        }
-
-        function updateBdInfo() {
-            document.getElementById('bd-count').textContent = STATE.inventory.size.toLocaleString();
-            document.getElementById('bd-update-time').textContent = STATE.inventoryLastUpdate || 'Sin actualizar';
-        }
-
-        // ==================== UTILITIES ====================
-        function createBoxData(raw, code, scan2, item) {
-            return {
-                raw,
-                code,
-                scan1: raw,
-                scan2: scan2 || '',
-                location: item?.cellNo || '-',
-                sku: item?.sku || '-',
-                product: item?.productName || '-',
-                timestamp: new Date().toLocaleTimeString()
-            };
-        }
-
-        function normalizeCode(raw) {
-            let code = raw.trim().toUpperCase();
-
-            const patterns = [
-                /\[id\[.*?\[([^\[]+)\[/i,
-                /¨id¨.*?¨([^¨]+)¨/i,
-                /"id"\s*:\s*"([^"]+)"/i
-            ];
-
-            for (const pattern of patterns) {
-                const match = code.match(pattern);
-                if (match) return match[1];
-            }
-
-            const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code);
-
-            if (!hasValidDash) {
-                code = code.replace(/(\d)-(\d)/g, '$1/$2');
-            }
-
-            return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
-        }
-
-        function validateLocation(location) {
-            const loc = location.trim().toUpperCase();
-            const pattern = /^([A-Z])(\d{1,3})-(\d{1,2})-(\d{1,2})-(\d{1,2})$/;
-            const match = loc.match(pattern);
-
-            if (!match) {
-                return {
-                    valid: false,
-                    message: '❌ Formato inválido',
-                    details: 'La ubicación debe seguir el formato: [LETRA][NUM]-[NUM]-[NUM]-[NUM]\nEjemplo: A21-06-05-01',
-                    parsed: null
-                };
-            }
-
-            const [, area, pasillo, rack, nivel, palet] = match;
-
-            return {
-                valid: true,
-                message: '✅ Ubicación válida',
-                parsed: {
-                    area: area,
-                    pasillo: pasillo.padStart(2, '0'),
-                    rack: rack.padStart(2, '0'),
-                    nivel: nivel.padStart(2, '0'),
-                    palet: palet.padStart(2, '0'),
-                    formatted: `${area}${pasillo.padStart(2, '0')}-${rack.padStart(2, '0')}-${nivel.padStart(2, '0')}-${palet.padStart(2, '0')}`
-                }
-            };
-        }
-
-        function confirmInvalidLocation(location) {
-            const validation = validateLocation(location);
-
-            if (validation.valid) {
-                return { confirmed: true, formatted: validation.parsed.formatted };
-            }
-
-            const firstConfirm = confirm(
-                `⚠️ UBICACIÓN CON FORMATO INCORRECTO ⚠️\n\n` +
-                `Ubicación ingresada: "${location}"\n\n` +
-                `${validation.message}\n` +
-                `${validation.details}\n\n` +
-                `Formato correcto:\n` +
-                `• Área (letra): A, B, C, etc.\n` +
-                `• Pasillo (números): 01-99\n` +
-                `• Rack (números): 01-99\n` +
-                `• Nivel (números): 01-99\n` +
-                `• Palet (números): 01-99\n\n` +
-                `Ejemplos válidos:\n` +
-                `• A21-06-05-01\n` +
-                `• B27-01-04-01\n` +
-                `• C15-03-02-05\n\n` +
-                `¿Estás seguro que deseas usar "${location}"?`
-            );
-
-            if (!firstConfirm) {
-                return { confirmed: false, formatted: null };
-            }
-
-            const secondConfirm = confirm(
-                `⚠️ SEGUNDA CONFIRMACIÓN REQUERIDA ⚠️\n\n` +
-                `Confirma nuevamente que deseas registrar esta ubicación:\n\n` +
-                `"${location}"\n\n` +
-                `Esta ubicación NO cumple con el formato estándar del almacén.\n\n` +
-                `¿CONFIRMAS el uso de esta ubicación?`
-            );
-
-            return { confirmed: secondConfirm, formatted: secondConfirm ? location.toUpperCase() : null };
-        }
-
-        function generatePalletId(prefix = 'PD') {
-            const timestamp = Date.now().toString(36).toUpperCase();
-            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            return `${prefix}-${timestamp}-${random}`;
-        }
-
-        function newSession() {
-            const total = STATE.pallets.ok.boxes.length +
-                          STATE.pallets.blocked.boxes.length +
-                          STATE.pallets.nowms.boxes.length;
-
-            if (total > 0) {
-                if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin enviar?`)) {
-                    return;
-                }
-            }
-
-            STATE.pallets = {
-                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-            };
-            STATE.pendingCode1 = null;
-
-            // Clear all tab result boxes
-            document.querySelectorAll('.result-box').forEach(el => el.classList.remove('show'));
-            document.querySelectorAll('.code2-container').forEach(el => el.classList.remove('show'));
-            document.querySelectorAll('.column-location-input').forEach(el => el.value = '');
-
-            saveToStorage();
-            updateUI();
-            showNotification('✅ Nueva sesión iniciada', 'success');
-        }
-
-        // ==================== RESUMEN MODULE ====================
-        function showResumen() {
-            updateResumen();
-            document.getElementById('resumen-popup').classList.add('show');
-        }
-
-        function closeResumen() {
-            document.getElementById('resumen-popup').classList.remove('show');
-        }
-
-        function updateResumen() {
-            document.getElementById('resumen-ok').textContent = STATE.pallets.ok.boxes.length;
-            document.getElementById('resumen-blocked').textContent = STATE.pallets.blocked.boxes.length;
-            document.getElementById('resumen-nowms').textContent = STATE.pallets.nowms.boxes.length;
-            document.getElementById('resumen-pending').textContent = PENDING_SYNC.length + PENDING_SYNC_QUICK.length;
-
-            const tbody = document.getElementById('resumen-table-body');
-            const recentHistory = STATE.history.slice(0, 50);
-
-            if (recentHistory.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Sin registros recientes</td></tr>';
-            } else {
-                tbody.innerHTML = recentHistory.map(r => `
-                    <tr>
-                        <td>${r.time}</td>
-                        <td><code>${r.scan1}</code></td>
-                        <td><code>${r.scan2 || '-'}</code></td>
-                        <td><span style="color: ${r.status === 'OK' ? 'var(--success)' : r.status === 'BLOQUEADO' ? 'var(--blocked)' : 'var(--error)'}">${r.status}</span></td>
-                        <td>${r.location}</td>
-                        <td style="font-size: 0.8em;">${r.pallet}</td>
-                    </tr>
-                `).join('');
-            }
-        }
-
-        // ==================== UI UPDATES ====================
-        function updateUI() {
-            updateCounts();
-            updateSidebar();
-        }
-
-        function updateCounts() {
-            // Update all tabs
-            TabManager.tabs.forEach(tab => {
-                if (tab.type === 'normal') {
-                    TabManager.updateTabUI(tab.id);
-                }
-            });
-        }
-
-        function updateSidebar() {
-            document.getElementById('sidebar-ok-count').textContent = STATE.pallets.ok.boxes.length;
-            document.getElementById('sidebar-blocked-count').textContent = STATE.pallets.blocked.boxes.length;
-            document.getElementById('sidebar-nowms-count').textContent = STATE.pallets.nowms.boxes.length;
-
-            document.getElementById('sidebar-ok-pallet').textContent = STATE.pallets.ok.id;
-            document.getElementById('sidebar-blocked-pallet').textContent = STATE.pallets.blocked.id;
-            document.getElementById('sidebar-nowms-pallet').textContent = STATE.pallets.nowms.id;
-        }
-
-        // ==================== CONNECTION ====================
-        function setupConnectionMonitor() {
-            window.addEventListener('online', () => {
-                IS_ONLINE = true;
-                showConnectionBanner('online');
-                updateConnectionIndicator();
-                showNotification('✅ Conexión restaurada', 'success');
-                setTimeout(() => {
-                    SyncManager.sync();
-                    SyncManager.syncQuick();
-                }, 1000);
-            });
-
-            window.addEventListener('offline', () => {
-                IS_ONLINE = false;
-                showConnectionBanner('offline');
-                updateConnectionIndicator();
-                showNotification('⚠️ Sin conexión - Modo offline', 'warning');
-            });
-
-            updateConnectionIndicator();
-        }
-
-        function showConnectionBanner(status) {
-            const banner = document.getElementById('connection-banner');
-            banner.className = `connection-banner ${status}`;
-            banner.textContent = status === 'online' ? '✅ Conexión restaurada' :
-                                 status === 'offline' ? '⚠️ Sin conexión a internet' :
-                                 '🔄 Sincronizando...';
-            if (status === 'online') {
-                setTimeout(() => banner.style.display = 'none', 3000);
-            }
-        }
-
-        function updateConnectionIndicator(syncing = false) {
-            const dot = document.getElementById('connection-dot');
-            const text = document.getElementById('connection-text');
-
-            if (!dot || !text) return;
-
-            if (syncing) {
-                dot.className = 'connection-dot syncing';
-                text.textContent = 'Sincronizando...';
-            } else if (IS_ONLINE) {
-                dot.className = 'connection-dot online';
-                text.textContent = 'En línea';
-            } else {
-                dot.className = 'connection-dot offline';
-                text.textContent = 'Sin conexión';
-            }
-        }
-
-        function toggleConnection() {
-            if (gapi?.client?.getToken()) {
-                if (confirm('¿Desconectar de Google?')) {
-                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
-                    gapi.client.setToken(null);
-                    showNotification('Desconectado de Google', 'info');
-                    updateConnectionIndicator();
-                }
-            } else {
-                handleLogin();
-            }
-        }
-
-        // ==================== STORAGE ====================
-        async function loadFromStorage() {
-            try {
-                const saved = localStorage.getItem('pd_system_state');
-                if (saved) {
-                    const data = JSON.parse(saved);
-                    if (data.inventory) STATE.inventory = new Map(data.inventory);
-                    STATE.inventoryLastUpdate = data.inventoryLastUpdate;
-                    if (data.pallets) STATE.pallets = data.pallets;
-                    STATE.history = data.history || [];
-                    STATE.quickHistory = data.quickHistory || [];
-                }
-                updateBdInfo();
-            } catch (e) {
-                console.error('Error loading from storage:', e);
-            }
-        }
-
-        async function saveToStorage() {
-            try {
-                const data = {
-                    inventory: Array.from(STATE.inventory.entries()),
-                    inventoryLastUpdate: STATE.inventoryLastUpdate,
-                    pallets: STATE.pallets,
-                    history: STATE.history.slice(0, 1000),
-                    quickHistory: STATE.quickHistory.slice(0, 100)
-                };
-                localStorage.setItem('pd_system_state', JSON.stringify(data));
-            } catch (e) {
-                console.error('Error saving to storage:', e);
-            }
-        }
-
-        // ==================== EXPORT ====================
-        function exportData() {
-            if (STATE.history.length === 0) {
-                showNotification('No hay datos para exportar', 'warning');
-                return;
-            }
-
-            const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION', 'ESTATUS', 'NOTA', 'PALLET'];
-            const rows = STATE.history.map(r => [
-                r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet
-            ]);
-
-            const csv = '\ufeff' + [
-                headers.join(','),
-                ...rows.map(r => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))
-            ].join('\n');
-
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`;
-            link.click();
-
-            showNotification('✅ Datos exportados', 'success');
-        }
-
-        // ==================== NOTIFICATIONS ====================
-        function showNotification(message, type = 'info') {
-            const container = document.getElementById('notifications');
-            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`;
-
-            container.appendChild(notification);
-            setTimeout(() => notification.remove(), 4000);
-        }
-
-        function playSound(type) {
-            if (!audioCtx) return;
-
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-
-                if (type === 'success') {
-                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.15);
-                } else if (type === 'error') {
-                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.35);
-                } else if (type === 'warning') {
-                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.1);
-                }
-            } catch (e) {}
-        },
-
-        // ==================== TAB MANAGER METHODS ====================
-        processCode1(tabId, rawCode) {
-            const code = normalizeCode(rawCode);
-            const item = STATE.inventory.get(code);
-
-            if (!item) {
-                // Show code2 input
-                document.getElementById(`code2-container-${tabId}`).classList.add('show');
-                document.getElementById(`code2-input-${tabId}`).focus();
-                STATE.pendingCode1 = { tabId, code, raw: rawCode };
-                return;
-            }
-
-            if (item.isBlocked) {
-                this.addBox('blocked', createBoxData(rawCode, code, '', item));
-                this.showResultBox(tabId, 'blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
-                playSound('warning');
-            } else if (item.isAvailable) {
-                this.addBox('ok', createBoxData(rawCode, code, '', item));
-                this.showResultBox(tabId, 'success', code, 'OK', 'Validado correctamente', item);
-                playSound('success');
-            } else {
-                this.addBox('blocked', createBoxData(rawCode, code, '', item));
-                this.showResultBox(tabId, 'blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
-                playSound('warning');
-            }
-
-            this.flashInput(tabId, 'success');
-            this.updateTabUI(tabId);
-        },
-
-        processCode2(tabId, rawCode2) {
-            if (!STATE.pendingCode1 || STATE.pendingCode1.tabId !== tabId) return;
-
-            const code2 = normalizeCode(rawCode2);
-            const item = STATE.inventory.get(code2);
-
-            document.getElementById(`code2-container-${tabId}`).classList.remove('show');
-
-            if (!item) {
-                this.addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
-                this.showResultBox(tabId, 'error', STATE.pendingCode1.code, 'NO WMS',
-                    `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
-                playSound('error');
-            } else if (item.isBlocked) {
-                this.addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
-                this.showResultBox(tabId, 'blocked', code2, 'BLOQUEADO (Código 2)',
-                    'Validado con Código 2 - Bloqueado', item);
-                playSound('warning');
-            } else {
-                this.addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
-                this.showResultBox(tabId, 'success', code2, 'OK (Código 2)',
-                    'Validado correctamente con Código 2', item);
-                playSound('success');
-            }
-
-            STATE.pendingCode1 = null;
-            this.updateTabUI(tabId);
-        }
-    };
-
-    // Close the script tag and body/html tags
+        function processScan(rawCode) { const code = normalizeCode(rawCode); const duplicateInfo = findDuplicate(code); if (duplicateInfo) { showDuplicatePopup(code, rawCode, duplicateInfo); return; } processCodeInternal(rawCode, code); }
+        function findDuplicate(code) { const categories = ['ok', 'blocked', 'nowms']; for (const cat of categories) { const boxes = STATE.pallets[cat].boxes; const found = boxes.find(b => b.code === code); if (found) return { category: cat, box: found, palletId: STATE.pallets[cat].id }; } return null; }
+        function showDuplicatePopup(code, rawCode, dupInfo) { DUPLICATE_PENDING = { code, rawCode, dupInfo }; document.getElementById('dup-code').textContent = code; document.getElementById('dup-user').textContent = CURRENT_USER || 'Usuario'; document.getElementById('dup-time').textContent = dupInfo.box.timestamp; document.getElementById('dup-pallet').textContent = `${dupInfo.palletId} (${dupInfo.category.toUpperCase()})`; document.getElementById('duplicate-popup').classList.add('show'); playSound('warning'); flashInput('warning'); }
+        function closeDuplicatePopup() { document.getElementById('duplicate-popup').classList.remove('show'); DUPLICATE_PENDING = null; document.getElementById('scan-input').focus(); }
+        function forceInsertDuplicate() { if (!DUPLICATE_PENDING) return; const { rawCode, code } = DUPLICATE_PENDING; closeDuplicatePopup(); processCodeInternal(rawCode, code, true); showNotification('⚡ Duplicado registrado', 'warning'); }
+        function processCodeInternal(rawCode, code, forceDuplicate = false) { const item = STATE.inventory.get(code); if (!item) { STATE.pendingCode1 = { raw: rawCode, code }; showResultBox('error', code, 'NO ENCONTRADO', 'Código no encontrado en WMS.', null); document.getElementById('code2-container').classList.add('show'); flashInput('error'); playSound('error'); setTimeout(() => document.getElementById('code2-input').focus(), 100); return; } document.getElementById('code2-container').classList.remove('show'); STATE.pendingCode1 = null; if (item.isBlocked) { addBox('blocked', createBoxData(rawCode, code, '', item)); showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item); playSound('warning'); } else if (item.isAvailable) { addBox('ok', createBoxData(rawCode, code, '', item)); showResultBox('success', code, 'OK', 'Validado correctamente', item); playSound('success'); } else { addBox('blocked', createBoxData(rawCode, code, '', item)); showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible', item); playSound('warning'); } flashInput('success'); }
+        function processCode2(rawCode2) { if (!STATE.pendingCode1) return; const code2 = normalizeCode(rawCode2); const item = STATE.inventory.get(code2); document.getElementById('code2-container').classList.remove('show'); if (!item) { addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null)); showResultBox('error', STATE.pendingCode1.code, 'NO WMS', `Ambos códigos no encontrados`, null); playSound('error'); } else if (item.isBlocked) { addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item)); showResultBox('blocked', code2, 'BLOQUEADO (Código 2)', 'Bloqueado', item); playSound('warning'); } else { addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item)); showResultBox('success', code2, 'OK (Código 2)', 'Validado con Código 2', item); playSound('success'); } STATE.pendingCode1 = null; flashInput('success'); document.getElementById('scan-input').focus(); }
+        function forceInsert() { if (!STATE.pendingCode1) { showNotification('⚠️ Primero escanea un código', 'warning'); return; } const code2Value = document.getElementById('code2-input').value.trim(); addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, code2Value, null)); showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', code2Value ? `Con códigos: ${STATE.pendingCode1.code} y ${code2Value}` : `Con código: ${STATE.pendingCode1.code}`, null); document.getElementById('code2-container').classList.remove('show'); document.getElementById('code2-input').value = ''; STATE.pendingCode1 = null; playSound('warning'); flashInput('warning'); document.getElementById('scan-input').focus(); showNotification('⚡ Registro insertado', 'warning'); }
+        function createBoxData(raw, code, scan2, item) { return { raw, code, scan1: raw, scan2: scan2 || '', location: item?.cellNo || '-', sku: item?.sku || '-', product: item?.productName || '-', timestamp: new Date().toLocaleTimeString(), user: CURRENT_USER || 'Usuario' }; }
+        function normalizeCode(raw) { let code = raw.trim().toUpperCase(); const patterns = [/\[id\[.*?\[([^\[]+)\[/i, /¨id¨.*?¨([^¨]+)¨/i, /"id"\s*:\s*"([^"]+)"/i]; for (const pattern of patterns) { const match = code.match(pattern); if (match) return match[1]; } const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code); if (!hasValidDash) code = code.replace(/(\d)-(\d)/g, '$1/$2'); return code.replace(/[^a-zA-Z0-9\-\/]/g, ''); }
+        function showResultBox(type, code, title, message, item) { const box = document.getElementById('result-box'); const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' }; box.className = `result-box show ${type}`; document.getElementById('result-icon').textContent = icons[type] || '📦'; document.getElementById('result-title').textContent = title; document.getElementById('result-code').textContent = code; const detailsEl = document.getElementById('result-details'); if (item) { detailsEl.innerHTML = `<div><span class="result-detail-label">Ubicación</span><div class="result-detail-value">${item.cellNo || '-'}</div></div><div><span class="result-detail-label">SKU</span><div class="result-detail-value">${item.sku || '-'}</div></div><div><span class="result-detail-label">Producto</span><div class="result-detail-value">${item.productName || '-'}</div></div><div><span class="result-detail-label">Stock</span><div class="result-detail-value">${item.availableStock || 0}</div></div>`; } else { detailsEl.innerHTML = `<div style="grid-column: 1/-1; color: #666;">${message}</div>`; } }
+        function flashInput(type) { const input = document.getElementById('scan-input'); input.classList.remove('success', 'error'); input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : ''); setTimeout(() => input.classList.remove('success', 'error'), 500); }
+        function addBox(category, boxData) { STATE.pallets[category].boxes.push(boxData); saveToStorage(); updateUI(); }
+        function deleteBox(category, index) { if (confirm('¿Eliminar esta caja?')) { const box = STATE.pallets[category].boxes[index]; if (box) delete STATE.boxStatuses[box.code]; STATE.pallets[category].boxes.splice(index, 1); saveToStorage(); updateUI(); showNotification('Caja eliminada', 'info'); } }
+        function toggleBoxStatus(category, index) { const box = STATE.pallets[category].boxes[index]; if (box) { STATE.boxStatuses[box.code] = !STATE.boxStatuses[box.code]; saveToStorage(); updateUI(); } }
+        function initSendPallet(category) { const pallet = STATE.pallets[category]; const locationInput = document.getElementById(`location-${category}`); const location = locationInput.value.trim(); if (pallet.boxes.length === 0) { showNotification('⚠️ No hay cajas', 'warning'); return; } if (!location) { showNotification('⚠️ Ingresa ubicación destino', 'warning'); locationInput.focus(); return; } VALIDATION_CATEGORY = category; document.getElementById('validation-expected').textContent = pallet.boxes.length; document.getElementById('validation-entered').textContent = '-'; document.getElementById('validation-input').value = ''; document.getElementById('validation-input').classList.remove('error'); document.getElementById('validation-message').textContent = ''; document.getElementById('validation-confirm-btn').disabled = true; document.getElementById('validation-entered-container').classList.remove('mismatch'); document.getElementById('validation-popup').classList.add('show'); setTimeout(() => document.getElementById('validation-input').focus(), 100); }
+        function closeValidationPopup() { document.getElementById('validation-popup').classList.remove('show'); VALIDATION_CATEGORY = null; }
+        function checkValidationInput() { const input = document.getElementById('validation-input'); const enteredValue = parseInt(input.value) || 0; const expected = STATE.pallets[VALIDATION_CATEGORY]?.boxes.length || 0; document.getElementById('validation-entered').textContent = enteredValue || '-'; const msgEl = document.getElementById('validation-message'); const confirmBtn = document.getElementById('validation-confirm-btn'); const enteredContainer = document.getElementById('validation-entered-container'); if (enteredValue === expected && enteredValue > 0) { input.classList.remove('error'); enteredContainer.classList.remove('mismatch'); msgEl.innerHTML = '<span style="color: var(--success);">✅ ¡Cantidades coinciden!</span>'; confirmBtn.disabled = false; } else if (enteredValue > 0) { input.classList.add('error'); enteredContainer.classList.add('mismatch'); msgEl.innerHTML = `<span style="color: var(--error);">❌ No coincide (esperado: ${expected})</span>`; confirmBtn.disabled = true; } else { input.classList.remove('error'); enteredContainer.classList.remove('mismatch'); msgEl.textContent = ''; confirmBtn.disabled = true; } }
+        function confirmValidation() { if (!VALIDATION_CATEGORY) return; closeValidationPopup(); sendPallet(VALIDATION_CATEGORY); }
+        async function sendPallet(category) { const pallet = STATE.pallets[category]; const locationInput = document.getElementById(`location-${category}`); const location = locationInput.value.trim().toUpperCase(); const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' }; const now = new Date(); const dateStr = now.toISOString().slice(0, 10); const timeStr = now.toTimeString().slice(0, 8); const records = pallet.boxes.map(box => ({ date: dateStr, time: timeStr, user: CURRENT_USER || 'Usuario', scan1: box.scan1 || box.raw, scan2: box.scan2 || '', location: location, status: statusMap[category], note: '', pallet: pallet.id, originLocation: STATE.originLocation })); STATE.history = [...records, ...STATE.history].slice(0, 1000); PENDING_SYNC = [...PENDING_SYNC, ...records]; SyncManager.save(); showNotification(`💾 ${records.length} registros agregados`, 'info'); if (IS_ONLINE && gapi?.client?.getToken()) await SyncManager.sync(); else SyncManager.updateUI(false); const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' }; pallet.boxes.forEach(box => delete STATE.boxStatuses[box.code]); STATE.pallets[category] = { id: generatePalletId(prefixes[category]), boxes: [], location: '' }; locationInput.value = ''; saveToStorage(); updateUI(); playSound('success'); document.getElementById('scan-input').focus(); }
+DETAIL_MODAL_CATEGORY].boxes.indexOf(a); valB = STATE.pallets[DETAIL_MODAL_CATEGORY].boxes.indexOf(b); break; case 'code': valA = a.code; valB = b.code; break; case 'scan2': valA = a.scan2 || ''; valB = b.scan2 || ''; break; case 'location': valA = a.location; valB = b.location; break; case 'timestamp': valA = a.timestamp; valB = b.timestamp; break; default: return 0; } if (valA < valB) return DETAIL_SORT_ASC ? -1 : 1; if (valA > valB) return DETAIL_SORT_ASC ? 1 : -1; return 0; }); }
+        function renderDetailTable() { const tbody = document.getElementById('detail-table-body'); if (DETAIL_FILTERED_DATA.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999; padding: 30px;">Sin registros</td></tr>'; return; } tbody.innerHTML = DETAIL_FILTERED_DATA.map((box, idx) => { const realIndex = STATE.pallets[DETAIL_MODAL_CATEGORY].boxes.indexOf(box); const isStatusOk = STATE.boxStatuses[box.code]; const rowClass = isStatusOk ? 'style="background: var(--success-light);"' : ''; return `<tr ${rowClass}><td>${realIndex + 1}</td><td><code>${box.code}</code></td><td><code>${box.scan2 || '-'}</code></td><td>${box.location}</td><td>${box.timestamp}</td><td><div class="row-actions">${DETAIL_MODAL_CATEGORY === 'ok' ? `<button class="action-btn status" onclick="toggleBoxStatusFromModal(${realIndex})" title="Marcar OK">${isStatusOk ? '✅' : '⬜'}</button>` : ''}<button class="action-btn transfer" onclick="showTransferPopup('${DETAIL_MODAL_CATEGORY}', ${realIndex})" title="Transferir">🔄</button><button class="action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar">📋</button><button class="action-btn delete" onclick="deleteBoxFromModal(${realIndex})" title="Eliminar">🗑️</button></div></td></tr>`; }).join(''); }
+        function toggleBoxStatusFromModal(index) { toggleBoxStatus(DETAIL_MODAL_CATEGORY, index); refreshDetailModal(); }
+        function deleteBoxFromModal(index) { if (confirm('¿Eliminar esta caja?')) { const box = STATE.pallets[DETAIL_MODAL_CATEGORY].boxes[index]; if (box) delete STATE.boxStatuses[box.code]; STATE.pallets[DETAIL_MODAL_CATEGORY].boxes.splice(index, 1); saveToStorage(); updateUI(); refreshDetailModal(); showNotification('Caja eliminada', 'info'); } }
+        function copyAllDetailCodes() { const codes = DETAIL_FILTERED_DATA.map(b => b.code).join('\n'); copyToClipboard(codes); showNotification(`📋 ${DETAIL_FILTERED_DATA.length} códigos copiados`, 'success'); }
+        // COPY FUNCTIONS
+        function copyOriginLocation() { const location = document.getElementById('origin-location').value.trim(); if (!location) { showNotification('⚠️ No hay ubicación', 'warning'); return; } copyToClipboard(location); showNotification('📋 Ubicación copiada', 'success'); }
+        function copyCodes(category) { const codes = STATE.pallets[category].boxes.map(b => b.code).join('\n'); if (!codes) { showNotification('⚠️ No hay códigos', 'warning'); return; } copyToClipboard(codes); showNotification(`📋 ${STATE.pallets[category].boxes.length} códigos copiados`, 'success'); }
+        function copyColumnLocation(category) { const location = STATE.originLocation; if (!location) { showNotification('⚠️ No hay ubicación origen', 'warning'); return; } copyToClipboard(location); showNotification('📋 Ubicación copiada', 'success'); }
+        function copyToClipboard(text) { navigator.clipboard.writeText(text).catch(() => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }); }
+        // UI UPDATE FUNCTIONS
+        function updateUI() { updateCounts(); updateLists(); updateSidebar(); updateSendButtons(); updateGlobalCounter(); updateOkStatusBadges(); }
+        function updateCounts() { document.getElementById('ok-count').textContent = STATE.pallets.ok.boxes.length; document.getElementById('blocked-count').textContent = STATE.pallets.blocked.boxes.length; document.getElementById('nowms-count').textContent = STATE.pallets.nowms.boxes.length; document.getElementById('ok-pallet').textContent = STATE.pallets.ok.id; document.getElementById('blocked-pallet').textContent = STATE.pallets.blocked.id; document.getElementById('nowms-pallet').textContent = STATE.pallets.nowms.id; }
+        function updateGlobalCounter() { const total = STATE.pallets.ok.boxes.length + STATE.pallets.blocked.boxes.length + STATE.pallets.nowms.boxes.length; document.getElementById('global-total').textContent = total; }
+        function updateOkStatusBadges() { const completed = STATE.pallets.ok.boxes.filter(b => STATE.boxStatuses[b.code]).length; const pending = STATE.pallets.ok.boxes.length - completed; document.getElementById('ok-completed-badge').textContent = completed; document.getElementById('ok-pending-badge').textContent = pending; }
+        function updateLists() { updateList('ok'); updateList('blocked'); updateList('nowms'); }
+        function updateList(category) { const listEl = document.getElementById(`${category}-list`); const boxes = STATE.pallets[category].boxes; if (boxes.length === 0) { listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div>`; return; } listEl.innerHTML = boxes.map((box, index) => { const isStatusOk = STATE.boxStatuses[box.code]; const statusClass = isStatusOk ? 'status-ok' : ''; return `<div class="box-item ${statusClass}"><div class="box-info"><div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div><div class="box-meta">${box.location} • ${box.timestamp}</div></div><div class="box-actions">${category === 'ok' ? `<input type="checkbox" class="box-check" ${isStatusOk ? 'checked' : ''} onchange="toggleBoxStatus('${category}', ${index})" title="Marcar OK">` : ''}<button class="box-transfer" onclick="showTransferPopup('${category}', ${index})" title="Transferir">🔄</button><button class="box-delete" onclick="deleteBox('${category}', ${index})" title="Eliminar">✕</button></div></div>`; }).join(''); }
+        function updateSidebar() { document.getElementById('sidebar-ok-count').textContent = STATE.pallets.ok.boxes.length; document.getElementById('sidebar-blocked-count').textContent = STATE.pallets.blocked.boxes.length; document.getElementById('sidebar-nowms-count').textContent = STATE.pallets.nowms.boxes.length; document.getElementById('sidebar-ok-pallet').textContent = STATE.pallets.ok.id; document.getElementById('sidebar-blocked-pallet').textContent = STATE.pallets.blocked.id; document.getElementById('sidebar-nowms-pallet').textContent = STATE.pallets.nowms.id; }
+        function updateSendButtons() { document.getElementById('send-ok-btn').disabled = STATE.pallets.ok.boxes.length === 0; document.getElementById('send-blocked-btn').disabled = STATE.pallets.blocked.boxes.length === 0; document.getElementById('send-nowms-btn').disabled = STATE.pallets.nowms.boxes.length === 0; }
+        // EXPORT
+        function exportData() { if (STATE.history.length === 0) { showNotification('No hay datos', 'warning'); return; } const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION', 'ESTATUS', 'NOTA', 'PALLET', 'UBICACION_ORIGEN']; const rows = STATE.history.map(r => [r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet, r.originLocation || '']); const csv = '\ufeff' + [headers.join(','), ...rows.map(r => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n'); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`; link.click(); showNotification('✅ Datos exportados', 'success'); }
+        // UTILITIES
+        function showNotification(message, type = 'info') { const container = document.getElementById('notifications'); const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' }; const notification = document.createElement('div'); notification.className = `notification ${type}`; notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`; container.appendChild(notification); setTimeout(() => notification.remove(), 4000); }
+        function playSound(type) { if (!audioCtx) return; try { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0.3, audioCtx.currentTime); if (type === 'success') { osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.start(); osc.stop(audioCtx.currentTime + 0.15); } else if (type === 'error') { osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.35); } else if (type === 'warning') { osc.frequency.setValueAtTime(600, audioCtx.currentTime); osc.start(); osc.stop(audioCtx.currentTime + 0.1); } } catch (e) {} }
     </script>
 </body>
 </html>
