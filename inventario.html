@@ -887,35 +887,38 @@
             text-align: center;
         }
 
-        /* Ubicación Física de Origen */
-        .origin-location-bar {
-            background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
-            padding: 12px 15px;
+        /* Cabecera Principal de Escaneo */
+        .scan-header-bar {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            padding: 10px 15px;
             border-radius: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             display: flex;
             align-items: center;
-            gap: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            gap: 12px;
+            box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+            flex-wrap: wrap;
         }
 
-        .origin-location-bar label {
-            color: white;
-            font-weight: 600;
-            font-size: 0.9em;
-            white-space: nowrap;
+        .origin-location-group {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+        }
+
+        .origin-location-group label {
+            color: white;
+            font-weight: 600;
+            font-size: 0.8em;
+            white-space: nowrap;
         }
 
         .origin-location-input {
-            flex: 1;
-            max-width: 200px;
-            padding: 10px 14px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            width: 140px;
+            padding: 8px 10px;
+            border: 2px solid rgba(255, 255, 255, 0.4);
             border-radius: 6px;
-            font-size: 1em;
+            font-size: 0.9em;
             font-weight: 600;
             text-transform: uppercase;
             background: rgba(255, 255, 255, 0.95);
@@ -924,41 +927,335 @@
 
         .origin-location-input:focus {
             outline: none;
-            border-color: #4299e1;
-            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.3);
+            border-color: white;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
         }
 
         .origin-location-input::placeholder {
             color: #a0aec0;
             font-weight: 400;
+            font-size: 0.85em;
         }
 
         /* Contador Global de Cajas */
         .global-counter {
-            background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
-            padding: 8px 16px;
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 6px 12px;
+            border-radius: 6px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             margin-left: auto;
         }
 
         .global-counter-label {
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 0.85em;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.8em;
             font-weight: 500;
         }
 
         .global-counter-value {
-            background: var(--primary);
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
+            background: white;
+            color: #f97316;
+            padding: 3px 10px;
+            border-radius: 12px;
             font-weight: 700;
-            font-size: 1.1em;
-            min-width: 40px;
+            font-size: 1em;
+            min-width: 32px;
             text-align: center;
+        }
+
+        /* Box Item mejorado con acciones hover */
+        .box-item {
+            padding: 6px 8px;
+            background: #f9f9f9;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            border-left: 3px solid;
+            counter-increment: item-counter;
+            position: relative;
+            transition: all 0.15s;
+        }
+
+        .box-item:hover {
+            background: #f0f0f0;
+        }
+
+        .box-item::before {
+            content: counter(item-counter) ".";
+            font-weight: 700;
+            min-width: 20px;
+            margin-right: 6px;
+            font-size: 0.8em;
+        }
+
+        .box-info { flex: 1; min-width: 0; }
+        .box-code { font-weight: 600; font-family: monospace; font-size: 0.8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .box-meta { font-size: 0.7em; color: #666; }
+
+        .box-actions {
+            display: flex;
+            gap: 2px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .box-item:hover .box-actions {
+            opacity: 1;
+        }
+
+        .box-action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 0.85em;
+            padding: 3px 5px;
+            border-radius: 4px;
+            opacity: 0.6;
+            transition: all 0.15s;
+        }
+
+        .box-action-btn:hover {
+            opacity: 1;
+            background: rgba(0,0,0,0.08);
+        }
+
+        .box-action-btn.copy { color: var(--primary); }
+        .box-action-btn.move { color: var(--warning); }
+        .box-action-btn.check { color: var(--success); }
+        .box-action-btn.delete { color: var(--error); }
+
+        .box-item.verified {
+            background: rgba(76, 175, 80, 0.12);
+        }
+
+        .box-item.verified .box-check-icon {
+            color: var(--success);
+        }
+
+        /* Scan Section Compacta */
+        .scan-section {
+            background: white;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+
+        .scan-input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 1.1em;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+            text-align: center;
+            background: #fff5ed;
+            transition: all 0.2s;
+        }
+
+        /* Result Box Compacto Horizontal */
+        .result-box {
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 8px;
+            display: none;
+            animation: fadeIn 0.2s;
+        }
+
+        .result-box.show { display: block; }
+
+        .result-compact {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .result-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 700;
+            font-size: 0.95em;
+        }
+
+        .result-status .icon { font-size: 1.1em; }
+
+        .result-info {
+            display: flex;
+            gap: 15px;
+            flex: 1;
+            flex-wrap: wrap;
+            font-size: 0.8em;
+        }
+
+        .result-info-item {
+            display: flex;
+            gap: 4px;
+        }
+
+        .result-info-label { color: #666; }
+        .result-info-value { font-weight: 600; font-family: monospace; }
+
+        /* Modal de Detalle de Pallet */
+        .pallet-detail-modal {
+            max-width: 900px;
+        }
+
+        .pallet-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .pallet-detail-counters {
+            display: flex;
+            gap: 10px;
+        }
+
+        .counter-badge {
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-weight: 700;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .counter-badge.ok { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+        .counter-badge.pending { background: rgba(244, 67, 54, 0.15); color: var(--error); }
+
+        .pallet-detail-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .pallet-detail-filters input,
+        .pallet-detail-filters select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .pallet-detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+        }
+
+        .pallet-detail-table th {
+            background: #f5f5f5;
+            padding: 8px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            position: sticky;
+            top: 0;
+        }
+
+        .pallet-detail-table th:hover {
+            background: #eee;
+        }
+
+        .pallet-detail-table th .sort-icon {
+            margin-left: 4px;
+            opacity: 0.5;
+        }
+
+        .pallet-detail-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .pallet-detail-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .pallet-detail-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Popup Duplicado */
+        .duplicate-popup {
+            max-width: 420px;
+        }
+
+        .duplicate-info {
+            background: #fff3e0;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid var(--warning);
+        }
+
+        .duplicate-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 0.9em;
+        }
+
+        .duplicate-info-label { color: #666; }
+        .duplicate-info-value { font-weight: 600; }
+
+        /* Pre-validación Envío */
+        .send-validation-popup {
+            max-width: 380px;
+        }
+
+        .validation-input-group {
+            margin-bottom: 15px;
+        }
+
+        .validation-input-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .validation-input-group input {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.5em;
+            text-align: center;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-weight: 700;
+        }
+
+        .validation-mismatch {
+            background: #ffebee;
+            border: 2px solid var(--error);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            color: var(--error);
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .validation-match {
+            background: #e8f5e9;
+            border: 2px solid var(--success);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            color: var(--success);
+            font-weight: 600;
+            margin-bottom: 15px;
         }
 
         /* Responsive */
@@ -1079,54 +1376,41 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
-                <!-- Ubicación Física de Origen -->
-                <div class="origin-location-bar">
-                    <label>
-                        📍 Ubicación Física de Origen:
-                    </label>
-                    <input type="text" class="origin-location-input" id="origin-location"
-                           placeholder="Ej: A21-06-05-01" autocomplete="off"
-                           title="Ubicación donde se encuentra la mercancía actualmente">
+                <!-- Cabecera Principal con Ubicación y Contador -->
+                <div class="scan-header-bar">
+                    <div class="origin-location-group">
+                        <label>📍 Origen:</label>
+                        <input type="text" class="origin-location-input" id="origin-location"
+                               placeholder="A21-06-05-01" autocomplete="off"
+                               title="Ubicación física de origen">
+                    </div>
                     <div class="global-counter">
-                        <span class="global-counter-label">Total Cajas Sesión:</span>
+                        <span class="global-counter-label">Total Cajas:</span>
                         <span class="global-counter-value" id="global-box-count">0</span>
                     </div>
                 </div>
 
-                <!-- Header -->
-                <div class="header">
-                    <h1>📸 Área de Escaneo</h1>
-                </div>
-
-                <!-- Scan Section -->
+                <!-- Scan Section Compacta -->
                 <div class="scan-section">
-                    <div class="scan-row">
-                        <div class="scan-input-group">
-                            <label>🔍 Código Principal</label>
-                            <input type="text" class="scan-input" id="scan-input" placeholder="Escanea o ingresa código..." autocomplete="off">
-                        </div>
-                    </div>
+                    <input type="text" class="scan-input" id="scan-input" placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
 
-                    <!-- Result Box -->
+                    <!-- Result Box Compacto -->
                     <div class="result-box" id="result-box">
-                        <div class="result-header">
-                            <span class="result-icon" id="result-icon">📦</span>
-                            <span class="result-title" id="result-title">Estado</span>
+                        <div class="result-compact">
+                            <div class="result-status">
+                                <span class="icon" id="result-icon">📦</span>
+                                <span id="result-title">Estado</span>
+                            </div>
+                            <div class="result-info" id="result-details"></div>
                         </div>
-                        <div class="result-code" id="result-code"></div>
-                        <div class="result-details" id="result-details"></div>
                     </div>
 
-                    <!-- Code2 Container -->
+                    <!-- Code2 Container Compacto -->
                     <div class="code2-container" id="code2-container">
-                        <label style="font-size: 0.9em; color: var(--error); font-weight: 600; margin-bottom: 8px; display: block;">
-                            ⚠️ Código no encontrado. Ingresa Código 2 o fuerza el registro:
-                        </label>
-                        <div class="code2-row">
-                            <div class="scan-input-group">
-                                <input type="text" class="scan-input" id="code2-input" placeholder="Código 2..." autocomplete="off" style="font-size: 1.1em;">
-                            </div>
-                            <button class="btn-insertado" onclick="forceInsert()">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span style="color: var(--error); font-weight: 600; font-size: 0.85em;">⚠️ No encontrado:</span>
+                            <input type="text" class="scan-input" id="code2-input" placeholder="Código 2..." autocomplete="off" style="flex: 1; font-size: 1em; padding: 8px;">
+                            <button class="btn-insertado" onclick="forceInsert()" style="padding: 8px 14px; font-size: 0.85em;">
                                 ⚡ INSERTADO
                             </button>
                         </div>
@@ -1139,7 +1423,12 @@
                     <div class="column ok">
                         <div class="column-header">
                             <span class="column-title">✅ OK</span>
-                            <span class="column-count" id="ok-count">0</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="counter-badge ok" id="ok-verified-badge" style="display: none;">✓ <span id="ok-verified-count">0</span></span>
+                                <span class="counter-badge pending" id="ok-pending-badge" style="display: none;">○ <span id="ok-pending-count">0</span></span>
+                                <span class="column-count" id="ok-count">0</span>
+                                <button class="box-action-btn" onclick="showPalletDetailModal('ok')" title="Ver detalle" style="opacity: 0.7;">⛶</button>
+                            </div>
                         </div>
                         <div class="column-pallet-info">
                             <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
@@ -1160,7 +1449,10 @@
                     <div class="column blocked">
                         <div class="column-header">
                             <span class="column-title">⚠️ Bloqueado</span>
-                            <span class="column-count" id="blocked-count">0</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="column-count" id="blocked-count">0</span>
+                                <button class="box-action-btn" onclick="showPalletDetailModal('blocked')" title="Ver detalle" style="opacity: 0.7;">⛶</button>
+                            </div>
                         </div>
                         <div class="column-pallet-info">
                             <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
@@ -1181,7 +1473,10 @@
                     <div class="column nowms">
                         <div class="column-header">
                             <span class="column-title">❌ No WMS</span>
-                            <span class="column-count" id="nowms-count">0</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="column-count" id="nowms-count">0</span>
+                                <button class="box-action-btn" onclick="showPalletDetailModal('nowms')" title="Ver detalle" style="opacity: 0.7;">⛶</button>
+                            </div>
                         </div>
                         <div class="column-pallet-info">
                             <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
@@ -1772,15 +2067,11 @@
         function processScan(rawCode) {
             const code = normalizeCode(rawCode);
 
-            // Check duplicates across all pallets
-            const allBoxes = [
-                ...STATE.pallets.ok.boxes,
-                ...STATE.pallets.blocked.boxes,
-                ...STATE.pallets.nowms.boxes
-            ];
+            // Check duplicates across all pallets con info detallada
+            const duplicateInfo = findDuplicate(code);
 
-            if (allBoxes.some(b => b.code === code)) {
-                showNotification('⚠️ Código duplicado', 'warning');
+            if (duplicateInfo) {
+                showDuplicatePopup(code, duplicateInfo, rawCode);
                 flashInput('warning');
                 playSound('warning');
                 return;
@@ -1820,6 +2111,95 @@
             }
 
             flashInput('success');
+        }
+
+        // Buscar duplicado con información detallada
+        function findDuplicate(code) {
+            const categories = ['ok', 'blocked', 'nowms'];
+            const categoryNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
+
+            for (const cat of categories) {
+                const boxes = STATE.pallets[cat].boxes;
+                const index = boxes.findIndex(b => b.code === code);
+                if (index !== -1) {
+                    const box = boxes[index];
+                    return {
+                        category: cat,
+                        categoryName: categoryNames[cat],
+                        index,
+                        box,
+                        timestamp: box.timestamp,
+                        user: CURRENT_USER
+                    };
+                }
+            }
+            return null;
+        }
+
+        // Mostrar popup de duplicado con opción de ingreso forzado
+        function showDuplicatePopup(code, duplicateInfo, rawCode) {
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show';
+            overlay.innerHTML = `
+                <div class="popup-content duplicate-popup">
+                    <div class="popup-header">
+                        <span>⚠️ Código Duplicado</span>
+                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    </div>
+                    <div class="duplicate-info">
+                        <div class="duplicate-info-row">
+                            <span class="duplicate-info-label">Código:</span>
+                            <span class="duplicate-info-value"><code>${code}</code></span>
+                        </div>
+                        <div class="duplicate-info-row">
+                            <span class="duplicate-info-label">Ya registrado en:</span>
+                            <span class="duplicate-info-value">${duplicateInfo.categoryName}</span>
+                        </div>
+                        <div class="duplicate-info-row">
+                            <span class="duplicate-info-label">Hora de registro:</span>
+                            <span class="duplicate-info-value">${duplicateInfo.timestamp}</span>
+                        </div>
+                        <div class="duplicate-info-row">
+                            <span class="duplicate-info-label">Registrado por:</span>
+                            <span class="duplicate-info-value">${duplicateInfo.user || 'Usuario'}</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
+                        Este código ya fue escaneado anteriormente. ¿Deseas forzar un nuevo registro?
+                    </p>
+                    <div class="popup-buttons">
+                        <button class="btn btn-warning btn-full" onclick="forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();">
+                            ⚡ Ingreso Forzado (Duplicado)
+                        </button>
+                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
+        }
+
+        // Forzar inserción de duplicado
+        function forceInsertDuplicate(code, rawCode) {
+            const item = STATE.inventory.get(code);
+
+            if (!item) {
+                addBox('nowms', createBoxData(rawCode, code, '', null));
+                showNotification('⚡ Duplicado insertado en No WMS', 'warning');
+            } else if (item.isBlocked) {
+                addBox('blocked', createBoxData(rawCode, code, '', item));
+                showNotification('⚡ Duplicado insertado en Bloqueado', 'warning');
+            } else {
+                addBox('ok', createBoxData(rawCode, code, '', item));
+                showNotification('⚡ Duplicado insertado en OK', 'warning');
+            }
+
+            playSound('warning');
+            document.getElementById('scan-input').focus();
         }
 
         function processCode2(rawCode2) {
@@ -2017,19 +2397,17 @@
 
             box.className = `result-box show ${type}`;
             document.getElementById('result-icon').textContent = icons[type] || '📦';
-            document.getElementById('result-title').textContent = title;
-            document.getElementById('result-code').textContent = code;
+            document.getElementById('result-title').textContent = `${title}: ${code}`;
 
             const detailsEl = document.getElementById('result-details');
             if (item) {
                 detailsEl.innerHTML = `
-                    <div><span class="result-detail-label">Ubicación</span><div class="result-detail-value">${item.cellNo || '-'}</div></div>
-                    <div><span class="result-detail-label">SKU</span><div class="result-detail-value">${item.sku || '-'}</div></div>
-                    <div><span class="result-detail-label">Producto</span><div class="result-detail-value">${item.productName || '-'}</div></div>
-                    <div><span class="result-detail-label">Stock</span><div class="result-detail-value">${item.availableStock || 0}</div></div>
+                    <div class="result-info-item"><span class="result-info-label">Ubic:</span><span class="result-info-value">${item.cellNo || '-'}</span></div>
+                    <div class="result-info-item"><span class="result-info-label">SKU:</span><span class="result-info-value">${item.sku || '-'}</span></div>
+                    <div class="result-info-item"><span class="result-info-label">Stock:</span><span class="result-info-value">${item.availableStock || 0}</span></div>
                 `;
             } else {
-                detailsEl.innerHTML = `<div style="grid-column: 1/-1; color: #666;">${message}</div>`;
+                detailsEl.innerHTML = `<div class="result-info-item" style="color: #666;">${message}</div>`;
             }
         }
 
@@ -2061,8 +2439,6 @@
             const pallet = STATE.pallets[category];
             const locationInput = document.getElementById(`location-${category}`);
             const location = locationInput.value.trim();
-            const originLocationInput = document.getElementById('origin-location');
-            const originLocation = originLocationInput.value.trim().toUpperCase();
 
             if (pallet.boxes.length === 0) {
                 showNotification('⚠️ No hay cajas en esta tarima', 'warning');
@@ -2075,6 +2451,90 @@
                 return;
             }
 
+            // Pre-validación: confirmar cantidad física
+            showSendValidationPopup(category, location);
+        }
+
+        // Popup de pre-validación de cantidad física
+        function showSendValidationPopup(category, location) {
+            const pallet = STATE.pallets[category];
+            const boxCount = pallet.boxes.length;
+            const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show';
+            overlay.id = 'send-validation-popup';
+            overlay.innerHTML = `
+                <div class="popup-content send-validation-popup">
+                    <div class="popup-header">
+                        <span>📦 Validar Envío - ${categoryNames[category]}</span>
+                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    </div>
+                    <p style="margin-bottom: 15px; font-size: 0.9em;">
+                        <strong>Cajas escaneadas:</strong> <span style="font-size: 1.5em; color: var(--primary); font-weight: 700;">${boxCount}</span><br>
+                        <strong>Destino:</strong> ${location}
+                    </p>
+                    <div class="validation-input-group">
+                        <label>¿Cuántas cajas físicas hay en la tarima?</label>
+                        <input type="number" id="physical-count-input" min="0" placeholder="0" autofocus
+                               onkeyup="validateBoxCount(${boxCount})" onchange="validateBoxCount(${boxCount})">
+                    </div>
+                    <div id="validation-status"></div>
+                    <div class="popup-buttons">
+                        <button class="btn btn-success btn-full" id="confirm-send-btn" disabled
+                                onclick="confirmSendPallet('${category}', '${location}')">
+                            📤 Confirmar Envío
+                        </button>
+                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // Enfocar el input
+            setTimeout(() => {
+                const input = document.getElementById('physical-count-input');
+                if (input) input.focus();
+            }, 100);
+
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
+        }
+
+        // Validar cantidad de cajas físicas vs escaneadas
+        function validateBoxCount(expectedCount) {
+            const input = document.getElementById('physical-count-input');
+            const statusDiv = document.getElementById('validation-status');
+            const confirmBtn = document.getElementById('confirm-send-btn');
+            const physicalCount = parseInt(input.value) || 0;
+
+            if (physicalCount === expectedCount) {
+                statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${expectedCount} cajas)</div>`;
+                confirmBtn.disabled = false;
+            } else if (physicalCount > 0) {
+                const diff = physicalCount - expectedCount;
+                const diffText = diff > 0 ? `+${diff} de más` : `${Math.abs(diff)} faltan`;
+                statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${expectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
+                confirmBtn.disabled = true;
+            } else {
+                statusDiv.innerHTML = '';
+                confirmBtn.disabled = true;
+            }
+        }
+
+        // Confirmar envío después de validación
+        async function confirmSendPallet(category, location) {
+            // Cerrar popup de validación
+            document.getElementById('send-validation-popup')?.remove();
+
+            const pallet = STATE.pallets[category];
+            const locationInput = document.getElementById(`location-${category}`);
+            const originLocationInput = document.getElementById('origin-location');
+            const originLocation = originLocationInput.value.trim().toUpperCase();
+
             // Validar formato de ubicación con doble confirmación si es inválida
             const locationCheck = confirmInvalidLocation(location);
             if (!locationCheck.confirmed) {
@@ -2085,7 +2545,7 @@
 
             // Usar la ubicación formateada (normalizada si es válida)
             const finalLocation = locationCheck.formatted;
-            locationInput.value = finalLocation; // Actualizar el input con formato correcto
+            locationInput.value = finalLocation;
 
             const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
             const now = new Date();
@@ -2097,13 +2557,13 @@
                 date: dateStr,
                 time: timeStr,
                 user: CURRENT_USER || 'Usuario',
-                scan1: box.code,  // Código limpio (parseado)
+                scan1: box.code,
                 scan2: box.scan2 || '',
                 location: finalLocation,
                 status: statusMap[category],
                 note: '',
                 pallet: pallet.id,
-                originLocation: originLocation  // Columna J: Ubicación Física de Origen
+                originLocation: originLocation
             }));
 
             // Add to history
@@ -2147,6 +2607,7 @@
             updateSidebar();
             updateSendButtons();
             updateGlobalCounter();
+            updateVerificationBadges();
         }
 
         function updateGlobalCounter() {
@@ -2189,15 +2650,263 @@
                 return;
             }
 
-            listEl.innerHTML = boxes.map((box, index) => `
-                <div class="box-item">
+            const originLoc = document.getElementById('origin-location').value.trim().toUpperCase() || '-';
+
+            listEl.innerHTML = boxes.map((box, index) => {
+                const isVerified = box.verified || false;
+                const verifiedClass = isVerified ? 'verified' : '';
+
+                // Solo mostrar check en columna OK
+                const checkBtn = category === 'ok'
+                    ? `<button class="box-action-btn check" onclick="toggleBoxVerified('${category}', ${index})" title="Marcar verificado">
+                         ${isVerified ? '✓' : '○'}
+                       </button>`
+                    : '';
+
+                return `
+                <div class="box-item ${verifiedClass}">
                     <div class="box-info">
                         <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
                         <div class="box-meta">${box.location} • ${box.timestamp}</div>
                     </div>
-                    <button class="box-delete" onclick="deleteBox('${category}', ${index})">✕</button>
+                    <div class="box-actions">
+                        <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar código">📋</button>
+                        <button class="box-action-btn copy" onclick="copyToClipboard('${originLoc}')" title="Copiar origen">📍</button>
+                        ${checkBtn}
+                        <button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${index})" title="Mover a otro pallet">↔</button>
+                        <button class="box-action-btn delete" onclick="deleteBox('${category}', ${index})" title="Eliminar">✕</button>
+                    </div>
                 </div>
-            `).join('');
+            `}).join('');
+        }
+
+        // Toggle verificación de caja en OK
+        function toggleBoxVerified(category, index) {
+            if (category !== 'ok') return;
+            STATE.pallets[category].boxes[index].verified = !STATE.pallets[category].boxes[index].verified;
+            saveToStorage();
+            updateUI();
+        }
+
+        // Copiar al portapapeles
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification(`📋 Copiado: ${text}`, 'success');
+            }).catch(() => {
+                showNotification('❌ Error al copiar', 'error');
+            });
+        }
+
+        // Popup para mover caja entre pallets
+        function showMoveBoxPopup(fromCategory, index) {
+            const box = STATE.pallets[fromCategory].boxes[index];
+            const categories = ['ok', 'blocked', 'nowms'].filter(c => c !== fromCategory);
+            const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show';
+            overlay.innerHTML = `
+                <div class="popup-content" style="max-width: 350px;">
+                    <div class="popup-header">
+                        <span>↔️ Mover Caja</span>
+                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    </div>
+                    <p style="margin-bottom: 15px; font-size: 0.9em;">
+                        <strong>Código:</strong> <code>${box.code}</code><br>
+                        <strong>Desde:</strong> ${categoryNames[fromCategory]}
+                    </p>
+                    <p style="margin-bottom: 10px; font-weight: 600;">Mover a:</p>
+                    <div class="popup-buttons">
+                        ${categories.map(cat => `
+                            <button class="btn btn-${cat === 'ok' ? 'success' : cat === 'blocked' ? 'warning' : 'danger'} btn-full"
+                                    onclick="moveBox('${fromCategory}', ${index}, '${cat}'); this.closest('.popup-overlay').remove();">
+                                ${categoryNames[cat]}
+                            </button>
+                        `).join('')}
+                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
+        }
+
+        // Mover caja entre pallets
+        function moveBox(fromCategory, index, toCategory) {
+            const box = STATE.pallets[fromCategory].boxes.splice(index, 1)[0];
+            box.verified = false; // Reset verificación al mover
+            STATE.pallets[toCategory].boxes.push(box);
+            saveToStorage();
+            updateUI();
+            showNotification(`✅ Caja movida a ${toCategory.toUpperCase()}`, 'success');
+        }
+
+        // ==================== MODAL DETALLE DE PALLET ====================
+        let detailModalSort = { column: 'index', direction: 'asc' };
+        let detailModalFilter = { code: '', location: '' };
+
+        function showPalletDetailModal(category) {
+            const pallet = STATE.pallets[category];
+            const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+            const categoryColors = { ok: 'var(--success)', blocked: 'var(--blocked)', nowms: 'var(--error)' };
+
+            if (pallet.boxes.length === 0) {
+                showNotification('⚠️ No hay cajas en esta tarima', 'warning');
+                return;
+            }
+
+            const verifiedCount = category === 'ok' ? pallet.boxes.filter(b => b.verified).length : 0;
+            const pendingCount = pallet.boxes.length - verifiedCount;
+
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show';
+            overlay.id = 'pallet-detail-modal';
+            overlay.innerHTML = `
+                <div class="popup-content pallet-detail-modal">
+                    <div class="pallet-detail-header">
+                        <div>
+                            <span style="font-size: 1.2em; font-weight: 700; color: ${categoryColors[category]};">
+                                ${categoryNames[category]} - ${pallet.id}
+                            </span>
+                            <span style="font-size: 0.9em; color: #666; margin-left: 10px;">${pallet.boxes.length} cajas</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            ${category === 'ok' ? `
+                                <div class="pallet-detail-counters">
+                                    <span class="counter-badge ok">✓ ${verifiedCount}</span>
+                                    <span class="counter-badge pending">○ ${pendingCount}</span>
+                                </div>
+                            ` : ''}
+                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        </div>
+                    </div>
+                    <div class="pallet-detail-filters">
+                        <input type="text" placeholder="🔍 Filtrar código..." id="detail-filter-code" onkeyup="filterDetailModal('${category}')">
+                        <input type="text" placeholder="📍 Filtrar ubicación..." id="detail-filter-location" onkeyup="filterDetailModal('${category}')">
+                        <button class="btn btn-small btn-secondary" onclick="clearDetailFilters('${category}')">Limpiar</button>
+                    </div>
+                    <div class="pallet-detail-table-container">
+                        <table class="pallet-detail-table">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortDetailModal('${category}', 'index')"># ↕</th>
+                                    <th onclick="sortDetailModal('${category}', 'code')">Código ↕</th>
+                                    <th onclick="sortDetailModal('${category}', 'scan2')">Código 2 ↕</th>
+                                    <th onclick="sortDetailModal('${category}', 'location')">Ubicación ↕</th>
+                                    <th onclick="sortDetailModal('${category}', 'timestamp')">Hora ↕</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detail-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            renderDetailTable(category);
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        }
+
+        function renderDetailTable(category) {
+            const pallet = STATE.pallets[category];
+            const tbody = document.getElementById('detail-table-body');
+            if (!tbody) return;
+            const originLoc = document.getElementById('origin-location').value.trim().toUpperCase() || '-';
+
+            let filtered = pallet.boxes.map((box, index) => ({ ...box, originalIndex: index }));
+            if (detailModalFilter.code) {
+                const s = detailModalFilter.code.toUpperCase();
+                filtered = filtered.filter(b => b.code.toUpperCase().includes(s) || (b.scan2 && b.scan2.toUpperCase().includes(s)));
+            }
+            if (detailModalFilter.location) {
+                const s = detailModalFilter.location.toUpperCase();
+                filtered = filtered.filter(b => b.location.toUpperCase().includes(s));
+            }
+
+            filtered.sort((a, b) => {
+                let valA, valB;
+                switch (detailModalSort.column) {
+                    case 'code': valA = a.code; valB = b.code; break;
+                    case 'scan2': valA = a.scan2 || ''; valB = b.scan2 || ''; break;
+                    case 'location': valA = a.location; valB = b.location; break;
+                    case 'timestamp': valA = a.timestamp; valB = b.timestamp; break;
+                    default: valA = a.originalIndex; valB = b.originalIndex;
+                }
+                if (typeof valA === 'string') return detailModalSort.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                return detailModalSort.direction === 'asc' ? valA - valB : valB - valA;
+            });
+
+            tbody.innerHTML = filtered.map((box, i) => {
+                const verified = box.verified || false;
+                const style = verified ? 'background: rgba(76, 175, 80, 0.1);' : '';
+                const checkBtn = category === 'ok' ? `<button class="box-action-btn check" onclick="toggleBoxVerifiedModal('${category}', ${box.originalIndex})">${verified ? '✓' : '○'}</button>` : '';
+                return `<tr style="${style}"><td>${i + 1}</td><td><code>${box.code}</code></td><td><code>${box.scan2 || '-'}</code></td><td>${box.location}</td><td>${box.timestamp}</td><td><button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')">📋</button><button class="box-action-btn copy" onclick="copyToClipboard('${originLoc}')">📍</button>${checkBtn}<button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${box.originalIndex}); document.getElementById('pallet-detail-modal')?.remove();">↔</button><button class="box-action-btn delete" onclick="deleteBoxModal('${category}', ${box.originalIndex})">✕</button></td></tr>`;
+            }).join('');
+        }
+
+        function sortDetailModal(category, column) {
+            if (detailModalSort.column === column) detailModalSort.direction = detailModalSort.direction === 'asc' ? 'desc' : 'asc';
+            else { detailModalSort.column = column; detailModalSort.direction = 'asc'; }
+            renderDetailTable(category);
+        }
+
+        function filterDetailModal(category) {
+            detailModalFilter.code = document.getElementById('detail-filter-code')?.value || '';
+            detailModalFilter.location = document.getElementById('detail-filter-location')?.value || '';
+            renderDetailTable(category);
+        }
+
+        function clearDetailFilters(category) {
+            document.getElementById('detail-filter-code').value = '';
+            document.getElementById('detail-filter-location').value = '';
+            detailModalFilter = { code: '', location: '' };
+            renderDetailTable(category);
+        }
+
+        function toggleBoxVerifiedModal(category, index) {
+            toggleBoxVerified(category, index);
+            renderDetailTable(category);
+            const pallet = STATE.pallets[category];
+            const v = pallet.boxes.filter(b => b.verified).length;
+            const p = pallet.boxes.length - v;
+            const counters = document.querySelector('.pallet-detail-counters');
+            if (counters) counters.innerHTML = `<span class="counter-badge ok">✓ ${v}</span><span class="counter-badge pending">○ ${p}</span>`;
+        }
+
+        function deleteBoxModal(category, index) {
+            if (confirm('¿Eliminar esta caja?')) {
+                STATE.pallets[category].boxes.splice(index, 1);
+                saveToStorage();
+                updateUI();
+                if (STATE.pallets[category].boxes.length === 0) {
+                    document.getElementById('pallet-detail-modal')?.remove();
+                    showNotification('Tarima vacía', 'info');
+                } else {
+                    renderDetailTable(category);
+                    showNotification('Caja eliminada', 'info');
+                }
+            }
+        }
+
+        function updateVerificationBadges() {
+            const pallet = STATE.pallets.ok;
+            const v = pallet.boxes.filter(b => b.verified).length;
+            const p = pallet.boxes.length - v;
+            const vBadge = document.getElementById('ok-verified-badge');
+            const pBadge = document.getElementById('ok-pending-badge');
+            if (pallet.boxes.length > 0) {
+                vBadge.style.display = v > 0 ? 'flex' : 'none';
+                document.getElementById('ok-verified-count').textContent = v;
+                pBadge.style.display = p > 0 ? 'flex' : 'none';
+                document.getElementById('ok-pending-count').textContent = p;
+            } else {
+                vBadge.style.display = 'none';
+                pBadge.style.display = 'none';
+            }
         }
 
         function updateSidebar() {
