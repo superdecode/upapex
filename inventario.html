@@ -1022,10 +1022,11 @@
             background: rgba(0,0,0,0.08);
         }
 
-        .box-action-btn.copy { color: var(--primary); }
-        .box-action-btn.move { color: var(--warning); }
-        .box-action-btn.check { color: var(--success); }
-        .box-action-btn.delete { color: var(--error); }
+        .box-action-btn.copy { color: var(--primary); border: 1px solid var(--primary); background: rgba(249, 115, 22, 0.08); }
+        .box-action-btn.move { color: var(--warning); border: 1px solid var(--warning); background: rgba(255, 193, 7, 0.08); }
+        .box-action-btn.check { color: var(--success); border: 1px solid var(--success); background: rgba(76, 175, 80, 0.08); }
+        .box-action-btn.delete { color: var(--error); border: 1px solid var(--error); background: rgba(244, 67, 54, 0.08); }
+        .box-action-btn:hover { transform: scale(1.1); filter: brightness(1.1); }
 
         .box-item.verified {
             background: rgba(76, 175, 80, 0.12);
@@ -1103,7 +1104,8 @@
 
         /* Modal de Detalle de Pallet */
         .pallet-detail-modal {
-            max-width: 900px;
+            max-width: 1200px;
+            width: 95vw;
         }
 
         .pallet-detail-header {
@@ -2476,7 +2478,7 @@
                     </p>
                     <div class="validation-input-group">
                         <label>¿Cuántas cajas físicas hay en la tarima?</label>
-                        <input type="number" id="physical-count-input" min="0" placeholder="0" autofocus
+                        <input type="number" id="physical-count-input" min="0" placeholder="" autofocus
                                onkeyup="validateBoxCount(${boxCount})" onchange="validateBoxCount(${boxCount})">
                     </div>
                     <div id="validation-status"></div>
@@ -2670,10 +2672,10 @@
                         <div class="box-meta">${box.location} • ${box.timestamp}</div>
                     </div>
                     <div class="box-actions">
-                        <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar código">📋</button>
-                        <button class="box-action-btn copy" onclick="copyToClipboard('${originLoc}')" title="Copiar origen">📍</button>
+                        <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar código">⧉</button>
+                        <button class="box-action-btn copy" onclick="copyToClipboard('${box.location}')" title="Copiar ubicación BD">◎</button>
                         ${checkBtn}
-                        <button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${index})" title="Mover a otro pallet">↔</button>
+                        <button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${index})" title="Mover a otro pallet">⇄</button>
                         <button class="box-action-btn delete" onclick="deleteBox('${category}', ${index})" title="Eliminar">✕</button>
                     </div>
                 </div>
@@ -2844,7 +2846,7 @@
                 const verified = box.verified || false;
                 const style = verified ? 'background: rgba(76, 175, 80, 0.1);' : '';
                 const checkBtn = category === 'ok' ? `<button class="box-action-btn check" onclick="toggleBoxVerifiedModal('${category}', ${box.originalIndex})">${verified ? '✓' : '○'}</button>` : '';
-                return `<tr style="${style}"><td>${i + 1}</td><td><code>${box.code}</code></td><td><code>${box.scan2 || '-'}</code></td><td>${box.location}</td><td>${box.timestamp}</td><td><button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')">📋</button><button class="box-action-btn copy" onclick="copyToClipboard('${originLoc}')">📍</button>${checkBtn}<button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${box.originalIndex}); document.getElementById('pallet-detail-modal')?.remove();">↔</button><button class="box-action-btn delete" onclick="deleteBoxModal('${category}', ${box.originalIndex})">✕</button></td></tr>`;
+                return `<tr style="${style}"><td>${i + 1}</td><td><code>${box.code}</code></td><td><code>${box.scan2 || '-'}</code></td><td>${box.location}</td><td>${box.timestamp}</td><td><button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')">⧉</button><button class="box-action-btn copy" onclick="copyToClipboard('${box.location}')">◎</button>${checkBtn}<button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${box.originalIndex}); document.getElementById('pallet-detail-modal')?.remove();">⇄</button><button class="box-action-btn delete" onclick="deleteBoxModal('${category}', ${box.originalIndex})">✕</button></td></tr>`;
             }).join('');
         }
 
