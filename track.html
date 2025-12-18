@@ -1676,23 +1676,22 @@
             `;
         }
 
-        // Get value from row using flexible column name matching or index
+        // Get value from row using flexible column name matching
         function getRowValue(row, keyPattern) {
-            // If key is a number, get value by column index
-            if (typeof keyPattern === 'number') {
-                const values = Object.values(row);
-                return values[keyPattern] !== undefined ? values[keyPattern] : '';
-            }
-
             // First try exact match by key name
             if (row[keyPattern] !== undefined) {
                 return row[keyPattern];
             }
 
-            // Then try to find column that contains the key pattern (case insensitive)
-            const keyLower = keyPattern.toLowerCase();
+            // Then try to find column that contains the key pattern
+            // This handles headers like "增值服务单号\n(Value-added services No.)"
             for (const [colName, value] of Object.entries(row)) {
-                if (colName.toLowerCase().includes(keyLower)) {
+                // Check if column name contains the key (for Chinese keys)
+                if (colName.includes(keyPattern)) {
+                    return value;
+                }
+                // Also check case-insensitive for English keys
+                if (colName.toLowerCase().includes(keyPattern.toLowerCase())) {
                     return value;
                 }
             }
@@ -1747,13 +1746,12 @@
                     { key: 'Notas', label: 'Notas', type: 'text' }
                 ],
                 trs: [
-                    { key: 0, label: 'No. Servicio', type: 'code' },           // Col A
-                    { key: 3, label: 'Estado', type: 'status' },               // Col D
-                    { key: 5, label: 'Fecha Esperada', type: 'datetime' },     // Col F
-                    { key: 13, label: 'Código Original', type: 'code' },       // Col N
-                    { key: 14, label: 'Código Nuevo', type: 'code' },          // Col O
-                    { key: 15, label: 'Cajas', type: 'number' },               // Col P
-                    { key: 16, label: 'Tipo Instrucción', type: 'text' }       // Col Q
+                    { key: '增值服务单号', label: 'No. Servicio', type: 'code' },        // Col A
+                    { key: '期望完成时间', label: 'Fecha Esperada', type: 'datetime' },  // Col F
+                    { key: '关联单号', label: 'Referencia', type: 'code' },              // Col G
+                    { key: '原货件号', label: 'Código Original', type: 'code' },         // Col N
+                    { key: '新货件号', label: 'Código Nuevo', type: 'code' },            // Col O
+                    { key: '增值指令类型', label: 'Tipo Instrucción', type: 'text' }     // Col Q
                 ]
             };
 
