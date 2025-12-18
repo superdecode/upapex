@@ -16,6 +16,8 @@
             --card: #ffffff;
             --border: #e2e8f0;
             --gray: #6c757d;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
+            --shadow-hover: 0 4px 12px rgba(0,0,0,0.15);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,7 +27,8 @@
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
-            padding: 20px;
+            padding: 15px;
+            font-size: 14px;
         }
 
         .container {
@@ -37,44 +40,67 @@
         .header {
             background: linear-gradient(135deg, var(--primary) 0%, #ea580c 100%);
             color: white;
-            padding: 30px;
-            border-radius: 16px;
-            margin-bottom: 20px;
+            padding: 20px 25px;
+            border-radius: 12px;
+            margin-bottom: 15px;
             box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+            position: relative;
         }
 
         .header h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
+            font-size: 1.6em;
+            margin-bottom: 6px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .header p {
             opacity: 0.95;
-            font-size: 1.05em;
+            font-size: 0.95em;
+        }
+
+        .refresh-db-btn {
+            position: absolute;
+            top: 20px;
+            right: 25px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .refresh-db-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
         }
 
         /* Search Section */
         .search-section {
             background: white;
-            padding: 25px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: var(--shadow);
         }
 
         .search-row {
             display: flex;
-            gap: 12px;
-            margin-bottom: 15px;
+            gap: 10px;
+            margin-bottom: 12px;
         }
 
         .search-input {
             flex: 1;
-            padding: 15px 20px;
-            font-size: 1.3em;
+            padding: 12px 18px;
+            font-size: 1.2em;
             border: 2px solid var(--border);
             border-radius: 8px;
             font-weight: 600;
@@ -89,7 +115,7 @@
         }
 
         .btn {
-            padding: 15px 30px;
+            padding: 12px 24px;
             border: none;
             border-radius: 8px;
             font-weight: 600;
@@ -98,8 +124,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            font-size: 1em;
+            gap: 6px;
+            font-size: 0.95em;
         }
 
         .btn:hover:not(:disabled) {
@@ -278,55 +304,56 @@
         /* Summary Card */
         .summary-card {
             background: white;
-            padding: 25px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border-left: 5px solid var(--primary);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: var(--shadow);
+            border-left: 4px solid var(--primary);
         }
 
         .summary-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 12px;
         }
 
         .summary-title {
-            font-size: 1.5em;
+            font-size: 1.3em;
             font-weight: 700;
             color: var(--primary);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
 
         .summary-actions {
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
 
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
         }
 
         .summary-item {
-            padding: 15px;
+            padding: 12px 14px;
             background: #f9f9f9;
             border-radius: 8px;
             border-left: 3px solid;
             cursor: pointer;
             transition: all 0.2s;
+            position: relative;
         }
 
         .summary-item:hover {
             background: #f0f0f0;
             transform: translateY(-2px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: var(--shadow);
         }
 
         .summary-item.primary { border-color: var(--primary); }
@@ -337,31 +364,59 @@
         .summary-item.gray { border-color: var(--gray); }
 
         .summary-label {
-            font-size: 0.85em;
+            font-size: 0.8em;
             color: #666;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .summary-value {
-            font-size: 1.1em;
+            font-size: 1em;
             font-weight: 700;
             word-break: break-word;
+            line-height: 1.3;
+        }
+
+        .count-indicator {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: var(--primary);
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75em;
+            font-weight: 700;
+            border: 3px solid white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .count-indicator:hover {
+            transform: scale(1.15);
         }
 
         /* Section Card */
         .section-card {
             background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 18px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
         }
 
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px;
+            padding: 8px;
             border-radius: 8px;
             margin-bottom: 10px;
         }
@@ -369,7 +424,7 @@
         .section-header-left {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
             flex: 1;
         }
 
@@ -383,25 +438,33 @@
         }
 
         .section-title {
-            font-size: 1.2em;
+            font-size: 1.05em;
             font-weight: 700;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            transition: color 0.2s;
         }
 
         .section-count {
             background: var(--primary);
             color: white;
-            padding: 4px 12px;
+            padding: 3px 10px;
             border-radius: 12px;
-            font-size: 0.85em;
+            font-size: 0.8em;
             font-weight: 600;
         }
 
         .section-toggle {
-            font-size: 1.5em;
+            font-size: 1.2em;
             transition: transform 0.3s;
+            cursor: pointer;
+            color: var(--gray);
+            padding: 4px 8px;
+        }
+
+        .section-toggle:hover {
+            color: var(--primary);
         }
 
         .section-toggle.collapsed {
@@ -510,10 +573,11 @@
         /* Badge */
         .badge {
             display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.85em;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
             font-weight: 600;
+            white-space: nowrap;
         }
 
         .badge.success { background: rgba(76, 175, 80, 0.15); color: var(--success); }
@@ -522,6 +586,13 @@
         .badge.info { background: rgba(37, 99, 235, 0.15); color: var(--info); }
         .badge.primary { background: rgba(249, 115, 22, 0.15); color: var(--primary); }
         .badge.gray { background: rgba(108, 117, 125, 0.15); color: var(--gray); }
+
+        .match-badge {
+            font-size: 0.7em;
+            padding: 2px 6px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
 
         /* Match Info */
         .match-info {
@@ -593,20 +664,63 @@
 
         /* Print Styles */
         @media print {
-            body { background: white; padding: 0; }
-            .header, .search-section, .btn, .section-toggle { display: none; }
+            body { background: white; padding: 0; font-size: 11px; }
+            .header { padding: 15px; margin-bottom: 10px; }
+            .refresh-db-btn, .search-section, .btn, .section-toggle, .section-mode-toggle, .reload-banner { display: none !important; }
             .section-content { display: block !important; }
-            .summary-card, .section-card { page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+            .summary-card, .section-card { 
+                page-break-inside: avoid; 
+                box-shadow: none; 
+                border: 1px solid #ddd;
+                padding: 12px;
+                margin-bottom: 10px;
+            }
+            .summary-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+            .summary-item { padding: 8px; }
+            .summary-label { font-size: 0.7em; }
+            .summary-value { font-size: 0.85em; }
+            .data-table { font-size: 0.75em; }
+            .data-table th, .data-table td { padding: 6px; }
+            
+            /* Limit rows for exact mode */
+            .print-limit-exact .data-table tbody tr:nth-child(n+31) { display: none; }
+            
+            /* Limit rows for flexible mode */
+            .print-limit-flexible .data-table tbody tr:nth-child(n+61) { display: none; }
+            
+            .print-notice {
+                display: block !important;
+                padding: 8px;
+                background: #fff3cd;
+                border: 1px solid #ffc107;
+                border-radius: 4px;
+                margin-top: 8px;
+                font-size: 0.8em;
+                text-align: center;
+            }
+        }
+
+        .print-notice {
+            display: none;
         }
 
         /* Responsive */
         @media (max-width: 768px) {
-            .header h1 { font-size: 1.5em; }
+            body { padding: 10px; font-size: 13px; }
+            .header h1 { font-size: 1.3em; }
+            .header p { font-size: 0.85em; }
+            .refresh-db-btn { position: static; margin-top: 10px; width: 100%; justify-content: center; }
             .search-row { flex-direction: column; }
-            .search-input { font-size: 1.1em; }
-            .summary-grid { grid-template-columns: 1fr; }
+            .search-input { font-size: 1em; padding: 10px 14px; }
+            .btn { padding: 10px 18px; font-size: 0.9em; }
+            .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .summary-item { padding: 10px 12px; }
+            .summary-label { font-size: 0.75em; }
+            .summary-value { font-size: 0.9em; }
             .summary-header { flex-direction: column; align-items: stretch; }
             .summary-actions { flex-direction: column; }
+            .section-title { font-size: 0.95em; }
+            .count-indicator { width: 24px; height: 24px; font-size: 0.7em; }
         }
 
         .reload-banner {
@@ -649,6 +763,9 @@
         <div class="header">
             <h1>🔍 Sistema de Consulta de Cajas</h1>
             <p>Rastreo unificado de mercancía - Consulta información de múltiples fuentes</p>
+            <button class="refresh-db-btn" onclick="forceReloadData()">
+                🔄 Actualizar BD
+            </button>
         </div>
 
         <!-- Reload Banner -->
@@ -972,7 +1089,77 @@
             }
 
             // Clean special characters
-            return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+            return code.replace(/[^a-zA-Z0-9\-\/\']/g, '');
+        }
+
+        function generateCodeVariations(code) {
+            const variations = new Set([code]);
+            
+            // Generate variations with different separators
+            const separators = ['/', '-', '\''];
+            
+            separators.forEach(sep => {
+                if (code.includes(sep)) {
+                    separators.forEach(newSep => {
+                        if (sep !== newSep) {
+                            variations.add(code.replace(new RegExp('\\' + sep, 'g'), newSep));
+                        }
+                    });
+                }
+            });
+
+            return Array.from(variations);
+        }
+
+        function getTruncatedCode(code) {
+            // Remove last 4 characters if it's Uxxxx pattern
+            if (/U\d{3,4}$/i.test(code)) {
+                return code.replace(/U\d{3,4}$/i, '');
+            }
+            
+            // Remove everything after last separator
+            const separators = ['/', '-', '\''];
+            for (const sep of separators) {
+                const lastIndex = code.lastIndexOf(sep);
+                if (lastIndex > 0) {
+                    return code.substring(0, lastIndex);
+                }
+            }
+            
+            return code;
+        }
+
+        function calculateSimilarity(str1, str2) {
+            const longer = str1.length > str2.length ? str1 : str2;
+            const shorter = str1.length > str2.length ? str2 : str1;
+            
+            if (longer.length === 0) return 100;
+            
+            // Check if shorter is contained in longer
+            if (longer.includes(shorter)) {
+                return (shorter.length / longer.length) * 100;
+            }
+            
+            // Levenshtein distance
+            const costs = [];
+            for (let i = 0; i <= longer.length; i++) {
+                let lastValue = i;
+                for (let j = 0; j <= shorter.length; j++) {
+                    if (i === 0) {
+                        costs[j] = j;
+                    } else if (j > 0) {
+                        let newValue = costs[j - 1];
+                        if (longer.charAt(i - 1) !== shorter.charAt(j - 1)) {
+                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                        }
+                        costs[j - 1] = lastValue;
+                        lastValue = newValue;
+                    }
+                }
+                if (i > 0) costs[shorter.length] = lastValue;
+            }
+            
+            return ((longer.length - costs[shorter.length]) / longer.length) * 100;
         }
 
         function searchAllSources(query) {
@@ -994,44 +1181,41 @@
                     trs: []
                 },
                 query,
-                baseCode: extractBaseCode(query)
+                baseCode: extractBaseCode(query),
+                variations: generateCodeVariations(query),
+                truncatedCode: getTruncatedCode(query)
             };
 
-            // Search BD Stock
-            searchInSource(DATA_CACHE.bdStock, query, results, 'bdStock', [
+            // Search with similarity tracking
+            searchInSourceWithSimilarity(DATA_CACHE.bdStock, results, 'bdStock', [
                 'Customize Barcode/自定义箱条码',
                 'Box type No./箱类型号'
             ]);
 
-            // Search OBC BD
-            searchInSource(DATA_CACHE.obcBd, query, results, 'obcBd', [
+            searchInSourceWithSimilarity(DATA_CACHE.obcBd, results, 'obcBd', [
                 'Custom box barcode_自定义箱条码',
                 'Outbound_出库单号',
                 'Reference order No._参考单号'
             ]);
 
-            // Search Validacion
-            searchInSource(DATA_CACHE.validacion, query, results, 'validacion', [
+            searchInSourceWithSimilarity(DATA_CACHE.validacion, results, 'validacion', [
                 'Codigo',
                 'Orden'
             ]);
 
-            // Search Inventario
-            searchInSource(DATA_CACHE.inventario, query, results, 'inventario', [
+            searchInSourceWithSimilarity(DATA_CACHE.inventario, results, 'inventario', [
                 'SCAN 1',
                 'SCAN 2',
                 'PALLET'
             ]);
 
-            // Search MNE
-            searchInSource(DATA_CACHE.mne, query, results, 'mne', [
+            searchInSourceWithSimilarity(DATA_CACHE.mne, results, 'mne', [
                 'Codigo Caja',
                 'Orden de Pedido',
                 'Orden OBC'
             ]);
 
-            // Search TRS
-            searchInSource(DATA_CACHE.trs, query, results, 'trs', [
+            searchInSourceWithSimilarity(DATA_CACHE.trs, results, 'trs', [
                 '原货件号 (Original Shipment NO.)',
                 '新货件号 (New Shipment NO.)',
                 '关联单号 (Express Code)'
@@ -1040,36 +1224,57 @@
             return results;
         }
 
-        function extractBaseCode(code) {
-            // Remove -UXX suffix
-            return code.replace(/-U\d+$/i, '').replace(/U\d+$/i, '');
-        }
-
-        function searchInSource(data, query, results, sourceName, fields) {
-            const baseCode = results.baseCode;
+        function searchInSourceWithSimilarity(data, results, sourceName, fields) {
+            const query = results.query;
+            const variations = results.variations;
+            const truncated = results.truncatedCode;
+            const SIMILARITY_THRESHOLD = 98;
 
             data.forEach(row => {
-                let exactMatch = false;
-                let partialMatch = false;
+                let bestMatch = { type: null, similarity: 0, field: null };
 
                 fields.forEach(field => {
                     const value = normalizeCode(row[field] || '');
-                    
-                    if (value === query) {
-                        exactMatch = true;
-                    } else if (value === baseCode || value.includes(baseCode) || baseCode.includes(value)) {
-                        partialMatch = true;
-                    } else if (value.startsWith(query) || query.startsWith(value)) {
-                        partialMatch = true;
+                    if (!value) return;
+
+                    // Check exact match with variations
+                    if (variations.includes(value)) {
+                        bestMatch = { type: 'exact', similarity: 100, field };
+                        return;
+                    }
+
+                    // Check truncated match
+                    if (truncated && truncated !== query) {
+                        const valueTruncated = getTruncatedCode(value);
+                        if (truncated === valueTruncated || variations.includes(valueTruncated)) {
+                            const sim = calculateSimilarity(query, value);
+                            if (sim > bestMatch.similarity) {
+                                bestMatch = { type: 'fuzzy', similarity: sim, field };
+                            }
+                        }
+                    }
+
+                    // Check similarity
+                    const similarity = calculateSimilarity(query, value);
+                    if (similarity >= SIMILARITY_THRESHOLD && similarity > bestMatch.similarity) {
+                        bestMatch = { type: 'fuzzy', similarity, field };
                     }
                 });
 
-                if (exactMatch) {
-                    results.exact[sourceName].push(row);
-                } else if (partialMatch && results.partial[sourceName].length < CONFIG.MAX_RESULTS) {
-                    results.partial[sourceName].push(row);
+                // Add to results based on best match
+                if (bestMatch.type === 'exact') {
+                    const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+                    results.exact[sourceName].push(enrichedRow);
+                } else if (bestMatch.type === 'fuzzy' && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
+                    if (results.partial[sourceName].length < CONFIG.MAX_RESULTS) {
+                        const enrichedRow = { ...row, _matchType: 'fuzzy', _similarity: bestMatch.similarity };
+                        results.partial[sourceName].push(enrichedRow);
+                    }
                 }
             });
+
+            // Sort partial results by similarity
+            results.partial[sourceName].sort((a, b) => (b._similarity || 0) - (a._similarity || 0));
         }
 
         // ==================== DISPLAY RESULTS ====================
@@ -1098,25 +1303,50 @@
 
             // Check if OBC is exact
             const obcExact = results.exact.obcBd.length > 0;
-            const obcOrden = obcExact 
-                ? obcInfo?.['Outbound_出库单号'] 
-                : results.partial.obcBd.length > 1 
-                    ? `${results.partial.obcBd.length} coincidencias` 
-                    : obcInfo?.['Outbound_出库单号'] || '-';
+            const obcMultiple = results.exact.obcBd.length + results.partial.obcBd.length;
+            
+            // Get OBC order number
+            let obcOrden = '-';
+            let obcBoxCount = 0;
+            let obcInTrackingCount = 0;
+            
+            if (obcExact && obcInfo) {
+                obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'];
+                
+                // Count boxes in this OBC
+                const obcCode = obcInfo['Outbound_出库单号'];
+                if (obcCode) {
+                    obcBoxCount = DATA_CACHE.obcBd.filter(r => r['Outbound_出库单号'] === obcCode).length;
+                    obcInTrackingCount = DATA_CACHE.mne.filter(r => 
+                        normalizeCode(r['Orden OBC'] || '').includes(obcCode)
+                    ).length;
+                }
+            } else if (obcMultiple > 1) {
+                obcOrden = `${obcMultiple} coincidencias`;
+            } else if (obcInfo) {
+                obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'] || '-';
+            }
 
             // Check if TRS is exact
             const trsExact = results.exact.trs.length > 0;
+            const trsMultiple = results.exact.trs.length + results.partial.trs.length;
             const trsOrden = trsExact && trsInfo
                 ? trsInfo['增值服务单号 (Value-added services No.)']
-                : results.partial.trs.length > 1
-                    ? `${results.partial.trs.length} OT encontradas`
+                : trsMultiple > 1
+                    ? `${trsMultiple} TRS`
                     : trsInfo?.['增值服务单号 (Value-added services No.)'] || 'NO';
+
+            // Count stock locations
+            const stockLocations = new Set();
+            [...results.exact.bdStock, ...results.partial.bdStock].forEach(r => {
+                if (r['cellNo']) stockLocations.add(r['cellNo']);
+            });
 
             card.innerHTML = `
                 <div class="summary-header">
                     <div class="summary-title">
                         📦 ${results.query}
-                        ${totalExact > 0 ? '<span class="badge success">Coincidencia Exacta</span>' : '<span class="badge warning">Coincidencia Parcial</span>'}
+                        ${totalExact > 0 ? '<span class="badge success">Exacta</span>' : '<span class="badge warning">Flexible</span>'}
                     </div>
                     <div class="summary-actions">
                         <button class="btn btn-success" onclick="exportResults()">📥 Exportar</button>
@@ -1126,8 +1356,13 @@
 
                 <div class="summary-grid">
                     <div class="summary-item primary" onclick="jumpToSection('obcBd')">
-                        <div class="summary-label">📋 Número de Orden ${obcExact ? '' : '<span class="badge warning" style="font-size: 0.75em; margin-left: 5px;">Parcial</span>'}</div>
+                        ${obcMultiple > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('obcBd')">${obcMultiple}</span>` : ''}
+                        <div class="summary-label">
+                            📋 Número de Orden
+                            ${!obcExact && obcInfo ? '<span class="badge warning match-badge">~' + Math.round(obcInfo._similarity || 0) + '%</span>' : ''}
+                        </div>
                         <div class="summary-value">${obcOrden}</div>
+                        ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} en rastreo` : ''}</div>` : ''}
                     </div>
 
                     <div class="summary-item info" onclick="jumpToSection('obcBd')">
@@ -1141,6 +1376,7 @@
                     </div>
 
                     <div class="summary-item success" onclick="jumpToSection('bdStock')">
+                        ${stockLocations.size > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('bdStock')">${stockLocations.size}</span>` : ''}
                         <div class="summary-label">📍 Ubicación Actual</div>
                         <div class="summary-value">${stockInfo?.['cellNo'] || inventarioInfo?.['UBICACION'] || '-'}</div>
                     </div>
@@ -1160,8 +1396,12 @@
                         <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
                     </div>
 
-                    <div class="summary-item ${trsExact ? 'primary' : results.partial.trs.length > 0 ? 'warning' : 'gray'}" onclick="jumpToSection('trs')">
-                        <div class="summary-label">🔧 Orden de Trabajo ${trsExact ? '' : results.partial.trs.length > 0 ? '<span class="badge warning" style="font-size: 0.75em; margin-left: 5px;">Parcial</span>' : ''}</div>
+                    <div class="summary-item ${trsExact ? 'primary' : trsMultiple > 0 ? 'warning' : 'gray'}" onclick="jumpToSection('trs')">
+                        ${trsMultiple > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('trs')">${trsMultiple}</span>` : ''}
+                        <div class="summary-label">
+                            🔧 Orden de Trabajo
+                            ${!trsExact && trsInfo ? '<span class="badge warning match-badge">~' + Math.round(trsInfo._similarity || 0) + '%</span>' : ''}
+                        </div>
                         <div class="summary-value">${trsOrden}</div>
                     </div>
                 </div>
@@ -1292,7 +1532,7 @@
         }
 
         function renderTable(data, sourceKey) {
-            if (data.length === 0) return '';
+            if (data.length === 0) return '<div class="empty-state" style="padding: 20px;"><div class="empty-text" style="font-size: 0.9em;">📭 Sin coincidencias</div></div>';
 
             const fields = getRelevantFields(sourceKey);
             
@@ -1301,17 +1541,27 @@
                     <table class="data-table">
                         <thead>
                             <tr>
+                                <th style="width: 40px;">#</th>
                                 ${fields.map(f => `<th>${f.label}</th>`).join('')}
+                                <th style="width: 80px;">Tipo</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${data.map(row => `
+                            ${data.map((row, idx) => `
                                 <tr>
+                                    <td style="text-align: center; color: #999; font-weight: 600;">${idx + 1}</td>
                                     ${fields.map(f => `<td>${formatValue(row[f.key], f.type)}</td>`).join('')}
+                                    <td style="text-align: center;">
+                                        ${row._matchType === 'exact' 
+                                            ? '<span class="badge success">Exacta</span>' 
+                                            : `<span class="badge warning">~${Math.round(row._similarity || 0)}%</span>`
+                                        }
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
+                    ${data.length >= CONFIG.MAX_RESULTS ? '<div class="print-notice">⚠️ Mostrando primeros ' + CONFIG.MAX_RESULTS + ' resultados</div>' : ''}
                 </div>
             `;
         }
@@ -1453,6 +1703,16 @@
         }
 
         function printResults() {
+            // Add print classes based on mode
+            const body = document.body;
+            body.classList.remove('print-limit-exact', 'print-limit-flexible');
+            
+            if (GLOBAL_SEARCH_MODE === 'exact') {
+                body.classList.add('print-limit-exact');
+            } else {
+                body.classList.add('print-limit-flexible');
+            }
+            
             window.print();
         }
 
