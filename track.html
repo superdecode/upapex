@@ -126,6 +126,82 @@
             color: var(--primary);
         }
 
+        .search-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+        }
+
+        .search-mode-label {
+            font-weight: 600;
+            color: var(--text);
+            flex: 1;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--gray);
+            transition: 0.4s;
+            border-radius: 30px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: var(--primary);
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        .toggle-status {
+            font-weight: 700;
+            min-width: 100px;
+            text-align: right;
+        }
+
+        .toggle-status.exact {
+            color: var(--success);
+        }
+
+        .toggle-status.flexible {
+            color: var(--warning);
+        }
+
         /* Loading Overlay */
         .loading-overlay {
             position: fixed;
@@ -243,6 +319,14 @@
             background: #f9f9f9;
             border-radius: 8px;
             border-left: 3px solid;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .summary-item:hover {
+            background: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .summary-item.primary { border-color: var(--primary); }
@@ -277,14 +361,25 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: pointer;
             padding: 10px;
             border-radius: 8px;
-            transition: background 0.2s;
+            margin-bottom: 10px;
         }
 
-        .section-header:hover {
-            background: #f9f9f9;
+        .section-header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .section-title-wrapper {
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .section-title-wrapper:hover .section-title {
+            color: var(--primary);
         }
 
         .section-title {
@@ -311,6 +406,63 @@
 
         .section-toggle.collapsed {
             transform: rotate(-90deg);
+        }
+
+        .section-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+            background: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 2px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .section-mode-toggle:hover {
+            border-color: var(--primary);
+        }
+
+        .section-mode-toggle input[type="checkbox"] {
+            width: 40px;
+            height: 20px;
+            position: relative;
+            appearance: none;
+            background: var(--gray);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .section-mode-toggle input[type="checkbox"]:before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            top: 2px;
+            left: 2px;
+            transition: 0.3s;
+        }
+
+        .section-mode-toggle input[type="checkbox"]:checked {
+            background: var(--primary);
+        }
+
+        .section-mode-toggle input[type="checkbox"]:checked:before {
+            left: 22px;
+        }
+
+        .mode-label {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .mode-label.active {
+            color: var(--primary);
         }
 
         .section-content {
@@ -529,6 +681,14 @@
             <div class="search-tips">
                 💡 <strong>Tips:</strong> Busca por código completo (ej: PLEC25071567355U010), código base (PLEC25071567355) o número de orden (OBC2832510050RV)
             </div>
+            <div class="search-mode-toggle">
+                <div class="search-mode-label">🎯 Modo de Búsqueda Global:</div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="global-mode-toggle" onchange="toggleGlobalSearchMode()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-status exact" id="global-mode-status">Solo Exactas</span>
+            </div>
         </div>
 
         <!-- Results Container -->
@@ -575,6 +735,15 @@
         };
 
         let CURRENT_SEARCH = null;
+        let GLOBAL_SEARCH_MODE = 'exact'; // 'exact' or 'flexible'
+        let SECTION_MODES = {
+            bdStock: 'exact',
+            obcBd: 'exact',
+            validacion: 'exact',
+            inventario: 'exact',
+            mne: 'exact',
+            trs: 'exact'
+        };
 
         // ==================== INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', () => {
@@ -752,6 +921,41 @@
             displayResults(results, query);
         }
 
+        function toggleGlobalSearchMode() {
+            const toggle = document.getElementById('global-mode-toggle');
+            const statusEl = document.getElementById('global-mode-status');
+            
+            GLOBAL_SEARCH_MODE = toggle.checked ? 'flexible' : 'exact';
+            
+            if (GLOBAL_SEARCH_MODE === 'flexible') {
+                statusEl.textContent = 'Exactas + Flexibles';
+                statusEl.className = 'toggle-status flexible';
+            } else {
+                statusEl.textContent = 'Solo Exactas';
+                statusEl.className = 'toggle-status exact';
+            }
+
+            // Reset all section modes to match global
+            Object.keys(SECTION_MODES).forEach(key => {
+                SECTION_MODES[key] = GLOBAL_SEARCH_MODE;
+            });
+
+            // Re-render if search is active
+            if (CURRENT_SEARCH) {
+                const results = searchAllSources(CURRENT_SEARCH);
+                displayResults(results, CURRENT_SEARCH);
+            }
+        }
+
+        function toggleSectionMode(sectionKey) {
+            SECTION_MODES[sectionKey] = SECTION_MODES[sectionKey] === 'exact' ? 'flexible' : 'exact';
+            
+            if (CURRENT_SEARCH) {
+                const results = searchAllSources(CURRENT_SEARCH);
+                displayResults(results, CURRENT_SEARCH);
+            }
+        }
+
         function normalizeCode(raw) {
             let code = raw.trim().toUpperCase();
 
@@ -892,6 +1096,22 @@
             const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
             const totalPartial = Object.values(results.partial).reduce((sum, arr) => sum + arr.length, 0);
 
+            // Check if OBC is exact
+            const obcExact = results.exact.obcBd.length > 0;
+            const obcOrden = obcExact 
+                ? obcInfo?.['Outbound_出库单号'] 
+                : results.partial.obcBd.length > 1 
+                    ? `${results.partial.obcBd.length} coincidencias` 
+                    : obcInfo?.['Outbound_出库单号'] || '-';
+
+            // Check if TRS is exact
+            const trsExact = results.exact.trs.length > 0;
+            const trsOrden = trsExact && trsInfo
+                ? trsInfo['增值服务单号 (Value-added services No.)']
+                : results.partial.trs.length > 1
+                    ? `${results.partial.trs.length} OT encontradas`
+                    : trsInfo?.['增值服务单号 (Value-added services No.)'] || 'NO';
+
             card.innerHTML = `
                 <div class="summary-header">
                     <div class="summary-title">
@@ -905,47 +1125,69 @@
                 </div>
 
                 <div class="summary-grid">
-                    <div class="summary-item primary">
-                        <div class="summary-label">📋 Número de Orden</div>
-                        <div class="summary-value">${obcInfo?.['Outbound_出库单号'] || obcInfo?.['Reference order No._参考单号'] || '-'}</div>
+                    <div class="summary-item primary" onclick="jumpToSection('obcBd')">
+                        <div class="summary-label">📋 Número de Orden ${obcExact ? '' : '<span class="badge warning" style="font-size: 0.75em; margin-left: 5px;">Parcial</span>'}</div>
+                        <div class="summary-value">${obcOrden}</div>
                     </div>
 
-                    <div class="summary-item info">
+                    <div class="summary-item info" onclick="jumpToSection('obcBd')">
                         <div class="summary-label">👤 Destino/Cliente</div>
                         <div class="summary-value">${obcInfo?.['Recipient_收件人'] || '-'}</div>
                     </div>
 
-                    <div class="summary-item warning">
+                    <div class="summary-item warning" onclick="jumpToSection('obcBd')">
                         <div class="summary-label">📅 Fecha y Hora Entrega</div>
                         <div class="summary-value">${obcInfo?.['Expected Arrival Time _ 期望到仓时间'] || '-'}</div>
                     </div>
 
-                    <div class="summary-item success">
+                    <div class="summary-item success" onclick="jumpToSection('bdStock')">
                         <div class="summary-label">📍 Ubicación Actual</div>
                         <div class="summary-value">${stockInfo?.['cellNo'] || inventarioInfo?.['UBICACION'] || '-'}</div>
                     </div>
 
-                    <div class="summary-item gray">
+                    <div class="summary-item gray" onclick="jumpToSection('inventario')">
                         <div class="summary-label">🕐 Último Movimiento</div>
                         <div class="summary-value">${inventarioInfo ? `${inventarioInfo['FECHA']} ${inventarioInfo['HORA']} - ${inventarioInfo['USUARIO']}` : '-'}</div>
                     </div>
 
-                    <div class="summary-item ${mneInfo ? 'error' : 'success'}">
+                    <div class="summary-item ${mneInfo ? 'error' : 'success'}" onclick="jumpToSection('mne')">
                         <div class="summary-label">🔍 Estatus en Rastreo</div>
                         <div class="summary-value">${mneInfo ? 'REGISTRADA' : 'SIN REGISTRO'}</div>
                     </div>
 
-                    <div class="summary-item ${validacionInfo ? 'success' : 'gray'}">
+                    <div class="summary-item ${validacionInfo ? 'success' : 'gray'}" onclick="jumpToSection('validacion')">
                         <div class="summary-label">✅ Estatus Validación</div>
                         <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
                     </div>
 
-                    <div class="summary-item ${trsInfo ? 'primary' : 'gray'}">
-                        <div class="summary-label">🔧 Orden de Trabajo</div>
-                        <div class="summary-value">${trsInfo ? 'SÍ' : 'NO'}</div>
+                    <div class="summary-item ${trsExact ? 'primary' : results.partial.trs.length > 0 ? 'warning' : 'gray'}" onclick="jumpToSection('trs')">
+                        <div class="summary-label">🔧 Orden de Trabajo ${trsExact ? '' : results.partial.trs.length > 0 ? '<span class="badge warning" style="font-size: 0.75em; margin-left: 5px;">Parcial</span>' : ''}</div>
+                        <div class="summary-value">${trsOrden}</div>
                     </div>
                 </div>
             `;
+        }
+
+        function jumpToSection(sectionKey) {
+            // Collapse all sections first
+            document.querySelectorAll('.section-content').forEach(el => {
+                if (!el.classList.contains('collapsed')) {
+                    el.classList.add('collapsed');
+                    const toggle = document.getElementById(`${el.id}-toggle`);
+                    if (toggle) toggle.classList.add('collapsed');
+                }
+            });
+
+            // Expand target section
+            const targetSection = document.getElementById(`section-${sectionKey}`);
+            if (targetSection) {
+                targetSection.classList.remove('collapsed');
+                const toggle = document.getElementById(`section-${sectionKey}-toggle`);
+                if (toggle) toggle.classList.remove('collapsed');
+
+                // Scroll to section
+                targetSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
 
         function displaySections(results) {
@@ -962,56 +1204,86 @@
                 { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' }
             ];
 
+            let hasResults = false;
+
             sections.forEach(section => {
+                const mode = SECTION_MODES[section.key];
                 const exact = results.exact[section.key];
                 const partial = results.partial[section.key];
-                const total = exact.length + partial.length;
-
-                if (total > 0) {
-                    container.appendChild(createSectionCard(section, exact, partial));
+                
+                // Filter based on mode
+                const dataToShow = mode === 'exact' ? exact : [...exact, ...partial];
+                
+                if (dataToShow.length > 0) {
+                    hasResults = true;
+                    container.appendChild(createSectionCard(section, exact, partial, mode));
                 }
             });
 
-            if (container.children.length === 0) {
+            if (!hasResults) {
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">🔍</div>
                         <div class="empty-text">No se encontraron resultados</div>
-                        <div class="empty-subtext">Intenta con otro código o número de orden</div>
+                        <div class="empty-subtext">Intenta activar "Búsqueda Flexible" o usa otro código</div>
                     </div>
                 `;
             }
         }
 
-        function createSectionCard(section, exactResults, partialResults) {
-            const total = exactResults.length + partialResults.length;
+        function createSectionCard(section, exactResults, partialResults, mode) {
+            const dataToShow = mode === 'exact' ? exactResults : [...exactResults, ...partialResults];
             const card = document.createElement('div');
             card.className = 'section-card';
 
             const sectionId = `section-${section.key}`;
 
             card.innerHTML = `
-                <div class="section-header" onclick="toggleSection('${sectionId}')">
-                    <div class="section-title">
-                        ${section.title}
-                        <span class="section-count">${total}</span>
+                <div class="section-header">
+                    <div class="section-header-left">
+                        <div class="section-title-wrapper" onclick="toggleSection('${sectionId}')">
+                            <div class="section-title">
+                                ${section.title}
+                                <span class="section-count">${dataToShow.length}</span>
+                            </div>
+                        </div>
+                        <div class="section-mode-toggle" onclick="event.stopPropagation(); toggleSectionMode('${section.key}')">
+                            <span class="mode-label ${mode === 'exact' ? 'active' : ''}">Exacta</span>
+                            <input type="checkbox" ${mode === 'flexible' ? 'checked' : ''} onclick="event.preventDefault();">
+                            <span class="mode-label ${mode === 'flexible' ? 'active' : ''}">Flexible</span>
+                        </div>
                     </div>
-                    <span class="section-toggle" id="${sectionId}-toggle">▼</span>
+                    <span class="section-toggle" id="${sectionId}-toggle" onclick="toggleSection('${sectionId}')">▼</span>
                 </div>
                 <div class="section-content" id="${sectionId}">
-                    ${exactResults.length > 0 ? `
+                    ${mode === 'exact' && exactResults.length > 0 ? `
                         <div class="match-info exact">
                             ✅ <strong>${exactResults.length}</strong> coincidencia${exactResults.length > 1 ? 's' : ''} exacta${exactResults.length > 1 ? 's' : ''}
                         </div>
                         ${renderTable(exactResults, section.key)}
+                    ` : mode === 'exact' && exactResults.length === 0 ? `
+                        <div class="empty-state" style="padding: 30px;">
+                            <div class="empty-icon" style="font-size: 2em;">🔍</div>
+                            <div class="empty-text" style="font-size: 1em;">Sin coincidencias exactas</div>
+                            <div class="empty-subtext">Activa "Flexible" para ver coincidencias parciales</div>
+                        </div>
                     ` : ''}
                     
-                    ${partialResults.length > 0 ? `
-                        <div class="match-info">
-                            ⚠️ <strong>${partialResults.length}</strong> coincidencia${partialResults.length > 1 ? 's' : ''} parcial${partialResults.length > 1 ? 'es' : ''}
-                            ${partialResults.length >= CONFIG.MAX_RESULTS ? ` (mostrando primeras ${CONFIG.MAX_RESULTS})` : ''}
-                        </div>
-                        ${renderTable(partialResults, section.key)}
+                    ${mode === 'flexible' ? `
+                        ${exactResults.length > 0 ? `
+                            <div class="match-info exact">
+                                ✅ <strong>${exactResults.length}</strong> coincidencia${exactResults.length > 1 ? 's' : ''} exacta${exactResults.length > 1 ? 's' : ''}
+                            </div>
+                            ${renderTable(exactResults, section.key)}
+                        ` : ''}
+                        
+                        ${partialResults.length > 0 ? `
+                            <div class="match-info">
+                                ⚠️ <strong>${partialResults.length}</strong> coincidencia${partialResults.length > 1 ? 's' : ''} parcial${partialResults.length > 1 ? 'es' : ''}
+                                ${partialResults.length >= CONFIG.MAX_RESULTS ? ` (mostrando primeras ${CONFIG.MAX_RESULTS})` : ''}
+                            </div>
+                            ${renderTable(partialResults, section.key)}
+                        ` : ''}
                     ` : ''}
                 </div>
             `;
