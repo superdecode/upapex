@@ -1116,7 +1116,7 @@
             if (/U\d{3,4}$/i.test(code)) {
                 return code.replace(/U\d{3,4}$/i, '');
             }
-            
+
             // Remove everything after last separator
             const separators = ['/', '-', '\''];
             for (const sep of separators) {
@@ -1125,7 +1125,27 @@
                     return code.substring(0, lastIndex);
                 }
             }
-            
+
+            return code;
+        }
+
+        function extractBaseCode(code) {
+            // Extract base code without unit suffix (e.g., PLEC25071567355U010 -> PLEC25071567355)
+            // Handles patterns like: CODE + U + digits at the end
+            if (/U\d{3,4}$/i.test(code)) {
+                return code.replace(/U\d{3,4}$/i, '');
+            }
+
+            // Also handle separator patterns (CODE/001, CODE-001, CODE'001)
+            const separators = ['/', '-', '\''];
+            for (const sep of separators) {
+                const lastIndex = code.lastIndexOf(sep);
+                if (lastIndex > 0) {
+                    return code.substring(0, lastIndex);
+                }
+            }
+
+            // Return original if no pattern matches
             return code;
         }
 
