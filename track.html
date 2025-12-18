@@ -1287,7 +1287,7 @@
                     });
                 }
 
-                // Add to results based on best match
+                // Add to results based on best match possible
                 if (bestMatch.type === 'exact') {
                     const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
                     results.exact[sourceName].push(enrichedRow);
