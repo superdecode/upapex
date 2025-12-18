@@ -979,6 +979,8 @@
                     headers.forEach((header, index) => {
                         row[header] = values[index] || '';
                     });
+                    // Store raw values array for index-based access
+                    row._values = values;
                     data.push(row);
                 }
             }
@@ -1248,14 +1250,53 @@
                 'Orden OBC'
             ]);
 
-            searchInSourceWithSimilarity(DATA_CACHE.trs, results, 'trs', [
-                '关联单号 (Express Code)',
-                '增值服务需求（Value-added service requirements）',
-                '原货件号 (Original Shipment NO.)',
-                '新货件号 (New Shipment NO.)'
-            ]);
+            // Special search for TRS using column indices
+            searchTRS(DATA_CACHE.trs, results, 'trs');
 
             return results;
+        }
+
+        // Specialized TRS search using column indices
+        function searchTRS(data, results, sourceName) {
+            const query = results.query;
+            // Search columns: 6 (Referencia), 13 (Código Original), 14 (Código Nuevo)
+            const searchIndices = [6, 13, 14];
+
+            data.forEach(row => {
+                // Skip header rows - valid data rows start with "TRS" in column 0
+                if (!row._values || !row._values[0] || !row._values[0].toString().startsWith('TRS')) {
+                    return;
+                }
+
+                let isMatch = false;
+
+                // Check each search column for partial match
+                for (const idx of searchIndices) {
+                    const cellValue = row._values[idx] || '';
+                    if (!cellValue) continue;
+
+                    const cellUpper = cellValue.toString().toUpperCase();
+                    const queryUpper = query.toUpperCase();
+
+                    // Partial match: if cell contains the query
+                    if (cellUpper.includes(queryUpper)) {
+                        isMatch = true;
+                        break;
+                    }
+
+                    // Also check normalized version (handles ——, +, etc.)
+                    const normalizedCell = normalizeCode(cellValue);
+                    if (normalizedCell.includes(query)) {
+                        isMatch = true;
+                        break;
+                    }
+                }
+
+                if (isMatch) {
+                    const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+                    results.exact[sourceName].push(enrichedRow);
+                }
+            });
         }
 
         function searchInSourceWithSimilarity(data, results, sourceName, fields) {
@@ -1676,27 +1717,34 @@
             `;
         }
 
-        // Get value from row using flexible column name matching
+        // Get value from row using index or flexible column name matching
         function getRowValue(row, keyPattern) {
+            // If key is a number, use _values array for reliable index access
+            if (typeof keyPattern === 'number') {
+                if (row._values && row._values[keyPattern] !== undefined) {
+                    const val = row._values[keyPattern];
+                    return val && val.trim() ? val : 'Vacío';
+                }
+                return 'Vacío';
+            }
+
             // First try exact match by key name
-            if (row[keyPattern] !== undefined) {
+            if (row[keyPattern] !== undefined && row[keyPattern] !== '') {
                 return row[keyPattern];
             }
 
             // Then try to find column that contains the key pattern
-            // This handles headers like "增值服务单号\n(Value-added services No.)"
             for (const [colName, value] of Object.entries(row)) {
-                // Check if column name contains the key (for Chinese keys)
+                if (colName === '_values' || colName === '_matchType' || colName === '_similarity') continue;
                 if (colName.includes(keyPattern)) {
-                    return value;
+                    return value && value.trim() ? value : 'Vacío';
                 }
-                // Also check case-insensitive for English keys
                 if (colName.toLowerCase().includes(keyPattern.toLowerCase())) {
-                    return value;
+                    return value && value.trim() ? value : 'Vacío';
                 }
             }
 
-            return '';
+            return 'Vacío';
         }
 
         function getRelevantFields(sourceKey) {
@@ -1746,12 +1794,12 @@
                     { key: 'Notas', label: 'Notas', type: 'text' }
                 ],
                 trs: [
-                    { key: '增值服务单号', label: 'No. Servicio', type: 'code' },        // Col A
-                    { key: '期望完成时间', label: 'Fecha Esperada', type: 'datetime' },  // Col F
-                    { key: '关联单号', label: 'Referencia', type: 'code' },              // Col G
-                    { key: '原货件号', label: 'Código Original', type: 'code' },         // Col N
-                    { key: '新货件号', label: 'Código Nuevo', type: 'code' },            // Col O
-                    { key: '增值指令类型', label: 'Tipo Instrucción', type: 'text' }     // Col Q
+                    { key: 0, label: 'No. Servicio', type: 'code' },          // Col A - 增值服务单号
+                    { key: 5, label: 'Fecha Esperada', type: 'datetime' },    // Col F - 期望完成时间
+                    { key: 6, label: 'Referencia', type: 'code' },            // Col G - 关联单号
+                    { key: 13, label: 'Código Original', type: 'code' },      // Col N - 原货件号
+                    { key: 14, label: 'Código Nuevo', type: 'code' },         // Col O - 新货件号
+                    { key: 16, label: 'Tipo Instrucción', type: 'text' }      // Col Q - 增值指令类型
                 ]
             };
 
