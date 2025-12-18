@@ -1676,9 +1676,15 @@
             `;
         }
 
-        // Get value from row using flexible column name matching
+        // Get value from row using flexible column name matching or index
         function getRowValue(row, keyPattern) {
-            // First try exact match
+            // If key is a number, get value by column index
+            if (typeof keyPattern === 'number') {
+                const values = Object.values(row);
+                return values[keyPattern] !== undefined ? values[keyPattern] : '';
+            }
+
+            // First try exact match by key name
             if (row[keyPattern] !== undefined) {
                 return row[keyPattern];
             }
@@ -1741,13 +1747,13 @@
                     { key: 'Notas', label: 'Notas', type: 'text' }
                 ],
                 trs: [
-                    { key: 'Value-added services No.', label: 'No. Servicio', type: 'code' },
-                    { key: 'Status', label: 'Estado', type: 'status' },
-                    { key: 'Will End Time', label: 'Fecha Esperada', type: 'datetime' },
-                    { key: 'Original Shipment NO.', label: 'Código Original', type: 'code' },
-                    { key: 'New Shipment NO.', label: 'Código Nuevo', type: 'code' },
-                    { key: 'Box Quantity', label: 'Cajas', type: 'number' },
-                    { key: 'Value-added instruction type', label: 'Tipo Instrucción', type: 'text' }
+                    { key: 0, label: 'No. Servicio', type: 'code' },           // Col A
+                    { key: 3, label: 'Estado', type: 'status' },               // Col D
+                    { key: 5, label: 'Fecha Esperada', type: 'datetime' },     // Col F
+                    { key: 13, label: 'Código Original', type: 'code' },       // Col N
+                    { key: 14, label: 'Código Nuevo', type: 'code' },          // Col O
+                    { key: 15, label: 'Cajas', type: 'number' },               // Col P
+                    { key: 16, label: 'Tipo Instrucción', type: 'text' }       // Col Q
                 ]
             };
 
