@@ -1316,7 +1316,19 @@
                     }
                 });
 
-                // Add to results based on best match
+                // For TRS source, also search in ALL columns (data is dispersed)
+                if (sourceName === 'trs' && bestMatch.type !== 'exact') {
+                    Object.values(row).forEach(cellValue => {
+                        if (typeof cellValue === 'string' && cellValue.trim()) {
+                            const matchResult = checkFieldMatch(cellValue, query, variations, baseCode);
+                            if (matchResult && matchResult.similarity > bestMatch.similarity) {
+                                bestMatch = matchResult;
+                            }
+                        }
+                    });
+                }
+
+                // Add to results based on best match possible
                 if (bestMatch.type === 'exact') {
                     const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
                     results.exact[sourceName].push(enrichedRow);
