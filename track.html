@@ -1448,58 +1448,93 @@
 
         function displaySummary(results) {
             const card = document.getElementById('summary-card');
-            
-            // Get main info
-            const stockInfo = results.exact.bdStock[0] || results.partial.bdStock[0];
-            const obcInfo = results.exact.obcBd[0] || results.partial.obcBd[0];
-            const mneInfo = results.exact.mne[0] || results.partial.mne[0];
-            const validacionInfo = results.exact.validacion[0] || results.partial.validacion[0];
-            const inventarioInfo = results.exact.inventario[0] || results.partial.inventario[0];
-            const trsInfo = results.exact.trs[0] || results.partial.trs[0];
+            const isExactMode = GLOBAL_SEARCH_MODE === 'exact';
 
-            // Count total results
+            // Get info based on search mode - in exact mode, only use exact results
+            const getInfo = (exactArr, partialArr) => {
+                if (isExactMode) {
+                    return exactArr[0] || null;
+                }
+                return exactArr[0] || partialArr[0] || null;
+            };
+
+            const stockInfo = getInfo(results.exact.bdStock, results.partial.bdStock);
+            const obcInfo = getInfo(results.exact.obcBd, results.partial.obcBd);
+            const mneInfo = getInfo(results.exact.mne, results.partial.mne);
+            const validacionInfo = getInfo(results.exact.validacion, results.partial.validacion);
+            const inventarioInfo = getInfo(results.exact.inventario, results.partial.inventario);
+            const trsInfo = getInfo(results.exact.trs, results.partial.trs);
+
+            // Count results
             const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
             const totalPartial = Object.values(results.partial).reduce((sum, arr) => sum + arr.length, 0);
 
+            // Count flexible matches per source (for indicators)
+            const flexibleCounts = {
+                bdStock: results.partial.bdStock.length,
+                obcBd: results.partial.obcBd.length,
+                validacion: results.partial.validacion.length,
+                inventario: results.partial.inventario.length,
+                mne: results.partial.mne.length,
+                trs: results.partial.trs.length
+            };
+
+            // Helper to show flexible indicator
+            const flexIndicator = (source) => {
+                if (isExactMode && results.exact[source].length === 0 && flexibleCounts[source] > 0) {
+                    return `<span class="badge warning" style="font-size: 0.6em; margin-left: 4px;" title="Hay ${flexibleCounts[source]} coincidencias flexibles disponibles">~${flexibleCounts[source]}</span>`;
+                }
+                return '';
+            };
+
             // Check if OBC is exact
             const obcExact = results.exact.obcBd.length > 0;
-            const obcMultiple = results.exact.obcBd.length + results.partial.obcBd.length;
-            
+            const obcMultiple = isExactMode ? results.exact.obcBd.length : results.exact.obcBd.length + results.partial.obcBd.length;
+
             // Get OBC order number
             let obcOrden = '-';
             let obcBoxCount = 0;
             let obcInTrackingCount = 0;
-            
+
             if (obcExact && obcInfo) {
                 obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'];
-                
+
                 // Count boxes in this OBC
                 const obcCode = obcInfo['Outbound_出库单号'];
                 if (obcCode) {
                     obcBoxCount = DATA_CACHE.obcBd.filter(r => r['Outbound_出库单号'] === obcCode).length;
-                    obcInTrackingCount = DATA_CACHE.mne.filter(r => 
+                    obcInTrackingCount = DATA_CACHE.mne.filter(r =>
                         normalizeCode(r['Orden OBC'] || '').includes(obcCode)
                     ).length;
                 }
-            } else if (obcMultiple > 1) {
+            } else if (!isExactMode && obcMultiple > 1) {
                 obcOrden = `${obcMultiple} coincidencias`;
-            } else if (obcInfo) {
+            } else if (!isExactMode && obcInfo) {
                 obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'] || '-';
             }
 
             // Check if TRS is exact - use _values[0] for TRS number
             const trsExact = results.exact.trs.length > 0;
-            const trsMultiple = results.exact.trs.length + results.partial.trs.length;
+            const trsMultipleExact = results.exact.trs.length;
+            const trsMultipleFlex = results.partial.trs.length;
             const getTrsNumber = (info) => info?._values?.[0] || null;
-            const trsOrden = trsExact && trsInfo
-                ? getTrsNumber(trsInfo)
-                : trsMultiple > 1
-                    ? `${trsMultiple} TRS`
-                    : getTrsNumber(trsInfo) || 'NO';
 
-            // Count stock locations
+            let trsOrden = 'NO';
+            if (isExactMode) {
+                if (trsExact && trsInfo) {
+                    trsOrden = trsMultipleExact > 1 ? `${trsMultipleExact} TRS` : getTrsNumber(trsInfo);
+                }
+            } else {
+                const trsTotal = trsMultipleExact + trsMultipleFlex;
+                if (trsInfo) {
+                    trsOrden = trsTotal > 1 ? `${trsTotal} TRS` : getTrsNumber(trsInfo) || 'NO';
+                }
+            }
+
+            // Count stock locations (only from exact in exact mode)
             const stockLocations = new Set();
-            [...results.exact.bdStock, ...results.partial.bdStock].forEach(r => {
+            const stockSource = isExactMode ? results.exact.bdStock : [...results.exact.bdStock, ...results.partial.bdStock];
+            stockSource.forEach(r => {
                 if (r['cellNo']) stockLocations.add(r['cellNo']);
             });
 
@@ -1507,7 +1542,8 @@
                 <div class="summary-header">
                     <div class="summary-title">
                         📦 ${results.query}
-                        ${totalExact > 0 ? '<span class="badge success">Exacta</span>' : '<span class="badge warning">Flexible</span>'}
+                        ${totalExact > 0 ? '<span class="badge success">Exacta</span>' : isExactMode ? '<span class="badge gray">Sin Exactas</span>' : '<span class="badge warning">Flexible</span>'}
+                        ${isExactMode && totalExact === 0 && totalPartial > 0 ? `<span class="badge warning" style="margin-left: 4px;">~${totalPartial} flexibles</span>` : ''}
                     </div>
                     <div class="summary-actions">
                         <button class="btn btn-success" onclick="exportResults()">📥 Exportar</button>
@@ -1519,15 +1555,14 @@
                     <div class="summary-item primary" onclick="jumpToSection('obcBd')">
                         ${obcMultiple > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('obcBd')">${obcMultiple}</span>` : ''}
                         <div class="summary-label">
-                            📋 Número de Orden
-                            ${!obcExact && obcInfo ? '<span class="badge warning match-badge">~' + Math.round(obcInfo._similarity || 0) + '%</span>' : ''}
+                            📋 Número de Orden ${flexIndicator('obcBd')}
                         </div>
                         <div class="summary-value">${obcOrden}</div>
                         ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} en rastreo` : ''}</div>` : ''}
                     </div>
 
                     <div class="summary-item info" onclick="jumpToSection('obcBd')">
-                        <div class="summary-label">👤 Destino/Cliente</div>
+                        <div class="summary-label">👤 Destino/Cliente ${flexIndicator('obcBd')}</div>
                         <div class="summary-value">${obcInfo?.['Recipient_收件人'] || '-'}</div>
                     </div>
 
@@ -1538,30 +1573,29 @@
 
                     <div class="summary-item success" onclick="jumpToSection('bdStock')">
                         ${stockLocations.size > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('bdStock')">${stockLocations.size}</span>` : ''}
-                        <div class="summary-label">📍 Ubicación Actual</div>
-                        <div class="summary-value">${stockInfo?.['cellNo'] || inventarioInfo?.['UBICACION'] || '-'}</div>
+                        <div class="summary-label">📍 Ubicación Actual ${flexIndicator('bdStock')}</div>
+                        <div class="summary-value">${stockInfo?.['cellNo'] || (isExactMode ? '-' : inventarioInfo?.['UBICACION']) || '-'}</div>
                     </div>
 
                     <div class="summary-item gray" onclick="jumpToSection('inventario')">
-                        <div class="summary-label">🕐 Último Movimiento</div>
+                        <div class="summary-label">🕐 Último Movimiento ${flexIndicator('inventario')}</div>
                         <div class="summary-value">${inventarioInfo ? `${inventarioInfo['FECHA']} ${inventarioInfo['HORA']} - ${inventarioInfo['USUARIO']}` : '-'}</div>
                     </div>
 
                     <div class="summary-item ${mneInfo ? 'error' : 'success'}" onclick="jumpToSection('mne')">
-                        <div class="summary-label">🔍 Estatus en Rastreo</div>
+                        <div class="summary-label">🔍 Estatus en Rastreo ${flexIndicator('mne')}</div>
                         <div class="summary-value">${mneInfo ? 'REGISTRADA' : 'SIN REGISTRO'}</div>
                     </div>
 
                     <div class="summary-item ${validacionInfo ? 'success' : 'gray'}" onclick="jumpToSection('validacion')">
-                        <div class="summary-label">✅ Estatus Validación</div>
+                        <div class="summary-label">✅ Estatus Validación ${flexIndicator('validacion')}</div>
                         <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
                     </div>
 
-                    <div class="summary-item ${trsExact ? 'primary' : trsMultiple > 0 ? 'warning' : 'gray'}" onclick="jumpToSection('trs')">
-                        ${trsMultiple > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('trs')">${trsMultiple}</span>` : ''}
+                    <div class="summary-item ${trsExact ? 'primary' : (isExactMode ? 'gray' : trsMultipleFlex > 0 ? 'warning' : 'gray')}" onclick="jumpToSection('trs')">
+                        ${(isExactMode ? trsMultipleExact : trsMultipleExact + trsMultipleFlex) > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('trs')">${isExactMode ? trsMultipleExact : trsMultipleExact + trsMultipleFlex}</span>` : ''}
                         <div class="summary-label">
-                            🔧 Orden de Trabajo
-                            ${!trsExact && trsInfo ? '<span class="badge warning match-badge">~' + Math.round(trsInfo._similarity || 0) + '%</span>' : ''}
+                            🔧 Orden de Trabajo ${flexIndicator('trs')}
                         </div>
                         <div class="summary-value">${trsOrden}</div>
                     </div>
