@@ -456,19 +456,27 @@
         }
 
         .section-toggle {
-            font-size: 1.2em;
-            transition: transform 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease;
             cursor: pointer;
             color: var(--gray);
-            padding: 4px 8px;
+            padding: 6px;
+            border-radius: 4px;
         }
 
         .section-toggle:hover {
             color: var(--primary);
+            background: rgba(249, 115, 22, 0.1);
         }
 
         .section-toggle.collapsed {
-            transform: rotate(-90deg);
+            transform: rotate(-180deg);
+        }
+
+        .section-toggle svg {
+            display: block;
         }
 
         .section-mode-toggle {
@@ -1591,7 +1599,11 @@
                             <span class="mode-label ${mode === 'flexible' ? 'active' : ''}">Flexible</span>
                         </div>
                     </div>
-                    <span class="section-toggle" id="${sectionId}-toggle" onclick="toggleSection('${sectionId}')">▼</span>
+                    <span class="section-toggle" id="${sectionId}-toggle" onclick="toggleSection('${sectionId}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </span>
                 </div>
                 <div class="section-content" id="${sectionId}">
                     ${mode === 'exact' && exactResults.length > 0 ? `
@@ -1633,7 +1645,7 @@
             if (data.length === 0) return '<div class="empty-state" style="padding: 20px;"><div class="empty-text" style="font-size: 0.9em;">📭 Sin coincidencias</div></div>';
 
             const fields = getRelevantFields(sourceKey);
-            
+
             return `
                 <div style="overflow-x: auto;">
                     <table class="data-table">
@@ -1648,10 +1660,10 @@
                             ${data.map((row, idx) => `
                                 <tr>
                                     <td style="text-align: center; color: #999; font-weight: 600;">${idx + 1}</td>
-                                    ${fields.map(f => `<td>${formatValue(row[f.key], f.type)}</td>`).join('')}
+                                    ${fields.map(f => `<td>${formatValue(getRowValue(row, f.key), f.type)}</td>`).join('')}
                                     <td style="text-align: center;">
-                                        ${row._matchType === 'exact' 
-                                            ? '<span class="badge success">Exacta</span>' 
+                                        ${row._matchType === 'exact'
+                                            ? '<span class="badge success">Exacta</span>'
                                             : `<span class="badge warning">~${Math.round(row._similarity || 0)}%</span>`
                                         }
                                     </td>
@@ -1662,6 +1674,24 @@
                     ${data.length >= CONFIG.MAX_RESULTS ? '<div class="print-notice">⚠️ Mostrando primeros ' + CONFIG.MAX_RESULTS + ' resultados</div>' : ''}
                 </div>
             `;
+        }
+
+        // Get value from row using flexible column name matching
+        function getRowValue(row, keyPattern) {
+            // First try exact match
+            if (row[keyPattern] !== undefined) {
+                return row[keyPattern];
+            }
+
+            // Then try to find column that contains the key pattern (case insensitive)
+            const keyLower = keyPattern.toLowerCase();
+            for (const [colName, value] of Object.entries(row)) {
+                if (colName.toLowerCase().includes(keyLower)) {
+                    return value;
+                }
+            }
+
+            return '';
         }
 
         function getRelevantFields(sourceKey) {
@@ -1711,14 +1741,13 @@
                     { key: 'Notas', label: 'Notas', type: 'text' }
                 ],
                 trs: [
-                    { key: '增值服务单号 (Value-added services No.)', label: 'No. Servicio', type: 'code' },
-                    { key: '状态 (Status)', label: 'Estado', type: 'status' },
-                    { key: '期望完成时间 (Will End Time)', label: 'Fecha Esperada', type: 'datetime' },
-                    { key: '原货件号 (Original Shipment NO.)', label: 'Código Original', type: 'code' },
-                    { key: '新货件号 (New Shipment NO.)', label: 'Código Nuevo', type: 'code' },
-                    { key: '箱数 (Box Quantity)', label: 'Cajas', type: 'number' },
-                    { key: '增值指令类型 (Value-added instruction type)', label: 'Tipo Instrucción', type: 'text' },
-                    { key: '操作人 (Operator)', label: 'Operador', type: 'text' }
+                    { key: 'Value-added services No.', label: 'No. Servicio', type: 'code' },
+                    { key: 'Status', label: 'Estado', type: 'status' },
+                    { key: 'Will End Time', label: 'Fecha Esperada', type: 'datetime' },
+                    { key: 'Original Shipment NO.', label: 'Código Original', type: 'code' },
+                    { key: 'New Shipment NO.', label: 'Código Nuevo', type: 'code' },
+                    { key: 'Box Quantity', label: 'Cajas', type: 'number' },
+                    { key: 'Value-added instruction type', label: 'Tipo Instrucción', type: 'text' }
                 ]
             };
 
