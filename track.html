@@ -1236,9 +1236,10 @@
             ]);
 
             searchInSourceWithSimilarity(DATA_CACHE.trs, results, 'trs', [
+                '关联单号 (Express Code)',
+                '增值服务需求（Value-added service requirements）',
                 '原货件号 (Original Shipment NO.)',
-                '新货件号 (New Shipment NO.)',
-                '关联单号 (Express Code)'
+                '新货件号 (New Shipment NO.)'
             ]);
 
             return results;
@@ -1247,34 +1248,93 @@
         function searchInSourceWithSimilarity(data, results, sourceName, fields) {
             const query = results.query;
             const variations = results.variations;
-            const truncated = results.truncatedCode;
-            const SIMILARITY_THRESHOLD = 98;
+            const baseCode = results.baseCode;
+            const SIMILARITY_THRESHOLD = 75; // Lowered for better flexible matching
 
             data.forEach(row => {
                 let bestMatch = { type: null, similarity: 0, field: null };
 
                 fields.forEach(field => {
-                    const value = normalizeCode(row[field] || '');
+                    const rawValue = row[field] || '';
+                    if (!rawValue.trim()) return;
+
+                    const value = normalizeCode(rawValue);
                     if (!value) return;
 
-                    // Check exact match with variations
-                    if (variations.includes(value)) {
+                    // === EXACT MATCH CHECKS ===
+
+                    // 1. Direct exact match (query === value)
+                    if (value === query || variations.includes(value)) {
                         bestMatch = { type: 'exact', similarity: 100, field };
                         return;
                     }
 
-                    // Check truncated match
-                    if (truncated && truncated !== query) {
-                        const valueTruncated = getTruncatedCode(value);
-                        if (truncated === valueTruncated || variations.includes(valueTruncated)) {
-                            const sim = calculateSimilarity(query, value);
-                            if (sim > bestMatch.similarity) {
-                                bestMatch = { type: 'fuzzy', similarity: sim, field };
+                    // 2. Query is the base code of the value
+                    // Example: query "PLEC25090668288" matches value "PLEC25090668288U011"
+                    const valueBaseCode = extractBaseCode(value);
+                    if (valueBaseCode === query || variations.includes(valueBaseCode)) {
+                        bestMatch = { type: 'exact', similarity: 100, field };
+                        return;
+                    }
+
+                    // 3. Value starts with query followed by a suffix pattern (U###, -###, /###, '###)
+                    // This catches cases like: PLEC25090668288 in PLEC25090668288-57896158
+                    if (value.startsWith(query) && value.length > query.length) {
+                        const suffix = value.substring(query.length);
+                        // Check if suffix starts with common separators or unit marker
+                        if (/^[U\-\/\'\d]/.test(suffix)) {
+                            bestMatch = { type: 'exact', similarity: 100, field };
+                            return;
+                        }
+                    }
+
+                    // 4. Query contains value as base (when searching with suffix, find base records)
+                    if (query.startsWith(value) && query.length > value.length) {
+                        const suffix = query.substring(value.length);
+                        if (/^[U\-\/\'\d]/.test(suffix)) {
+                            bestMatch = { type: 'exact', similarity: 100, field };
+                            return;
+                        }
+                    }
+
+                    // 5. Value contains query as exact substring (especially for TRS dispersed data)
+                    // Example: "PLEC25090668288" found within "ABC-PLEC25090668288-XYZ"
+                    if (value.includes(query) && query.length >= 8) {
+                        // Verify it's a meaningful match (not just random substring)
+                        const idx = value.indexOf(query);
+                        const charBefore = idx > 0 ? value[idx - 1] : '';
+                        const charAfter = idx + query.length < value.length ? value[idx + query.length] : '';
+
+                        // Consider exact if query is at boundary (start, end, or separated by non-alphanumeric)
+                        const isAtBoundary = (idx === 0 || !/[A-Z0-9]/.test(charBefore)) &&
+                                            (idx + query.length === value.length || !/[A-Z]/.test(charAfter));
+
+                        if (isAtBoundary) {
+                            bestMatch = { type: 'exact', similarity: 100, field };
+                            return;
+                        }
+                    }
+
+                    // === FLEXIBLE/FUZZY MATCH CHECKS ===
+
+                    // 6. Base code matching (query's base matches value's base)
+                    if (baseCode && baseCode !== query) {
+                        if (valueBaseCode === baseCode) {
+                            if (bestMatch.similarity < 95) {
+                                bestMatch = { type: 'fuzzy', similarity: 95, field };
                             }
                         }
                     }
 
-                    // Check similarity
+                    // 7. Partial containment with high overlap
+                    if (value.includes(query) || query.includes(value)) {
+                        const overlapRatio = Math.min(query.length, value.length) / Math.max(query.length, value.length) * 100;
+                        if (overlapRatio > bestMatch.similarity) {
+                            bestMatch = { type: 'fuzzy', similarity: overlapRatio, field };
+                        }
+                    }
+
+                    // 8. Levenshtein similarity for typos and minor differences
                     const similarity = calculateSimilarity(query, value);
                     if (similarity >= SIMILARITY_THRESHOLD && similarity > bestMatch.similarity) {
                         bestMatch = { type: 'fuzzy', similarity, field };
@@ -1287,13 +1347,13 @@
                     results.exact[sourceName].push(enrichedRow);
                 } else if (bestMatch.type === 'fuzzy' && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
                     if (results.partial[sourceName].length < CONFIG.MAX_RESULTS) {
-                        const enrichedRow = { ...row, _matchType: 'fuzzy', _similarity: bestMatch.similarity };
+                        const enrichedRow = { ...row, _matchType: 'fuzzy', _similarity: Math.round(bestMatch.similarity) };
                         results.partial[sourceName].push(enrichedRow);
                     }
                 }
             });
 
-            // Sort partial results by similarity
+            // Sort partial results by similarity (highest first)
             results.partial[sourceName].sort((a, b) => (b._similarity || 0) - (a._similarity || 0));
         }
 
