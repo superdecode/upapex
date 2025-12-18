@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Consulta de Cajas - Sistema de Rastreo</title>
+    <style>
+        :root {
+            --primary: #f97316;
+            --success: #4CAF50;
+            --warning: #FF9800;
+            --error: #F44336;
+            --info: #2563eb;
+            --bg: #f7f7f7;
+            --text: #333;
+            --card: #ffffff;
+            --border: #e2e8f0;
+            --gray: #6c757d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, #ea580c 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header p {
+            opacity: 0.95;
+            font-size: 1.05em;
+        }
+
+        /* Search Section */
+        .search-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .search-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 15px 20px;
+            font-size: 1.3em;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 1em;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-secondary { background: var(--gray); color: white; }
+        .btn-success { background: var(--success); color: white; }
+
+        .search-tips {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .search-tips strong {
+            color: var(--primary);
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .loading-overlay.show { display: flex; }
+
+        .loading-content {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            text-align: center;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text);
+        }
+
+        .loading-progress {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #ea580c);
+            transition: width 0.3s;
+        }
+
+        /* Results Container */
+        .results-container {
+            display: none;
+        }
+
+        .results-container.show { display: block; }
+
+        /* Summary Card */
+        .summary-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 5px solid var(--primary);
+        }
+
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .summary-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .summary-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .summary-item {
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 3px solid;
+        }
+
+        .summary-item.primary { border-color: var(--primary); }
+        .summary-item.success { border-color: var(--success); }
+        .summary-item.warning { border-color: var(--warning); }
+        .summary-item.error { border-color: var(--error); }
+        .summary-item.info { border-color: var(--info); }
+        .summary-item.gray { border-color: var(--gray); }
+
+        .summary-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .summary-value {
+            font-size: 1.1em;
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        /* Section Card */
+        .section-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .section-header:hover {
+            background: #f9f9f9;
+        }
+
+        .section-title {
+            font-size: 1.2em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-count {
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .section-toggle {
+            font-size: 1.5em;
+            transition: transform 0.3s;
+        }
+
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            margin-top: 15px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .section-content.collapsed {
+            display: none;
+        }
+
+        /* Data Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .data-table th {
+            background: #f9f9f9;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+        }
+
+        .data-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .data-table code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge.success { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+        .badge.warning { background: rgba(255, 152, 0, 0.15); color: var(--warning); }
+        .badge.error { background: rgba(244, 67, 54, 0.15); color: var(--error); }
+        .badge.info { background: rgba(37, 99, 235, 0.15); color: var(--info); }
+        .badge.primary { background: rgba(249, 115, 22, 0.15); color: var(--primary); }
+        .badge.gray { background: rgba(108, 117, 125, 0.15); color: var(--gray); }
+
+        /* Match Info */
+        .match-info {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .match-info.exact {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .empty-text {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+
+        .empty-subtext {
+            font-size: 0.95em;
+        }
+
+        /* Notification */
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+        }
+
+        .notification {
+            background: white;
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-left: 4px solid;
+            animation: slideIn 0.3s;
+        }
+
+        .notification.success { border-color: var(--success); }
+        .notification.error { border-color: var(--error); }
+        .notification.warning { border-color: var(--warning); }
+        .notification.info { border-color: var(--info); }
+
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Print Styles */
+        @media print {
+            body { background: white; padding: 0; }
+            .header, .search-section, .btn, .section-toggle { display: none; }
+            .section-content { display: block !important; }
+            .summary-card, .section-card { page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.5em; }
+            .search-row { flex-direction: column; }
+            .search-input { font-size: 1.1em; }
+            .summary-grid { grid-template-columns: 1fr; }
+            .summary-header { flex-direction: column; align-items: stretch; }
+            .summary-actions { flex-direction: column; }
+        }
+
+        .reload-banner {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .reload-banner.show {
+            display: flex;
+        }
+
+        .reload-banner-text {
+            flex: 1;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="notification-container" id="notifications"></div>
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loading-text">Cargando bases de datos...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="loading-progress" id="loading-progress">0/6 completadas</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔍 Sistema de Consulta de Cajas</h1>
+            <p>Rastreo unificado de mercancía - Consulta información de múltiples fuentes</p>
+        </div>
+
+        <!-- Reload Banner -->
+        <div class="reload-banner" id="reload-banner">
+            <div class="reload-banner-text">
+                ⚠️ Han pasado más de 30 minutos. Se recomienda recargar las bases de datos para información actualizada.
+            </div>
+            <button class="btn btn-primary" onclick="forceReloadData()">
+                🔄 Recargar Ahora
+            </button>
+        </div>
+
+        <!-- Search Section -->
+        <div class="search-section">
+            <div class="search-row">
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    id="search-input" 
+                    placeholder="Ingresa código de caja o número de orden..."
+                    autocomplete="off"
+                >
+                <button class="btn btn-primary" onclick="performSearch()" id="search-btn">
+                    🔍 Buscar
+                </button>
+                <button class="btn btn-secondary" onclick="clearSearch()">
+                    🗑️ Limpiar
+                </button>
+            </div>
+            <div class="search-tips">
+                💡 <strong>Tips:</strong> Busca por código completo (ej: PLEC25071567355U010), código base (PLEC25071567355) o número de orden (OBC2832510050RV)
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div class="results-container" id="results-container">
+            <!-- Summary Card -->
+            <div class="summary-card" id="summary-card"></div>
+
+            <!-- Section Cards -->
+            <div id="sections-container"></div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="empty-state">
+            <div class="empty-icon">📦</div>
+            <div class="empty-text">Ingresa un código para buscar</div>
+            <div class="empty-subtext">El sistema buscará en todas las bases de datos disponibles</div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== CONFIGURATION ====================
+        const CONFIG = {
+            SOURCES: {
+                BD_STOCK: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
+                OBC_BD: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv',
+                VALIDACION: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTZMZZCDtTFCebvsme1GMEBiZ1S2Cloh37AR8hHFAwhFPNEMD27G04bzX0theCMJE-nlYOyH2ev115q/pub?output=csv',
+                INVENTARIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXzUcwU_ZzJtCQKF6IEXr8Mj-OXvrzkw361v2rVVbb2goPaRMLPm6EbfrhXzeJJfWnvox4PhdGyoxZ/pub?output=csv',
+                MNE: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?output=csv',
+                TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv'
+            },
+            CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
+            MAX_RESULTS: 20
+        };
+
+        // ==================== STATE ====================
+        let DATA_CACHE = {
+            bdStock: [],
+            obcBd: [],
+            validacion: [],
+            inventario: [],
+            mne: [],
+            trs: [],
+            lastUpdate: null
+        };
+
+        let CURRENT_SEARCH = null;
+
+        // ==================== INITIALIZATION ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            loadAllData();
+            checkCacheExpiration();
+        });
+
+        function setupEventListeners() {
+            const input = document.getElementById('search-input');
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') performSearch();
+            });
+
+            // Check cache every 5 minutes
+            setInterval(checkCacheExpiration, 5 * 60 * 1000);
+        }
+
+        function checkCacheExpiration() {
+            if (DATA_CACHE.lastUpdate) {
+                const elapsed = Date.now() - DATA_CACHE.lastUpdate;
+                if (elapsed > CONFIG.CACHE_DURATION) {
+                    document.getElementById('reload-banner').classList.add('show');
+                }
+            }
+        }
+
+        function forceReloadData() {
+            document.getElementById('reload-banner').classList.remove('show');
+            loadAllData();
+        }
+
+        // ==================== DATA LOADING ====================
+        async function loadAllData() {
+            showLoading(true);
+            const sources = Object.entries(CONFIG.SOURCES);
+            let completed = 0;
+
+            updateLoadingProgress(0, sources.length);
+
+            try {
+                const results = await Promise.allSettled(
+                    sources.map(async ([key, url]) => {
+                        const data = await fetchCSV(url);
+                        completed++;
+                        updateLoadingProgress(completed, sources.length);
+                        return { key, data };
+                    })
+                );
+
+                results.forEach(result => {
+                    if (result.status === 'fulfilled') {
+                        const { key, data } = result.value;
+                        const mappedKey = {
+                            BD_STOCK: 'bdStock',
+                            OBC_BD: 'obcBd',
+                            VALIDACION: 'validacion',
+                            INVENTARIO: 'inventario',
+                            MNE: 'mne',
+                            TRS: 'trs'
+                        }[key];
+                        DATA_CACHE[mappedKey] = data;
+                    }
+                });
+
+                DATA_CACHE.lastUpdate = Date.now();
+                saveToCache();
+                showNotification('✅ Bases de datos cargadas correctamente', 'success');
+            } catch (e) {
+                console.error('Error loading data:', e);
+                showNotification('❌ Error al cargar algunas bases de datos', 'error');
+                loadFromCache();
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function updateLoadingProgress(completed, total) {
+            const percent = (completed / total) * 100;
+            document.getElementById('progress-fill').style.width = `${percent}%`;
+            document.getElementById('loading-progress').textContent = `${completed}/${total} completadas`;
+        }
+
+        async function fetchCSV(url) {
+            const response = await fetch(url, {
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const csv = await response.text();
+            return parseCSV(csv);
+        }
+
+        function parseCSV(csv) {
+            const lines = csv.split('\n').filter(line => line.trim());
+            if (lines.length === 0) return [];
+
+            const headers = parseCSVLine(lines[0]);
+            const data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                if (values.length > 0) {
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        row[header] = values[index] || '';
+                    });
+                    data.push(row);
+                }
+            }
+
+            return data;
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        function saveToCache() {
+            try {
+                localStorage.setItem('box_query_cache', JSON.stringify(DATA_CACHE));
+            } catch (e) {
+                console.error('Error saving to cache:', e);
+            }
+        }
+
+        function loadFromCache() {
+            try {
+                const cached = localStorage.getItem('box_query_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.lastUpdate && Date.now() - parsed.lastUpdate < CONFIG.CACHE_DURATION) {
+                        DATA_CACHE = parsed;
+                        showNotification('ℹ️ Usando datos en caché', 'info');
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading from cache:', e);
+            }
+            return false;
+        }
+
+        // ==================== SEARCH ====================
+        function performSearch() {
+            const input = document.getElementById('search-input');
+            const query = normalizeCode(input.value.trim());
+
+            if (!query) {
+                showNotification('⚠️ Ingresa un código o número de orden', 'warning');
+                return;
+            }
+
+            CURRENT_SEARCH = query;
+            const results = searchAllSources(query);
+            displayResults(results, query);
+        }
+
+        function normalizeCode(raw) {
+            let code = raw.trim().toUpperCase();
+
+            // Extract from JSON patterns
+            const patterns = [
+                /\[id\[.*?\[([^\[]+)\[/i,
+                /¨id¨.*?¨([^¨]+)¨/i,
+                /"id"\s*:\s*"([^"]+)"/i
+            ];
+
+            for (const pattern of patterns) {
+                const match = code.match(pattern);
+                if (match) return match[1];
+            }
+
+            // Clean special characters
+            return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+        }
+
+        function searchAllSources(query) {
+            const results = {
+                exact: {
+                    bdStock: [],
+                    obcBd: [],
+                    validacion: [],
+                    inventario: [],
+                    mne: [],
+                    trs: []
+                },
+                partial: {
+                    bdStock: [],
+                    obcBd: [],
+                    validacion: [],
+                    inventario: [],
+                    mne: [],
+                    trs: []
+                },
+                query,
+                baseCode: extractBaseCode(query)
+            };
+
+            // Search BD Stock
+            searchInSource(DATA_CACHE.bdStock, query, results, 'bdStock', [
+                'Customize Barcode/自定义箱条码',
+                'Box type No./箱类型号'
+            ]);
+
+            // Search OBC BD
+            searchInSource(DATA_CACHE.obcBd, query, results, 'obcBd', [
+                'Custom box barcode_自定义箱条码',
+                'Outbound_出库单号',
+                'Reference order No._参考单号'
+            ]);
+
+            // Search Validacion
+            searchInSource(DATA_CACHE.validacion, query, results, 'validacion', [
+                'Codigo',
+                'Orden'
+            ]);
+
+            // Search Inventario
+            searchInSource(DATA_CACHE.inventario, query, results, 'inventario', [
+                'SCAN 1',
+                'SCAN 2',
+                'PALLET'
+            ]);
+
+            // Search MNE
+            searchInSource(DATA_CACHE.mne, query, results, 'mne', [
+                'Codigo Caja',
+                'Orden de Pedido',
+                'Orden OBC'
+            ]);
+
+            // Search TRS
+            searchInSource(DATA_CACHE.trs, query, results, 'trs', [
+                '原货件号 (Original Shipment NO.)',
+                '新货件号 (New Shipment NO.)',
+                '关联单号 (Express Code)'
+            ]);
+
+            return results;
+        }
+
+        function extractBaseCode(code) {
+            // Remove -UXX suffix
+            return code.replace(/-U\d+$/i, '').replace(/U\d+$/i, '');
+        }
+
+        function searchInSource(data, query, results, sourceName, fields) {
+            const baseCode = results.baseCode;
+
+            data.forEach(row => {
+                let exactMatch = false;
+                let partialMatch = false;
+
+                fields.forEach(field => {
+                    const value = normalizeCode(row[field] || '');
+                    
+                    if (value === query) {
+                        exactMatch = true;
+                    } else if (value === baseCode || value.includes(baseCode) || baseCode.includes(value)) {
+                        partialMatch = true;
+                    } else if (value.startsWith(query) || query.startsWith(value)) {
+                        partialMatch = true;
+                    }
+                });
+
+                if (exactMatch) {
+                    results.exact[sourceName].push(row);
+                } else if (partialMatch && results.partial[sourceName].length < CONFIG.MAX_RESULTS) {
+                    results.partial[sourceName].push(row);
+                }
+            });
+        }
+
+        // ==================== DISPLAY RESULTS ====================
+        function displayResults(results, query) {
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('results-container').classList.add('show');
+
+            displaySummary(results);
+            displaySections(results);
+        }
+
+        function displaySummary(results) {
+            const card = document.getElementById('summary-card');
+            
+            // Get main info
+            const stockInfo = results.exact.bdStock[0] || results.partial.bdStock[0];
+            const obcInfo = results.exact.obcBd[0] || results.partial.obcBd[0];
+            const mneInfo = results.exact.mne[0] || results.partial.mne[0];
+            const validacionInfo = results.exact.validacion[0] || results.partial.validacion[0];
+            const inventarioInfo = results.exact.inventario[0] || results.partial.inventario[0];
+            const trsInfo = results.exact.trs[0] || results.partial.trs[0];
+
+            // Count total results
+            const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
+            const totalPartial = Object.values(results.partial).reduce((sum, arr) => sum + arr.length, 0);
+
+            card.innerHTML = `
+                <div class="summary-header">
+                    <div class="summary-title">
+                        📦 ${results.query}
+                        ${totalExact > 0 ? '<span class="badge success">Coincidencia Exacta</span>' : '<span class="badge warning">Coincidencia Parcial</span>'}
+                    </div>
+                    <div class="summary-actions">
+                        <button class="btn btn-success" onclick="exportResults()">📥 Exportar</button>
+                        <button class="btn btn-secondary" onclick="printResults()">🖨️ Imprimir</button>
+                    </div>
+                </div>
+
+                <div class="summary-grid">
+                    <div class="summary-item primary">
+                        <div class="summary-label">📋 Número de Orden</div>
+                        <div class="summary-value">${obcInfo?.['Outbound_出库单号'] || obcInfo?.['Reference order No._参考单号'] || '-'}</div>
+                    </div>
+
+                    <div class="summary-item info">
+                        <div class="summary-label">👤 Destino/Cliente</div>
+                        <div class="summary-value">${obcInfo?.['Recipient_收件人'] || '-'}</div>
+                    </div>
+
+                    <div class="summary-item warning">
+                        <div class="summary-label">📅 Fecha y Hora Entrega</div>
+                        <div class="summary-value">${obcInfo?.['Expected Arrival Time _ 期望到仓时间'] || '-'}</div>
+                    </div>
+
+                    <div class="summary-item success">
+                        <div class="summary-label">📍 Ubicación Actual</div>
+                        <div class="summary-value">${stockInfo?.['cellNo'] || inventarioInfo?.['UBICACION'] || '-'}</div>
+                    </div>
+
+                    <div class="summary-item gray">
+                        <div class="summary-label">🕐 Último Movimiento</div>
+                        <div class="summary-value">${inventarioInfo ? `${inventarioInfo['FECHA']} ${inventarioInfo['HORA']} - ${inventarioInfo['USUARIO']}` : '-'}</div>
+                    </div>
+
+                    <div class="summary-item ${mneInfo ? 'error' : 'success'}">
+                        <div class="summary-label">🔍 Estatus en Rastreo</div>
+                        <div class="summary-value">${mneInfo ? 'REGISTRADA' : 'SIN REGISTRO'}</div>
+                    </div>
+
+                    <div class="summary-item ${validacionInfo ? 'success' : 'gray'}">
+                        <div class="summary-label">✅ Estatus Validación</div>
+                        <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
+                    </div>
+
+                    <div class="summary-item ${trsInfo ? 'primary' : 'gray'}">
+                        <div class="summary-label">🔧 Orden de Trabajo</div>
+                        <div class="summary-value">${trsInfo ? 'SÍ' : 'NO'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displaySections(results) {
+            const container = document.getElementById('sections-container');
+            container.innerHTML = '';
+
+            // Section order based on priority
+            const sections = [
+                { key: 'bdStock', title: '📦 BD Stock - Inventario Actual', color: 'success' },
+                { key: 'obcBd', title: '📋 OBC BD - Órdenes de Salida', color: 'primary' },
+                { key: 'validacion', title: '✅ Sistema Validación Surtido', color: 'success' },
+                { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
+                { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
+                { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' }
+            ];
+
+            sections.forEach(section => {
+                const exact = results.exact[section.key];
+                const partial = results.partial[section.key];
+                const total = exact.length + partial.length;
+
+                if (total > 0) {
+                    container.appendChild(createSectionCard(section, exact, partial));
+                }
+            });
+
+            if (container.children.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🔍</div>
+                        <div class="empty-text">No se encontraron resultados</div>
+                        <div class="empty-subtext">Intenta con otro código o número de orden</div>
+                    </div>
+                `;
+            }
+        }
+
+        function createSectionCard(section, exactResults, partialResults) {
+            const total = exactResults.length + partialResults.length;
+            const card = document.createElement('div');
+            card.className = 'section-card';
+
+            const sectionId = `section-${section.key}`;
+
+            card.innerHTML = `
+                <div class="section-header" onclick="toggleSection('${sectionId}')">
+                    <div class="section-title">
+                        ${section.title}
+                        <span class="section-count">${total}</span>
+                    </div>
+                    <span class="section-toggle" id="${sectionId}-toggle">▼</span>
+                </div>
+                <div class="section-content" id="${sectionId}">
+                    ${exactResults.length > 0 ? `
+                        <div class="match-info exact">
+                            ✅ <strong>${exactResults.length}</strong> coincidencia${exactResults.length > 1 ? 's' : ''} exacta${exactResults.length > 1 ? 's' : ''}
+                        </div>
+                        ${renderTable(exactResults, section.key)}
+                    ` : ''}
+                    
+                    ${partialResults.length > 0 ? `
+                        <div class="match-info">
+                            ⚠️ <strong>${partialResults.length}</strong> coincidencia${partialResults.length > 1 ? 's' : ''} parcial${partialResults.length > 1 ? 'es' : ''}
+                            ${partialResults.length >= CONFIG.MAX_RESULTS ? ` (mostrando primeras ${CONFIG.MAX_RESULTS})` : ''}
+                        </div>
+                        ${renderTable(partialResults, section.key)}
+                    ` : ''}
+                </div>
+            `;
+
+            return card;
+        }
+
+        function renderTable(data, sourceKey) {
+            if (data.length === 0) return '';
+
+            const fields = getRelevantFields(sourceKey);
+            
+            return `
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                ${fields.map(f => `<th>${f.label}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(row => `
+                                <tr>
+                                    ${fields.map(f => `<td>${formatValue(row[f.key], f.type)}</td>`).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function getRelevantFields(sourceKey) {
+            const fieldMap = {
+                bdStock: [
+                    { key: 'Customize Barcode/自定义箱条码', label: 'Código Caja', type: 'code' },
+                    { key: 'cellNo', label: 'Ubicación', type: 'text' },
+                    { key: 'Available stock/可用库存', label: 'Stock Disponible', type: 'number' },
+                    { key: 'Locked Inventory/锁定库存', label: 'Stock Bloqueado', type: 'number' },
+                    { key: 'Product name/产品名称', label: 'Producto', type: 'text' },
+                    { key: 'sku', label: 'SKU', type: 'text' }
+                ],
+                obcBd: [
+                    { key: 'Custom box barcode_自定义箱条码', label: 'Código Caja', type: 'code' },
+                    { key: 'Outbound_出库单号', label: 'Número Orden', type: 'code' },
+                    { key: 'Recipient_收件人', label: 'Destinatario', type: 'text' },
+                    { key: 'Expected Arrival Time _ 期望到仓时间', label: 'Fecha Entrega', type: 'datetime' },
+                    { key: 'Reference order No._参考单号', label: 'Referencia', type: 'text' },
+                    { key: 'Shipping service_物流渠道', label: 'Servicio', type: 'text' }
+                ],
+                validacion: [
+                    { key: 'Fecha', label: 'Fecha', type: 'date' },
+                    { key: 'Hora', label: 'Hora', type: 'time' },
+                    { key: 'Validador', label: 'Validador', type: 'text' },
+                    { key: 'Orden', label: 'Orden', type: 'code' },
+                    { key: 'Codigo', label: 'Código', type: 'code' },
+                    { key: 'Ubicación', label: 'Ubicación', type: 'text' },
+                    { key: 'Nota', label: 'Nota', type: 'text' }
+                ],
+                inventario: [
+                    { key: 'FECHA', label: 'Fecha', type: 'date' },
+                    { key: 'HORA', label: 'Hora', type: 'time' },
+                    { key: 'USUARIO', label: 'Usuario', type: 'text' },
+                    { key: 'SCAN 1', label: 'Código 1', type: 'code' },
+                    { key: 'SCAN 2', label: 'Código 2', type: 'code' },
+                    { key: 'UBICACION', label: 'Ubicación', type: 'text' },
+                    { key: 'ESTATUS', label: 'Estatus', type: 'status' },
+                    { key: 'PALLET', label: 'Pallet', type: 'text' }
+                ],
+                mne: [
+                    { key: 'Fecha Registro', label: 'Fecha', type: 'date' },
+                    { key: 'Codigo Caja', label: 'Código Caja', type: 'code' },
+                    { key: 'Orden de Pedido', label: 'Orden Pedido', type: 'code' },
+                    { key: 'Orden OBC', label: 'Orden OBC', type: 'code' },
+                    { key: 'Responsable', label: 'Responsable', type: 'text' },
+                    { key: 'Estatus', label: 'Estatus', type: 'status' },
+                    { key: 'Notas', label: 'Notas', type: 'text' }
+                ],
+                trs: [
+                    { key: '增值服务单号 (Value-added services No.)', label: 'No. Servicio', type: 'code' },
+                    { key: '状态 (Status)', label: 'Estado', type: 'status' },
+                    { key: '期望完成时间 (Will End Time)', label: 'Fecha Esperada', type: 'datetime' },
+                    { key: '原货件号 (Original Shipment NO.)', label: 'Código Original', type: 'code' },
+                    { key: '新货件号 (New Shipment NO.)', label: 'Código Nuevo', type: 'code' },
+                    { key: '箱数 (Box Quantity)', label: 'Cajas', type: 'number' },
+                    { key: '增值指令类型 (Value-added instruction type)', label: 'Tipo Instrucción', type: 'text' },
+                    { key: '操作人 (Operator)', label: 'Operador', type: 'text' }
+                ]
+            };
+
+            return fieldMap[sourceKey] || [];
+        }
+
+        function formatValue(value, type) {
+            if (!value || value === '') return '-';
+
+            switch (type) {
+                case 'code':
+                    return `<code>${value}</code>`;
+                case 'status':
+                    const statusMap = {
+                        'OK': 'success',
+                        'BLOQUEADO': 'error',
+                        'NO WMS': 'warning',
+                        'processing': 'warning',
+                        'completed': 'success'
+                    };
+                    const badgeType = statusMap[value] || 'gray';
+                    return `<span class="badge ${badgeType}">${value}</span>`;
+                case 'number':
+                    return parseFloat(value).toLocaleString();
+                case 'datetime':
+                case 'date':
+                case 'time':
+                    return value;
+                default:
+                    return value;
+            }
+        }
+
+        function toggleSection(sectionId) {
+            const content = document.getElementById(sectionId);
+            const toggle = document.getElementById(`${sectionId}-toggle`);
+            
+            content.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+        }
+
+        // ==================== EXPORT & PRINT ====================
+        function exportResults() {
+            if (!CURRENT_SEARCH) return;
+
+            const results = searchAllSources(CURRENT_SEARCH);
+            const data = [];
+
+            // Add header
+            data.push(['FUENTE', 'TIPO COINCIDENCIA', 'INFORMACIÓN']);
+
+            // Collect all results
+            Object.keys(results.exact).forEach(key => {
+                results.exact[key].forEach(row => {
+                    const info = Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                    data.push([getSourceName(key), 'EXACTA', info]);
+                });
+            });
+
+            Object.keys(results.partial).forEach(key => {
+                results.partial[key].forEach(row => {
+                    const info = Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                    data.push([getSourceName(key), 'PARCIAL', info]);
+                });
+            });
+
+            // Create CSV
+            const csv = '\ufeff' + data.map(row => 
+                row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(',')
+            ).join('\n');
+
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `consulta_${CURRENT_SEARCH}_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+
+            showNotification('✅ Resultados exportados', 'success');
+        }
+
+        function printResults() {
+            window.print();
+        }
+
+        function getSourceName(key) {
+            const names = {
+                bdStock: 'BD Stock',
+                obcBd: 'OBC BD',
+                validacion: 'Validación Surtido',
+                inventario: 'Inventario Escaneo',
+                mne: 'Rastreo MNE',
+                trs: 'TRS Etiquetado'
+            };
+            return names[key] || key;
+        }
+
+        // ==================== UI UTILITIES ====================
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('results-container').classList.remove('show');
+            document.getElementById('empty-state').style.display = 'block';
+            CURRENT_SEARCH = null;
+        }
+
+        function showLoading(show) {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.classList.toggle('show', show);
+        }
+
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notifications');
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`;
+
+            container.appendChild(notification);
+            setTimeout(() => notification.remove(), 4000);
+        }
+    </script>
+</body>
+</html>
