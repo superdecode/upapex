@@ -855,6 +855,7 @@
                 VALIDACION: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTZMZZCDtTFCebvsme1GMEBiZ1S2Cloh37AR8hHFAwhFPNEMD27G04bzX0theCMJE-nlYOyH2ev115q/pub?output=csv',
                 INVENTARIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXzUcwU_ZzJtCQKF6IEXr8Mj-OXvrzkw361v2rVVbb2goPaRMLPm6EbfrhXzeJJfWnvox4PhdGyoxZ/pub?output=csv',
                 MNE: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?output=csv',
+                MNE_2: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?gid=1&single=true&output=csv',
                 TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv'
             },
             CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
@@ -868,6 +869,7 @@
             validacion: [],
             inventario: [],
             mne: [],
+            mne2: [],
             trs: [],
             lastUpdate: null
         };
@@ -941,6 +943,7 @@
                             VALIDACION: 'validacion',
                             INVENTARIO: 'inventario',
                             MNE: 'mne',
+                            MNE_2: 'mne2',
                             TRS: 'trs'
                         }[key];
                         DATA_CACHE[mappedKey] = data;
@@ -1258,6 +1261,13 @@
             ]);
 
             searchInSourceWithSimilarity(DATA_CACHE.mne, results, 'mne', [
+                'Codigo Caja',
+                'Orden de Pedido',
+                'Orden OBC'
+            ]);
+
+            // Search MNE_2 (Rastreo 2.0) and combine results with MNE
+            searchInSourceWithSimilarity(DATA_CACHE.mne2, results, 'mne', [
                 'Codigo Caja',
                 'Orden de Pedido',
                 'Orden OBC'
@@ -1635,7 +1645,7 @@
                 { key: 'obcBd', title: '📋 OBC BD - Órdenes de Salida', color: 'primary' },
                 { key: 'validacion', title: '✅ Sistema Validación Surtido', color: 'success' },
                 { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
-                { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
+                { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada (Rastreo + Rastreo 2.0)', color: 'error' },
                 { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' }
             ];
 
