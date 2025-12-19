@@ -1669,113 +1669,121 @@
         .unified-log-entry.blocked .unified-log-status { background: var(--blocked); color: white; }
         .unified-log-entry.nowms .unified-log-status { background: var(--error); color: white; }
 
-        /* Module Toggle */
-        .module-toggle-container {
-            display: flex;
-            gap: 4px;
-            background: #444;
-            padding: 4px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-        }
 
-        .module-toggle-btn {
-            flex: 1;
-            padding: 8px 10px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.75em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            background: transparent;
-            color: #999;
-        }
-
-        .module-toggle-btn:hover {
-            color: white;
-        }
-
-        .module-toggle-btn.active {
-            background: var(--primary);
-            color: white;
-        }
-
-        /* Mode Descriptions */
-        .module-toggle-descriptions {
-            font-size: 0.65em;
-            color: #999;
-            text-align: center;
-            margin-top: 6px;
-            line-height: 1.4;
-        }
-
-        .module-toggle-descriptions .desc-item {
-            padding: 3px 0;
-        }
-
-        .module-toggle-descriptions .desc-label {
-            font-weight: 600;
-            color: #ccc;
-        }
-
-        /* Work Type Selection Popup */
+        /* Work Type Selection Popup - Professional Design */
         .work-type-popup {
-            max-width: 400px;
+            max-width: 420px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
         }
 
-        .work-type-options {
+        .work-type-toggle-container {
             display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin: 15px 0;
+            background: #f1f3f5;
+            border-radius: 12px;
+            padding: 6px;
+            margin-bottom: 20px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
         }
 
-        .work-type-option {
-            padding: 15px;
-            border: 2px solid #ddd;
+        .work-type-toggle-btn {
+            flex: 1;
+            padding: 14px 16px;
+            border: none;
             border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: left;
-        }
-
-        .work-type-option:hover {
-            border-color: var(--primary);
-            background: #f8f9ff;
-        }
-
-        .work-type-option.selected {
-            border-color: var(--primary);
-            background: #e8f0ff;
-        }
-
-        .work-type-option-title {
+            font-size: 0.95em;
             font-weight: 700;
-            font-size: 1.1em;
-            margin-bottom: 5px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: transparent;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .work-type-toggle-btn:hover:not(.active) {
+            background: rgba(255, 152, 0, 0.1);
+            color: #f57c00;
+        }
+
+        .work-type-toggle-btn.active {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+            transform: scale(1.02);
+        }
+
+        .work-type-toggle-btn .toggle-icon {
+            font-size: 1.2em;
+        }
+
+        .work-type-description {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+            min-height: 80px;
+            transition: all 0.3s ease;
+        }
+
+        .work-type-description-title {
+            font-weight: 700;
+            font-size: 1em;
+            color: #333;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .work-type-option-desc {
+        .work-type-description-text {
             font-size: 0.85em;
             color: #666;
-            line-height: 1.4;
+            line-height: 1.5;
         }
 
         .work-type-locked {
-            background: rgba(255, 152, 0, 0.1);
-            border: 1px solid var(--warning);
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 0.85em;
-            color: var(--warning);
-            margin-top: 10px;
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.08) 0%, rgba(255, 152, 0, 0.15) 100%);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.8em;
+            color: #e65100;
+            margin-top: 12px;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+        }
+
+        .work-type-confirm-btn {
+            width: 100%;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+        }
+
+        .work-type-confirm-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 152, 0, 0.4);
+        }
+
+        .work-type-confirm-btn:disabled {
+            background: #ccc;
+            box-shadow: none;
+            cursor: not-allowed;
         }
 
         /* Blind Count - blur counters when validation popup opens */
@@ -1798,68 +1806,88 @@
             user-select: none;
         }
 
-        /* Global Summary in Sidebar */
+        /* Global Summary in Sidebar - Vertical Professional Design */
         .global-summary-section {
-            background: #3a3a3a;
-            border-radius: 8px;
-            padding: 12px;
+            background: linear-gradient(180deg, #3a3a3a 0%, #2d2d2d 100%);
+            border-radius: 10px;
+            padding: 14px;
             margin-bottom: 12px;
         }
 
         .global-summary-title {
-            font-size: 0.75em;
+            font-size: 0.7em;
             color: #888;
             text-transform: uppercase;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             text-align: center;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
+            font-weight: 600;
         }
 
         .global-summary-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            display: flex;
+            flex-direction: column;
             gap: 8px;
         }
 
         .global-summary-item {
-            text-align: center;
-            padding: 8px 4px;
-            background: #444;
-            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            background: linear-gradient(135deg, #444 0%, #3a3a3a 100%);
+            border-radius: 8px;
+            border-left: 4px solid;
+            transition: all 0.2s ease;
+        }
+
+        .global-summary-item:hover {
+            transform: translateX(3px);
+        }
+
+        .global-summary-item.ok { border-left-color: var(--success); }
+        .global-summary-item.blocked { border-left-color: var(--blocked); }
+        .global-summary-item.nowms { border-left-color: var(--error); }
+
+        .global-summary-label {
+            font-size: 0.85em;
+            color: #ccc;
+            font-weight: 500;
         }
 
         .global-summary-count {
             font-size: 1.4em;
             font-weight: 700;
             line-height: 1;
+            min-width: 40px;
+            text-align: right;
         }
 
         .global-summary-count.ok { color: var(--success); }
         .global-summary-count.blocked { color: var(--blocked); }
         .global-summary-count.nowms { color: var(--error); }
 
-        .global-summary-label {
-            font-size: 0.65em;
-            color: #999;
-            margin-top: 4px;
-        }
-
         .global-summary-total {
-            text-align: center;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #555;
-        }
-
-        .global-summary-total-count {
-            font-size: 1.8em;
-            font-weight: 700;
-            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+            padding: 14px;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
         }
 
         .global-summary-total-label {
-            font-size: 0.7em;
-            color: #aaa;
+            font-size: 0.85em;
+            color: rgba(255,255,255,0.9);
+            font-weight: 600;
+        }
+
+        .global-summary-total-count {
+            font-size: 1.6em;
+            font-weight: 700;
+            color: white;
         }
     </style>
 </head>
@@ -1901,20 +1929,6 @@
                     ✅ Sincronizado
                 </div>
 
-                <!-- Module Toggle -->
-                <div class="module-toggle-container">
-                    <button class="module-toggle-btn active" id="module-classic-btn" onclick="switchModule('classic')">
-                        📋 Clasificar
-                    </button>
-                    <button class="module-toggle-btn" id="module-unified-btn" onclick="switchModule('unified')">
-                        📦 Unificado
-                    </button>
-                </div>
-                <div class="module-toggle-descriptions">
-                    <div class="desc-item"><span class="desc-label">Clasificar:</span> Separa cajas en 3 tarimas por estado</div>
-                    <div class="desc-item"><span class="desc-label">Unificado:</span> Todo en 1 tarima con estados mixtos</div>
-                </div>
-
                 <!-- Menu -->
                 <div class="sidebar-section">
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
@@ -1930,24 +1944,24 @@
 
                 <!-- Global Summary by Status -->
                 <div class="global-summary-section" id="global-summary-section">
-                    <div class="global-summary-title">Resumen Global (Todas las Sesiones)</div>
+                    <div class="global-summary-title">Resumen Global</div>
                     <div class="global-summary-grid">
-                        <div class="global-summary-item">
-                            <div class="global-summary-count ok" id="global-summary-ok">0</div>
+                        <div class="global-summary-item ok">
                             <div class="global-summary-label">✅ OK</div>
+                            <div class="global-summary-count ok" id="global-summary-ok">0</div>
                         </div>
-                        <div class="global-summary-item">
-                            <div class="global-summary-count blocked" id="global-summary-blocked">0</div>
+                        <div class="global-summary-item blocked">
                             <div class="global-summary-label">⚠️ Bloqueado</div>
+                            <div class="global-summary-count blocked" id="global-summary-blocked">0</div>
                         </div>
-                        <div class="global-summary-item">
-                            <div class="global-summary-count nowms" id="global-summary-nowms">0</div>
+                        <div class="global-summary-item nowms">
                             <div class="global-summary-label">❌ No WMS</div>
+                            <div class="global-summary-count nowms" id="global-summary-nowms">0</div>
                         </div>
                     </div>
                     <div class="global-summary-total">
+                        <div class="global-summary-total-label">📦 Total Cajas</div>
                         <div class="global-summary-total-count" id="global-summary-total">0</div>
-                        <div class="global-summary-total-label">Total de Cajas</div>
                     </div>
                 </div>
 
@@ -4142,51 +4156,75 @@
             overlay.innerHTML = `
                 <div class="popup-content work-type-popup">
                     <div class="popup-header">
-                        <span>🆕 Nueva Sesión de Trabajo</span>
+                        <span>🆕 Nueva Sesión</span>
                         <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
                     </div>
-                    <p style="margin-bottom: 15px; color: #666; font-size: 0.9em;">
-                        Selecciona el tipo de trabajo para esta sesión. <strong>Una vez creada, no podrás cambiar el tipo.</strong>
-                    </p>
-                    <div class="work-type-options">
-                        <div class="work-type-option" onclick="selectWorkType('classic', this)">
-                            <div class="work-type-option-title">📋 Clasificar</div>
-                            <div class="work-type-option-desc">
-                                Separa las cajas automáticamente en 3 tarimas independientes según su estado: OK, Bloqueado y No WMS. Ideal para reorganizar inventario por condición.
-                            </div>
-                        </div>
-                        <div class="work-type-option" onclick="selectWorkType('unified', this)">
-                            <div class="work-type-option-title">📦 Unificado</div>
-                            <div class="work-type-option-desc">
-                                Agrupa todas las cajas en una sola tarima con estados mixtos. Registra el estado de cada caja pero las mantiene juntas. Ideal para inventarios rápidos.
-                            </div>
-                        </div>
-                    </div>
-                    <div class="work-type-locked">
-                        🔒 El tipo de trabajo se bloquea después de crear la sesión
-                    </div>
-                    <div class="popup-buttons" style="margin-top: 15px;">
-                        <button class="btn btn-primary btn-full" id="confirm-work-type-btn" disabled onclick="confirmWorkType()">
-                            ✅ Crear Sesión
+
+                    <!-- Professional Toggle Button -->
+                    <div class="work-type-toggle-container">
+                        <button class="work-type-toggle-btn" id="toggle-classic" onclick="selectWorkType('classic')">
+                            <span class="toggle-icon">📋</span>
+                            Clasificar
+                        </button>
+                        <button class="work-type-toggle-btn" id="toggle-unified" onclick="selectWorkType('unified')">
+                            <span class="toggle-icon">📦</span>
+                            Unificado
                         </button>
                     </div>
+
+                    <!-- Dynamic Description -->
+                    <div class="work-type-description" id="work-type-description">
+                        <div class="work-type-description-title" id="work-type-desc-title">
+                            👆 Selecciona un modo
+                        </div>
+                        <div class="work-type-description-text" id="work-type-desc-text">
+                            Elige el tipo de trabajo que realizarás en esta sesión.
+                        </div>
+                    </div>
+
+                    <div class="work-type-locked">
+                        🔒 El modo se bloquea al crear la sesión
+                    </div>
+
+                    <button class="work-type-confirm-btn" id="confirm-work-type-btn" disabled onclick="confirmWorkType()">
+                        ✅ Crear Sesión
+                    </button>
                 </div>
             `;
             document.body.appendChild(overlay);
 
             // Store selected work type
             overlay.selectedWorkType = null;
+
+            // Close on backdrop click
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
         }
 
-        function selectWorkType(type, element) {
+        const workTypeDescriptions = {
+            classic: {
+                title: '📋 Modo Clasificar',
+                text: 'Separa automáticamente las cajas en 3 tarimas según su estado: OK, Bloqueado y No WMS. Ideal para reorganizar inventario por condición.'
+            },
+            unified: {
+                title: '📦 Modo Unificado',
+                text: 'Agrupa todas las cajas en una sola tarima con estados mixtos. Registra el estado pero las mantiene juntas. Ideal para inventarios rápidos.'
+            }
+        };
+
+        function selectWorkType(type) {
             const popup = document.getElementById('work-type-popup');
             if (!popup) return;
 
-            // Remove selected class from all options
-            popup.querySelectorAll('.work-type-option').forEach(opt => opt.classList.remove('selected'));
+            // Update toggle buttons
+            document.getElementById('toggle-classic').classList.toggle('active', type === 'classic');
+            document.getElementById('toggle-unified').classList.toggle('active', type === 'unified');
 
-            // Add selected class to clicked option
-            element.classList.add('selected');
+            // Update description
+            const desc = workTypeDescriptions[type];
+            document.getElementById('work-type-desc-title').textContent = desc.title;
+            document.getElementById('work-type-desc-text').textContent = desc.text;
 
             // Store selection
             popup.selectedWorkType = type;
