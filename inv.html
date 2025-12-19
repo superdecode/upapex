@@ -3723,20 +3723,26 @@
             const newSessionBtn = document.getElementById('new-session-btn');
 
             if (module === 'classic') {
+                // Mostrar clásico, ocultar unificado
+                classicModule.classList.remove('hidden');
                 classicModule.style.display = 'block';
+                unifiedModule.classList.add('hidden');
                 unifiedModule.style.display = 'none';
                 classicBtn.classList.add('active');
                 unifiedBtn.classList.remove('active');
                 newSessionBtn.onclick = newSession;
-                document.getElementById('scan-input').focus();
+                setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
             } else {
+                // Mostrar unificado, ocultar clásico
+                classicModule.classList.add('hidden');
                 classicModule.style.display = 'none';
+                unifiedModule.classList.remove('hidden');
                 unifiedModule.style.display = 'flex';
                 classicBtn.classList.remove('active');
                 unifiedBtn.classList.add('active');
                 newSessionBtn.onclick = () => UnifiedModule.createTab();
                 UnifiedModule.init();
-                document.getElementById('unified-scan-input').focus();
+                setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
             }
 
             localStorage.setItem('pd_current_module', module);
