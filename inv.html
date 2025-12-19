@@ -1670,6 +1670,67 @@
         .unified-log-entry.nowms .unified-log-status { background: var(--error); color: white; }
 
 
+        /* Welcome State - No active sessions */
+        .welcome-state {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 16px;
+            margin: 10px 0;
+        }
+
+        .welcome-content {
+            text-align: center;
+            padding: 40px;
+            max-width: 400px;
+        }
+
+        .welcome-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .welcome-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 16px;
+        }
+
+        .welcome-text {
+            font-size: 0.95em;
+            color: #888;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .welcome-btn {
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4);
+        }
+
+        .welcome-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(255, 152, 0, 0.5);
+        }
+
         /* Work Type Selection Popup - Professional Design */
         .work-type-popup {
             max-width: 420px;
@@ -1993,13 +2054,26 @@
             <div class="main-content">
                 <!-- GLOBAL TABS SYSTEM -->
                 <div class="unified-tabs-container" id="global-tabs-container">
-                    <button class="unified-tab-new" id="global-new-tab-btn" onclick="GlobalTabs.createTab()">
+                    <button class="unified-tab-new" id="global-new-tab-btn" onclick="showWorkTypePopup()">
                         ➕ Nuevo
                     </button>
                 </div>
 
+                <!-- WELCOME STATE - No active sessions -->
+                <div id="welcome-state" class="welcome-state" style="display: none;">
+                    <div class="welcome-content">
+                        <div class="welcome-icon">📦</div>
+                        <h2 class="welcome-title">¡Bienvenido al Sistema de Inventario!</h2>
+                        <p class="welcome-subtitle">No tienes sesiones activas</p>
+                        <p class="welcome-text">Crea una nueva sesión para comenzar a escanear y clasificar tu inventario.</p>
+                        <button class="welcome-btn" onclick="showWorkTypePopup()">
+                            ➕ Crear Nueva Sesión
+                        </button>
+                    </div>
+                </div>
+
                 <!-- CLASSIC MODULE -->
-                <div id="classic-module">
+                <div id="classic-module" class="hidden" style="display: none;">
                     <!-- Cabecera Principal con Ubicación y Contador -->
                     <div class="scan-header-bar">
                     <div class="origin-location-group">
@@ -3886,8 +3960,15 @@
                 this.renderTabs();
                 this.updateGlobalSummary();
                 if (this.tabs.length === 0) {
-                    // Show work type popup for first tab
-                    showWorkTypePopup();
+                    // Show welcome state - no tabs yet
+                    showWelcomeState();
+                } else {
+                    // Load the active tab's state and switch to correct module
+                    const activeTab = this.getActiveTab();
+                    if (activeTab && activeTab.workType) {
+                        this.loadTabState();
+                        switchModule(activeTab.workType, true);
+                    }
                 }
             },
 
@@ -4262,8 +4343,10 @@
 
             const classicModule = document.getElementById('classic-module');
             const unifiedModule = document.getElementById('unified-module');
-            const classicBtn = document.getElementById('module-classic-btn');
-            const unifiedBtn = document.getElementById('module-unified-btn');
+            const welcomeState = document.getElementById('welcome-state');
+
+            // Hide welcome state when switching modules
+            if (welcomeState) welcomeState.style.display = 'none';
 
             // Guardar estado de la pestaña actual antes de cambiar
             GlobalTabs.saveCurrentTabState();
@@ -4274,8 +4357,6 @@
                 classicModule.style.display = 'block';
                 unifiedModule.classList.add('hidden');
                 unifiedModule.style.display = 'none';
-                classicBtn.classList.add('active');
-                unifiedBtn.classList.remove('active');
                 setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
             } else {
                 // Mostrar unificado, ocultar clásico
@@ -4283,14 +4364,30 @@
                 classicModule.style.display = 'none';
                 unifiedModule.classList.remove('hidden');
                 unifiedModule.style.display = 'flex';
-                classicBtn.classList.remove('active');
-                unifiedBtn.classList.add('active');
                 UnifiedModule.init();
                 setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
             }
 
             localStorage.setItem('pd_current_module', module);
             GlobalTabs.renderTabs();
+        }
+
+        function showWelcomeState() {
+            const classicModule = document.getElementById('classic-module');
+            const unifiedModule = document.getElementById('unified-module');
+            const welcomeState = document.getElementById('welcome-state');
+
+            if (classicModule) {
+                classicModule.classList.add('hidden');
+                classicModule.style.display = 'none';
+            }
+            if (unifiedModule) {
+                unifiedModule.classList.add('hidden');
+                unifiedModule.style.display = 'none';
+            }
+            if (welcomeState) {
+                welcomeState.style.display = 'flex';
+            }
         }
 
         // ==================== UNIFIED CAPTURE MODULE ====================
