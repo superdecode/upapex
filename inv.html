@@ -1743,7 +1743,7 @@
                 <!-- Module Toggle -->
                 <div class="module-toggle-container">
                     <button class="module-toggle-btn active" id="module-classic-btn" onclick="switchModule('classic')">
-                        📋 Clásico
+                        📋 Clasificar
                     </button>
                     <button class="module-toggle-btn" id="module-unified-btn" onclick="switchModule('unified')">
                         📦 Unificado
@@ -1817,6 +1817,13 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
+                <!-- GLOBAL TABS SYSTEM -->
+                <div class="unified-tabs-container" id="global-tabs-container">
+                    <button class="unified-tab-new" id="global-new-tab-btn" onclick="GlobalTabs.createTab()">
+                        ➕ Nuevo
+                    </button>
+                </div>
+
                 <!-- CLASSIC MODULE -->
                 <div id="classic-module">
                     <!-- Cabecera Principal con Ubicación y Contador -->
@@ -1825,7 +1832,8 @@
                         <label>📍 Origen:</label>
                         <input type="text" class="origin-location-input" id="origin-location"
                                placeholder="A21-06-05-01" autocomplete="off"
-                               title="Ubicación física de origen">
+                               title="Ubicación física de origen"
+                               onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('scan-input').focus();}">
                     </div>
                     <div class="global-counter">
                         <span class="global-counter-label">Total Cajas:</span>
@@ -1946,7 +1954,8 @@
                             <label>📍 Origen:</label>
                             <input type="text" class="origin-location-input" id="unified-origin-location"
                                    placeholder="A21-06-05-01" autocomplete="off"
-                                   title="Ubicación física de origen">
+                                   title="Ubicación física de origen"
+                                   onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('unified-scan-input').focus();}">
                         </div>
                         <div class="global-counter">
                             <span class="global-counter-label">Total Cajas:</span>
@@ -1981,26 +1990,8 @@
                         </div>
                     </div>
 
-                    <!-- Tabs System -->
-                    <div class="unified-tabs-container" id="unified-tabs-container">
-                        <button class="unified-tab-new" id="unified-new-tab-btn" onclick="UnifiedModule.createTab()">
-                            ➕ Nuevo
-                        </button>
-                    </div>
-
-                    <!-- Tab Content Area -->
-                    <div id="unified-tab-content">
-                        <!-- Empty State (shown when no tabs) -->
-                        <div class="unified-empty-state" id="unified-empty-state">
-                            <div class="unified-empty-icon">📦</div>
-                            <div class="unified-empty-text">No hay sesiones activas</div>
-                            <button class="unified-empty-btn" onclick="UnifiedModule.createTab()">
-                                ➕ Nuevo Pallet
-                            </button>
-                        </div>
-
-                        <!-- Active Tab Content (hidden when no tabs) -->
-                        <div class="unified-content hidden" id="unified-active-content">
+                    <!-- Unified Pallet Content -->
+                    <div class="unified-content" id="unified-active-content">
                             <div class="unified-pallet">
                                 <div class="unified-pallet-header">
                                     <div class="unified-pallet-info">
@@ -2020,29 +2011,16 @@
                                     </div>
                                 </div>
 
-                                <div class="unified-list-container">
-                                    <div class="unified-list" id="unified-box-list">
-                                        <div class="empty-state">
-                                            <div class="empty-icon">📭</div>
-                                            <div>Sin cajas escaneadas</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Scan Log -->
-                                <div class="unified-scan-log" id="unified-scan-log">
-                                    <div class="unified-scan-log-title">
-                                        📋 Log de Escaneos
-                                    </div>
-                                    <div id="unified-log-entries">
-                                        <div style="color: #666; font-size: 0.85em; text-align: center; padding: 10px;">
-                                            Los escaneos aparecerán aquí...
-                                        </div>
-                                    </div>
+                        <div class="unified-list-container">
+                            <div class="unified-list" id="unified-box-list">
+                                <div class="empty-state">
+                                    <div class="empty-icon">📭</div>
+                                    <div>Sin cajas escaneadas</div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                </div>
                 </div><!-- End Unified Module -->
             </div>
         </div>
@@ -2385,6 +2363,7 @@
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
             updateUserFooter();
+            GlobalTabs.init();
             updateUI();
             document.getElementById('scan-input').focus();
         }
@@ -3710,6 +3689,223 @@
             } catch (e) {}
         }
 
+        // ==================== GLOBAL TABS SYSTEM ====================
+        const GlobalTabs = {
+            MAX_TABS: 4,
+            tabs: [],
+            activeTabId: null,
+
+            init() {
+                this.loadFromStorage();
+                this.renderTabs();
+                if (this.tabs.length === 0) {
+                    this.createTab();
+                }
+            },
+
+            generateTabId() {
+                return 'TAB-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            },
+
+            generatePalletId(prefix = 'PAL') {
+                const timestamp = Date.now().toString(36).toUpperCase();
+                const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                return `${prefix}-${timestamp}-${random}`;
+            },
+
+            createEmptyTabState() {
+                return {
+                    // Estado para módulo Clasificar
+                    classic: {
+                        pallets: {
+                            ok: { id: this.generatePalletId('OK'), boxes: [] },
+                            blocked: { id: this.generatePalletId('BLK'), boxes: [] },
+                            nowms: { id: this.generatePalletId('NWS'), boxes: [] }
+                        },
+                        originLocation: ''
+                    },
+                    // Estado para módulo Unificado
+                    unified: {
+                        palletId: this.generatePalletId('UNI'),
+                        boxes: [],
+                        location: '',
+                        originLocation: ''
+                    }
+                };
+            },
+
+            createTab() {
+                if (this.tabs.length >= this.MAX_TABS) {
+                    showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
+                    return;
+                }
+
+                const tabId = this.generateTabId();
+                const newTab = {
+                    id: tabId,
+                    name: `Sesión ${this.tabs.length + 1}`,
+                    state: this.createEmptyTabState(),
+                    createdAt: new Date().toISOString()
+                };
+
+                this.tabs.push(newTab);
+                this.activeTabId = tabId;
+                this.saveToStorage();
+                this.renderTabs();
+                this.loadTabState();
+                showNotification(`✅ Nueva sesión creada`, 'success');
+            },
+
+            switchTab(tabId) {
+                if (this.activeTabId === tabId) return;
+
+                // Guardar estado actual antes de cambiar
+                this.saveCurrentTabState();
+
+                this.activeTabId = tabId;
+                this.saveToStorage();
+                this.renderTabs();
+                this.loadTabState();
+            },
+
+            closeTab(tabId, event) {
+                if (event) event.stopPropagation();
+
+                const tab = this.tabs.find(t => t.id === tabId);
+                if (!tab) return;
+
+                // Verificar si hay cajas sin enviar
+                const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
+                const unifiedBoxes = tab.state.unified.boxes.length;
+                const totalBoxes = classicBoxes + unifiedBoxes;
+
+                if (totalBoxes > 0) {
+                    if (!confirm(`⚠️ Esta sesión tiene ${totalBoxes} cajas sin enviar. ¿Cerrar de todos modos?`)) {
+                        return;
+                    }
+                }
+
+                this.tabs = this.tabs.filter(t => t.id !== tabId);
+
+                if (this.activeTabId === tabId) {
+                    this.activeTabId = this.tabs.length > 0 ? this.tabs[0].id : null;
+                }
+
+                this.saveToStorage();
+                this.renderTabs();
+
+                if (this.activeTabId) {
+                    this.loadTabState();
+                }
+
+                showNotification('Sesión cerrada', 'info');
+            },
+
+            getActiveTab() {
+                return this.tabs.find(t => t.id === this.activeTabId);
+            },
+
+            saveCurrentTabState() {
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                // Guardar estado del módulo Clasificar
+                tab.state.classic.pallets = JSON.parse(JSON.stringify(STATE.pallets));
+                tab.state.classic.originLocation = document.getElementById('origin-location')?.value || '';
+
+                // Guardar estado del módulo Unificado
+                tab.state.unified.originLocation = document.getElementById('unified-origin-location')?.value || '';
+                tab.state.unified.location = document.getElementById('unified-location')?.value || '';
+            },
+
+            loadTabState() {
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                // Cargar estado del módulo Clasificar
+                STATE.pallets = JSON.parse(JSON.stringify(tab.state.classic.pallets));
+                const originInput = document.getElementById('origin-location');
+                if (originInput) originInput.value = tab.state.classic.originLocation || '';
+
+                // Cargar estado del módulo Unificado
+                const unifiedOriginInput = document.getElementById('unified-origin-location');
+                if (unifiedOriginInput) unifiedOriginInput.value = tab.state.unified.originLocation || '';
+                const unifiedLocationInput = document.getElementById('unified-location');
+                if (unifiedLocationInput) unifiedLocationInput.value = tab.state.unified.location || '';
+
+                // Actualizar UIs
+                updateUI();
+                UnifiedModule.updateUI();
+            },
+
+            renderTabs() {
+                const container = document.getElementById('global-tabs-container');
+                if (!container) return;
+
+                container.innerHTML = '';
+
+                // Renderizar pestañas existentes
+                this.tabs.forEach((tab, index) => {
+                    const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
+                    const unifiedBoxes = tab.state.unified.boxes.length;
+                    const totalBoxes = classicBoxes + unifiedBoxes;
+
+                    const tabEl = document.createElement('div');
+                    tabEl.className = `unified-tab ${tab.id === this.activeTabId ? 'active' : ''}`;
+                    tabEl.onclick = () => this.switchTab(tab.id);
+                    tabEl.innerHTML = `
+                        <span>📦 Sesión ${index + 1}</span>
+                        <span class="tab-count">${totalBoxes}</span>
+                        <button class="tab-close" onclick="GlobalTabs.closeTab('${tab.id}', event)">×</button>
+                    `;
+                    container.appendChild(tabEl);
+                });
+
+                // Botón nuevo
+                const newBtnEl = document.createElement('button');
+                newBtnEl.className = 'unified-tab-new';
+                newBtnEl.onclick = () => this.createTab();
+                newBtnEl.disabled = this.tabs.length >= this.MAX_TABS;
+                newBtnEl.innerHTML = '➕ Nuevo';
+                container.appendChild(newBtnEl);
+            },
+
+            saveToStorage() {
+                this.saveCurrentTabState();
+                try {
+                    localStorage.setItem('pd_global_tabs', JSON.stringify({
+                        tabs: this.tabs,
+                        activeTabId: this.activeTabId
+                    }));
+                } catch (e) {
+                    console.error('Error saving global tabs:', e);
+                }
+            },
+
+            loadFromStorage() {
+                try {
+                    const saved = localStorage.getItem('pd_global_tabs');
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        this.tabs = data.tabs || [];
+                        this.activeTabId = data.activeTabId || (this.tabs.length > 0 ? this.tabs[0].id : null);
+                    }
+                } catch (e) {
+                    console.error('Error loading global tabs:', e);
+                    this.tabs = [];
+                    this.activeTabId = null;
+                }
+            },
+
+            getTotalBoxCount() {
+                const tab = this.getActiveTab();
+                if (!tab) return 0;
+                const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
+                const unifiedBoxes = tab.state.unified.boxes.length;
+                return classicBoxes + unifiedBoxes;
+            }
+        };
+
         // ==================== MODULE SWITCHING ====================
         let CURRENT_MODULE = 'classic';
 
@@ -3721,6 +3917,9 @@
             const classicBtn = document.getElementById('module-classic-btn');
             const unifiedBtn = document.getElementById('module-unified-btn');
             const newSessionBtn = document.getElementById('new-session-btn');
+
+            // Guardar estado de la pestaña actual antes de cambiar
+            GlobalTabs.saveCurrentTabState();
 
             if (module === 'classic') {
                 // Mostrar clásico, ocultar unificado
@@ -3740,25 +3939,21 @@
                 unifiedModule.style.display = 'flex';
                 classicBtn.classList.remove('active');
                 unifiedBtn.classList.add('active');
-                newSessionBtn.onclick = () => UnifiedModule.createTab();
+                newSessionBtn.onclick = () => GlobalTabs.createTab();
                 UnifiedModule.init();
                 setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
             }
 
             localStorage.setItem('pd_current_module', module);
+            GlobalTabs.renderTabs();
         }
 
         // ==================== UNIFIED CAPTURE MODULE ====================
         const UnifiedModule = {
-            MAX_TABS: 4,
-            tabs: [],
-            activeTabId: null,
             pendingCode1: null,
 
             init() {
-                this.loadFromStorage();
                 this.setupEventListeners();
-                this.renderTabs();
                 this.updateUI();
             },
 
@@ -3766,9 +3961,7 @@
                 const scanInput = document.getElementById('unified-scan-input');
                 const code2Input = document.getElementById('unified-code2-input');
 
-                // Remove existing listeners
-                scanInput.onkeydown = null;
-                code2Input.onkeydown = null;
+                if (!scanInput || !code2Input) return;
 
                 scanInput.onkeydown = (e) => {
                     if (e.key === 'Enter' && scanInput.value.trim()) {
@@ -3787,149 +3980,25 @@
                 };
             },
 
-            generateTabId() {
-                return 'TAB-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            },
-
             generatePalletId() {
                 const timestamp = Date.now().toString(36).toUpperCase();
                 const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
                 return `UNI-${timestamp}-${random}`;
             },
 
-            createTab() {
-                if (this.tabs.length >= this.MAX_TABS) {
-                    showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
-                    return;
-                }
-
-                const tabId = this.generateTabId();
-                const newTab = {
-                    id: tabId,
-                    palletId: this.generatePalletId(),
-                    boxes: [],
-                    location: '',
-                    originLocation: '',
-                    scanLog: [],
-                    createdAt: new Date().toISOString()
-                };
-
-                this.tabs.push(newTab);
-                this.activeTabId = tabId;
-                this.saveToStorage();
-                this.renderTabs();
-                this.updateUI();
-                showNotification(`✅ Nueva pestaña creada`, 'success');
-                document.getElementById('unified-scan-input').focus();
-            },
-
-            switchTab(tabId) {
-                // Save current tab state first
-                this.saveCurrentTabState();
-
-                this.activeTabId = tabId;
-                this.saveToStorage();
-                this.renderTabs();
-                this.updateUI();
-                document.getElementById('unified-scan-input').focus();
-            },
-
-            closeTab(tabId, event) {
-                if (event) {
-                    event.stopPropagation();
-                }
-
-                const tab = this.tabs.find(t => t.id === tabId);
-                if (!tab) return;
-
-                if (tab.boxes.length > 0) {
-                    if (!confirm(`⚠️ Esta pestaña tiene ${tab.boxes.length} cajas sin enviar. ¿Cerrar de todos modos?`)) {
-                        return;
-                    }
-                }
-
-                this.tabs = this.tabs.filter(t => t.id !== tabId);
-
-                if (this.activeTabId === tabId) {
-                    this.activeTabId = this.tabs.length > 0 ? this.tabs[0].id : null;
-                }
-
-                this.saveToStorage();
-                this.renderTabs();
-                this.updateUI();
-                showNotification('Pestaña cerrada', 'info');
-            },
-
-            saveCurrentTabState() {
-                if (!this.activeTabId) return;
-                const tab = this.tabs.find(t => t.id === this.activeTabId);
-                if (tab) {
-                    tab.location = document.getElementById('unified-location')?.value || '';
-                    tab.originLocation = document.getElementById('unified-origin-location')?.value || '';
-                }
-            },
-
             getActiveTab() {
-                return this.tabs.find(t => t.id === this.activeTabId);
-            },
-
-            renderTabs() {
-                const container = document.getElementById('unified-tabs-container');
-                const newBtn = document.getElementById('unified-new-tab-btn');
-
-                // Clear existing tabs (keep only new button)
-                container.innerHTML = '';
-
-                // Add tabs
-                this.tabs.forEach((tab, index) => {
-                    const tabEl = document.createElement('div');
-                    tabEl.className = `unified-tab ${tab.id === this.activeTabId ? 'active' : ''}`;
-                    tabEl.onclick = () => this.switchTab(tab.id);
-
-                    const boxCount = tab.boxes.length;
-                    tabEl.innerHTML = `
-                        <span>📦 Pallet ${index + 1}</span>
-                        <span class="tab-count">${boxCount}</span>
-                        <button class="tab-close" onclick="UnifiedModule.closeTab('${tab.id}', event)">×</button>
-                    `;
-                    container.appendChild(tabEl);
-                });
-
-                // Add new button
-                const newBtnEl = document.createElement('button');
-                newBtnEl.className = 'unified-tab-new';
-                newBtnEl.id = 'unified-new-tab-btn';
-                newBtnEl.onclick = () => this.createTab();
-                newBtnEl.disabled = this.tabs.length >= this.MAX_TABS;
-                newBtnEl.innerHTML = '➕ Nuevo';
-                container.appendChild(newBtnEl);
-
-                // Show/hide empty state vs content
-                const emptyState = document.getElementById('unified-empty-state');
-                const activeContent = document.getElementById('unified-active-content');
-
-                if (this.tabs.length === 0) {
-                    emptyState.classList.remove('hidden');
-                    emptyState.style.display = 'flex';
-                    activeContent.classList.add('hidden');
-                    activeContent.style.display = 'none';
-                } else {
-                    emptyState.classList.add('hidden');
-                    emptyState.style.display = 'none';
-                    activeContent.classList.remove('hidden');
-                    activeContent.style.display = 'block';
-                }
+                const tab = GlobalTabs.getActiveTab();
+                return tab ? tab.state.unified : null;
             },
 
             processScan(rawCode) {
-                if (!this.activeTabId) {
-                    showNotification('⚠️ Crea una pestaña primero', 'warning');
+                const tab = this.getActiveTab();
+                if (!tab) {
+                    showNotification('⚠️ No hay sesión activa', 'warning');
                     return;
                 }
 
                 const code = normalizeCode(rawCode);
-                const tab = this.getActiveTab();
-                if (!tab) return;
 
                 // Check duplicates
                 const duplicateIndex = tab.boxes.findIndex(b => b.code === code);
@@ -4035,17 +4104,7 @@
                 boxData.status = status;
                 tab.boxes.push(boxData);
 
-                // Add to scan log
-                tab.scanLog.unshift({
-                    code: boxData.code,
-                    scan2: boxData.scan2,
-                    status,
-                    timestamp: boxData.timestamp
-                });
-                // Keep only last 50 entries
-                tab.scanLog = tab.scanLog.slice(0, 50);
-
-                this.saveToStorage();
+                GlobalTabs.saveToStorage();
                 this.updateUI();
             },
 
@@ -4055,7 +4114,7 @@
 
                 if (confirm('¿Eliminar esta caja?')) {
                     tab.boxes.splice(index, 1);
-                    this.saveToStorage();
+                    GlobalTabs.saveToStorage();
                     this.updateUI();
                     showNotification('Caja eliminada', 'info');
                 }
@@ -4302,10 +4361,10 @@
                 // Reset tab
                 tab.palletId = this.generatePalletId();
                 tab.boxes = [];
-                tab.scanLog = [];
+                tab.location = '';
                 document.getElementById('unified-location').value = '';
 
-                this.saveToStorage();
+                GlobalTabs.saveToStorage();
                 this.updateUI();
                 playSound('success');
 
@@ -4315,39 +4374,49 @@
             updateUI() {
                 const tab = this.getActiveTab();
 
+                const palletIdEl = document.getElementById('unified-pallet-id');
+                const locationEl = document.getElementById('unified-location');
+                const originLocationEl = document.getElementById('unified-origin-location');
+                const okCountEl = document.getElementById('unified-ok-count');
+                const blockedCountEl = document.getElementById('unified-blocked-count');
+                const nowmsCountEl = document.getElementById('unified-nowms-count');
+                const globalCountEl = document.getElementById('unified-global-box-count');
+                const sendBtn = document.getElementById('unified-send-btn');
+
                 if (!tab) {
-                    document.getElementById('unified-global-box-count').textContent = '0';
+                    if (globalCountEl) globalCountEl.textContent = '0';
+                    if (okCountEl) okCountEl.textContent = '0';
+                    if (blockedCountEl) blockedCountEl.textContent = '0';
+                    if (nowmsCountEl) nowmsCountEl.textContent = '0';
+                    if (sendBtn) sendBtn.disabled = true;
                     return;
                 }
 
                 // Update pallet ID
-                document.getElementById('unified-pallet-id').textContent = tab.palletId;
+                if (palletIdEl) palletIdEl.textContent = tab.palletId;
 
                 // Update location inputs
-                document.getElementById('unified-location').value = tab.location || '';
-                document.getElementById('unified-origin-location').value = tab.originLocation || '';
+                if (locationEl) locationEl.value = tab.location || '';
+                if (originLocationEl) originLocationEl.value = tab.originLocation || '';
 
                 // Update counts
                 const okCount = tab.boxes.filter(b => b.status === 'ok').length;
                 const blockedCount = tab.boxes.filter(b => b.status === 'blocked').length;
                 const nowmsCount = tab.boxes.filter(b => b.status === 'nowms').length;
 
-                document.getElementById('unified-ok-count').textContent = okCount;
-                document.getElementById('unified-blocked-count').textContent = blockedCount;
-                document.getElementById('unified-nowms-count').textContent = nowmsCount;
-                document.getElementById('unified-global-box-count').textContent = tab.boxes.length;
+                if (okCountEl) okCountEl.textContent = okCount;
+                if (blockedCountEl) blockedCountEl.textContent = blockedCount;
+                if (nowmsCountEl) nowmsCountEl.textContent = nowmsCount;
+                if (globalCountEl) globalCountEl.textContent = tab.boxes.length;
 
                 // Update send button
-                document.getElementById('unified-send-btn').disabled = tab.boxes.length === 0;
+                if (sendBtn) sendBtn.disabled = tab.boxes.length === 0;
 
                 // Update box list
                 this.renderBoxList();
 
-                // Update scan log
-                this.renderScanLog();
-
-                // Update tabs (for counts)
-                this.renderTabs();
+                // Update global tabs (for counts)
+                GlobalTabs.renderTabs();
             },
 
             renderBoxList() {
@@ -4381,57 +4450,6 @@
                         </div>
                     </div>
                 `).join('');
-            },
-
-            renderScanLog() {
-                const tab = this.getActiveTab();
-                const logEl = document.getElementById('unified-log-entries');
-
-                if (!tab || tab.scanLog.length === 0) {
-                    logEl.innerHTML = `
-                        <div style="color: #666; font-size: 0.85em; text-align: center; padding: 10px;">
-                            Los escaneos aparecerán aquí...
-                        </div>
-                    `;
-                    return;
-                }
-
-                const statusLabels = { ok: 'OK', blocked: 'BLK', nowms: 'N/A' };
-
-                logEl.innerHTML = tab.scanLog.slice(0, 20).map(entry => `
-                    <div class="unified-log-entry ${entry.status}">
-                        <span class="unified-log-time">${entry.timestamp}</span>
-                        <span class="unified-log-code">${entry.code}${entry.scan2 ? ` / ${entry.scan2}` : ''}</span>
-                        <span class="unified-log-status">${statusLabels[entry.status]}</span>
-                    </div>
-                `).join('');
-            },
-
-            saveToStorage() {
-                this.saveCurrentTabState();
-                try {
-                    localStorage.setItem('pd_unified_tabs', JSON.stringify({
-                        tabs: this.tabs,
-                        activeTabId: this.activeTabId
-                    }));
-                } catch (e) {
-                    console.error('Error saving unified tabs:', e);
-                }
-            },
-
-            loadFromStorage() {
-                try {
-                    const saved = localStorage.getItem('pd_unified_tabs');
-                    if (saved) {
-                        const data = JSON.parse(saved);
-                        this.tabs = data.tabs || [];
-                        this.activeTabId = data.activeTabId || (this.tabs.length > 0 ? this.tabs[0].id : null);
-                    }
-                } catch (e) {
-                    console.error('Error loading unified tabs:', e);
-                    this.tabs = [];
-                    this.activeTabId = null;
-                }
             }
         };
 
