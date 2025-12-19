@@ -336,7 +336,7 @@
 
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 12px;
         }
 
@@ -742,7 +742,7 @@
             }
             .summary-header { margin-bottom: 6px; }
             .summary-title { font-size: 1em; }
-            .summary-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+            .summary-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
             .summary-item { padding: 4px 6px; border-left-width: 2px; }
             .summary-label { font-size: 0.65em; margin-bottom: 1px; }
             .summary-value { font-size: 0.75em; }
@@ -911,7 +911,7 @@
                 CANCELADO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGSl9NnEjrP_3P4iRDSCaE776r2vjzwKthMyavQ4C5DOnmzDuY90YjZjfkLPGouxhyca140srhKaFO/pub?output=csv'
             },
             CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
-            MAX_RESULTS: 20
+            MAX_RESULTS: 100 // Límite aumentado para asegurar mejor cobertura en búsquedas parciales
         };
 
         // ==================== STATE ====================
@@ -1155,7 +1155,8 @@
         }
 
         function normalizeCode(raw) {
-            let code = raw.trim().toUpperCase();
+            // Convert to string and trim all types of whitespace (spaces, tabs, nbsp, etc.)
+            let code = String(raw).replace(/\s+/g, '').trim().toUpperCase();
 
             // Extract from JSON patterns
             const patterns = [
@@ -1166,7 +1167,7 @@
 
             for (const pattern of patterns) {
                 const match = code.match(pattern);
-                if (match) return match[1];
+                if (match) return match[1].replace(/\s+/g, '');
             }
 
             // Normalize different types of dashes/separators to standard dash
@@ -1175,6 +1176,7 @@
             code = code.replace(/[-]{2,}/g, '-');      // Multiple dashes to single
 
             // Clean special characters but keep alphanumeric and common separators
+            // Remove all whitespace characters (including non-breaking spaces, tabs, etc.)
             return code.replace(/[^a-zA-Z0-9\-\/\']/g, '');
         }
 
@@ -1320,8 +1322,9 @@
             // Search MNE using column indices: 3 (OBC 出库单), 5 (Código 货号)
             searchMNE(DATA_CACHE.mne, results, 'mne');
 
-            // Search MNE_2 (Rastreo 2.0) and combine results with MNE
-            searchMNE(DATA_CACHE.mne2, results, 'mne');
+            // Search MNE_2 (Rastreo 2.0) with bottom-up reading (prioritize recent records)
+            // Recent records are at the bottom, so we reverse the array to search them first
+            searchMNE(DATA_CACHE.mne2.slice().reverse(), results, 'mne');
 
             // Special search for TRS using column indices
             searchTRS(DATA_CACHE.trs, results, 'trs');
@@ -1779,11 +1782,7 @@
                     <div class="summary-item info" onclick="jumpToSection('obcBd')">
                         <div class="summary-label">👤 Destino/Cliente ${flexIndicator('obcBd')}</div>
                         <div class="summary-value">${obcInfo?.['Recipient_收件人'] || '-'}</div>
-                    </div>
-
-                    <div class="summary-item warning" onclick="jumpToSection('obcBd')">
-                        <div class="summary-label">📅 Fecha y Hora Entrega</div>
-                        <div class="summary-value">${obcInfo?.['Expected Arrival Time _ 期望到仓时间'] || '-'}</div>
+                        ${obcInfo?.['Expected Arrival Time _ 期望到仓时间'] ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📅 ${obcInfo['Expected Arrival Time _ 期望到仓时间']}</div>` : ''}
                     </div>
 
                     <div class="summary-item success" onclick="jumpToSection('bdStock')">
