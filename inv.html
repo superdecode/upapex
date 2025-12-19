@@ -2612,8 +2612,10 @@
             document.getElementById('main-app').classList.remove('hidden');
             updateUserFooter();
             GlobalTabs.init();
-            updateUI();
-            document.getElementById('scan-input').focus();
+            // Only update UI and focus if there are active tabs
+            if (GlobalTabs.tabs.length > 0) {
+                updateUI();
+            }
         }
 
         function handleLogout() {
@@ -3959,17 +3961,74 @@
                 this.loadFromStorage();
                 this.renderTabs();
                 this.updateGlobalSummary();
+
                 if (this.tabs.length === 0) {
-                    // Show welcome state - no tabs yet
-                    showWelcomeState();
+                    // No tabs - show welcome state
+                    this.showWelcomeScreen();
                 } else {
-                    // Load the active tab's state and switch to correct module
+                    // Has tabs - load active tab state and switch to its module
                     const activeTab = this.getActiveTab();
-                    if (activeTab && activeTab.workType) {
+                    if (activeTab) {
                         this.loadTabState();
-                        switchModule(activeTab.workType, true);
+                        this.showModuleForTab(activeTab);
                     }
                 }
+            },
+
+            showWelcomeScreen() {
+                const classicModule = document.getElementById('classic-module');
+                const unifiedModule = document.getElementById('unified-module');
+                const welcomeState = document.getElementById('welcome-state');
+
+                if (classicModule) {
+                    classicModule.classList.add('hidden');
+                    classicModule.style.display = 'none';
+                }
+                if (unifiedModule) {
+                    unifiedModule.classList.add('hidden');
+                    unifiedModule.style.display = 'none';
+                }
+                if (welcomeState) {
+                    welcomeState.style.display = 'flex';
+                }
+            },
+
+            showModuleForTab(tab) {
+                const classicModule = document.getElementById('classic-module');
+                const unifiedModule = document.getElementById('unified-module');
+                const welcomeState = document.getElementById('welcome-state');
+
+                // Always hide welcome state when showing a module
+                if (welcomeState) {
+                    welcomeState.style.display = 'none';
+                }
+
+                if (tab.workType === 'unified') {
+                    // Show unified, hide classic
+                    if (classicModule) {
+                        classicModule.classList.add('hidden');
+                        classicModule.style.display = 'none';
+                    }
+                    if (unifiedModule) {
+                        unifiedModule.classList.remove('hidden');
+                        unifiedModule.style.display = 'flex';
+                    }
+                    CURRENT_MODULE = 'unified';
+                    UnifiedModule.init();
+                } else {
+                    // Show classic, hide unified (default)
+                    if (unifiedModule) {
+                        unifiedModule.classList.add('hidden');
+                        unifiedModule.style.display = 'none';
+                    }
+                    if (classicModule) {
+                        classicModule.classList.remove('hidden');
+                        classicModule.style.display = 'block';
+                    }
+                    CURRENT_MODULE = 'classic';
+                }
+
+                localStorage.setItem('pd_current_module', CURRENT_MODULE);
             },
 
             generateTabId() {
@@ -4024,8 +4083,15 @@
                 this.renderTabs();
                 this.loadTabState();
 
-                // Switch to the correct module based on work type
-                switchModule(workType);
+                // Show the correct module for this tab
+                this.showModuleForTab(newTab);
+
+                // Focus the appropriate input
+                if (workType === 'unified') {
+                    setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
+                } else {
+                    setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
+                }
 
                 const workTypeLabel = workType === 'classic' ? 'Clasificar' : 'Unificado';
                 showNotification(`✅ Nueva sesión (${workTypeLabel}) creada`, 'success');
@@ -4043,10 +4109,16 @@
                 this.renderTabs();
                 this.loadTabState();
 
-                // Switch to the correct module based on tab's work type
+                // Show the correct module for the new active tab
                 const tab = this.getActiveTab();
-                if (tab && tab.workType) {
-                    switchModule(tab.workType, true);  // true = from tab switch, allow module change
+                if (tab) {
+                    this.showModuleForTab(tab);
+                    // Focus the appropriate input
+                    if (tab.workType === 'unified') {
+                        setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
+                    } else {
+                        setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
+                    }
                 }
             },
 
@@ -4075,9 +4147,18 @@
 
                 this.saveToStorage();
                 this.renderTabs();
+                this.updateGlobalSummary();
 
-                if (this.activeTabId) {
+                if (this.tabs.length === 0) {
+                    // No more tabs - show welcome screen
+                    this.showWelcomeScreen();
+                } else if (this.activeTabId) {
+                    // Switch to remaining tab
                     this.loadTabState();
+                    const activeTab = this.getActiveTab();
+                    if (activeTab) {
+                        this.showModuleForTab(activeTab);
+                    }
                 }
 
                 showNotification('Sesión cerrada', 'info');
@@ -4372,23 +4453,6 @@
             GlobalTabs.renderTabs();
         }
 
-        function showWelcomeState() {
-            const classicModule = document.getElementById('classic-module');
-            const unifiedModule = document.getElementById('unified-module');
-            const welcomeState = document.getElementById('welcome-state');
-
-            if (classicModule) {
-                classicModule.classList.add('hidden');
-                classicModule.style.display = 'none';
-            }
-            if (unifiedModule) {
-                unifiedModule.classList.add('hidden');
-                unifiedModule.style.display = 'none';
-            }
-            if (welcomeState) {
-                welcomeState.style.display = 'flex';
-            }
-        }
 
         // ==================== UNIFIED CAPTURE MODULE ====================
         const UnifiedModule = {
