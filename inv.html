@@ -1493,7 +1493,7 @@
         }
 
         .unified-location-input {
-            width: 160px;
+            width: 208px;
             padding: 8px 12px;
             border: 2px solid #ddd;
             border-radius: 6px;
@@ -1700,6 +1700,167 @@
             background: var(--primary);
             color: white;
         }
+
+        /* Mode Descriptions */
+        .module-toggle-descriptions {
+            font-size: 0.65em;
+            color: #999;
+            text-align: center;
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        .module-toggle-descriptions .desc-item {
+            padding: 3px 0;
+        }
+
+        .module-toggle-descriptions .desc-label {
+            font-weight: 600;
+            color: #ccc;
+        }
+
+        /* Work Type Selection Popup */
+        .work-type-popup {
+            max-width: 400px;
+        }
+
+        .work-type-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 15px 0;
+        }
+
+        .work-type-option {
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+
+        .work-type-option:hover {
+            border-color: var(--primary);
+            background: #f8f9ff;
+        }
+
+        .work-type-option.selected {
+            border-color: var(--primary);
+            background: #e8f0ff;
+        }
+
+        .work-type-option-title {
+            font-weight: 700;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .work-type-option-desc {
+            font-size: 0.85em;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .work-type-locked {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid var(--warning);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.85em;
+            color: var(--warning);
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Blind Count - blur counters when validation popup opens */
+        .blind-mode .global-counter-value,
+        .blind-mode .column-count,
+        .blind-mode .unified-status-badge,
+        .blind-mode .tab-count,
+        .blind-mode #ok-count,
+        .blind-mode #blocked-count,
+        .blind-mode #nowms-count,
+        .blind-mode #unified-global-box-count,
+        .blind-mode #unified-ok-count,
+        .blind-mode #unified-blocked-count,
+        .blind-mode #unified-nowms-count,
+        .blind-mode .sidebar-pallet-count,
+        .blind-mode #sidebar-ok-count,
+        .blind-mode #sidebar-blocked-count,
+        .blind-mode #sidebar-nowms-count {
+            filter: blur(8px);
+            user-select: none;
+        }
+
+        /* Global Summary in Sidebar */
+        .global-summary-section {
+            background: #3a3a3a;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .global-summary-title {
+            font-size: 0.75em;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+
+        .global-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .global-summary-item {
+            text-align: center;
+            padding: 8px 4px;
+            background: #444;
+            border-radius: 6px;
+        }
+
+        .global-summary-count {
+            font-size: 1.4em;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .global-summary-count.ok { color: var(--success); }
+        .global-summary-count.blocked { color: var(--blocked); }
+        .global-summary-count.nowms { color: var(--error); }
+
+        .global-summary-label {
+            font-size: 0.65em;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        .global-summary-total {
+            text-align: center;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #555;
+        }
+
+        .global-summary-total-count {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .global-summary-total-label {
+            font-size: 0.7em;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -1749,45 +1910,44 @@
                         📦 Unificado
                     </button>
                 </div>
+                <div class="module-toggle-descriptions">
+                    <div class="desc-item"><span class="desc-label">Clasificar:</span> Separa cajas en 3 tarimas por estado</div>
+                    <div class="desc-item"><span class="desc-label">Unificado:</span> Todo en 1 tarima con estados mixtos</div>
+                </div>
 
                 <!-- Menu -->
                 <div class="sidebar-section">
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
                         📊 Resumen
                     </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()" id="new-session-btn">
-                        ➕ Nueva Sesión
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showWorkTypePopup()" id="new-session-btn">
+                        ➕ Nuevo
                     </button>
                     <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
                         📥 Exportar
                     </button>
                 </div>
 
-                <!-- Pallets por estatus -->
-                <div class="sidebar-section">
-                    <div class="sidebar-section-title">Tarimas Activas</div>
-                    <div class="pallet-status-list" id="pallet-status-list">
-                        <div class="pallet-status-item">
-                            <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--success);">✅ OK</span>
-                                <span class="pallet-status-count" id="sidebar-ok-count">0</span>
-                            </div>
-                            <div class="pallet-code" id="sidebar-ok-pallet">-</div>
+                <!-- Global Summary by Status -->
+                <div class="global-summary-section" id="global-summary-section">
+                    <div class="global-summary-title">Resumen Global (Todas las Sesiones)</div>
+                    <div class="global-summary-grid">
+                        <div class="global-summary-item">
+                            <div class="global-summary-count ok" id="global-summary-ok">0</div>
+                            <div class="global-summary-label">✅ OK</div>
                         </div>
-                        <div class="pallet-status-item">
-                            <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--blocked);">⚠️ Bloqueado</span>
-                                <span class="pallet-status-count" id="sidebar-blocked-count">0</span>
-                            </div>
-                            <div class="pallet-code" id="sidebar-blocked-pallet">-</div>
+                        <div class="global-summary-item">
+                            <div class="global-summary-count blocked" id="global-summary-blocked">0</div>
+                            <div class="global-summary-label">⚠️ Bloqueado</div>
                         </div>
-                        <div class="pallet-status-item">
-                            <div class="pallet-status-header">
-                                <span class="pallet-status-name" style="color: var(--error);">❌ No WMS</span>
-                                <span class="pallet-status-count" id="sidebar-nowms-count">0</span>
-                            </div>
-                            <div class="pallet-code" id="sidebar-nowms-pallet">-</div>
+                        <div class="global-summary-item">
+                            <div class="global-summary-count nowms" id="global-summary-nowms">0</div>
+                            <div class="global-summary-label">❌ No WMS</div>
                         </div>
+                    </div>
+                    <div class="global-summary-total">
+                        <div class="global-summary-total-count" id="global-summary-total">0</div>
+                        <div class="global-summary-total-label">Total de Cajas</div>
                     </div>
                 </div>
 
@@ -2985,11 +3145,14 @@
             showSendValidationPopup(category, location);
         }
 
-        // Popup de pre-validación de cantidad física
+        // Popup de pre-validación de cantidad física (blind count protocol)
         function showSendValidationPopup(category, location) {
             const pallet = STATE.pallets[category];
             const boxCount = pallet.boxes.length;
             const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+
+            // Enable blind mode - blur all counters
+            document.body.classList.add('blind-mode');
 
             const overlay = document.createElement('div');
             overlay.className = 'popup-overlay show';
@@ -2998,11 +3161,11 @@
                 <div class="popup-content send-validation-popup">
                     <div class="popup-header">
                         <span>📦 Validar Envío - ${categoryNames[category]}</span>
-                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        <button class="popup-close" onclick="closeBlindValidationPopup()">×</button>
                     </div>
                     <p style="margin-bottom: 15px; font-size: 0.9em;">
-                        <strong>Cajas escaneadas:</strong> <span style="font-size: 1.5em; color: var(--primary); font-weight: 700;">${boxCount}</span><br>
-                        <strong>Destino:</strong> ${location}
+                        <strong>Destino:</strong> ${location}<br>
+                        <span style="color: #888; font-size: 0.85em;">🔒 Conteo oculto - Verifica físicamente</span>
                     </p>
                     <div class="validation-input-group">
                         <label>¿Cuántas cajas físicas hay en la tarima?</label>
@@ -3015,7 +3178,7 @@
                                 onclick="confirmSendPallet('${category}', '${location}')">
                             📤 Confirmar Envío
                         </button>
-                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                        <button class="btn btn-secondary btn-full" onclick="closeBlindValidationPopup()">
                             Cancelar
                         </button>
                     </div>
@@ -3030,8 +3193,15 @@
             }, 100);
 
             overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) overlay.remove();
+                if (e.target === overlay) closeBlindValidationPopup();
             });
+        }
+
+        // Close validation popup and disable blind mode
+        function closeBlindValidationPopup() {
+            document.body.classList.remove('blind-mode');
+            const popup = document.getElementById('send-validation-popup');
+            if (popup) popup.remove();
         }
 
         // Validar cantidad de cajas físicas vs escaneadas
@@ -3057,7 +3227,8 @@
 
         // Confirmar envío después de validación
         async function confirmSendPallet(category, location) {
-            // Cerrar popup de validación
+            // Cerrar popup de validación y disable blind mode
+            document.body.classList.remove('blind-mode');
             document.getElementById('send-validation-popup')?.remove();
 
             const pallet = STATE.pallets[category];
@@ -3138,6 +3309,7 @@
             updateSendButtons();
             updateGlobalCounter();
             updateVerificationBadges();
+            GlobalTabs.updateGlobalSummary();
         }
 
         function updateGlobalCounter() {
@@ -3698,8 +3870,10 @@
             init() {
                 this.loadFromStorage();
                 this.renderTabs();
+                this.updateGlobalSummary();
                 if (this.tabs.length === 0) {
-                    this.createTab();
+                    // Show work type popup for first tab
+                    showWorkTypePopup();
                 }
             },
 
@@ -3734,7 +3908,7 @@
                 };
             },
 
-            createTab() {
+            createTab(workType = 'classic') {
                 if (this.tabs.length >= this.MAX_TABS) {
                     showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
                     return;
@@ -3744,6 +3918,7 @@
                 const newTab = {
                     id: tabId,
                     name: `Sesión ${this.tabs.length + 1}`,
+                    workType: workType,  // Store the work type (locked after creation)
                     state: this.createEmptyTabState(),
                     createdAt: new Date().toISOString()
                 };
@@ -3753,7 +3928,13 @@
                 this.saveToStorage();
                 this.renderTabs();
                 this.loadTabState();
-                showNotification(`✅ Nueva sesión creada`, 'success');
+
+                // Switch to the correct module based on work type
+                switchModule(workType);
+
+                const workTypeLabel = workType === 'classic' ? 'Clasificar' : 'Unificado';
+                showNotification(`✅ Nueva sesión (${workTypeLabel}) creada`, 'success');
+                this.updateGlobalSummary();
             },
 
             switchTab(tabId) {
@@ -3766,6 +3947,12 @@
                 this.saveToStorage();
                 this.renderTabs();
                 this.loadTabState();
+
+                // Switch to the correct module based on tab's work type
+                const tab = this.getActiveTab();
+                if (tab && tab.workType) {
+                    switchModule(tab.workType, true);  // true = from tab switch, allow module change
+                }
             },
 
             closeTab(tabId, event) {
@@ -3849,22 +4036,24 @@
                     const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
                     const unifiedBoxes = tab.state.unified.boxes.length;
                     const totalBoxes = classicBoxes + unifiedBoxes;
+                    const workTypeIcon = tab.workType === 'unified' ? '📦' : '📋';
+                    const workTypeLabel = tab.workType === 'unified' ? 'Uni' : 'Clas';
 
                     const tabEl = document.createElement('div');
                     tabEl.className = `unified-tab ${tab.id === this.activeTabId ? 'active' : ''}`;
                     tabEl.onclick = () => this.switchTab(tab.id);
                     tabEl.innerHTML = `
-                        <span>📦 Sesión ${index + 1}</span>
+                        <span>${workTypeIcon} S${index + 1}</span>
                         <span class="tab-count">${totalBoxes}</span>
                         <button class="tab-close" onclick="GlobalTabs.closeTab('${tab.id}', event)">×</button>
                     `;
                     container.appendChild(tabEl);
                 });
 
-                // Botón nuevo
+                // Botón nuevo - shows work type popup
                 const newBtnEl = document.createElement('button');
                 newBtnEl.className = 'unified-tab-new';
-                newBtnEl.onclick = () => this.createTab();
+                newBtnEl.onclick = () => showWorkTypePopup();
                 newBtnEl.disabled = this.tabs.length >= this.MAX_TABS;
                 newBtnEl.innerHTML = '➕ Nuevo';
                 container.appendChild(newBtnEl);
@@ -3903,20 +4092,140 @@
                 const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
                 const unifiedBoxes = tab.state.unified.boxes.length;
                 return classicBoxes + unifiedBoxes;
+            },
+
+            // Update global summary across all tabs
+            updateGlobalSummary() {
+                let totalOk = 0;
+                let totalBlocked = 0;
+                let totalNowms = 0;
+
+                this.tabs.forEach(tab => {
+                    // Count from classic module
+                    totalOk += tab.state.classic.pallets.ok.boxes.length;
+                    totalBlocked += tab.state.classic.pallets.blocked.boxes.length;
+                    totalNowms += tab.state.classic.pallets.nowms.boxes.length;
+
+                    // Count from unified module
+                    tab.state.unified.boxes.forEach(box => {
+                        if (box.status === 'ok') totalOk++;
+                        else if (box.status === 'blocked') totalBlocked++;
+                        else if (box.status === 'nowms') totalNowms++;
+                    });
+                });
+
+                const total = totalOk + totalBlocked + totalNowms;
+
+                // Update sidebar summary
+                const okEl = document.getElementById('global-summary-ok');
+                const blockedEl = document.getElementById('global-summary-blocked');
+                const nowmsEl = document.getElementById('global-summary-nowms');
+                const totalEl = document.getElementById('global-summary-total');
+
+                if (okEl) okEl.textContent = totalOk;
+                if (blockedEl) blockedEl.textContent = totalBlocked;
+                if (nowmsEl) nowmsEl.textContent = totalNowms;
+                if (totalEl) totalEl.textContent = total;
             }
         };
+
+        // ==================== WORK TYPE POPUP ====================
+        function showWorkTypePopup() {
+            if (GlobalTabs.tabs.length >= GlobalTabs.MAX_TABS) {
+                showNotification(`⚠️ Máximo ${GlobalTabs.MAX_TABS} pestañas permitidas`, 'warning');
+                return;
+            }
+
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show';
+            overlay.id = 'work-type-popup';
+            overlay.innerHTML = `
+                <div class="popup-content work-type-popup">
+                    <div class="popup-header">
+                        <span>🆕 Nueva Sesión de Trabajo</span>
+                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                    </div>
+                    <p style="margin-bottom: 15px; color: #666; font-size: 0.9em;">
+                        Selecciona el tipo de trabajo para esta sesión. <strong>Una vez creada, no podrás cambiar el tipo.</strong>
+                    </p>
+                    <div class="work-type-options">
+                        <div class="work-type-option" onclick="selectWorkType('classic', this)">
+                            <div class="work-type-option-title">📋 Clasificar</div>
+                            <div class="work-type-option-desc">
+                                Separa las cajas automáticamente en 3 tarimas independientes según su estado: OK, Bloqueado y No WMS. Ideal para reorganizar inventario por condición.
+                            </div>
+                        </div>
+                        <div class="work-type-option" onclick="selectWorkType('unified', this)">
+                            <div class="work-type-option-title">📦 Unificado</div>
+                            <div class="work-type-option-desc">
+                                Agrupa todas las cajas en una sola tarima con estados mixtos. Registra el estado de cada caja pero las mantiene juntas. Ideal para inventarios rápidos.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="work-type-locked">
+                        🔒 El tipo de trabajo se bloquea después de crear la sesión
+                    </div>
+                    <div class="popup-buttons" style="margin-top: 15px;">
+                        <button class="btn btn-primary btn-full" id="confirm-work-type-btn" disabled onclick="confirmWorkType()">
+                            ✅ Crear Sesión
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // Store selected work type
+            overlay.selectedWorkType = null;
+        }
+
+        function selectWorkType(type, element) {
+            const popup = document.getElementById('work-type-popup');
+            if (!popup) return;
+
+            // Remove selected class from all options
+            popup.querySelectorAll('.work-type-option').forEach(opt => opt.classList.remove('selected'));
+
+            // Add selected class to clicked option
+            element.classList.add('selected');
+
+            // Store selection
+            popup.selectedWorkType = type;
+
+            // Enable confirm button
+            document.getElementById('confirm-work-type-btn').disabled = false;
+        }
+
+        function confirmWorkType() {
+            const popup = document.getElementById('work-type-popup');
+            if (!popup || !popup.selectedWorkType) return;
+
+            const workType = popup.selectedWorkType;
+            popup.remove();
+
+            GlobalTabs.createTab(workType);
+        }
 
         // ==================== MODULE SWITCHING ====================
         let CURRENT_MODULE = 'classic';
 
-        function switchModule(module) {
+        function switchModule(module, fromTabSwitch = false) {
+            // Check if the current tab has a locked work type
+            const activeTab = GlobalTabs.getActiveTab();
+            if (activeTab && activeTab.workType && !fromTabSwitch) {
+                // If user tries to switch modules manually but tab is locked
+                if (activeTab.workType !== module) {
+                    const lockedType = activeTab.workType === 'classic' ? 'Clasificar' : 'Unificado';
+                    showNotification(`🔒 Esta sesión está bloqueada como "${lockedType}"`, 'warning');
+                    return;
+                }
+            }
+
             CURRENT_MODULE = module;
 
             const classicModule = document.getElementById('classic-module');
             const unifiedModule = document.getElementById('unified-module');
             const classicBtn = document.getElementById('module-classic-btn');
             const unifiedBtn = document.getElementById('module-unified-btn');
-            const newSessionBtn = document.getElementById('new-session-btn');
 
             // Guardar estado de la pestaña actual antes de cambiar
             GlobalTabs.saveCurrentTabState();
@@ -3929,7 +4238,6 @@
                 unifiedModule.style.display = 'none';
                 classicBtn.classList.add('active');
                 unifiedBtn.classList.remove('active');
-                newSessionBtn.onclick = newSession;
                 setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
             } else {
                 // Mostrar unificado, ocultar clásico
@@ -3939,7 +4247,6 @@
                 unifiedModule.style.display = 'flex';
                 classicBtn.classList.remove('active');
                 unifiedBtn.classList.add('active');
-                newSessionBtn.onclick = () => GlobalTabs.createTab();
                 UnifiedModule.init();
                 setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
             }
@@ -4236,9 +4543,9 @@
 
             showSendValidationPopup(tab, location, originLocation) {
                 const boxCount = tab.boxes.length;
-                const okCount = tab.boxes.filter(b => b.status === 'ok').length;
-                const blockedCount = tab.boxes.filter(b => b.status === 'blocked').length;
-                const nowmsCount = tab.boxes.filter(b => b.status === 'nowms').length;
+
+                // Enable blind mode - blur all counters
+                document.body.classList.add('blind-mode');
 
                 const overlay = document.createElement('div');
                 overlay.className = 'popup-overlay show';
@@ -4247,15 +4554,12 @@
                     <div class="popup-content send-validation-popup">
                         <div class="popup-header">
                             <span>📦 Validar Envío Unificado</span>
-                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                            <button class="popup-close" onclick="UnifiedModule.closeBlindValidationPopup()">×</button>
                         </div>
                         <p style="margin-bottom: 15px; font-size: 0.9em;">
                             <strong>Pallet:</strong> ${tab.palletId}<br>
-                            <strong>Total cajas:</strong> <span style="font-size: 1.3em; color: var(--primary); font-weight: 700;">${boxCount}</span><br>
-                            <span style="color: var(--success);">✅ OK: ${okCount}</span> |
-                            <span style="color: var(--blocked);">⚠️ Bloqueado: ${blockedCount}</span> |
-                            <span style="color: var(--error);">❌ No WMS: ${nowmsCount}</span><br>
-                            <strong>Destino:</strong> ${location}
+                            <strong>Destino:</strong> ${location}<br>
+                            <span style="color: #888; font-size: 0.85em;">🔒 Conteo oculto - Verifica físicamente</span>
                         </p>
                         <div class="validation-input-group">
                             <label>¿Cuántas cajas físicas hay en la tarima?</label>
@@ -4268,7 +4572,7 @@
                                     onclick="UnifiedModule.confirmSendPallet('${location}', '${originLocation}')">
                                 📤 Confirmar Envío
                             </button>
-                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                            <button class="btn btn-secondary btn-full" onclick="UnifiedModule.closeBlindValidationPopup()">
                                 Cancelar
                             </button>
                         </div>
@@ -4282,8 +4586,14 @@
                 }, 100);
 
                 overlay.addEventListener('click', (e) => {
-                    if (e.target === overlay) overlay.remove();
+                    if (e.target === overlay) this.closeBlindValidationPopup();
                 });
+            },
+
+            closeBlindValidationPopup() {
+                document.body.classList.remove('blind-mode');
+                const popup = document.getElementById('unified-send-validation-popup');
+                if (popup) popup.remove();
             },
 
             validateBoxCount(expectedCount) {
@@ -4307,6 +4617,8 @@
             },
 
             async confirmSendPallet(location, originLocation) {
+                // Disable blind mode and close popup
+                document.body.classList.remove('blind-mode');
                 document.getElementById('unified-send-validation-popup')?.remove();
 
                 const tab = this.getActiveTab();
@@ -4417,6 +4729,7 @@
 
                 // Update global tabs (for counts)
                 GlobalTabs.renderTabs();
+                GlobalTabs.updateGlobalSummary();
             },
 
             renderBoxList() {
