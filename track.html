@@ -336,8 +336,20 @@
 
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(5, 1fr);
             gap: 12px;
+        }
+
+        @media (max-width: 1200px) {
+            .summary-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
 
         .summary-item {
@@ -401,6 +413,67 @@
 
         .count-indicator:hover {
             transform: scale(1.15);
+        }
+
+        /* Rastreo Detail Block */
+        .rastreo-detail-block {
+            margin-top: 15px;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid var(--warning);
+            box-shadow: var(--shadow);
+        }
+
+        .rastreo-detail-header {
+            background: linear-gradient(135deg, var(--warning), #e65100);
+            color: white;
+            padding: 10px 15px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .rastreo-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: #e0e0e0;
+            padding: 1px;
+        }
+
+        @media (max-width: 768px) {
+            .rastreo-detail-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .rastreo-detail-item {
+            background: white;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .rastreo-label {
+            font-size: 0.75em;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .rastreo-value {
+            font-size: 0.95em;
+            font-weight: 600;
+            word-break: break-word;
+        }
+
+        .rastreo-value code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
         }
 
         /* Section Card */
@@ -691,7 +764,7 @@
             }
             .summary-header { margin-bottom: 6px; }
             .summary-title { font-size: 1em; }
-            .summary-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+            .summary-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }
             .summary-item { padding: 4px 6px; border-left-width: 2px; }
             .summary-label { font-size: 0.65em; margin-bottom: 1px; }
             .summary-value { font-size: 0.75em; }
@@ -734,7 +807,7 @@
             .search-row { flex-direction: column; }
             .search-input { font-size: 1em; padding: 10px 14px; }
             .btn { padding: 10px 18px; font-size: 0.9em; }
-            .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            /* Uses main responsive styles */
             .summary-item { padding: 10px 12px; }
             .summary-label { font-size: 0.75em; }
             .summary-value { font-size: 0.9em; }
@@ -856,7 +929,8 @@
                 INVENTARIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXzUcwU_ZzJtCQKF6IEXr8Mj-OXvrzkw361v2rVVbb2goPaRMLPm6EbfrhXzeJJfWnvox4PhdGyoxZ/pub?output=csv',
                 MNE: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?output=csv',
                 MNE_2: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?gid=1&single=true&output=csv',
-                TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv'
+                TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv',
+                CANCELADO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGSl9NnEjrP_3P4iRDSCaE776r2vjzwKthMyavQ4C5DOnmzDuY90YjZjfkLPGouxhyca140srhKaFO/pub?output=csv'
             },
             CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
             MAX_RESULTS: 20
@@ -871,6 +945,7 @@
             mne: [],
             mne2: [],
             trs: [],
+            cancelado: [],
             lastUpdate: null
         };
 
@@ -882,7 +957,8 @@
             validacion: 'exact',
             inventario: 'exact',
             mne: 'exact',
-            trs: 'exact'
+            trs: 'exact',
+            cancelado: 'exact'
         };
 
         // ==================== INITIALIZATION ====================
@@ -944,7 +1020,8 @@
                             INVENTARIO: 'inventario',
                             MNE: 'mne',
                             MNE_2: 'mne2',
-                            TRS: 'trs'
+                            TRS: 'trs',
+                            CANCELADO: 'cancelado'
                         }[key];
                         DATA_CACHE[mappedKey] = data;
                     }
@@ -1221,7 +1298,8 @@
                     validacion: [],
                     inventario: [],
                     mne: [],
-                    trs: []
+                    trs: [],
+                    cancelado: []
                 },
                 partial: {
                     bdStock: [],
@@ -1229,7 +1307,8 @@
                     validacion: [],
                     inventario: [],
                     mne: [],
-                    trs: []
+                    trs: [],
+                    cancelado: []
                 },
                 query,
                 baseCode: extractBaseCode(query),
@@ -1260,30 +1339,31 @@
                 'PALLET'
             ]);
 
-            searchInSourceWithSimilarity(DATA_CACHE.mne, results, 'mne', [
-                'Codigo Caja',
-                'Orden de Pedido',
-                'Orden OBC'
-            ]);
+            // Search MNE using column indices: 3 (OBC 出库单), 5 (Código 货号)
+            searchMNE(DATA_CACHE.mne, results, 'mne');
 
             // Search MNE_2 (Rastreo 2.0) and combine results with MNE
-            searchInSourceWithSimilarity(DATA_CACHE.mne2, results, 'mne', [
-                'Codigo Caja',
-                'Orden de Pedido',
-                'Orden OBC'
-            ]);
+            searchMNE(DATA_CACHE.mne2, results, 'mne');
 
             // Special search for TRS using column indices
             searchTRS(DATA_CACHE.trs, results, 'trs');
+
+            // Search CANCELADO using column indices: 1 (Código 1), 2 (Orden)
+            searchCANCELADO(DATA_CACHE.cancelado, results, 'cancelado');
 
             return results;
         }
 
         // Specialized TRS search using column indices
+        // Priority 1: Exact box number match, Priority 2: Base code match
         function searchTRS(data, results, sourceName) {
             const query = results.query;
+            const baseCode = results.baseCode;
             // Search columns: 6 (Referencia), 13 (Código Original), 14 (Código Nuevo)
             const searchIndices = [6, 13, 14];
+
+            const exactMatches = [];
+            const baseCodeMatches = [];
 
             data.forEach(row => {
                 // Skip header rows - valid data rows start with "TRS" in column 0
@@ -1291,9 +1371,9 @@
                     return;
                 }
 
-                let isMatch = false;
+                let matchType = null;
 
-                // Check each search column for partial match
+                // Check each search column
                 for (const idx of searchIndices) {
                     const cellValue = row._values[idx] || '';
                     if (!cellValue) continue;
@@ -1301,17 +1381,150 @@
                     const cellUpper = cellValue.toString().toUpperCase();
                     const queryUpper = query.toUpperCase();
 
-                    // Partial match: if cell contains the query
+                    // Priority 1: Exact match (query equals or is contained in cell)
+                    if (cellUpper === queryUpper || cellUpper.includes(queryUpper)) {
+                        matchType = 'exact';
+                        break;
+                    }
+
+                    // Also check normalized version
+                    const normalizedCell = normalizeCode(cellValue);
+                    if (normalizedCell === query || normalizedCell.includes(query)) {
+                        matchType = 'exact';
+                        break;
+                    }
+                }
+
+                // Priority 2: Base code match (only if no exact match found)
+                if (!matchType && baseCode && baseCode !== query) {
+                    for (const idx of searchIndices) {
+                        const cellValue = row._values[idx] || '';
+                        if (!cellValue) continue;
+
+                        const normalizedCell = normalizeCode(cellValue);
+                        const cellBaseCode = extractBaseCode(cellValue);
+
+                        // Check if base codes match
+                        if (cellBaseCode === baseCode || normalizedCell.includes(baseCode)) {
+                            matchType = 'baseCode';
+                            break;
+                        }
+                    }
+                }
+
+                if (matchType === 'exact') {
+                    exactMatches.push({ ...row, _matchType: 'exact', _similarity: 100 });
+                } else if (matchType === 'baseCode') {
+                    baseCodeMatches.push({ ...row, _matchType: 'baseCode', _similarity: 90 });
+                }
+            });
+
+            // If we have exact matches, use those; otherwise use base code matches
+            if (exactMatches.length > 0) {
+                results.exact[sourceName].push(...exactMatches);
+            } else if (baseCodeMatches.length > 0) {
+                results.exact[sourceName].push(...baseCodeMatches);
+            }
+        }
+
+        // Specialized MNE search using column indices
+        // MNE Structure: 0=Fecha, 1=Mes, 2=Mes2, 3=OBC出库单, 4=IB, 5=Código货号, 12=Responsable
+        function searchMNE(data, results, sourceName) {
+            const query = results.query;
+            const baseCode = results.baseCode;
+            // Search columns: 3 (OBC 出库单), 5 (Código 货号)
+            const searchIndices = [3, 5];
+
+            data.forEach(row => {
+                if (!row._values || row._values.length < 6) return;
+
+                // Skip header rows (check if column 0 looks like a date)
+                const firstVal = row._values[0]?.toString() || '';
+                if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+
+                let isMatch = false;
+
+                // Check each search column
+                for (const idx of searchIndices) {
+                    const cellValue = row._values[idx] || '';
+                    if (!cellValue) continue;
+
+                    const cellUpper = cellValue.toString().toUpperCase();
+                    const queryUpper = query.toUpperCase();
+
+                    // Exact match: cell equals query
+                    if (cellUpper === queryUpper) {
+                        isMatch = true;
+                        break;
+                    }
+
+                    // Partial match: cell contains the query
                     if (cellUpper.includes(queryUpper)) {
                         isMatch = true;
                         break;
                     }
 
-                    // Also check normalized version (handles ——, +, etc.)
-                    const normalizedCell = normalizeCode(cellValue);
-                    if (normalizedCell.includes(query)) {
+                    // Base code match
+                    if (baseCode) {
+                        const normalizedCell = normalizeCode(cellValue);
+                        if (normalizedCell.includes(baseCode)) {
+                            isMatch = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isMatch) {
+                    const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+                    results.exact[sourceName].push(enrichedRow);
+                }
+            });
+        }
+
+        // Specialized CANCELADO search using column indices
+        // CANCELADO Structure: 0=FECHA, 1=CODIGO 1, 2=ORDEN, 3=UBICACION, 4=RESPONSABLE, 5=NOTA
+        function searchCANCELADO(data, results, sourceName) {
+            const query = results.query;
+            const baseCode = results.baseCode;
+            // Search columns: 1 (CODIGO 1), 2 (ORDEN)
+            const searchIndices = [1, 2];
+
+            data.forEach(row => {
+                if (!row._values || row._values.length < 3) return;
+
+                // Skip header rows
+                const firstVal = row._values[0]?.toString() || '';
+                if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+
+                let isMatch = false;
+
+                // Check each search column
+                for (const idx of searchIndices) {
+                    const cellValue = row._values[idx] || '';
+                    if (!cellValue) continue;
+
+                    const cellUpper = cellValue.toString().toUpperCase();
+                    const queryUpper = query.toUpperCase();
+
+                    // Exact match
+                    if (cellUpper === queryUpper) {
                         isMatch = true;
                         break;
+                    }
+
+                    // Partial match
+                    if (cellUpper.includes(queryUpper)) {
+                        isMatch = true;
+                        break;
+                    }
+
+                    // Base code match
+                    if (baseCode) {
+                        const normalizedCell = normalizeCode(cellValue);
+                        if (normalizedCell.includes(baseCode)) {
+                            isMatch = true;
+                            break;
+                        }
                     }
                 }
 
@@ -1474,6 +1687,7 @@
             const validacionInfo = getInfo(results.exact.validacion, results.partial.validacion);
             const inventarioInfo = getInfo(results.exact.inventario, results.partial.inventario);
             const trsInfo = getInfo(results.exact.trs, results.partial.trs);
+            const canceladoInfo = getInfo(results.exact.cancelado, results.partial.cancelado);
 
             // Count results
             const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
@@ -1486,7 +1700,8 @@
                 validacion: results.partial.validacion.length,
                 inventario: results.partial.inventario.length,
                 mne: results.partial.mne.length,
-                trs: results.partial.trs.length
+                trs: results.partial.trs.length,
+                cancelado: results.partial.cancelado.length
             };
 
             // Helper to show flexible indicator
@@ -1505,6 +1720,8 @@
             let obcOrden = '-';
             let obcBoxCount = 0;
             let obcInTrackingCount = 0;
+            let obcValidatedCount = 0;
+            let obcValidationPercent = 0;
 
             if (obcExact && obcInfo) {
                 obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'];
@@ -1516,6 +1733,16 @@
                     obcInTrackingCount = DATA_CACHE.mne.filter(r =>
                         normalizeCode(r['Orden OBC'] || '').includes(obcCode)
                     ).length;
+
+                    // Count validated boxes for this OBC order
+                    obcValidatedCount = DATA_CACHE.validacion.filter(r =>
+                        normalizeCode(r['Orden'] || '').includes(obcCode)
+                    ).length;
+
+                    // Calculate validation percentage
+                    if (obcBoxCount > 0) {
+                        obcValidationPercent = Math.min(100, Math.round((obcValidatedCount / obcBoxCount) * 100));
+                    }
                 }
             } else if (!isExactMode && obcMultiple > 1) {
                 obcOrden = `${obcMultiple} coincidencias`;
@@ -1568,7 +1795,7 @@
                             📋 Número de Orden ${flexIndicator('obcBd')}
                         </div>
                         <div class="summary-value">${obcOrden}</div>
-                        ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} en rastreo` : ''}</div>` : ''}
+                        ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas${obcValidatedCount > 0 ? ` • <span style="color: ${obcValidationPercent >= 100 ? '#4CAF50' : obcValidationPercent >= 50 ? '#FF9800' : '#F44336'};">${obcValidationPercent >= 100 ? '✅' : '⏳'} ${obcValidatedCount}/${obcBoxCount} (${obcValidationPercent}%)</span>` : ''}${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} rastreo` : ''}</div>` : ''}
                     </div>
 
                     <div class="summary-item info" onclick="jumpToSection('obcBd')">
@@ -1609,7 +1836,82 @@
                         </div>
                         <div class="summary-value">${trsOrden}</div>
                     </div>
+
+                    <div class="summary-item ${canceladoInfo ? 'error' : 'success'}" onclick="jumpToSection('cancelado')">
+                        <div class="summary-label">🚫 Mercancía Cancelada ${flexIndicator('cancelado')}</div>
+                        <div class="summary-value">${canceladoInfo ? 'CANCELADA' : 'SIN CANCELACIÓN'}</div>
+                    </div>
                 </div>
+
+                ${mneInfo ? `
+                <div class="rastreo-detail-block">
+                    <div class="rastreo-detail-header">
+                        <span>🔍 Detalle de Rastreo MNE</span>
+                        <span class="badge error">EN RASTREO</span>
+                    </div>
+                    <div class="rastreo-detail-grid">
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📅 Fecha Registro</span>
+                            <span class="rastreo-value">${mneInfo._values?.[0] || '-'}</span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📆 Mes</span>
+                            <span class="rastreo-value">${mneInfo._values?.[1] || '-'}</span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📋 Orden OBC</span>
+                            <span class="rastreo-value"><code>${mneInfo._values?.[3] || '-'}</code></span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📦 IB</span>
+                            <span class="rastreo-value"><code>${mneInfo._values?.[4] || '-'}</code></span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">🏷️ Código</span>
+                            <span class="rastreo-value"><code>${mneInfo._values?.[5] || '-'}</code></span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">👤 Responsable</span>
+                            <span class="rastreo-value">${mneInfo._values?.[12] || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
+
+                ${canceladoInfo ? `
+                <div class="rastreo-detail-block" style="border-color: var(--error);">
+                    <div class="rastreo-detail-header" style="background: linear-gradient(135deg, var(--error), #d32f2f);">
+                        <span>🚫 Detalle de Cancelación</span>
+                        <span class="badge" style="background: white; color: var(--error);">CANCELADA</span>
+                    </div>
+                    <div class="rastreo-detail-grid">
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📅 Fecha</span>
+                            <span class="rastreo-value">${canceladoInfo._values?.[0] || '-'}</span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">🏷️ Código</span>
+                            <span class="rastreo-value"><code>${canceladoInfo._values?.[1] || '-'}</code></span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📋 Orden</span>
+                            <span class="rastreo-value"><code>${canceladoInfo._values?.[2] || '-'}</code></span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📍 Ubicación</span>
+                            <span class="rastreo-value">${canceladoInfo._values?.[3] || '-'}</span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">👤 Responsable</span>
+                            <span class="rastreo-value">${canceladoInfo._values?.[4] || '-'}</span>
+                        </div>
+                        <div class="rastreo-detail-item">
+                            <span class="rastreo-label">📝 Nota</span>
+                            <span class="rastreo-value">${canceladoInfo._values?.[5] || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
             `;
         }
 
@@ -1646,7 +1948,8 @@
                 { key: 'validacion', title: '✅ Sistema Validación Surtido', color: 'success' },
                 { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
                 { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada (Rastreo + Rastreo 2.0)', color: 'error' },
-                { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' }
+                { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' },
+                { key: 'cancelado', title: '🚫 Mercancía Cancelada', color: 'error' }
             ];
 
             let hasResults = false;
@@ -1812,7 +2115,8 @@
                     { key: 'cellNo', label: 'Ubicación', type: 'text' },
                     { key: 'Available stock/可用库存', label: 'Stock Disponible', type: 'number' },
                     { key: 'Locked Inventory/锁定库存', label: 'Stock Bloqueado', type: 'number' },
-                    { key: 'Product name/产品名称', label: 'Producto', type: 'text' },
+                    { key: 4, label: 'Medida', type: 'text' },        // Col E - Medida
+                    { key: 5, label: 'Peso', type: 'text' },          // Col F - Peso
                     { key: 'sku', label: 'SKU', type: 'text' }
                 ],
                 obcBd: [
@@ -1843,13 +2147,12 @@
                     { key: 'PALLET', label: 'Pallet', type: 'text' }
                 ],
                 mne: [
-                    { key: 'Fecha Registro', label: 'Fecha', type: 'date' },
-                    { key: 'Codigo Caja', label: 'Código Caja', type: 'code' },
-                    { key: 'Orden de Pedido', label: 'Orden Pedido', type: 'code' },
-                    { key: 'Orden OBC', label: 'Orden OBC', type: 'code' },
-                    { key: 'Responsable', label: 'Responsable', type: 'text' },
-                    { key: 'Estatus', label: 'Estatus', type: 'status' },
-                    { key: 'Notas', label: 'Notas', type: 'text' }
+                    { key: 0, label: 'Fecha', type: 'date' },             // Col A - Fecha
+                    { key: 1, label: 'Mes', type: 'text' },               // Col B - Mes
+                    { key: 3, label: 'Orden OBC', type: 'code' },         // Col D - OBC 出库单
+                    { key: 4, label: 'IB', type: 'code' },                // Col E - IB
+                    { key: 5, label: 'Código', type: 'code' },            // Col F - Código 货号
+                    { key: 12, label: 'Responsable', type: 'text' }       // Col M - Responsable
                 ],
                 trs: [
                     { key: 0, label: 'No. Servicio', type: 'code' },          // Col A - 增值服务单号
@@ -1858,6 +2161,14 @@
                     { key: 13, label: 'Código Original', type: 'code' },      // Col N - 原货件号
                     { key: 14, label: 'Código Nuevo', type: 'code' },         // Col O - 新货件号
                     { key: 16, label: 'Tipo Instrucción', type: 'text' }      // Col Q - 增值指令类型
+                ],
+                cancelado: [
+                    { key: 0, label: 'Fecha', type: 'date' },                 // Col A - FECHA
+                    { key: 1, label: 'Código', type: 'code' },                // Col B - CODIGO 1
+                    { key: 2, label: 'Orden', type: 'code' },                 // Col C - ORDEN
+                    { key: 3, label: 'Ubicación', type: 'text' },             // Col D - UBICACION
+                    { key: 4, label: 'Responsable', type: 'text' },           // Col E - RESPONSABLE
+                    { key: 5, label: 'Nota', type: 'text' }                   // Col F - NOTA
                 ]
             };
 
