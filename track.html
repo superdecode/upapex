@@ -301,14 +301,14 @@
 
         .results-container.show { display: block; }
 
-        /* Summary Card */
+        /* Summary Card - Clean minimalist design */
         .summary-card {
             background: white;
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 12px;
             margin-bottom: 15px;
-            box-shadow: var(--shadow);
-            border-left: 4px solid var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid #e5e7eb;
         }
 
         .summary-header {
@@ -354,26 +354,27 @@
 
         .summary-item {
             padding: 12px 14px;
-            background: #f9f9f9;
+            background: white;
             border-radius: 8px;
-            border-left: 3px solid;
+            border: 1px solid #e5e7eb;
             cursor: pointer;
             transition: all 0.2s;
             position: relative;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
         .summary-item:hover {
-            background: #f0f0f0;
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
+            background: #fafafa;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
 
-        .summary-item.primary { border-color: var(--primary); }
-        .summary-item.success { border-color: var(--success); }
-        .summary-item.warning { border-color: var(--warning); }
-        .summary-item.error { border-color: var(--error); }
-        .summary-item.info { border-color: var(--info); }
-        .summary-item.gray { border-color: var(--gray); }
+        .summary-item.primary { border-left: 3px solid var(--primary); }
+        .summary-item.success { border-left: 3px solid var(--success); }
+        .summary-item.warning { border-left: 3px solid var(--warning); }
+        .summary-item.error { border-left: 3px solid var(--error); }
+        .summary-item.info { border-left: 3px solid var(--info); }
+        .summary-item.gray { border-left: 3px solid var(--gray); }
 
         .summary-label {
             font-size: 0.8em;
@@ -389,6 +390,44 @@
             font-weight: 700;
             word-break: break-word;
             line-height: 1.3;
+        }
+
+        /* Copyable value with hover icon */
+        .copyable {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+        }
+
+        .copy-icon {
+            opacity: 0;
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            color: #888;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .copyable:hover .copy-icon {
+            opacity: 1;
+        }
+
+        .copy-icon:hover {
+            background: #e0e0e0;
+            color: var(--primary);
+        }
+
+        .copy-icon.copied {
+            opacity: 1;
+            color: var(--success);
+        }
+
+        .copy-icon svg {
+            width: 14px;
+            height: 14px;
         }
 
         .count-indicator {
@@ -413,67 +452,6 @@
 
         .count-indicator:hover {
             transform: scale(1.15);
-        }
-
-        /* Rastreo Detail Block */
-        .rastreo-detail-block {
-            margin-top: 15px;
-            background: white;
-            border-radius: 10px;
-            overflow: hidden;
-            border: 2px solid var(--warning);
-            box-shadow: var(--shadow);
-        }
-
-        .rastreo-detail-header {
-            background: linear-gradient(135deg, var(--warning), #e65100);
-            color: white;
-            padding: 10px 15px;
-            font-weight: 600;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .rastreo-detail-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1px;
-            background: #e0e0e0;
-            padding: 1px;
-        }
-
-        @media (max-width: 768px) {
-            .rastreo-detail-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        .rastreo-detail-item {
-            background: white;
-            padding: 10px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .rastreo-label {
-            font-size: 0.75em;
-            color: #666;
-            font-weight: 500;
-        }
-
-        .rastreo-value {
-            font-size: 0.95em;
-            font-weight: 600;
-            word-break: break-word;
-        }
-
-        .rastreo-value code {
-            background: #f0f0f0;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.9em;
         }
 
         /* Section Card */
@@ -1778,7 +1756,7 @@
             card.innerHTML = `
                 <div class="summary-header">
                     <div class="summary-title">
-                        📦 ${results.query}
+                        📦 ${makeCopyable(results.query)}
                         ${totalExact > 0 ? '<span class="badge success">Exacta</span>' : isExactMode ? '<span class="badge gray">Sin Exactas</span>' : '<span class="badge warning">Flexible</span>'}
                         ${isExactMode && totalExact === 0 && totalPartial > 0 ? `<span class="badge warning" style="margin-left: 4px;">~${totalPartial} flexibles</span>` : ''}
                     </div>
@@ -1794,7 +1772,7 @@
                         <div class="summary-label">
                             📋 Número de Orden ${flexIndicator('obcBd')}
                         </div>
-                        <div class="summary-value">${obcOrden}</div>
+                        <div class="summary-value">${makeCopyable(obcOrden)}</div>
                         ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas${obcValidatedCount > 0 ? ` • <span style="color: ${obcValidationPercent >= 100 ? '#4CAF50' : obcValidationPercent >= 50 ? '#FF9800' : '#F44336'};">${obcValidationPercent >= 100 ? '✅' : '⏳'} ${obcValidatedCount}/${obcBoxCount} (${obcValidationPercent}%)</span>` : ''}${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} rastreo` : ''}</div>` : ''}
                     </div>
 
@@ -1811,7 +1789,7 @@
                     <div class="summary-item success" onclick="jumpToSection('bdStock')">
                         ${stockLocations.size > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('bdStock')">${stockLocations.size}</span>` : ''}
                         <div class="summary-label">📍 Ubicación Actual ${flexIndicator('bdStock')}</div>
-                        <div class="summary-value">${stockInfo?.['cellNo'] || (isExactMode ? '-' : inventarioInfo?.['UBICACION']) || '-'}</div>
+                        <div class="summary-value">${makeCopyable(stockInfo?.['cellNo'] || (isExactMode ? '-' : inventarioInfo?.['UBICACION']) || '-')}</div>
                     </div>
 
                     <div class="summary-item gray" onclick="jumpToSection('inventario')">
@@ -1820,6 +1798,7 @@
                     </div>
 
                     <div class="summary-item ${mneInfo ? 'error' : 'success'}" onclick="jumpToSection('mne')">
+                        ${results.exact.mne.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('mne')">${results.exact.mne.length}</span>` : ''}
                         <div class="summary-label">🔍 Estatus en Rastreo ${flexIndicator('mne')}</div>
                         <div class="summary-value">${mneInfo ? 'REGISTRADA' : 'SIN REGISTRO'}</div>
                     </div>
@@ -1834,85 +1813,42 @@
                         <div class="summary-label">
                             🔧 Orden de Trabajo ${flexIndicator('trs')}
                         </div>
-                        <div class="summary-value">${trsOrden}</div>
+                        <div class="summary-value">${makeCopyable(trsOrden)}</div>
                     </div>
 
                     <div class="summary-item ${canceladoInfo ? 'error' : 'success'}" onclick="jumpToSection('cancelado')">
+                        ${results.exact.cancelado.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('cancelado')">${results.exact.cancelado.length}</span>` : ''}
                         <div class="summary-label">🚫 Mercancía Cancelada ${flexIndicator('cancelado')}</div>
                         <div class="summary-value">${canceladoInfo ? 'CANCELADA' : 'SIN CANCELACIÓN'}</div>
                     </div>
                 </div>
-
-                ${mneInfo ? `
-                <div class="rastreo-detail-block">
-                    <div class="rastreo-detail-header">
-                        <span>🔍 Detalle de Rastreo MNE</span>
-                        <span class="badge error">EN RASTREO</span>
-                    </div>
-                    <div class="rastreo-detail-grid">
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📅 Fecha Registro</span>
-                            <span class="rastreo-value">${mneInfo._values?.[0] || '-'}</span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📆 Mes</span>
-                            <span class="rastreo-value">${mneInfo._values?.[1] || '-'}</span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📋 Orden OBC</span>
-                            <span class="rastreo-value"><code>${mneInfo._values?.[3] || '-'}</code></span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📦 IB</span>
-                            <span class="rastreo-value"><code>${mneInfo._values?.[4] || '-'}</code></span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">🏷️ Código</span>
-                            <span class="rastreo-value"><code>${mneInfo._values?.[5] || '-'}</code></span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">👤 Responsable</span>
-                            <span class="rastreo-value">${mneInfo._values?.[12] || '-'}</span>
-                        </div>
-                    </div>
-                </div>
-                ` : ''}
-
-                ${canceladoInfo ? `
-                <div class="rastreo-detail-block" style="border-color: var(--error);">
-                    <div class="rastreo-detail-header" style="background: linear-gradient(135deg, var(--error), #d32f2f);">
-                        <span>🚫 Detalle de Cancelación</span>
-                        <span class="badge" style="background: white; color: var(--error);">CANCELADA</span>
-                    </div>
-                    <div class="rastreo-detail-grid">
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📅 Fecha</span>
-                            <span class="rastreo-value">${canceladoInfo._values?.[0] || '-'}</span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">🏷️ Código</span>
-                            <span class="rastreo-value"><code>${canceladoInfo._values?.[1] || '-'}</code></span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📋 Orden</span>
-                            <span class="rastreo-value"><code>${canceladoInfo._values?.[2] || '-'}</code></span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📍 Ubicación</span>
-                            <span class="rastreo-value">${canceladoInfo._values?.[3] || '-'}</span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">👤 Responsable</span>
-                            <span class="rastreo-value">${canceladoInfo._values?.[4] || '-'}</span>
-                        </div>
-                        <div class="rastreo-detail-item">
-                            <span class="rastreo-label">📝 Nota</span>
-                            <span class="rastreo-value">${canceladoInfo._values?.[5] || '-'}</span>
-                        </div>
-                    </div>
-                </div>
-                ` : ''}
             `;
+        }
+
+        // Copy to clipboard functionality
+        function copyToClipboard(text, iconElement) {
+            if (!text || text === '-') return;
+
+            navigator.clipboard.writeText(text).then(() => {
+                // Visual feedback
+                iconElement.classList.add('copied');
+                iconElement.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+                setTimeout(() => {
+                    iconElement.classList.remove('copied');
+                    iconElement.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+                }, 1500);
+
+                showNotification('📋 Copiado al portapapeles', 'success');
+            }).catch(err => {
+                console.error('Copy failed:', err);
+            });
+        }
+
+        // Helper to create copyable HTML
+        function makeCopyable(value) {
+            if (!value || value === '-') return value;
+            return `<span class="copyable">${value}<span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${value.replace(/'/g, "\\'")}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></span>`;
         }
 
         function jumpToSection(sectionKey) {
