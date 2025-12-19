@@ -905,7 +905,7 @@
                 OBC_BD: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv',
                 VALIDACION: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTZMZZCDtTFCebvsme1GMEBiZ1S2Cloh37AR8hHFAwhFPNEMD27G04bzX0theCMJE-nlYOyH2ev115q/pub?output=csv',
                 INVENTARIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXzUcwU_ZzJtCQKF6IEXr8Mj-OXvrzkw361v2rVVbb2goPaRMLPm6EbfrhXzeJJfWnvox4PhdGyoxZ/pub?output=csv',
-                MNE_2: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?gid=1&single=true&output=csv',
+                MNE: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?gid=883314398&single=true&output=csv',
                 TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv',
                 CANCELADO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGSl9NnEjrP_3P4iRDSCaE776r2vjzwKthMyavQ4C5DOnmzDuY90YjZjfkLPGouxhyca140srhKaFO/pub?output=csv'
             },
@@ -920,7 +920,6 @@
             validacion: [],
             inventario: [],
             mne: [],
-            mne2: [],
             trs: [],
             cancelado: [],
             lastUpdate: null
@@ -995,7 +994,7 @@
                             OBC_BD: 'obcBd',
                             VALIDACION: 'validacion',
                             INVENTARIO: 'inventario',
-                            MNE_2: 'mne2',
+                            MNE: 'mne',
                             TRS: 'trs',
                             CANCELADO: 'cancelado'
                         }[key];
@@ -1317,10 +1316,10 @@
                 'PALLET'
             ]);
 
-            // Search only in Rastreo 2.0 (MNE_2) - Single source to avoid redundancy
+            // Search only in Rastreo 2.0 (MNE) - Single source to avoid redundancy
             // Column indices: 3 (OBC 出库单), 5 (Código 货号)
             // Bottom-up reading: Recent records at the bottom are processed first
-            searchMNE(DATA_CACHE.mne2.slice().reverse(), results, 'mne');
+            searchMNE(DATA_CACHE.mne.slice().reverse(), results, 'mne');
 
             // Special search for TRS using column indices
             searchTRS(DATA_CACHE.trs, results, 'trs');
@@ -1707,7 +1706,7 @@
                 const obcCode = obcInfo['Outbound_出库单号'];
                 if (obcCode) {
                     obcBoxCount = DATA_CACHE.obcBd.filter(r => r['Outbound_出库单号'] === obcCode).length;
-                    obcInTrackingCount = DATA_CACHE.mne2.filter(r =>
+                    obcInTrackingCount = DATA_CACHE.mne.filter(r =>
                         normalizeCode(r['Orden OBC'] || '').includes(obcCode)
                     ).length;
 
@@ -1783,7 +1782,7 @@
 
                     <div class="summary-item success" onclick="jumpToSection('bdStock')">
                         ${stockLocations.size > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('bdStock')">${stockLocations.size}</span>` : ''}
-                        <div class="summary-label">📍 Ubicación Actual ${flexIndicator('bdStock')}</div>
+                        <div class="summary-label">📍 Ubicación Actual WMS ${flexIndicator('bdStock')}</div>
                         <div class="summary-value">${makeCopyable(stockInfo?.['cellNo'] || (isExactMode ? '-' : inventarioInfo?.['UBICACION']) || '-')}</div>
                     </div>
 
@@ -1878,7 +1877,7 @@
                 { key: 'obcBd', title: '📋 OBC BD - Órdenes de Salida', color: 'primary' },
                 { key: 'validacion', title: '✅ Sistema Validación Surtido', color: 'success' },
                 { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
-                { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada (Rastreo + Rastreo 2.0)', color: 'error' },
+                { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
                 { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' },
                 { key: 'cancelado', title: '🚫 Mercancía Cancelada', color: 'error' }
             ];
