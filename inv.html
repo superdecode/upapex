@@ -1271,6 +1271,435 @@
             .main-container { flex-direction: column; }
             .sidebar { width: 100%; max-height: 200px; }
         }
+
+        /* ==================== UNIFIED CAPTURE MODULE STYLES ==================== */
+
+        /* Tab System */
+        .unified-tabs-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 10px 10px 0 0;
+            overflow-x: auto;
+            min-height: 48px;
+        }
+
+        .unified-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px 8px 0 0;
+            border-bottom: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            white-space: nowrap;
+            position: relative;
+            margin-bottom: -2px;
+        }
+
+        .unified-tab:hover {
+            background: #f9f9f9;
+        }
+
+        .unified-tab.active {
+            background: #f97316;
+            color: white;
+            border-color: #f97316;
+        }
+
+        .unified-tab .tab-count {
+            background: rgba(0,0,0,0.15);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.8em;
+        }
+
+        .unified-tab.active .tab-count {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .unified-tab .tab-close {
+            background: none;
+            border: none;
+            color: currentColor;
+            cursor: pointer;
+            font-size: 1.1em;
+            padding: 0 2px;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .unified-tab .tab-close:hover {
+            opacity: 1;
+        }
+
+        .unified-tab-new {
+            padding: 8px 14px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+
+        .unified-tab-new:hover {
+            background: #43a047;
+            transform: translateY(-1px);
+        }
+
+        .unified-tab-new:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Empty State for Tabs */
+        .unified-empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+            background: white;
+            border-radius: 0 0 12px 12px;
+            min-height: 400px;
+        }
+
+        .unified-empty-icon {
+            font-size: 5em;
+            margin-bottom: 20px;
+            opacity: 0.4;
+        }
+
+        .unified-empty-text {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .unified-empty-btn {
+            padding: 15px 30px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .unified-empty-btn:hover {
+            background: #43a047;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        /* Unified Main Content */
+        .unified-content {
+            background: white;
+            border-radius: 0 0 12px 12px;
+            padding: 15px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Unified Pallet View */
+        .unified-pallet {
+            background: #f9f9f9;
+            border-radius: 10px;
+            padding: 15px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .unified-pallet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .unified-pallet-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .unified-pallet-id {
+            font-family: monospace;
+            font-weight: 700;
+            font-size: 1.1em;
+            color: var(--primary);
+        }
+
+        .unified-status-badges {
+            display: flex;
+            gap: 8px;
+        }
+
+        .unified-status-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-weight: 700;
+            font-size: 0.85em;
+        }
+
+        .unified-status-badge.ok {
+            background: rgba(76, 175, 80, 0.15);
+            color: var(--success);
+        }
+
+        .unified-status-badge.blocked {
+            background: rgba(249, 115, 22, 0.15);
+            color: var(--blocked);
+        }
+
+        .unified-status-badge.nowms {
+            background: rgba(244, 67, 54, 0.15);
+            color: var(--error);
+        }
+
+        .unified-pallet-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .unified-location-input {
+            width: 160px;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .unified-location-input:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+
+        .unified-send-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #4CAF50, #43a047);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.95em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .unified-send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        .unified-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Unified List */
+        .unified-list-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .unified-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .unified-box-item {
+            padding: 10px 12px;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            border-left: 4px solid;
+            transition: all 0.15s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .unified-box-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .unified-box-item.ok { border-left-color: var(--success); }
+        .unified-box-item.blocked { border-left-color: var(--blocked); }
+        .unified-box-item.nowms { border-left-color: var(--error); }
+
+        .unified-box-num {
+            font-weight: 700;
+            min-width: 30px;
+            color: inherit;
+        }
+
+        .unified-box-item.ok .unified-box-num { color: var(--success); }
+        .unified-box-item.blocked .unified-box-num { color: var(--blocked); }
+        .unified-box-item.nowms .unified-box-num { color: var(--error); }
+
+        .unified-box-status-icon {
+            font-size: 1.1em;
+            margin-right: 10px;
+        }
+
+        .unified-box-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .unified-box-code {
+            font-weight: 600;
+            font-family: monospace;
+            font-size: 0.95em;
+        }
+
+        .unified-box-meta {
+            font-size: 0.75em;
+            color: #666;
+        }
+
+        .unified-box-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .unified-box-item:hover .unified-box-actions {
+            opacity: 1;
+        }
+
+        /* Scan Log */
+        .unified-scan-log {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .unified-scan-log-title {
+            color: #888;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .unified-log-entry {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-family: monospace;
+            margin-bottom: 4px;
+            animation: logSlideIn 0.2s ease-out;
+        }
+
+        @keyframes logSlideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .unified-log-entry.ok { background: rgba(76, 175, 80, 0.15); color: #a5d6a7; }
+        .unified-log-entry.blocked { background: rgba(249, 115, 22, 0.15); color: #ffcc80; }
+        .unified-log-entry.nowms { background: rgba(244, 67, 54, 0.15); color: #ef9a9a; }
+
+        .unified-log-time {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .unified-log-code {
+            flex: 1;
+            font-weight: 600;
+        }
+
+        .unified-log-status {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .unified-log-entry.ok .unified-log-status { background: var(--success); color: white; }
+        .unified-log-entry.blocked .unified-log-status { background: var(--blocked); color: white; }
+        .unified-log-entry.nowms .unified-log-status { background: var(--error); color: white; }
+
+        /* Module Toggle */
+        .module-toggle-container {
+            display: flex;
+            gap: 4px;
+            background: #444;
+            padding: 4px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .module-toggle-btn {
+            flex: 1;
+            padding: 8px 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.75em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: #999;
+        }
+
+        .module-toggle-btn:hover {
+            color: white;
+        }
+
+        .module-toggle-btn.active {
+            background: var(--primary);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -1311,12 +1740,22 @@
                     ✅ Sincronizado
                 </div>
 
+                <!-- Module Toggle -->
+                <div class="module-toggle-container">
+                    <button class="module-toggle-btn active" id="module-classic-btn" onclick="switchModule('classic')">
+                        📋 Clásico
+                    </button>
+                    <button class="module-toggle-btn" id="module-unified-btn" onclick="switchModule('unified')">
+                        📦 Unificado
+                    </button>
+                </div>
+
                 <!-- Menu -->
                 <div class="sidebar-section">
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
                         📊 Resumen
                     </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()" id="new-session-btn">
                         ➕ Nueva Sesión
                     </button>
                     <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
@@ -1378,8 +1817,10 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
-                <!-- Cabecera Principal con Ubicación y Contador -->
-                <div class="scan-header-bar">
+                <!-- CLASSIC MODULE -->
+                <div id="classic-module">
+                    <!-- Cabecera Principal con Ubicación y Contador -->
+                    <div class="scan-header-bar">
                     <div class="origin-location-group">
                         <label>📍 Origen:</label>
                         <input type="text" class="origin-location-input" id="origin-location"
@@ -1495,6 +1936,114 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- End Classic Module -->
+
+                <!-- UNIFIED MODULE -->
+                <div id="unified-module" class="hidden" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+                    <!-- Cabecera Principal con Ubicación -->
+                    <div class="scan-header-bar">
+                        <div class="origin-location-group">
+                            <label>📍 Origen:</label>
+                            <input type="text" class="origin-location-input" id="unified-origin-location"
+                                   placeholder="A21-06-05-01" autocomplete="off"
+                                   title="Ubicación física de origen">
+                        </div>
+                        <div class="global-counter">
+                            <span class="global-counter-label">Total Cajas:</span>
+                            <span class="global-counter-value" id="unified-global-box-count">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Scan Section -->
+                    <div class="scan-section">
+                        <input type="text" class="scan-input" id="unified-scan-input" placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
+
+                        <!-- Result Box -->
+                        <div class="result-box" id="unified-result-box">
+                            <div class="result-compact">
+                                <div class="result-status">
+                                    <span class="icon" id="unified-result-icon">📦</span>
+                                    <span id="unified-result-title">Estado</span>
+                                </div>
+                                <div class="result-info" id="unified-result-details"></div>
+                            </div>
+                        </div>
+
+                        <!-- Code2 Container -->
+                        <div class="code2-container" id="unified-code2-container">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="color: var(--error); font-weight: 600; font-size: 0.85em;">⚠️ No encontrado:</span>
+                                <input type="text" class="scan-input" id="unified-code2-input" placeholder="Código 2..." autocomplete="off" style="flex: 1; font-size: 1em; padding: 8px;">
+                                <button class="btn-insertado" onclick="unifiedForceInsert()" style="padding: 8px 14px; font-size: 0.85em;">
+                                    ⚡ INSERTADO
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs System -->
+                    <div class="unified-tabs-container" id="unified-tabs-container">
+                        <button class="unified-tab-new" id="unified-new-tab-btn" onclick="UnifiedModule.createTab()">
+                            ➕ Nuevo
+                        </button>
+                    </div>
+
+                    <!-- Tab Content Area -->
+                    <div id="unified-tab-content">
+                        <!-- Empty State (shown when no tabs) -->
+                        <div class="unified-empty-state" id="unified-empty-state">
+                            <div class="unified-empty-icon">📦</div>
+                            <div class="unified-empty-text">No hay sesiones activas</div>
+                            <button class="unified-empty-btn" onclick="UnifiedModule.createTab()">
+                                ➕ Nuevo Pallet
+                            </button>
+                        </div>
+
+                        <!-- Active Tab Content (hidden when no tabs) -->
+                        <div class="unified-content hidden" id="unified-active-content">
+                            <div class="unified-pallet">
+                                <div class="unified-pallet-header">
+                                    <div class="unified-pallet-info">
+                                        <span class="unified-pallet-id" id="unified-pallet-id">-</span>
+                                        <div class="unified-status-badges">
+                                            <span class="unified-status-badge ok">✅ <span id="unified-ok-count">0</span></span>
+                                            <span class="unified-status-badge blocked">⚠️ <span id="unified-blocked-count">0</span></span>
+                                            <span class="unified-status-badge nowms">❌ <span id="unified-nowms-count">0</span></span>
+                                        </div>
+                                    </div>
+                                    <div class="unified-pallet-actions">
+                                        <input type="text" class="unified-location-input" id="unified-location"
+                                               placeholder="📍 Ubicación destino...">
+                                        <button class="unified-send-btn" id="unified-send-btn" onclick="UnifiedModule.sendPallet()" disabled>
+                                            📤 Enviar Datos
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="unified-list-container">
+                                    <div class="unified-list" id="unified-box-list">
+                                        <div class="empty-state">
+                                            <div class="empty-icon">📭</div>
+                                            <div>Sin cajas escaneadas</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Scan Log -->
+                                <div class="unified-scan-log" id="unified-scan-log">
+                                    <div class="unified-scan-log-title">
+                                        📋 Log de Escaneos
+                                    </div>
+                                    <div id="unified-log-entries">
+                                        <div style="color: #666; font-size: 0.85em; text-align: center; padding: 10px;">
+                                            Los escaneos aparecerán aquí...
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div><!-- End Unified Module -->
             </div>
         </div>
     </div>
@@ -3160,6 +3709,770 @@
                 }
             } catch (e) {}
         }
+
+        // ==================== MODULE SWITCHING ====================
+        let CURRENT_MODULE = 'classic';
+
+        function switchModule(module) {
+            CURRENT_MODULE = module;
+
+            const classicModule = document.getElementById('classic-module');
+            const unifiedModule = document.getElementById('unified-module');
+            const classicBtn = document.getElementById('module-classic-btn');
+            const unifiedBtn = document.getElementById('module-unified-btn');
+            const newSessionBtn = document.getElementById('new-session-btn');
+
+            if (module === 'classic') {
+                classicModule.style.display = 'block';
+                unifiedModule.style.display = 'none';
+                classicBtn.classList.add('active');
+                unifiedBtn.classList.remove('active');
+                newSessionBtn.onclick = newSession;
+                document.getElementById('scan-input').focus();
+            } else {
+                classicModule.style.display = 'none';
+                unifiedModule.style.display = 'flex';
+                classicBtn.classList.remove('active');
+                unifiedBtn.classList.add('active');
+                newSessionBtn.onclick = () => UnifiedModule.createTab();
+                UnifiedModule.init();
+                document.getElementById('unified-scan-input').focus();
+            }
+
+            localStorage.setItem('pd_current_module', module);
+        }
+
+        // ==================== UNIFIED CAPTURE MODULE ====================
+        const UnifiedModule = {
+            MAX_TABS: 4,
+            tabs: [],
+            activeTabId: null,
+            pendingCode1: null,
+
+            init() {
+                this.loadFromStorage();
+                this.setupEventListeners();
+                this.renderTabs();
+                this.updateUI();
+            },
+
+            setupEventListeners() {
+                const scanInput = document.getElementById('unified-scan-input');
+                const code2Input = document.getElementById('unified-code2-input');
+
+                // Remove existing listeners
+                scanInput.onkeydown = null;
+                code2Input.onkeydown = null;
+
+                scanInput.onkeydown = (e) => {
+                    if (e.key === 'Enter' && scanInput.value.trim()) {
+                        e.preventDefault();
+                        this.processScan(scanInput.value.trim());
+                        scanInput.value = '';
+                    }
+                };
+
+                code2Input.onkeydown = (e) => {
+                    if (e.key === 'Enter' && code2Input.value.trim()) {
+                        e.preventDefault();
+                        this.processCode2(code2Input.value.trim());
+                        code2Input.value = '';
+                    }
+                };
+            },
+
+            generateTabId() {
+                return 'TAB-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            },
+
+            generatePalletId() {
+                const timestamp = Date.now().toString(36).toUpperCase();
+                const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                return `UNI-${timestamp}-${random}`;
+            },
+
+            createTab() {
+                if (this.tabs.length >= this.MAX_TABS) {
+                    showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
+                    return;
+                }
+
+                const tabId = this.generateTabId();
+                const newTab = {
+                    id: tabId,
+                    palletId: this.generatePalletId(),
+                    boxes: [],
+                    location: '',
+                    originLocation: '',
+                    scanLog: [],
+                    createdAt: new Date().toISOString()
+                };
+
+                this.tabs.push(newTab);
+                this.activeTabId = tabId;
+                this.saveToStorage();
+                this.renderTabs();
+                this.updateUI();
+                showNotification(`✅ Nueva pestaña creada`, 'success');
+                document.getElementById('unified-scan-input').focus();
+            },
+
+            switchTab(tabId) {
+                // Save current tab state first
+                this.saveCurrentTabState();
+
+                this.activeTabId = tabId;
+                this.saveToStorage();
+                this.renderTabs();
+                this.updateUI();
+                document.getElementById('unified-scan-input').focus();
+            },
+
+            closeTab(tabId, event) {
+                if (event) {
+                    event.stopPropagation();
+                }
+
+                const tab = this.tabs.find(t => t.id === tabId);
+                if (!tab) return;
+
+                if (tab.boxes.length > 0) {
+                    if (!confirm(`⚠️ Esta pestaña tiene ${tab.boxes.length} cajas sin enviar. ¿Cerrar de todos modos?`)) {
+                        return;
+                    }
+                }
+
+                this.tabs = this.tabs.filter(t => t.id !== tabId);
+
+                if (this.activeTabId === tabId) {
+                    this.activeTabId = this.tabs.length > 0 ? this.tabs[0].id : null;
+                }
+
+                this.saveToStorage();
+                this.renderTabs();
+                this.updateUI();
+                showNotification('Pestaña cerrada', 'info');
+            },
+
+            saveCurrentTabState() {
+                if (!this.activeTabId) return;
+                const tab = this.tabs.find(t => t.id === this.activeTabId);
+                if (tab) {
+                    tab.location = document.getElementById('unified-location')?.value || '';
+                    tab.originLocation = document.getElementById('unified-origin-location')?.value || '';
+                }
+            },
+
+            getActiveTab() {
+                return this.tabs.find(t => t.id === this.activeTabId);
+            },
+
+            renderTabs() {
+                const container = document.getElementById('unified-tabs-container');
+                const newBtn = document.getElementById('unified-new-tab-btn');
+
+                // Clear existing tabs (keep only new button)
+                container.innerHTML = '';
+
+                // Add tabs
+                this.tabs.forEach((tab, index) => {
+                    const tabEl = document.createElement('div');
+                    tabEl.className = `unified-tab ${tab.id === this.activeTabId ? 'active' : ''}`;
+                    tabEl.onclick = () => this.switchTab(tab.id);
+
+                    const boxCount = tab.boxes.length;
+                    tabEl.innerHTML = `
+                        <span>📦 Pallet ${index + 1}</span>
+                        <span class="tab-count">${boxCount}</span>
+                        <button class="tab-close" onclick="UnifiedModule.closeTab('${tab.id}', event)">×</button>
+                    `;
+                    container.appendChild(tabEl);
+                });
+
+                // Add new button
+                const newBtnEl = document.createElement('button');
+                newBtnEl.className = 'unified-tab-new';
+                newBtnEl.id = 'unified-new-tab-btn';
+                newBtnEl.onclick = () => this.createTab();
+                newBtnEl.disabled = this.tabs.length >= this.MAX_TABS;
+                newBtnEl.innerHTML = '➕ Nuevo';
+                container.appendChild(newBtnEl);
+
+                // Show/hide empty state vs content
+                const emptyState = document.getElementById('unified-empty-state');
+                const activeContent = document.getElementById('unified-active-content');
+
+                if (this.tabs.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    emptyState.style.display = 'flex';
+                    activeContent.classList.add('hidden');
+                    activeContent.style.display = 'none';
+                } else {
+                    emptyState.classList.add('hidden');
+                    emptyState.style.display = 'none';
+                    activeContent.classList.remove('hidden');
+                    activeContent.style.display = 'block';
+                }
+            },
+
+            processScan(rawCode) {
+                if (!this.activeTabId) {
+                    showNotification('⚠️ Crea una pestaña primero', 'warning');
+                    return;
+                }
+
+                const code = normalizeCode(rawCode);
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                // Check duplicates
+                const duplicateIndex = tab.boxes.findIndex(b => b.code === code);
+                if (duplicateIndex !== -1) {
+                    this.showDuplicatePopup(code, rawCode, duplicateIndex);
+                    this.flashInput('warning');
+                    playSound('warning');
+                    return;
+                }
+
+                const item = STATE.inventory.get(code);
+
+                if (!item) {
+                    // Not found - show Code2 input
+                    this.pendingCode1 = { raw: rawCode, code };
+                    this.showResultBox('error', code, 'NO ENCONTRADO',
+                        'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.', null);
+                    document.getElementById('unified-code2-container').classList.add('show');
+                    this.flashInput('error');
+                    playSound('error');
+                    setTimeout(() => document.getElementById('unified-code2-input').focus(), 100);
+                    return;
+                }
+
+                // Hide code2 container
+                document.getElementById('unified-code2-container').classList.remove('show');
+                this.pendingCode1 = null;
+
+                // Determine status and add to pallet
+                let status;
+                if (item.isBlocked) {
+                    status = 'blocked';
+                    this.showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
+                    playSound('warning');
+                } else if (item.isAvailable) {
+                    status = 'ok';
+                    this.showResultBox('success', code, 'OK', 'Validado correctamente', item);
+                    playSound('success');
+                } else {
+                    status = 'blocked';
+                    this.showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
+                    playSound('warning');
+                }
+
+                this.addBox(status, this.createBoxData(rawCode, code, '', item));
+                this.flashInput('success');
+            },
+
+            processCode2(rawCode2) {
+                if (!this.pendingCode1) return;
+
+                const code2 = normalizeCode(rawCode2);
+                const item = STATE.inventory.get(code2);
+
+                document.getElementById('unified-code2-container').classList.remove('show');
+
+                let status;
+                if (!item) {
+                    // Both codes failed - add to No WMS
+                    status = 'nowms';
+                    this.addBox('nowms', this.createBoxData(this.pendingCode1.raw, this.pendingCode1.code, rawCode2, null));
+                    this.showResultBox('error', this.pendingCode1.code, 'NO WMS',
+                        `Ambos códigos no encontrados. Guardados: ${this.pendingCode1.code} y ${code2}`, null);
+                    playSound('error');
+                } else if (item.isBlocked) {
+                    status = 'blocked';
+                    this.addBox('blocked', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item));
+                    this.showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
+                        'Validado con Código 2 - Bloqueado', item);
+                    playSound('warning');
+                } else {
+                    status = 'ok';
+                    this.addBox('ok', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item));
+                    this.showResultBox('success', code2, 'OK (Código 2)',
+                        'Validado correctamente con Código 2', item);
+                    playSound('success');
+                }
+
+                this.pendingCode1 = null;
+                this.flashInput('success');
+                document.getElementById('unified-scan-input').focus();
+            },
+
+            createBoxData(raw, code, scan2, item) {
+                const cleanScan2 = scan2 ? normalizeCode(scan2) : '';
+                return {
+                    raw,
+                    code,
+                    scan1: raw,
+                    scan2: cleanScan2,
+                    rawScan2: scan2 || '',
+                    location: item?.cellNo || '-',
+                    sku: item?.sku || '-',
+                    product: item?.productName || '-',
+                    timestamp: new Date().toLocaleTimeString()
+                };
+            },
+
+            addBox(status, boxData) {
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                boxData.status = status;
+                tab.boxes.push(boxData);
+
+                // Add to scan log
+                tab.scanLog.unshift({
+                    code: boxData.code,
+                    scan2: boxData.scan2,
+                    status,
+                    timestamp: boxData.timestamp
+                });
+                // Keep only last 50 entries
+                tab.scanLog = tab.scanLog.slice(0, 50);
+
+                this.saveToStorage();
+                this.updateUI();
+            },
+
+            deleteBox(index) {
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                if (confirm('¿Eliminar esta caja?')) {
+                    tab.boxes.splice(index, 1);
+                    this.saveToStorage();
+                    this.updateUI();
+                    showNotification('Caja eliminada', 'info');
+                }
+            },
+
+            showDuplicatePopup(code, rawCode, existingIndex) {
+                const tab = this.getActiveTab();
+                const existingBox = tab.boxes[existingIndex];
+
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.innerHTML = `
+                    <div class="popup-content duplicate-popup">
+                        <div class="popup-header">
+                            <span>⚠️ Código Duplicado</span>
+                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        </div>
+                        <div class="duplicate-info">
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Código:</span>
+                                <span class="duplicate-info-value"><code>${code}</code></span>
+                            </div>
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Estado actual:</span>
+                                <span class="duplicate-info-value">${existingBox.status === 'ok' ? 'OK' : existingBox.status === 'blocked' ? 'Bloqueado' : 'No WMS'}</span>
+                            </div>
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Hora de registro:</span>
+                                <span class="duplicate-info-value">${existingBox.timestamp}</span>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
+                            Este código ya fue escaneado. ¿Deseas forzar un nuevo registro?
+                        </p>
+                        <div class="popup-buttons">
+                            <button class="btn btn-warning btn-full" onclick="UnifiedModule.forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();">
+                                ⚡ Ingreso Forzado
+                            </button>
+                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) overlay.remove();
+                });
+            },
+
+            forceInsertDuplicate(code, rawCode) {
+                const item = STATE.inventory.get(code);
+                let status;
+
+                if (!item) {
+                    status = 'nowms';
+                    showNotification('⚡ Duplicado insertado en No WMS', 'warning');
+                } else if (item.isBlocked) {
+                    status = 'blocked';
+                    showNotification('⚡ Duplicado insertado en Bloqueado', 'warning');
+                } else {
+                    status = 'ok';
+                    showNotification('⚡ Duplicado insertado en OK', 'warning');
+                }
+
+                this.addBox(status, this.createBoxData(rawCode, code, '', item));
+                playSound('warning');
+                document.getElementById('unified-scan-input').focus();
+            },
+
+            showResultBox(type, code, title, message, item) {
+                const box = document.getElementById('unified-result-box');
+                const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' };
+
+                box.className = `result-box show ${type}`;
+                document.getElementById('unified-result-icon').textContent = icons[type] || '📦';
+                document.getElementById('unified-result-title').textContent = `${title}: ${code}`;
+
+                const detailsEl = document.getElementById('unified-result-details');
+                if (item) {
+                    detailsEl.innerHTML = `
+                        <div class="result-info-item"><span class="result-info-label">Ubic:</span><span class="result-info-value">${item.cellNo || '-'}</span></div>
+                        <div class="result-info-item"><span class="result-info-label">SKU:</span><span class="result-info-value">${item.sku || '-'}</span></div>
+                        <div class="result-info-item"><span class="result-info-label">Stock:</span><span class="result-info-value">${item.availableStock || 0}</span></div>
+                    `;
+                } else {
+                    detailsEl.innerHTML = `<div class="result-info-item" style="color: #666;">${message}</div>`;
+                }
+            },
+
+            flashInput(type) {
+                const input = document.getElementById('unified-scan-input');
+                input.classList.remove('success', 'error');
+                input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
+                setTimeout(() => input.classList.remove('success', 'error'), 500);
+            },
+
+            async sendPallet() {
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                const location = document.getElementById('unified-location').value.trim();
+                const originLocation = document.getElementById('unified-origin-location').value.trim().toUpperCase();
+
+                if (tab.boxes.length === 0) {
+                    showNotification('⚠️ No hay cajas en esta tarima', 'warning');
+                    return;
+                }
+
+                if (!location) {
+                    showNotification('⚠️ Ingresa la ubicación destino', 'warning');
+                    document.getElementById('unified-location').focus();
+                    return;
+                }
+
+                // Show validation popup
+                this.showSendValidationPopup(tab, location, originLocation);
+            },
+
+            showSendValidationPopup(tab, location, originLocation) {
+                const boxCount = tab.boxes.length;
+                const okCount = tab.boxes.filter(b => b.status === 'ok').length;
+                const blockedCount = tab.boxes.filter(b => b.status === 'blocked').length;
+                const nowmsCount = tab.boxes.filter(b => b.status === 'nowms').length;
+
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.id = 'unified-send-validation-popup';
+                overlay.innerHTML = `
+                    <div class="popup-content send-validation-popup">
+                        <div class="popup-header">
+                            <span>📦 Validar Envío Unificado</span>
+                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        </div>
+                        <p style="margin-bottom: 15px; font-size: 0.9em;">
+                            <strong>Pallet:</strong> ${tab.palletId}<br>
+                            <strong>Total cajas:</strong> <span style="font-size: 1.3em; color: var(--primary); font-weight: 700;">${boxCount}</span><br>
+                            <span style="color: var(--success);">✅ OK: ${okCount}</span> |
+                            <span style="color: var(--blocked);">⚠️ Bloqueado: ${blockedCount}</span> |
+                            <span style="color: var(--error);">❌ No WMS: ${nowmsCount}</span><br>
+                            <strong>Destino:</strong> ${location}
+                        </p>
+                        <div class="validation-input-group">
+                            <label>¿Cuántas cajas físicas hay en la tarima?</label>
+                            <input type="number" id="unified-physical-count-input" min="0" placeholder="" autofocus
+                                   onkeyup="UnifiedModule.validateBoxCount(${boxCount})" onchange="UnifiedModule.validateBoxCount(${boxCount})">
+                        </div>
+                        <div id="unified-validation-status"></div>
+                        <div class="popup-buttons">
+                            <button class="btn btn-success btn-full" id="unified-confirm-send-btn" disabled
+                                    onclick="UnifiedModule.confirmSendPallet('${location}', '${originLocation}')">
+                                📤 Confirmar Envío
+                            </button>
+                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+
+                setTimeout(() => {
+                    const input = document.getElementById('unified-physical-count-input');
+                    if (input) input.focus();
+                }, 100);
+
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) overlay.remove();
+                });
+            },
+
+            validateBoxCount(expectedCount) {
+                const input = document.getElementById('unified-physical-count-input');
+                const statusDiv = document.getElementById('unified-validation-status');
+                const confirmBtn = document.getElementById('unified-confirm-send-btn');
+                const physicalCount = parseInt(input.value) || 0;
+
+                if (physicalCount === expectedCount) {
+                    statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${expectedCount} cajas)</div>`;
+                    confirmBtn.disabled = false;
+                } else if (physicalCount > 0) {
+                    const diff = physicalCount - expectedCount;
+                    const diffText = diff > 0 ? `+${diff} de más` : `${Math.abs(diff)} faltan`;
+                    statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${expectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
+                    confirmBtn.disabled = true;
+                } else {
+                    statusDiv.innerHTML = '';
+                    confirmBtn.disabled = true;
+                }
+            },
+
+            async confirmSendPallet(location, originLocation) {
+                document.getElementById('unified-send-validation-popup')?.remove();
+
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                // Validate location format
+                const locationCheck = confirmInvalidLocation(location);
+                if (!locationCheck.confirmed) {
+                    showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
+                    document.getElementById('unified-location').focus();
+                    return;
+                }
+
+                const finalLocation = locationCheck.formatted;
+                document.getElementById('unified-location').value = finalLocation;
+
+                const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+                const now = new Date();
+                const dateStr = now.toISOString().slice(0, 10);
+                const timeStr = now.toTimeString().slice(0, 8);
+
+                // Create records for ALL boxes in the unified pallet
+                const records = tab.boxes.map(box => ({
+                    date: dateStr,
+                    time: timeStr,
+                    user: CURRENT_USER || 'Usuario',
+                    scan1: box.code,
+                    scan2: box.scan2 || '',
+                    location: finalLocation,
+                    status: statusMap[box.status],
+                    note: '',
+                    pallet: tab.palletId,  // Same pallet ID for all
+                    originLocation: originLocation
+                }));
+
+                // Add to history
+                STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+                // Add to pending sync
+                PENDING_SYNC = [...PENDING_SYNC, ...records];
+                SyncManager.save();
+
+                showNotification(`💾 ${records.length} registros agregados (1 tarima unificada)`, 'info');
+
+                // Try to sync immediately
+                if (IS_ONLINE && gapi?.client?.getToken()) {
+                    await SyncManager.sync();
+                } else {
+                    SyncManager.updateUI(false);
+                }
+
+                // Reset tab
+                tab.palletId = this.generatePalletId();
+                tab.boxes = [];
+                tab.scanLog = [];
+                document.getElementById('unified-location').value = '';
+
+                this.saveToStorage();
+                this.updateUI();
+                playSound('success');
+
+                document.getElementById('unified-origin-location').focus();
+            },
+
+            updateUI() {
+                const tab = this.getActiveTab();
+
+                if (!tab) {
+                    document.getElementById('unified-global-box-count').textContent = '0';
+                    return;
+                }
+
+                // Update pallet ID
+                document.getElementById('unified-pallet-id').textContent = tab.palletId;
+
+                // Update location inputs
+                document.getElementById('unified-location').value = tab.location || '';
+                document.getElementById('unified-origin-location').value = tab.originLocation || '';
+
+                // Update counts
+                const okCount = tab.boxes.filter(b => b.status === 'ok').length;
+                const blockedCount = tab.boxes.filter(b => b.status === 'blocked').length;
+                const nowmsCount = tab.boxes.filter(b => b.status === 'nowms').length;
+
+                document.getElementById('unified-ok-count').textContent = okCount;
+                document.getElementById('unified-blocked-count').textContent = blockedCount;
+                document.getElementById('unified-nowms-count').textContent = nowmsCount;
+                document.getElementById('unified-global-box-count').textContent = tab.boxes.length;
+
+                // Update send button
+                document.getElementById('unified-send-btn').disabled = tab.boxes.length === 0;
+
+                // Update box list
+                this.renderBoxList();
+
+                // Update scan log
+                this.renderScanLog();
+
+                // Update tabs (for counts)
+                this.renderTabs();
+            },
+
+            renderBoxList() {
+                const tab = this.getActiveTab();
+                const listEl = document.getElementById('unified-box-list');
+
+                if (!tab || tab.boxes.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <div>Sin cajas escaneadas</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const statusIcons = { ok: '✅', blocked: '⚠️', nowms: '❌' };
+
+                listEl.innerHTML = tab.boxes.map((box, index) => `
+                    <div class="unified-box-item ${box.status}">
+                        <span class="unified-box-num">${index + 1}.</span>
+                        <span class="unified-box-status-icon">${statusIcons[box.status]}</span>
+                        <div class="unified-box-info">
+                            <div class="unified-box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
+                            <div class="unified-box-meta">${box.location} • ${box.timestamp}</div>
+                        </div>
+                        <div class="unified-box-actions">
+                            <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar código">⧉</button>
+                            <button class="box-action-btn copy" onclick="copyToClipboard('${box.location}')" title="Copiar ubicación">◎</button>
+                            <button class="box-action-btn delete" onclick="UnifiedModule.deleteBox(${index})" title="Eliminar">✕</button>
+                        </div>
+                    </div>
+                `).join('');
+            },
+
+            renderScanLog() {
+                const tab = this.getActiveTab();
+                const logEl = document.getElementById('unified-log-entries');
+
+                if (!tab || tab.scanLog.length === 0) {
+                    logEl.innerHTML = `
+                        <div style="color: #666; font-size: 0.85em; text-align: center; padding: 10px;">
+                            Los escaneos aparecerán aquí...
+                        </div>
+                    `;
+                    return;
+                }
+
+                const statusLabels = { ok: 'OK', blocked: 'BLK', nowms: 'N/A' };
+
+                logEl.innerHTML = tab.scanLog.slice(0, 20).map(entry => `
+                    <div class="unified-log-entry ${entry.status}">
+                        <span class="unified-log-time">${entry.timestamp}</span>
+                        <span class="unified-log-code">${entry.code}${entry.scan2 ? ` / ${entry.scan2}` : ''}</span>
+                        <span class="unified-log-status">${statusLabels[entry.status]}</span>
+                    </div>
+                `).join('');
+            },
+
+            saveToStorage() {
+                this.saveCurrentTabState();
+                try {
+                    localStorage.setItem('pd_unified_tabs', JSON.stringify({
+                        tabs: this.tabs,
+                        activeTabId: this.activeTabId
+                    }));
+                } catch (e) {
+                    console.error('Error saving unified tabs:', e);
+                }
+            },
+
+            loadFromStorage() {
+                try {
+                    const saved = localStorage.getItem('pd_unified_tabs');
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        this.tabs = data.tabs || [];
+                        this.activeTabId = data.activeTabId || (this.tabs.length > 0 ? this.tabs[0].id : null);
+                    }
+                } catch (e) {
+                    console.error('Error loading unified tabs:', e);
+                    this.tabs = [];
+                    this.activeTabId = null;
+                }
+            }
+        };
+
+        // Force insert for unified module
+        function unifiedForceInsert() {
+            if (!UnifiedModule.pendingCode1) {
+                showNotification('⚠️ Primero escanea un código', 'warning');
+                return;
+            }
+
+            const code2Value = document.getElementById('unified-code2-input').value.trim();
+
+            UnifiedModule.addBox('nowms', UnifiedModule.createBoxData(
+                UnifiedModule.pendingCode1.raw,
+                UnifiedModule.pendingCode1.code,
+                code2Value,
+                null
+            ));
+
+            const msg = code2Value
+                ? `Insertado con códigos: ${UnifiedModule.pendingCode1.code} y ${code2Value}`
+                : `Insertado con código: ${UnifiedModule.pendingCode1.code}`;
+
+            UnifiedModule.showResultBox('error', UnifiedModule.pendingCode1.code, 'INSERTADO (No WMS)', msg, null);
+
+            document.getElementById('unified-code2-container').classList.remove('show');
+            document.getElementById('unified-code2-input').value = '';
+            UnifiedModule.pendingCode1 = null;
+
+            playSound('warning');
+            UnifiedModule.flashInput('warning');
+            document.getElementById('unified-scan-input').focus();
+            showNotification('⚡ Registro insertado forzosamente', 'warning');
+        }
+
+        // Load saved module preference on startup
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedModule = localStorage.getItem('pd_current_module');
+            if (savedModule === 'unified') {
+                // Defer to after app is shown
+                setTimeout(() => {
+                    if (document.getElementById('main-app') && !document.getElementById('main-app').classList.contains('hidden')) {
+                        switchModule('unified');
+                    }
+                }, 500);
+            }
+        });
     </script>
 </body>
 </html>
