@@ -1812,8 +1812,8 @@
 
                     <div class="summary-item ${canceladoInfo ? 'error' : 'success'}" onclick="jumpToSection('cancelado')">
                         ${results.exact.cancelado.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('cancelado')">${results.exact.cancelado.length}</span>` : ''}
-                        <div class="summary-label">🚫 Mercancía Cancelada ${flexIndicator('cancelado')}</div>
-                        <div class="summary-value">${canceladoInfo ? 'CANCELADA' : 'SIN CANCELACIÓN'}</div>
+                        <div class="summary-label">🏷️ Otros ${flexIndicator('cancelado')}</div>
+                        <div class="summary-value">${canceladoInfo ? 'OTROS' : 'SIN REGISTRO'}</div>
                     </div>
                 </div>
             `;
@@ -1879,7 +1879,7 @@
                 { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
                 { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
                 { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' },
-                { key: 'cancelado', title: '🚫 Mercancía Cancelada', color: 'error' }
+                { key: 'cancelado', title: '🏷️ Otros', color: 'error' }
             ];
 
             let hasResults = false;
