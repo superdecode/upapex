@@ -1533,6 +1533,134 @@
             transform: none;
         }
 
+        /* Cancelados Toggle Switch */
+        .cancelados-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 6px 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .cancelados-toggle:hover {
+            border-color: #ff5722;
+            background: #fff3e0;
+        }
+
+        .cancelados-toggle input[type="checkbox"] {
+            display: none;
+        }
+
+        .cancelados-slider {
+            width: 40px;
+            height: 22px;
+            background: #ccc;
+            border-radius: 11px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .cancelados-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .cancelados-toggle input:checked + .cancelados-slider {
+            background: linear-gradient(135deg, #ff5722, #e64a19);
+        }
+
+        .cancelados-toggle input:checked + .cancelados-slider::before {
+            left: 20px;
+        }
+
+        .cancelados-text {
+            font-weight: 600;
+            font-size: 0.85em;
+            color: #666;
+            transition: color 0.3s ease;
+        }
+
+        .cancelados-toggle input:checked ~ .cancelados-text {
+            color: #ff5722;
+        }
+
+        .cancelados-toggle.active {
+            background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+            border-color: #ff5722;
+        }
+
+        /* Cancelados Mode Indicator Badge */
+        .cancelados-mode-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: linear-gradient(135deg, #ff5722, #e64a19);
+            color: white;
+            font-size: 0.7em;
+            font-weight: 700;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            animation: pulse-cancel 2s infinite;
+        }
+
+        @keyframes pulse-cancel {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        /* Badge on each box entry when in cancelados mode */
+        .unified-log-entry.cancelado-mode {
+            border-left: 4px solid #ff5722 !important;
+            background: linear-gradient(90deg, rgba(255, 87, 34, 0.08) 0%, transparent 30%);
+        }
+
+        .unified-log-entry .cancelado-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 6px;
+            background: linear-gradient(135deg, #ff5722, #e64a19);
+            color: white;
+            font-size: 0.65em;
+            font-weight: 700;
+            border-radius: 3px;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
+        /* Header indicator when cancelados mode is active */
+        .cancelados-active-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: linear-gradient(135deg, #ff5722, #e64a19);
+            color: white;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 700;
+            animation: pulse-cancel 2s infinite;
+        }
+
+        .cancelados-active-indicator::before {
+            content: '🚫';
+        }
+
         /* Unified List */
         .unified-list-container {
             flex: 1;
@@ -1564,6 +1692,28 @@
         .unified-box-item.ok { border-left-color: var(--success); }
         .unified-box-item.blocked { border-left-color: var(--blocked); }
         .unified-box-item.nowms { border-left-color: var(--error); }
+
+        /* Cancelado mode styling for unified box items */
+        .unified-box-item.cancelado-mode {
+            border-left: 4px solid #ff5722 !important;
+            background: linear-gradient(90deg, rgba(255, 87, 34, 0.1) 0%, rgba(255, 87, 34, 0.02) 30%, transparent 50%);
+        }
+
+        .unified-box-item .cancelado-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 8px;
+            background: linear-gradient(135deg, #ff5722, #e64a19);
+            color: white;
+            font-size: 0.7em;
+            font-weight: 700;
+            border-radius: 4px;
+            text-transform: uppercase;
+            margin-left: 10px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 1px 3px rgba(255, 87, 34, 0.3);
+        }
 
         .unified-box-num {
             font-weight: 700;
@@ -2281,6 +2431,11 @@
                                     <div class="unified-pallet-actions">
                                         <input type="text" class="unified-location-input" id="unified-location"
                                                placeholder="📍 Ubicación destino...">
+                                        <label class="cancelados-toggle" id="cancelados-toggle-label">
+                                            <input type="checkbox" id="unified-cancelados-check" onchange="UnifiedModule.toggleCancelados(this.checked)">
+                                            <span class="cancelados-slider"></span>
+                                            <span class="cancelados-text">Cancelados</span>
+                                        </label>
                                         <button class="unified-send-btn" id="unified-send-btn" onclick="UnifiedModule.sendPallet()" disabled>
                                             📤 Enviar Datos
                                         </button>
@@ -4126,7 +4281,8 @@
                         palletId: this.generatePalletId('UNI'),
                         boxes: [],
                         location: '',
-                        originLocation: ''
+                        originLocation: '',
+                        canceladosMode: false
                     }
                 };
             },
@@ -4641,7 +4797,55 @@
 
             init() {
                 this.setupEventListeners();
+                this.syncCanceladosUI();
                 this.updateUI();
+            },
+
+            // Sync checkbox state with tab state
+            syncCanceladosUI() {
+                const tab = this.getActiveTab();
+                const checkbox = document.getElementById('unified-cancelados-check');
+                const toggleLabel = document.getElementById('cancelados-toggle-label');
+
+                if (checkbox && tab) {
+                    const isCancelados = tab.canceladosMode || false;
+                    checkbox.checked = isCancelados;
+                    if (toggleLabel) {
+                        toggleLabel.classList.toggle('active', isCancelados);
+                    }
+                }
+            },
+
+            // Toggle Cancelados mode
+            toggleCancelados(isChecked) {
+                const tab = this.getActiveTab();
+                if (!tab) return;
+
+                // Save to tab state
+                tab.canceladosMode = isChecked;
+                GlobalTabs.saveToStorage();
+
+                // Update toggle label style
+                const toggleLabel = document.getElementById('cancelados-toggle-label');
+                if (toggleLabel) {
+                    toggleLabel.classList.toggle('active', isChecked);
+                }
+
+                // Update the list to show/hide badges
+                this.renderBoxList();
+
+                // Show notification
+                if (isChecked) {
+                    showNotification('🚫 Modo CANCELADOS activado - Los códigos se registrarán como cancelados', 'warning');
+                } else {
+                    showNotification('✅ Modo normal activado', 'success');
+                }
+            },
+
+            // Check if cancelados mode is active
+            isCanceladosMode() {
+                const tab = this.getActiveTab();
+                return tab ? (tab.canceladosMode || false) : false;
             },
 
             setupEventListeners() {
@@ -5016,23 +5220,33 @@
                 document.getElementById('unified-location').value = finalLocation;
 
                 const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+                const statusMapDisplay = { ok: 'OK', blocked: 'Bloqueada', nowms: 'No WMS' };
                 const now = new Date();
                 const dateStr = now.toISOString().slice(0, 10);
                 const timeStr = now.toTimeString().slice(0, 8);
 
+                // Check if cancelados mode is active
+                const isCancelados = this.isCanceladosMode();
+
                 // Create records for ALL boxes in the unified pallet
-                const records = tab.boxes.map(box => ({
-                    date: dateStr,
-                    time: timeStr,
-                    user: CURRENT_USER || 'Usuario',
-                    scan1: box.code,
-                    scan2: box.scan2 || '',
-                    location: finalLocation,
-                    status: statusMap[box.status],
-                    note: '',
-                    pallet: tab.palletId,  // Same pallet ID for all
-                    originLocation: originLocation
-                }));
+                const records = tab.boxes.map(box => {
+                    // If cancelados mode, status = CANCELADO and note contains real status
+                    const finalStatus = isCancelados ? 'CANCELADO' : statusMap[box.status];
+                    const note = isCancelados ? `Estatus: ${statusMapDisplay[box.status]}` : '';
+
+                    return {
+                        date: dateStr,
+                        time: timeStr,
+                        user: CURRENT_USER || 'Usuario',
+                        scan1: box.code,
+                        scan2: box.scan2 || '',
+                        location: finalLocation,
+                        status: finalStatus,
+                        note: note,
+                        pallet: tab.palletId,  // Same pallet ID for all
+                        originLocation: originLocation
+                    };
+                });
 
                 // Add to history
                 STATE.history = [...records, ...STATE.history].slice(0, 1000);
@@ -5041,7 +5255,9 @@
                 PENDING_SYNC = [...PENDING_SYNC, ...records];
                 SyncManager.save();
 
-                showNotification(`💾 ${records.length} registros agregados (1 tarima unificada)`, 'info');
+                // Show appropriate notification
+                const modeText = isCancelados ? ' como CANCELADOS' : '';
+                showNotification(`💾 ${records.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
 
                 // Try to sync immediately
                 if (IS_ONLINE && gapi?.client?.getToken()) {
@@ -5050,7 +5266,7 @@
                     SyncManager.updateUI(false);
                 }
 
-                // Reset tab
+                // Reset tab (but keep canceladosMode as user preference)
                 tab.palletId = this.generatePalletId();
                 tab.boxes = [];
                 tab.location = '';
@@ -5127,22 +5343,34 @@
                 }
 
                 const statusIcons = { ok: '✅', blocked: '⚠️', nowms: '❌' };
+                const statusNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
+                const isCancelados = this.isCanceladosMode();
 
-                listEl.innerHTML = tab.boxes.map((box, index) => `
-                    <div class="unified-box-item ${box.status}">
-                        <span class="unified-box-num">${index + 1}.</span>
-                        <span class="unified-box-status-icon">${statusIcons[box.status]}</span>
-                        <div class="unified-box-info">
-                            <div class="unified-box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
-                            <div class="unified-box-meta">${box.location} • ${box.timestamp}</div>
+                listEl.innerHTML = tab.boxes.map((box, index) => {
+                    const canceladoBadge = isCancelados
+                        ? `<span class="cancelado-badge">🚫 CANCELADO</span>`
+                        : '';
+                    const canceladoClass = isCancelados ? 'cancelado-mode' : '';
+
+                    return `
+                        <div class="unified-box-item ${box.status} ${canceladoClass}">
+                            <span class="unified-box-num">${index + 1}.</span>
+                            <span class="unified-box-status-icon">${statusIcons[box.status]}</span>
+                            <div class="unified-box-info">
+                                <div class="unified-box-code">
+                                    ${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}
+                                    ${canceladoBadge}
+                                </div>
+                                <div class="unified-box-meta">${box.location} • ${box.timestamp}</div>
+                            </div>
+                            <div class="unified-box-actions">
+                                <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar código">⧉</button>
+                                <button class="box-action-btn copy" onclick="copyToClipboard('${box.location}')" title="Copiar ubicación">◎</button>
+                                <button class="box-action-btn delete" onclick="UnifiedModule.deleteBox(${index})" title="Eliminar">✕</button>
+                            </div>
                         </div>
-                        <div class="unified-box-actions">
-                            <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar código">⧉</button>
-                            <button class="box-action-btn copy" onclick="copyToClipboard('${box.location}')" title="Copiar ubicación">◎</button>
-                            <button class="box-action-btn delete" onclick="UnifiedModule.deleteBox(${index})" title="Eliminar">✕</button>
-                        </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             }
         };
 
