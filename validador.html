@@ -820,6 +820,253 @@
             .inline-inputs { grid-template-columns: 1fr; }
             .faltantes-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
         }
+
+        /* ==================== SISTEMA DE CACHÉ PERSISTENTE ==================== */
+
+        /* Toast de restauración de sesión */
+        .cache-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 10001;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideInRight 0.4s ease-out;
+            max-width: 350px;
+        }
+        .cache-toast-content {
+            flex: 1;
+        }
+        .cache-toast-title {
+            font-weight: 700;
+            font-size: 0.95em;
+            margin-bottom: 4px;
+        }
+        .cache-toast-time {
+            font-size: 0.75em;
+            opacity: 0.9;
+        }
+        .cache-toast-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            line-height: 1;
+            transition: all 0.2s;
+        }
+        .cache-toast-close:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Indicador de salud del caché */
+        .cache-health-indicator {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 9999;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            font-size: 1.4em;
+        }
+        .cache-health-indicator:hover {
+            transform: scale(1.15);
+            box-shadow: 0 6px 25px rgba(0,0,0,0.3);
+        }
+        .cache-health-indicator.healthy {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        .cache-health-indicator.warning {
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+            color: white;
+            animation: pulse 2s infinite;
+        }
+        .cache-health-indicator.danger {
+            background: linear-gradient(135deg, #F44336, #E53935);
+            color: white;
+            animation: pulse 1s infinite;
+        }
+        .cache-health-indicator.syncing {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            animation: rotate 1s linear infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Tooltip del indicador */
+        .cache-health-tooltip {
+            position: absolute;
+            bottom: 60px;
+            right: 0;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .cache-health-indicator:hover .cache-health-tooltip {
+            opacity: 1;
+        }
+
+        /* Modal de confirmación de caché antiguo */
+        .cache-restore-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 10002;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s;
+        }
+        .cache-restore-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
+        .cache-restore-header {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--warning);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .cache-restore-body {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid var(--warning);
+        }
+        .cache-restore-info {
+            margin: 10px 0;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        .cache-restore-info strong {
+            color: var(--primary);
+        }
+        .cache-restore-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .cache-restore-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-restore {
+            background: var(--warning);
+            color: white;
+        }
+        .btn-restore:hover {
+            background: #F57C00;
+            transform: translateY(-2px);
+        }
+        .btn-fresh {
+            background: var(--success);
+            color: white;
+        }
+        .btn-fresh:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Panel de información del caché */
+        .cache-info-panel {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid var(--primary);
+        }
+        .cache-info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .cache-info-row:last-child {
+            border-bottom: none;
+        }
+        .cache-info-label {
+            font-weight: 600;
+            color: #666;
+        }
+        .cache-info-value {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        /* Botón de limpieza de caché */
+        .btn-clear-cache {
+            background: linear-gradient(135deg, #6c757d, #5a6268);
+            color: white;
+            padding: 8px 15px;
+            font-size: 0.85em;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-clear-cache:hover {
+            background: linear-gradient(135deg, #5a6268, #495057);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
@@ -884,10 +1131,22 @@
                     </div>
                     <span id="sync-label">Pendiente</span>
                 </div>
+                <div class="status-row">
+                    <div style="display: flex; align-items: center;">
+                        <div class="status-indicator status-ok" id="status-cache"></div>
+                        Caché Persistente
+                    </div>
+                    <span id="cache-label">Activo</span>
+                </div>
             </div>
             <button id="connect-btn" class="btn btn-google" onclick="handleAuthClick()">🔗 Conectar con Google Sheets</button>
             <button id="load-bd-btn" class="btn btn-secondary" onclick="loadDatabase()" style="display:none; margin-top:10px;">📊 Cargar Base de Datos</button>
-            <button id="safe-exit-btn-dash" class="btn btn-exit" onclick="showSafeExitDialog()">🚪 Salida Segura</button>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button id="safe-exit-btn-dash" class="btn btn-exit" onclick="showSafeExitDialog()" style="flex: 1; margin: 0;">🚪 Salida Segura</button>
+                <button class="btn-clear-cache" onclick="CacheManager.clearCache()" title="Limpiar caché local">
+                    🗑️ Limpiar Caché
+                </button>
+            </div>
         </div>
 
         <button id="start-btn" class="btn btn-success" onclick="startValidation()" disabled style="margin-top: 20px;">
@@ -1339,13 +1598,669 @@
         let scannerBuffer = '';
         let pendingReloadOBC = null;
 
+        // ==================== SISTEMA DE CACHÉ PERSISTENTE AVANZADO ====================
+
+        /**
+         * CacheManager - Sistema de caché persistente con IndexedDB + localStorage fallback
+         *
+         * Características:
+         * - Motor principal: IndexedDB (sin límites de 5MB, no bloquea UI)
+         * - Fallback: localStorage con limpieza automática
+         * - Expiración inteligente: 30 minutos
+         * - Auto-guardado con debounce
+         * - Indicadores visuales de salud
+         * - Modal condicional para sesiones antiguas
+         */
+        const CacheManager = {
+            // Constantes de configuración
+            CACHE_VERSION: '1.0.0',
+            CACHE_EXPIRATION: 30 * 60 * 1000, // 30 minutos en milisegundos
+            DEBOUNCE_DELAY: 2000, // 2 segundos para auto-guardado
+            DB_NAME: 'WMS_Validator_Cache',
+            DB_VERSION: 1,
+            STORE_NAME: 'sessionData',
+
+            // Estado interno
+            db: null,
+            useIndexedDB: true,
+            debounceTimer: null,
+            lastSaveTime: null,
+            healthIndicatorElement: null,
+
+            /**
+             * Inicializar el sistema de caché
+             */
+            async init() {
+                console.log('🔧 Inicializando CacheManager...');
+
+                // Intentar inicializar IndexedDB
+                try {
+                    await this.initIndexedDB();
+                    console.log('✅ IndexedDB inicializado correctamente');
+                } catch (error) {
+                    console.warn('⚠️ IndexedDB no disponible, usando localStorage:', error);
+                    this.useIndexedDB = false;
+                }
+
+                // Crear indicador de salud visual
+                this.createHealthIndicator();
+
+                // Verificar si hay caché existente al cargar
+                await this.checkAndRestoreCache();
+
+                // Iniciar auto-guardado
+                this.startAutoSave();
+
+                console.log('✅ CacheManager inicializado');
+            },
+
+            /**
+             * Inicializar IndexedDB
+             */
+            async initIndexedDB() {
+                return new Promise((resolve, reject) => {
+                    if (!window.indexedDB) {
+                        reject(new Error('IndexedDB no soportado'));
+                        return;
+                    }
+
+                    const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => {
+                        this.db = request.result;
+                        resolve();
+                    };
+
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+
+                        // Crear object store si no existe
+                        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                            const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'key' });
+                            store.createIndex('timestamp', 'timestamp', { unique: false });
+                        }
+                    };
+                });
+            },
+
+            /**
+             * Guardar datos en caché (con debounce)
+             * @param {boolean} immediate - Si es true, guarda inmediatamente sin debounce
+             */
+            saveToCache(immediate = false) {
+                if (immediate) {
+                    this._performSave();
+                } else {
+                    // Cancelar timer anterior
+                    if (this.debounceTimer) {
+                        clearTimeout(this.debounceTimer);
+                    }
+
+                    // Crear nuevo timer
+                    this.debounceTimer = setTimeout(() => {
+                        this._performSave();
+                    }, this.DEBOUNCE_DELAY);
+                }
+            },
+
+            /**
+             * Ejecutar guardado real
+             */
+            async _performSave() {
+                try {
+                    const now = Date.now();
+
+                    // Preparar datos para guardar
+                    const cacheData = {
+                        version: this.CACHE_VERSION,
+                        timestamp: now,
+                        savedAt: new Date(now).toLocaleString('es-MX'),
+                        data: {
+                            STATE: STATE,
+                            HISTORY: Array.from(HISTORY.entries()),
+                            PENDING_SYNC: PENDING_SYNC,
+                            BD_CODES: Array.from(BD_CODES),
+                            OBC_MAP: Array.from(OBC_MAP.entries()).map(([k, v]) => [k, Array.from(v)]),
+                            OBC_TOTALS: Array.from(OBC_TOTALS.entries()),
+                            OBC_INFO: Array.from(OBC_INFO.entries()),
+                            LAST_BD_UPDATE: LAST_BD_UPDATE,
+                            CURRENT_USER: CURRENT_USER
+                        },
+                        stats: {
+                            pendingSync: PENDING_SYNC.length,
+                            totalValidations: HISTORY.size,
+                            activeTabs: Object.keys(STATE.tabs || {}).length
+                        }
+                    };
+
+                    // Intentar guardar en IndexedDB primero
+                    if (this.useIndexedDB && this.db) {
+                        await this._saveToIndexedDB(cacheData);
+                    } else {
+                        await this._saveToLocalStorage(cacheData);
+                    }
+
+                    this.lastSaveTime = now;
+                    this.updateHealthIndicator();
+
+                    console.log('💾 Caché guardado:', cacheData.stats);
+                } catch (error) {
+                    console.error('❌ Error guardando caché:', error);
+
+                    // Intentar fallback a localStorage si IndexedDB falla
+                    if (this.useIndexedDB) {
+                        console.log('🔄 Intentando fallback a localStorage...');
+                        this.useIndexedDB = false;
+                        await this._saveToLocalStorage(cacheData);
+                    }
+                }
+            },
+
+            /**
+             * Guardar en IndexedDB
+             */
+            async _saveToIndexedDB(data) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        const transaction = this.db.transaction([this.STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(this.STORE_NAME);
+
+                        const request = store.put({ key: 'sessionData', ...data });
+
+                        request.onsuccess = () => resolve();
+                        request.onerror = () => reject(request.error);
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            },
+
+            /**
+             * Guardar en localStorage (con manejo de QuotaExceededError)
+             */
+            async _saveToLocalStorage(data) {
+                try {
+                    const serialized = JSON.stringify(data);
+                    localStorage.setItem('wms_cache_session', serialized);
+                } catch (error) {
+                    if (error.name === 'QuotaExceededError') {
+                        console.warn('⚠️ Quota de localStorage excedida, limpiando datos antiguos...');
+
+                        // Limpiar datos antiguos
+                        this._cleanOldLocalStorageData();
+
+                        // Intentar guardar de nuevo
+                        try {
+                            const serialized = JSON.stringify(data);
+                            localStorage.setItem('wms_cache_session', serialized);
+                        } catch (retryError) {
+                            console.error('❌ No se pudo guardar en localStorage después de limpiar:', retryError);
+                            throw retryError;
+                        }
+                    } else {
+                        throw error;
+                    }
+                }
+            },
+
+            /**
+             * Limpiar datos antiguos de localStorage
+             */
+            _cleanOldLocalStorageData() {
+                const keysToClean = [];
+
+                // Buscar claves antiguas de WMS
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('wms_') && key !== 'wms_cache_session') {
+                        keysToClean.push(key);
+                    }
+                }
+
+                // Eliminar claves antiguas
+                keysToClean.forEach(key => {
+                    console.log(`🗑️ Limpiando clave antigua: ${key}`);
+                    localStorage.removeItem(key);
+                });
+            },
+
+            /**
+             * Cargar datos desde caché
+             */
+            async loadFromCache() {
+                try {
+                    let cacheData = null;
+
+                    // Intentar cargar desde IndexedDB primero
+                    if (this.useIndexedDB && this.db) {
+                        cacheData = await this._loadFromIndexedDB();
+                    }
+
+                    // Si no hay datos en IndexedDB, intentar localStorage
+                    if (!cacheData) {
+                        cacheData = this._loadFromLocalStorage();
+                    }
+
+                    if (!cacheData) {
+                        console.log('ℹ️ No hay caché disponible');
+                        return null;
+                    }
+
+                    console.log('📦 Caché encontrado:', {
+                        guardado: cacheData.savedAt,
+                        edad: this._getCacheAge(cacheData.timestamp),
+                        stats: cacheData.stats
+                    });
+
+                    return cacheData;
+                } catch (error) {
+                    console.error('❌ Error cargando caché:', error);
+                    return null;
+                }
+            },
+
+            /**
+             * Cargar desde IndexedDB
+             */
+            async _loadFromIndexedDB() {
+                return new Promise((resolve, reject) => {
+                    try {
+                        const transaction = this.db.transaction([this.STORE_NAME], 'readonly');
+                        const store = transaction.objectStore(this.STORE_NAME);
+                        const request = store.get('sessionData');
+
+                        request.onsuccess = () => {
+                            const result = request.result;
+                            if (result) {
+                                const { key, ...data } = result;
+                                resolve(data);
+                            } else {
+                                resolve(null);
+                            }
+                        };
+                        request.onerror = () => reject(request.error);
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            },
+
+            /**
+             * Cargar desde localStorage
+             */
+            _loadFromLocalStorage() {
+                try {
+                    const serialized = localStorage.getItem('wms_cache_session');
+                    if (!serialized) return null;
+
+                    return JSON.parse(serialized);
+                } catch (error) {
+                    console.error('❌ Error parseando caché de localStorage:', error);
+                    return null;
+                }
+            },
+
+            /**
+             * Verificar y restaurar caché al cargar página
+             */
+            async checkAndRestoreCache() {
+                const cache = await this.loadFromCache();
+
+                if (!cache) {
+                    this.updateHealthIndicator('no-cache');
+                    return;
+                }
+
+                const age = Date.now() - cache.timestamp;
+                const ageMinutes = Math.floor(age / 60000);
+
+                // Si el caché es reciente (< 30 min), restaurar automáticamente
+                if (age < this.CACHE_EXPIRATION) {
+                    this._restoreFromCache(cache);
+                    this._showRestoreToast(ageMinutes);
+                    this.updateHealthIndicator();
+                } else {
+                    // Caché antiguo: verificar si tiene cambios sin sincronizar
+                    const hasPendingChanges = cache.stats.pendingSync > 0;
+
+                    if (hasPendingChanges) {
+                        // Mostrar modal de confirmación
+                        this._showRestoreModal(cache, ageMinutes);
+                    } else {
+                        // Caché antiguo pero sin cambios pendientes: ignorar y limpiar
+                        console.log('🗑️ Caché antiguo sin cambios pendientes, ignorando...');
+                        await this.clearCache();
+                        this.updateHealthIndicator('no-cache');
+                    }
+                }
+            },
+
+            /**
+             * Restaurar datos desde caché
+             */
+            _restoreFromCache(cache) {
+                try {
+                    const data = cache.data;
+
+                    // Restaurar estado global
+                    STATE = data.STATE || { activeOBC: null, tabs: {}, closedTabs: {} };
+                    HISTORY = new Map(data.HISTORY || []);
+                    PENDING_SYNC = data.PENDING_SYNC || [];
+                    BD_CODES = new Set(data.BD_CODES || []);
+                    OBC_MAP = new Map((data.OBC_MAP || []).map(([k, v]) => [k, new Set(v)]));
+                    OBC_TOTALS = new Map(data.OBC_TOTALS || []);
+                    OBC_INFO = new Map(data.OBC_INFO || []);
+                    LAST_BD_UPDATE = data.LAST_BD_UPDATE;
+                    CURRENT_USER = data.CURRENT_USER || '';
+
+                    console.log('✅ Sesión restaurada desde caché');
+
+                    // Actualizar UI
+                    updateDashboardStats();
+                    renderValidation();
+                    if (typeof updatePendingBadge === 'function') updatePendingBadge();
+
+                    return true;
+                } catch (error) {
+                    console.error('❌ Error restaurando caché:', error);
+                    return false;
+                }
+            },
+
+            /**
+             * Mostrar toast de restauración
+             */
+            _showRestoreToast(minutes) {
+                const toast = document.createElement('div');
+                toast.className = 'cache-toast';
+                toast.innerHTML = `
+                    <div class="cache-toast-content">
+                        <div class="cache-toast-title">📦 Sesión recuperada</div>
+                        <div class="cache-toast-time">Guardado hace ${minutes} min</div>
+                    </div>
+                    <button class="cache-toast-close" onclick="this.parentElement.remove()">×</button>
+                `;
+
+                document.body.appendChild(toast);
+
+                // Auto-cerrar después de 5 segundos
+                setTimeout(() => {
+                    if (toast.parentElement) {
+                        toast.style.opacity = '0';
+                        setTimeout(() => toast.remove(), 300);
+                    }
+                }, 5000);
+            },
+
+            /**
+             * Mostrar modal de confirmación para caché antiguo
+             */
+            _showRestoreModal(cache, ageMinutes) {
+                const modal = document.createElement('div');
+                modal.className = 'cache-restore-modal';
+                modal.innerHTML = `
+                    <div class="cache-restore-content">
+                        <div class="cache-restore-header">
+                            ⚠️ Sesión Anterior Detectada
+                        </div>
+                        <div class="cache-restore-body">
+                            <div class="cache-restore-info">
+                                <strong>Guardado:</strong> ${cache.savedAt}
+                            </div>
+                            <div class="cache-restore-info">
+                                <strong>Antigüedad:</strong> ${ageMinutes} minutos
+                            </div>
+                            <div class="cache-restore-info">
+                                <strong>Validaciones pendientes de sincronizar:</strong> ${cache.stats.pendingSync}
+                            </div>
+                            <div class="cache-restore-info">
+                                <strong>Validaciones totales:</strong> ${cache.stats.totalValidations}
+                            </div>
+                        </div>
+                        <p style="color: #666; text-align: center; margin: 10px 0;">
+                            Esta sesión tiene cambios sin sincronizar.<br>
+                            ¿Deseas restaurarla o cargar datos frescos desde la nube?
+                        </p>
+                        <div class="cache-restore-buttons">
+                            <button class="btn-fresh" id="btn-load-fresh">
+                                🌐 Cargar Frescos
+                            </button>
+                            <button class="btn-restore" id="btn-restore-cache">
+                                📦 Restaurar Sesión
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                // Eventos de botones
+                document.getElementById('btn-load-fresh').onclick = async () => {
+                    await this.clearCache();
+                    modal.remove();
+                    showNotification('🌐 Cargando datos frescos...', 'info');
+                    this.updateHealthIndicator('no-cache');
+                };
+
+                document.getElementById('btn-restore-cache').onclick = () => {
+                    this._restoreFromCache(cache);
+                    modal.remove();
+                    showNotification('✅ Sesión restaurada', 'success');
+                    this.updateHealthIndicator();
+                };
+            },
+
+            /**
+             * Limpiar caché completamente
+             */
+            async clearCache() {
+                try {
+                    // Limpiar IndexedDB
+                    if (this.useIndexedDB && this.db) {
+                        const transaction = this.db.transaction([this.STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(this.STORE_NAME);
+                        await new Promise((resolve, reject) => {
+                            const request = store.delete('sessionData');
+                            request.onsuccess = () => resolve();
+                            request.onerror = () => reject(request.error);
+                        });
+                    }
+
+                    // Limpiar localStorage
+                    localStorage.removeItem('wms_cache_session');
+
+                    this.lastSaveTime = null;
+                    this.updateHealthIndicator('no-cache');
+
+                    console.log('🗑️ Caché limpiado completamente');
+                    showNotification('🗑️ Caché limpiado', 'success');
+                } catch (error) {
+                    console.error('❌ Error limpiando caché:', error);
+                    showNotification('❌ Error limpiando caché', 'error');
+                }
+            },
+
+            /**
+             * Crear indicador visual de salud del caché
+             */
+            createHealthIndicator() {
+                const indicator = document.createElement('div');
+                indicator.className = 'cache-health-indicator';
+                indicator.id = 'cache-health-indicator';
+                indicator.innerHTML = `
+                    <div class="cache-health-tooltip"></div>
+                `;
+
+                // Click para mostrar info
+                indicator.onclick = () => this.showCacheInfo();
+
+                document.body.appendChild(indicator);
+                this.healthIndicatorElement = indicator;
+
+                this.updateHealthIndicator('initializing');
+            },
+
+            /**
+             * Actualizar indicador de salud
+             */
+            updateHealthIndicator(state = null) {
+                if (!this.healthIndicatorElement) return;
+
+                const indicator = this.healthIndicatorElement;
+                const tooltip = indicator.querySelector('.cache-health-tooltip');
+
+                // Determinar estado automáticamente si no se proporciona
+                if (!state) {
+                    const hasToken = gapi?.client?.getToken();
+                    const hasPending = PENDING_SYNC.length > 0;
+                    const cacheAge = this.lastSaveTime ? Date.now() - this.lastSaveTime : 0;
+
+                    if (SYNC_IN_PROGRESS) {
+                        state = 'syncing';
+                    } else if (IS_ONLINE && hasToken && !hasPending) {
+                        state = 'healthy';
+                    } else if (hasPending && cacheAge > this.CACHE_EXPIRATION) {
+                        state = 'danger';
+                    } else if (hasPending || !IS_ONLINE) {
+                        state = 'warning';
+                    } else {
+                        state = 'healthy';
+                    }
+                }
+
+                // Actualizar clase y contenido
+                indicator.className = 'cache-health-indicator ' + state;
+
+                switch (state) {
+                    case 'healthy':
+                        indicator.innerHTML = '✓';
+                        tooltip.textContent = 'Todo guardado en la nube';
+                        break;
+                    case 'warning':
+                        indicator.innerHTML = '⚠';
+                        tooltip.textContent = `${PENDING_SYNC.length} cambios en caché local`;
+                        break;
+                    case 'danger':
+                        indicator.innerHTML = '⚠';
+                        tooltip.textContent = 'Caché antiguo con cambios sin subir';
+                        break;
+                    case 'syncing':
+                        indicator.innerHTML = '⟳';
+                        tooltip.textContent = 'Sincronizando...';
+                        break;
+                    case 'no-cache':
+                        indicator.innerHTML = '○';
+                        tooltip.textContent = 'Sin caché';
+                        break;
+                    case 'initializing':
+                        indicator.innerHTML = '◌';
+                        tooltip.textContent = 'Inicializando...';
+                        break;
+                }
+
+                indicator.innerHTML += `<div class="cache-health-tooltip">${tooltip.textContent}</div>`;
+            },
+
+            /**
+             * Mostrar información del caché
+             */
+            showCacheInfo() {
+                const age = this.lastSaveTime ? Date.now() - this.lastSaveTime : 0;
+                const ageMinutes = Math.floor(age / 60000);
+                const ageSeconds = Math.floor(age / 1000);
+
+                SyncManager.showPanel(); // Usa el panel existente del SyncManager
+            },
+
+            /**
+             * Calcular edad del caché
+             */
+            _getCacheAge(timestamp) {
+                const age = Date.now() - timestamp;
+                const minutes = Math.floor(age / 60000);
+                if (minutes < 1) return 'menos de 1 min';
+                return `${minutes} min`;
+            },
+
+            /**
+             * Iniciar auto-guardado
+             */
+            startAutoSave() {
+                // Guardar cada vez que cambie el estado
+                const originalSaveState = window.saveState;
+                window.saveState = async () => {
+                    if (originalSaveState) await originalSaveState();
+                    this.saveToCache();
+                };
+
+                const originalSaveHistory = window.saveHistory;
+                window.saveHistory = async () => {
+                    if (originalSaveHistory) await originalSaveHistory();
+                    this.saveToCache();
+                };
+
+                console.log('🔄 Auto-guardado iniciado');
+            }
+        };
+
+        // Compatibilidad con window.storage (usado en el código existente)
+        window.storage = {
+            async set(key, value) {
+                try {
+                    if (CacheManager.useIndexedDB && CacheManager.db) {
+                        const transaction = CacheManager.db.transaction([CacheManager.STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(CacheManager.STORE_NAME);
+                        await new Promise((resolve, reject) => {
+                            const request = store.put({ key, value, timestamp: Date.now() });
+                            request.onsuccess = () => resolve();
+                            request.onerror = () => reject(request.error);
+                        });
+                    } else {
+                        localStorage.setItem(key, value);
+                    }
+                } catch (error) {
+                    console.error('Error en window.storage.set:', error);
+                }
+            },
+
+            async get(key) {
+                try {
+                    if (CacheManager.useIndexedDB && CacheManager.db) {
+                        return new Promise((resolve, reject) => {
+                            const transaction = CacheManager.db.transaction([CacheManager.STORE_NAME], 'readonly');
+                            const store = transaction.objectStore(CacheManager.STORE_NAME);
+                            const request = store.get(key);
+                            request.onsuccess = () => {
+                                const result = request.result;
+                                resolve(result ? { value: result.value } : null);
+                            };
+                            request.onerror = () => reject(request.error);
+                        });
+                    } else {
+                        const value = localStorage.getItem(key);
+                        return value ? { value } : null;
+                    }
+                } catch (error) {
+                    console.error('Error en window.storage.get:', error);
+                    return null;
+                }
+            }
+        };
+
         document.addEventListener('DOMContentLoaded', async () => {
             initAudio();
-            await loadFromStorage();
+
+            // Inicializar CacheManager PRIMERO (reemplaza loadFromStorage)
+            await CacheManager.init();
+
+            // Cargar datos legacy que no estén en el CacheManager
+            await loadPendingSync();
+            await loadPrerecData();
+
             setupListeners();
             setupConnectionMonitor();
             SyncManager.init();  // Inicializa sync + protección de salida
-            loadPrerecData();   // Cargar datos de prerecepción
             renderValidation();
             gapi.load('client', initGAPI);
         });
@@ -1484,6 +2399,7 @@
                 this.inProgress = true;
                 SYNC_IN_PROGRESS = true;
                 updateConnectionIndicator(true); // Mostrar "sincronizando"
+                CacheManager.updateHealthIndicator('syncing'); // Actualizar indicador de caché
                 const total = PENDING_SYNC.length;
                 if (showMessages) showNotification(`🔄 Sincronizando ${total} pendientes...`, 'info');
 
@@ -1521,12 +2437,14 @@
                     this.retryCount = 0;
                     SYNC_RETRY_COUNT = 0;
                     this.updateUI(true);
+                    CacheManager.updateHealthIndicator(); // Actualizar indicador de caché
                     if (showMessages) showNotification(`✅ ${success} sincronizadas correctamente`, 'success');
                     return { success: true, synced: success };
                 } else {
                     this.retryCount++;
                     SYNC_RETRY_COUNT = this.retryCount;
                     this.updateUI(false);
+                    CacheManager.updateHealthIndicator(); // Actualizar indicador de caché
                     if (showMessages) showNotification(`⚠️ ${success} OK, ${errors.length} fallaron`, 'warning');
                     return { success: false, synced: success, failed: errors.length };
                 }
@@ -2691,11 +3609,14 @@
                 try {
                     await writeToSheets('Val3', log);
                     updateSyncStatus(true);
+                    CacheManager.updateHealthIndicator(); // Actualizar indicador
                 } catch (e) {
                     PENDING_SYNC.push({ sheet: 'Val3', log });
                     await savePendingSync();
                     updatePendingBadge();
                     updateSyncStatus(false);
+                    CacheManager.saveToCache(); // Auto-guardar en caché
+                    CacheManager.updateHealthIndicator(); // Actualizar indicador
                     showNotification('⚠️ Guardado localmente - Se sincronizará cuando haya conexión', 'warning');
                 }
             } else {
@@ -2703,6 +3624,8 @@
                 await savePendingSync();
                 updatePendingBadge();
                 updateSyncStatus(false);
+                CacheManager.saveToCache(); // Auto-guardar en caché
+                CacheManager.updateHealthIndicator(); // Actualizar indicador
             }
         }
 
@@ -2727,15 +3650,20 @@
             if (gapi.client.getToken() && IS_ONLINE) {
                 try {
                     await writeToSheets('Validaciones_RECHAZADAS', log);
+                    CacheManager.updateHealthIndicator(); // Actualizar indicador
                 } catch (e) {
                     PENDING_SYNC.push({ sheet: 'Validaciones_RECHAZADAS', log });
                     await savePendingSync();
                     updatePendingBadge();
+                    CacheManager.saveToCache(); // Auto-guardar en caché
+                    CacheManager.updateHealthIndicator(); // Actualizar indicador
                 }
             } else {
                 PENDING_SYNC.push({ sheet: 'Validaciones_RECHAZADAS', log });
                 await savePendingSync();
                 updatePendingBadge();
+                CacheManager.saveToCache(); // Auto-guardar en caché
+                CacheManager.updateHealthIndicator(); // Actualizar indicador
             }
         }
 
@@ -3958,6 +4886,8 @@
                 PENDING_SYNC.push({ sheet: 'Previa', log });
                 await SyncManager.save();
                 SyncManager.updateUI(false);
+                CacheManager.saveToCache(); // Auto-guardar en caché
+                CacheManager.updateHealthIndicator(); // Actualizar indicador
 
                 showNotification(`✅ Orden ${PREREC_CURRENT} prerecibida`, 'success');
                 playSound('ok');
