@@ -3986,19 +3986,31 @@
             activeTabId: null,
 
             init() {
+                // Load and validate tabs from storage
                 this.loadFromStorage();
+
+                // Ensure activeTabId is valid
+                if (this.activeTabId && !this.tabs.find(t => t.id === this.activeTabId)) {
+                    this.activeTabId = this.tabs.length > 0 ? this.tabs[0].id : null;
+                }
+
+                // Render tabs UI
                 this.renderTabs();
                 this.updateGlobalSummary();
 
-                if (this.tabs.length === 0) {
-                    // No tabs - show welcome state
+                if (this.tabs.length === 0 || !this.activeTabId) {
+                    // No tabs or no active tab - show welcome state
+                    this.activeTabId = null;
                     this.showWelcomeScreen();
                 } else {
-                    // Has tabs - load active tab state and switch to its module
+                    // Has valid tabs - load active tab state and switch to its module
                     const activeTab = this.getActiveTab();
-                    if (activeTab) {
+                    if (activeTab && activeTab.workType) {
                         this.loadTabState();
                         this.showModuleForTab(activeTab);
+                    } else {
+                        // Active tab is invalid - show welcome screen
+                        this.showWelcomeScreen();
                     }
                 }
             },
@@ -4025,6 +4037,20 @@
             },
 
             showModuleForTab(tab) {
+                // Validate tab and workType
+                if (!tab) {
+                    console.error('showModuleForTab: No tab provided');
+                    this.showWelcomeScreen();
+                    return;
+                }
+
+                const workType = tab.workType;
+                if (workType !== 'unified' && workType !== 'classic') {
+                    console.error('showModuleForTab: Invalid workType:', workType);
+                    // Default to classic if invalid
+                    tab.workType = 'classic';
+                }
+
                 const classicModule = document.getElementById('classic-module');
                 const unifiedModule = document.getElementById('unified-module');
                 const welcomeState = document.getElementById('welcome-state');
@@ -4035,33 +4061,43 @@
                     welcomeState.classList.add('module-hidden');
                 }
 
+                // Force hide both modules first to ensure clean state
+                if (classicModule) {
+                    classicModule.classList.remove('module-visible');
+                    classicModule.classList.add('module-hidden');
+                }
+                if (unifiedModule) {
+                    unifiedModule.classList.remove('module-visible');
+                    unifiedModule.classList.add('module-hidden');
+                }
+
+                // Now show the correct module
                 if (tab.workType === 'unified') {
-                    // Show unified, hide classic
-                    if (classicModule) {
-                        classicModule.classList.remove('module-visible');
-                        classicModule.classList.add('module-hidden');
-                    }
+                    // Show unified module
                     if (unifiedModule) {
                         unifiedModule.classList.remove('module-hidden');
                         unifiedModule.classList.add('module-visible');
                     }
                     CURRENT_MODULE = 'unified';
-                    UnifiedModule.init();
+                    // Initialize unified module after a small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        UnifiedModule.init();
+                        UnifiedModule.updateUI();
+                    }, 10);
                 } else {
-                    // Show classic, hide unified (default)
-                    if (unifiedModule) {
-                        unifiedModule.classList.remove('module-visible');
-                        unifiedModule.classList.add('module-hidden');
-                    }
+                    // Show classic module
                     if (classicModule) {
                         classicModule.classList.remove('module-hidden');
                         classicModule.classList.add('module-visible');
                     }
                     CURRENT_MODULE = 'classic';
+                    // Update classic UI after a small delay
+                    setTimeout(() => {
+                        updateUI();
+                    }, 10);
                 }
 
                 localStorage.setItem('pd_current_module', CURRENT_MODULE);
-                updateUI();
             },
 
             generateTabId() {
@@ -4096,6 +4132,12 @@
             },
 
             createTab(workType = 'classic') {
+                // Validate workType
+                if (workType !== 'classic' && workType !== 'unified') {
+                    console.error('createTab: Invalid workType:', workType, '- defaulting to classic');
+                    workType = 'classic';
+                }
+
                 if (this.tabs.length >= this.MAX_TABS) {
                     showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
                     return;
@@ -4110,13 +4152,19 @@
                     createdAt: new Date().toISOString()
                 };
 
+                // Add tab to array and set as active
                 this.tabs.push(newTab);
                 this.activeTabId = tabId;
+
+                // Save and render tabs first
                 this.saveToStorage();
                 this.renderTabs();
+
+                // Load the tab state
                 this.loadTabState();
 
-                // Show the correct module for this tab
+                // CRITICAL: Show the correct module for this tab
+                // This must happen after everything else is set up
                 this.showModuleForTab(newTab);
 
                 // Focus the appropriate input
@@ -4218,6 +4266,12 @@
                 const tab = this.getActiveTab();
                 if (!tab) return;
 
+                // Validate tab has proper state
+                if (!tab.state || !tab.state.classic || !tab.state.unified) {
+                    console.error('loadTabState: Tab has invalid state structure');
+                    return;
+                }
+
                 // Cargar estado del módulo Clasificar
                 STATE.pallets = JSON.parse(JSON.stringify(tab.state.classic.pallets));
                 const originInput = document.getElementById('origin-location');
@@ -4229,9 +4283,8 @@
                 const unifiedLocationInput = document.getElementById('unified-location');
                 if (unifiedLocationInput) unifiedLocationInput.value = tab.state.unified.location || '';
 
-                // Actualizar UIs
-                updateUI();
-                UnifiedModule.updateUI();
+                // Solo actualizar la UI del módulo activo para evitar conflictos
+                // La UI se actualizará en showModuleForTab
             },
 
             renderTabs() {
@@ -4285,19 +4338,51 @@
                     const saved = localStorage.getItem('pd_global_tabs');
                     if (saved) {
                         const data = JSON.parse(saved);
-                        // Validate tabs - only keep tabs with valid workType
+                        const originalCount = (data.tabs || []).length;
+
+                        // Validate tabs - only keep tabs with valid structure
                         this.tabs = (data.tabs || []).filter(tab => {
-                            return tab &&
-                                   tab.id &&
-                                   tab.workType &&
-                                   (tab.workType === 'classic' || tab.workType === 'unified') &&
-                                   tab.state;
+                            // Basic validation
+                            if (!tab || !tab.id || !tab.workType || !tab.state) {
+                                console.warn('Tab rejected - missing basic properties:', tab?.id);
+                                return false;
+                            }
+
+                            // Validate workType
+                            if (tab.workType !== 'classic' && tab.workType !== 'unified') {
+                                console.warn('Tab rejected - invalid workType:', tab.id, tab.workType);
+                                return false;
+                            }
+
+                            // Validate state structure
+                            if (!tab.state.classic || !tab.state.unified) {
+                                console.warn('Tab rejected - invalid state structure:', tab.id);
+                                return false;
+                            }
+
+                            // Validate classic state
+                            if (!tab.state.classic.pallets) {
+                                console.warn('Tab rejected - missing classic pallets:', tab.id);
+                                return false;
+                            }
+
+                            // Validate unified state
+                            if (!Array.isArray(tab.state.unified.boxes)) {
+                                console.warn('Tab rejected - invalid unified boxes:', tab.id);
+                                return false;
+                            }
+
+                            return true;
                         });
+
+                        // Set active tab ID
                         this.activeTabId = this.tabs.length > 0 ?
                             (this.tabs.find(t => t.id === data.activeTabId) ? data.activeTabId : this.tabs[0].id) :
                             null;
-                        // Save cleaned data back
-                        if (this.tabs.length !== (data.tabs || []).length) {
+
+                        // Save cleaned data back if any tabs were removed
+                        if (this.tabs.length !== originalCount) {
+                            console.log(`Cleaned ${originalCount - this.tabs.length} invalid tabs`);
                             this.saveToStorage();
                         }
                     }
@@ -4353,11 +4438,17 @@
         };
 
         // ==================== WORK TYPE POPUP ====================
+        // Global variable to store selected work type (more reliable than DOM property)
+        let PENDING_WORK_TYPE = null;
+
         function showWorkTypePopup() {
             if (GlobalTabs.tabs.length >= GlobalTabs.MAX_TABS) {
                 showNotification(`⚠️ Máximo ${GlobalTabs.MAX_TABS} pestañas permitidas`, 'warning');
                 return;
             }
+
+            // Reset pending work type
+            PENDING_WORK_TYPE = null;
 
             const overlay = document.createElement('div');
             overlay.className = 'popup-overlay show';
@@ -4366,7 +4457,7 @@
                 <div class="popup-content work-type-popup">
                     <div class="popup-header">
                         <span>🆕 Nueva Sesión</span>
-                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        <button class="popup-close" onclick="closeWorkTypePopup()">×</button>
                     </div>
 
                     <!-- Professional Toggle Button -->
@@ -4402,13 +4493,16 @@
             `;
             document.body.appendChild(overlay);
 
-            // Store selected work type
-            overlay.selectedWorkType = null;
-
             // Close on backdrop click
             overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) overlay.remove();
+                if (e.target === overlay) closeWorkTypePopup();
             });
+        }
+
+        function closeWorkTypePopup() {
+            PENDING_WORK_TYPE = null;
+            const popup = document.getElementById('work-type-popup');
+            if (popup) popup.remove();
         }
 
         const workTypeDescriptions = {
@@ -4426,29 +4520,58 @@
             const popup = document.getElementById('work-type-popup');
             if (!popup) return;
 
+            // Validate type
+            if (type !== 'classic' && type !== 'unified') {
+                console.error('Invalid work type:', type);
+                return;
+            }
+
             // Update toggle buttons
-            document.getElementById('toggle-classic').classList.toggle('active', type === 'classic');
-            document.getElementById('toggle-unified').classList.toggle('active', type === 'unified');
+            const classicBtn = document.getElementById('toggle-classic');
+            const unifiedBtn = document.getElementById('toggle-unified');
+            if (classicBtn) classicBtn.classList.toggle('active', type === 'classic');
+            if (unifiedBtn) unifiedBtn.classList.toggle('active', type === 'unified');
 
             // Update description
             const desc = workTypeDescriptions[type];
-            document.getElementById('work-type-desc-title').textContent = desc.title;
-            document.getElementById('work-type-desc-text').textContent = desc.text;
+            const titleEl = document.getElementById('work-type-desc-title');
+            const textEl = document.getElementById('work-type-desc-text');
+            if (titleEl) titleEl.textContent = desc.title;
+            if (textEl) textEl.textContent = desc.text;
 
-            // Store selection
-            popup.selectedWorkType = type;
+            // Store selection in global variable
+            PENDING_WORK_TYPE = type;
 
             // Enable confirm button
-            document.getElementById('confirm-work-type-btn').disabled = false;
+            const confirmBtn = document.getElementById('confirm-work-type-btn');
+            if (confirmBtn) confirmBtn.disabled = false;
         }
 
         function confirmWorkType() {
+            // Use the global variable
+            if (!PENDING_WORK_TYPE) {
+                showNotification('Por favor selecciona un modo de trabajo', 'warning');
+                return;
+            }
+
+            // Validate work type
+            if (PENDING_WORK_TYPE !== 'classic' && PENDING_WORK_TYPE !== 'unified') {
+                console.error('Invalid pending work type:', PENDING_WORK_TYPE);
+                showNotification('Error: tipo de trabajo inválido', 'error');
+                PENDING_WORK_TYPE = null;
+                return;
+            }
+
+            const workType = PENDING_WORK_TYPE;
+
+            // Close popup first
             const popup = document.getElementById('work-type-popup');
-            if (!popup || !popup.selectedWorkType) return;
+            if (popup) popup.remove();
 
-            const workType = popup.selectedWorkType;
-            popup.remove();
+            // Reset global variable
+            PENDING_WORK_TYPE = null;
 
+            // Create tab with the selected work type
             GlobalTabs.createTab(workType);
         }
 
