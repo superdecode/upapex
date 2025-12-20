@@ -1670,15 +1670,43 @@
         .unified-log-entry.nowms .unified-log-status { background: var(--error); color: white; }
 
 
+        /* Module Visibility Control */
+        .module-hidden {
+            display: none !important;
+        }
+
+        .module-visible {
+            display: flex !important;
+        }
+
+        /* Unified Module Container */
+        .unified-module-container {
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .unified-module-container.module-visible {
+            display: flex !important;
+        }
+
+        /* Classic Module when visible */
+        #classic-module.module-visible {
+            display: block !important;
+        }
+
         /* Welcome State - No active sessions */
         .welcome-state {
             flex: 1;
-            display: flex;
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             border-radius: 16px;
             margin: 10px 0;
+        }
+
+        .welcome-state.module-visible {
+            display: flex !important;
         }
 
         .welcome-content {
@@ -2060,7 +2088,7 @@
                 </div>
 
                 <!-- WELCOME STATE - No active sessions -->
-                <div id="welcome-state" class="welcome-state" style="display: none;">
+                <div id="welcome-state" class="welcome-state module-visible">
                     <div class="welcome-content">
                         <div class="welcome-icon">📦</div>
                         <h2 class="welcome-title">¡Bienvenido al Sistema de Inventario!</h2>
@@ -2073,7 +2101,7 @@
                 </div>
 
                 <!-- CLASSIC MODULE -->
-                <div id="classic-module" class="hidden" style="display: none;">
+                <div id="classic-module" class="module-hidden">
                     <!-- Cabecera Principal con Ubicación y Contador -->
                     <div class="scan-header-bar">
                     <div class="origin-location-group">
@@ -2195,7 +2223,7 @@
                 </div><!-- End Classic Module -->
 
                 <!-- UNIFIED MODULE -->
-                <div id="unified-module" class="hidden" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+                <div id="unified-module" class="unified-module-container module-hidden">
                     <!-- Cabecera Principal con Ubicación -->
                     <div class="scan-header-bar">
                         <div class="origin-location-group">
@@ -3980,16 +4008,19 @@
                 const unifiedModule = document.getElementById('unified-module');
                 const welcomeState = document.getElementById('welcome-state');
 
+                // Hide both modules
                 if (classicModule) {
-                    classicModule.classList.add('hidden');
-                    classicModule.style.display = 'none';
+                    classicModule.classList.remove('module-visible');
+                    classicModule.classList.add('module-hidden');
                 }
                 if (unifiedModule) {
-                    unifiedModule.classList.add('hidden');
-                    unifiedModule.style.display = 'none';
+                    unifiedModule.classList.remove('module-visible');
+                    unifiedModule.classList.add('module-hidden');
                 }
+                // Show welcome state
                 if (welcomeState) {
-                    welcomeState.style.display = 'flex';
+                    welcomeState.classList.remove('module-hidden');
+                    welcomeState.classList.add('module-visible');
                 }
             },
 
@@ -4000,35 +4031,37 @@
 
                 // Always hide welcome state when showing a module
                 if (welcomeState) {
-                    welcomeState.style.display = 'none';
+                    welcomeState.classList.remove('module-visible');
+                    welcomeState.classList.add('module-hidden');
                 }
 
                 if (tab.workType === 'unified') {
                     // Show unified, hide classic
                     if (classicModule) {
-                        classicModule.classList.add('hidden');
-                        classicModule.style.display = 'none';
+                        classicModule.classList.remove('module-visible');
+                        classicModule.classList.add('module-hidden');
                     }
                     if (unifiedModule) {
-                        unifiedModule.classList.remove('hidden');
-                        unifiedModule.style.display = 'flex';
+                        unifiedModule.classList.remove('module-hidden');
+                        unifiedModule.classList.add('module-visible');
                     }
                     CURRENT_MODULE = 'unified';
                     UnifiedModule.init();
                 } else {
                     // Show classic, hide unified (default)
                     if (unifiedModule) {
-                        unifiedModule.classList.add('hidden');
-                        unifiedModule.style.display = 'none';
+                        unifiedModule.classList.remove('module-visible');
+                        unifiedModule.classList.add('module-hidden');
                     }
                     if (classicModule) {
-                        classicModule.classList.remove('hidden');
-                        classicModule.style.display = 'block';
+                        classicModule.classList.remove('module-hidden');
+                        classicModule.classList.add('module-visible');
                     }
                     CURRENT_MODULE = 'classic';
                 }
 
                 localStorage.setItem('pd_current_module', CURRENT_MODULE);
+                updateUI();
             },
 
             generateTabId() {
@@ -4252,13 +4285,27 @@
                     const saved = localStorage.getItem('pd_global_tabs');
                     if (saved) {
                         const data = JSON.parse(saved);
-                        this.tabs = data.tabs || [];
-                        this.activeTabId = data.activeTabId || (this.tabs.length > 0 ? this.tabs[0].id : null);
+                        // Validate tabs - only keep tabs with valid workType
+                        this.tabs = (data.tabs || []).filter(tab => {
+                            return tab &&
+                                   tab.id &&
+                                   tab.workType &&
+                                   (tab.workType === 'classic' || tab.workType === 'unified') &&
+                                   tab.state;
+                        });
+                        this.activeTabId = this.tabs.length > 0 ?
+                            (this.tabs.find(t => t.id === data.activeTabId) ? data.activeTabId : this.tabs[0].id) :
+                            null;
+                        // Save cleaned data back
+                        if (this.tabs.length !== (data.tabs || []).length) {
+                            this.saveToStorage();
+                        }
                     }
                 } catch (e) {
                     console.error('Error loading global tabs:', e);
                     this.tabs = [];
                     this.activeTabId = null;
+                    localStorage.removeItem('pd_global_tabs');
                 }
             },
 
@@ -4426,25 +4473,36 @@
             const unifiedModule = document.getElementById('unified-module');
             const welcomeState = document.getElementById('welcome-state');
 
-            // Hide welcome state when switching modules
-            if (welcomeState) welcomeState.style.display = 'none';
+            // Hide welcome state using CSS classes
+            if (welcomeState) {
+                welcomeState.classList.remove('module-visible');
+                welcomeState.classList.add('module-hidden');
+            }
 
             // Guardar estado de la pestaña actual antes de cambiar
             GlobalTabs.saveCurrentTabState();
 
             if (module === 'classic') {
                 // Mostrar clásico, ocultar unificado
-                classicModule.classList.remove('hidden');
-                classicModule.style.display = 'block';
-                unifiedModule.classList.add('hidden');
-                unifiedModule.style.display = 'none';
+                if (classicModule) {
+                    classicModule.classList.remove('module-hidden');
+                    classicModule.classList.add('module-visible');
+                }
+                if (unifiedModule) {
+                    unifiedModule.classList.remove('module-visible');
+                    unifiedModule.classList.add('module-hidden');
+                }
                 setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
             } else {
                 // Mostrar unificado, ocultar clásico
-                classicModule.classList.add('hidden');
-                classicModule.style.display = 'none';
-                unifiedModule.classList.remove('hidden');
-                unifiedModule.style.display = 'flex';
+                if (classicModule) {
+                    classicModule.classList.remove('module-visible');
+                    classicModule.classList.add('module-hidden');
+                }
+                if (unifiedModule) {
+                    unifiedModule.classList.remove('module-hidden');
+                    unifiedModule.classList.add('module-visible');
+                }
                 UnifiedModule.init();
                 setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
             }
