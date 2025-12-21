@@ -531,70 +531,188 @@
             justify-content: center;
             align-items: center;
             z-index: 1000;
+            padding: 20px;
         }
 
         .modal-overlay.show { display: flex; }
 
         .modal-content {
             background: white;
-            padding: 25px;
             border-radius: 12px;
-            max-width: 900px;
-            width: 95%;
+            max-width: 1000px;
+            width: 100%;
             max-height: 90vh;
             overflow-y: auto;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
         }
 
         .modal-header {
-            font-size: 1.3em;
-            font-weight: 700;
-            margin-bottom: 15px;
-            color: var(--primary);
+            padding: 20px 25px;
+            border-bottom: 2px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .modal-title {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .modal-close {
             background: none;
             border: none;
-            font-size: 1.5em;
+            font-size: 1.8em;
             cursor: pointer;
             color: #999;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(0,0,0,0.1);
+            color: #333;
+        }
+
+        /* KPI Cards Header */
+        .modal-kpi-header {
+            padding: 20px;
+            background: white;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .kpi-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .kpi-card {
+            padding: 15px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border-radius: 8px;
+            border-left: 4px solid;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            transition: all 0.2s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .kpi-card.orden { border-color: var(--primary); }
+        .kpi-card.destino { border-color: var(--info); }
+        .kpi-card.estatus { border-color: var(--success); }
+        .kpi-card.trs { border-color: var(--warning); }
+        .kpi-card.rastreo { border-color: #9333ea; }
+
+        .kpi-card-icon {
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+
+        .kpi-card-label {
+            font-size: 0.7em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .kpi-card-value {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 3px;
+        }
+
+        .kpi-card-subtitle {
+            font-size: 0.75em;
+            color: #888;
+        }
+
+        .kpi-progress {
+            margin-top: 8px;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .kpi-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success) 0%, #22c55e 100%);
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        /* Modal Body */
+        .modal-body {
+            padding: 20px 25px;
+            flex: 1;
+            overflow-y: auto;
         }
 
         .modal-section {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid var(--border);
         }
 
         .modal-section-title {
             font-weight: 700;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             color: var(--primary);
-            font-size: 1.1em;
+            font-size: 1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--border);
         }
 
         .modal-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
         }
 
         .modal-field {
             padding: 10px;
-            background: #f5f5f5;
+            background: white;
             border-radius: 6px;
+            border: 1px solid #e5e7eb;
         }
 
         .modal-field-label {
-            font-size: 0.75em;
+            font-size: 0.7em;
             color: #666;
             margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
 
         .modal-field-value {
             font-weight: 700;
+            color: var(--text);
+            font-size: 0.95em;
         }
 
         .modal-input-group {
@@ -604,24 +722,58 @@
         .modal-input-group label {
             display: block;
             font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 0.9em;
+            margin-bottom: 6px;
+            font-size: 0.85em;
+            color: #374151;
         }
 
         .modal-input-group input,
         .modal-input-group select,
         .modal-input-group textarea {
             width: 100%;
-            padding: 10px;
-            border: 2px solid #ddd;
+            padding: 10px 12px;
+            border: 2px solid #e5e7eb;
             border-radius: 6px;
             font-size: 0.95em;
+            transition: all 0.2s;
+        }
+
+        .modal-input-group input:focus,
+        .modal-input-group select:focus,
+        .modal-input-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px 25px;
+            border-top: 2px solid var(--border);
+            background: #f8f9fa;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .modal-footer-selectors {
+            display: flex;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .modal-footer-selectors select {
+            flex: 1;
+            padding: 10px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
         }
 
         .modal-buttons {
             display: flex;
             gap: 10px;
-            margin-top: 20px;
         }
 
         /* Badge */
@@ -1048,102 +1200,158 @@
     <!-- VALIDATION MODAL -->
     <div class="modal-overlay" id="validation-modal">
         <div class="modal-content">
+            <!-- HEADER -->
             <div class="modal-header">
-                <span>📦 Validación de Despacho</span>
+                <div class="modal-title">📦 Validación de Despacho</div>
                 <button class="modal-close" onclick="closeValidationModal()">×</button>
             </div>
 
-            <div class="modal-section">
-                <div class="modal-section-title">Información de la Orden</div>
-                <div class="modal-grid">
-                    <div class="modal-field">
-                        <div class="modal-field-label">Orden (OBC)</div>
-                        <div class="modal-field-value" id="modal-order">-</div>
+            <!-- KPI CARDS HEADER -->
+            <div class="modal-kpi-header">
+                <div class="kpi-cards">
+                    <!-- KPI 1: Orden (OBC) -->
+                    <div class="kpi-card orden">
+                        <div class="kpi-card-icon">📦</div>
+                        <div class="kpi-card-label">Orden OBC</div>
+                        <div class="kpi-card-value" id="kpi-orden">-</div>
+                        <div class="kpi-card-subtitle" id="kpi-orden-boxes">-</div>
                     </div>
-                    <div class="modal-field">
-                        <div class="modal-field-label">Destino</div>
-                        <div class="modal-field-value" id="modal-destino">-</div>
+
+                    <!-- KPI 2: Destino y Horario -->
+                    <div class="kpi-card destino">
+                        <div class="kpi-card-icon">🌍</div>
+                        <div class="kpi-card-label">Destino</div>
+                        <div class="kpi-card-value" id="kpi-destino">-</div>
+                        <div class="kpi-card-subtitle" id="kpi-horario">-</div>
                     </div>
-                    <div class="modal-field">
-                        <div class="modal-field-label">Horario</div>
-                        <div class="modal-field-value" id="modal-horario">-</div>
+
+                    <!-- KPI 3: Estatus de Validación -->
+                    <div class="kpi-card estatus">
+                        <div class="kpi-card-icon">✅</div>
+                        <div class="kpi-card-label">Validación</div>
+                        <div class="kpi-card-value" id="kpi-validacion">0%</div>
+                        <div class="kpi-progress">
+                            <div class="kpi-progress-bar" id="kpi-progress-bar" style="width: 0%"></div>
+                        </div>
                     </div>
-                    <div class="modal-field">
-                        <div class="modal-field-label">Cantidad Esperada</div>
-                        <div class="modal-field-value" id="modal-qty-expected">-</div>
+
+                    <!-- KPI 4: Orden TRS -->
+                    <div class="kpi-card trs">
+                        <div class="kpi-card-icon">🔄</div>
+                        <div class="kpi-card-label">Orden TRS</div>
+                        <div class="kpi-card-value" id="kpi-trs">-</div>
+                        <div class="kpi-card-subtitle" id="kpi-trs-match">-</div>
+                    </div>
+
+                    <!-- KPI 5: Rastreo -->
+                    <div class="kpi-card rastreo">
+                        <div class="kpi-card-icon">📍</div>
+                        <div class="kpi-card-label">Rastreo</div>
+                        <div class="kpi-card-value" id="kpi-tracking">-</div>
+                        <div class="kpi-card-subtitle" id="kpi-tracking-status">-</div>
                     </div>
                 </div>
             </div>
 
-            <div class="modal-section">
-                <div class="modal-section-title">Validación de Etiquetado</div>
-                <div id="modal-etiquetado-info" style="padding: 15px; background: #f5f5f5; border-radius: 8px;">
-                    <!-- Se genera dinámicamente -->
+            <!-- MODAL BODY -->
+            <div class="modal-body">
+                <!-- Sección 1: Detalle OBC -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Detalle de Orden OBC</div>
+                    <div class="modal-grid">
+                        <div class="modal-field">
+                            <div class="modal-field-label">Número OBC</div>
+                            <div class="modal-field-value" id="detail-orden">-</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Referencia</div>
+                            <div class="modal-field-value" id="detail-referencia">-</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Servicio</div>
+                            <div class="modal-field-value" id="detail-servicio">-</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Fecha Esperada</div>
+                            <div class="modal-field-value" id="detail-fecha">-</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Cantidad Esperada</div>
+                            <div class="modal-field-value" id="detail-qty-expected">-</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Tipo de Caja</div>
+                            <div class="modal-field-value" id="detail-box-type">-</div>
+                        </div>
+                    </div>
+                    <div class="modal-input-group" style="margin-top: 15px;">
+                        <label>Cantidad a Despachar <span style="color: var(--error);">*</span></label>
+                        <input type="number" id="modal-qty-dispatch" min="0" placeholder="Ingresa cantidad...">
+                    </div>
                 </div>
-            </div>
 
-            <div class="modal-section">
-                <div class="modal-section-title">Cantidad a Despachar</div>
-                <div class="modal-input-group">
-                    <label>Cantidad que se enviará <span style="color: var(--error);">*</span></label>
-                    <input type="number" id="modal-qty-dispatch" min="0" placeholder="Ingresa cantidad...">
+                <!-- Sección 2: TRS (Cambio de Etiqueta) -->
+                <div class="modal-section" id="section-trs">
+                    <div class="modal-section-title">🔄 Información TRS (Cambio de Etiqueta)</div>
+                    <div id="trs-content">
+                        <!-- Se genera dinámicamente -->
+                    </div>
                 </div>
-            </div>
 
-            <div class="modal-section">
-                <div class="modal-section-title">Estatus</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <!-- Sección 3: Validación -->
+                <div class="modal-section">
+                    <div class="modal-section-title">✅ Información de Validación</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="modal-input-group">
+                            <label>Estatus de Orden</label>
+                            <select id="modal-status-order">
+                                <option value="OK">OK - Completa</option>
+                                <option value="Envío Parcial">Envío Parcial</option>
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Anormalidad">Anormalidad</option>
+                            </select>
+                        </div>
+                        <div class="modal-input-group">
+                            <label>Control de Calidad</label>
+                            <select id="modal-status-quality">
+                                <option value="Completado">Completado</option>
+                                <option value="Pendiente">Pendiente</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="modal-input-group">
-                        <label>Estatus de Orden</label>
-                        <select id="modal-status-order">
-                            <option value="OK">OK - Completa</option>
-                            <option value="Envío Parcial">Envío Parcial</option>
-                            <option value="Pendiente">Pendiente</option>
-                            <option value="Anormalidad">Anormalidad</option>
-                        </select>
+                        <label>Observaciones/Incidencias</label>
+                        <textarea id="modal-observaciones" rows="3" placeholder="Notas adicionales..."></textarea>
                     </div>
-                    <div class="modal-input-group">
-                        <label>Control de Calidad</label>
-                        <select id="modal-status-quality">
-                            <option value="Completado">Completado</option>
-                            <option value="Pendiente">Pendiente</option>
-                        </select>
+                </div>
+
+                <!-- Sección 4: Rastreo (si existe) -->
+                <div class="modal-section" id="section-rastreo" style="display: none;">
+                    <div class="modal-section-title">📍 Información de Rastreo</div>
+                    <div id="rastreo-content">
+                        <!-- Se genera dinámicamente si hay tracking -->
                     </div>
                 </div>
             </div>
 
-            <div class="modal-section">
-                <div class="modal-section-title">Asignación de Viaje</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="modal-input-group">
-                        <label>Operador/Conductor</label>
-                        <select id="modal-operador">
-                            <option value="">Seleccionar...</option>
-                        </select>
-                    </div>
-                    <div class="modal-input-group">
-                        <label>Unidad/Vehículo</label>
-                        <select id="modal-unidad">
-                            <option value="">Seleccionar...</option>
-                        </select>
-                    </div>
+            <!-- FOOTER -->
+            <div class="modal-footer">
+                <div class="modal-footer-selectors">
+                    <select id="modal-operador">
+                        <option value="">👤 Conductor...</option>
+                    </select>
+                    <select id="modal-unidad">
+                        <option value="">🚛 Unidad/Placas...</option>
+                    </select>
                 </div>
-            </div>
-
-            <div class="modal-section">
-                <div class="modal-input-group">
-                    <label>Observaciones/Incidencias</label>
-                    <textarea id="modal-observaciones" rows="3" placeholder="Notas adicionales..."></textarea>
+                <div class="modal-buttons">
+                    <button class="btn btn-success" onclick="confirmValidation()">
+                        ✅ Confirmar Despacho
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeValidationModal()">
+                        Cancelar
+                    </button>
                 </div>
-            </div>
-
-            <div class="modal-buttons">
-                <button class="btn btn-success" onclick="confirmValidation()" style="flex: 1;">
-                    ✅ Validar y Guardar
-                </button>
-                <button class="btn btn-secondary" onclick="closeValidationModal()">
-                    Cancelar
-                </button>
             </div>
         </div>
     </div>
@@ -1196,8 +1404,52 @@
         // ==================== INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', () => {
             setupEventListeners();
+            loadPendingSync(); // Cargar registros pendientes de localStorage
+            setupConnectionMonitoring(); // Monitorear conexión a internet
             gapi.load('client', initGAPI);
         });
+
+        function setupConnectionMonitoring() {
+            // Actualizar IS_ONLINE cuando cambie la conectividad
+            window.addEventListener('online', () => {
+                IS_ONLINE = true;
+                updateSyncStatus();
+                updateConnectionIndicator();
+                showNotification('🌐 Conexión restaurada', 'success');
+                // Intentar sincronizar automáticamente
+                if (gapi?.client?.getToken() && PENDING_SYNC.length > 0) {
+                    syncData(false);
+                }
+            });
+
+            window.addEventListener('offline', () => {
+                IS_ONLINE = false;
+                updateSyncStatus();
+                updateConnectionIndicator();
+                showNotification('⚠️ Sin conexión a Internet', 'warning');
+            });
+
+            // Inicializar indicador
+            updateConnectionIndicator();
+        }
+
+        function updateConnectionIndicator() {
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+
+            if (!dot || !text) return;
+
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                dot.className = 'connection-dot online';
+                text.textContent = 'Online';
+            } else if (IS_ONLINE) {
+                dot.className = 'connection-dot offline';
+                text.textContent = 'No autenticado';
+            } else {
+                dot.className = 'connection-dot offline';
+                text.textContent = 'Offline';
+            }
+        }
 
         function setupEventListeners() {
             const scanInput = document.getElementById('scan-input');
@@ -1240,8 +1492,15 @@
                 await getUserProfile();
                 await loadAllData(); // Carga TODA la BD sin filtro
                 hidePreloader();
+                updateConnectionIndicator();
+                updateSyncStatus();
                 showNotification('✅ Conexión exitosa - BD cargada completa', 'success');
                 showApp();
+
+                // Si hay registros pendientes, intentar sincronizar
+                if (PENDING_SYNC.length > 0) {
+                    setTimeout(() => syncData(true), 1000);
+                }
             }
         }
 
@@ -1784,28 +2043,7 @@
         function showScanResult(code, orderInfo, trsInfo) {
             STATE.currentScan = { code, orderInfo, trsInfo };
 
-            // Mostrar cards resumen
-            const cardsContainer = document.getElementById('result-cards');
-            cardsContainer.style.display = 'grid';
-            cardsContainer.innerHTML = `
-                <div class="result-card" style="border-color: var(--primary);">
-                    <div class="result-card-label">Orden (OBC)</div>
-                    <div class="result-card-value">${orderInfo.orden}</div>
-                </div>
-                <div class="result-card" style="border-color: var(--info);">
-                    <div class="result-card-label">Destino</div>
-                    <div class="result-card-value">${orderInfo.destino}</div>
-                </div>
-                <div class="result-card" style="border-color: var(--warning);">
-                    <div class="result-card-label">Horario</div>
-                    <div class="result-card-value">${orderInfo.horario}</div>
-                </div>
-                <div class="result-card" style="border-color: ${trsInfo ? 'var(--warning)' : 'var(--success)'};">
-                    <div class="result-card-label">Etiquetado</div>
-                    <div class="result-card-value">${trsInfo ? '⚠️ Requiere cambio' : '✅ OK'}</div>
-                </div>
-            `;
-
+            // NO mostrar tarjetas resumen - ir directo al modal
             // Abrir modal de validación
             openValidationModal();
         }
@@ -1823,64 +2061,111 @@
 
             const { code, orderInfo, trsInfo } = STATE.currentScan;
 
-            // Llenar información
-            document.getElementById('modal-order').textContent = orderInfo.orden;
-            document.getElementById('modal-destino').textContent = orderInfo.destino;
-            document.getElementById('modal-horario').textContent = orderInfo.horario;
-            
-            // Cantidad esperada (simulada, debería venir de OBC_BD)
-            const expectedQty = 10; // TODO: obtener de BD
-            document.getElementById('modal-qty-expected').textContent = expectedQty;
+            // ===== KPI CARDS =====
+            // KPI 1: Orden OBC
+            document.getElementById('kpi-orden').textContent = orderInfo.orden;
+            // Simular cantidad de cajas (TODO: obtener real de BD)
+            const expectedQty = 10;
+            document.getElementById('kpi-orden-boxes').textContent = `${expectedQty} cajas esperadas`;
+
+            // KPI 2: Destino y Horario
+            document.getElementById('kpi-destino').textContent = orderInfo.recipient || orderInfo.destino || 'Sin destino';
+            document.getElementById('kpi-horario').textContent = `📅 ${orderInfo.expectedArrival || 'Sin fecha'}`;
+
+            // KPI 3: Estatus de Validación (0% al inicio)
+            document.getElementById('kpi-validacion').textContent = '0%';
+            document.getElementById('kpi-progress-bar').style.width = '0%';
+
+            // KPI 4: Orden TRS
+            if (trsInfo) {
+                document.getElementById('kpi-trs').textContent = trsInfo.trs;
+                document.getElementById('kpi-trs-match').textContent = '✅ Cambio detectado';
+            } else {
+                document.getElementById('kpi-trs').textContent = 'Sin TRS';
+                document.getElementById('kpi-trs-match').textContent = '✅ Sin cambios';
+            }
+
+            // KPI 5: Rastreo
+            if (orderInfo.trackingCode) {
+                document.getElementById('kpi-tracking').textContent = orderInfo.trackingCode.substring(0, 12) + '...';
+                document.getElementById('kpi-tracking-status').textContent = '✅ Con tracking';
+            } else {
+                document.getElementById('kpi-tracking').textContent = 'Sin código';
+                document.getElementById('kpi-tracking-status').textContent = '⚠️ Sin rastreo';
+            }
+
+            // ===== DETALLE OBC =====
+            document.getElementById('detail-orden').textContent = orderInfo.orden;
+            document.getElementById('detail-referencia').textContent = orderInfo.referenceNo || '-';
+            document.getElementById('detail-servicio').textContent = orderInfo.shippingService || '-';
+            document.getElementById('detail-fecha').textContent = orderInfo.expectedArrival || '-';
+            document.getElementById('detail-qty-expected').textContent = expectedQty;
+            document.getElementById('detail-box-type').textContent = orderInfo.boxType || '-';
             document.getElementById('modal-qty-dispatch').value = expectedQty;
 
-            // Información de etiquetado
-            const etiquetadoDiv = document.getElementById('modal-etiquetado-info');
+            // ===== SECCIÓN TRS =====
+            const trsSection = document.getElementById('trs-content');
             if (trsInfo) {
-                etiquetadoDiv.innerHTML = `
-                    <div style="margin-bottom: 10px;">
-                        <strong>⚠️ Cambio de Etiqueta Detectado</strong>
+                trsSection.innerHTML = `
+                    <div style="padding: 15px; background: #fff3e0; border-radius: 6px; border-left: 4px solid var(--warning); margin-bottom: 12px;">
+                        <strong>⚠️ CAMBIO DE ETIQUETA DETECTADO</strong>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <div style="font-size: 0.8em; color: #666;">Código Original</div>
-                            <div style="font-weight: 700;">${trsInfo.codigoOriginal}</div>
+                    <div class="modal-grid">
+                        <div class="modal-field">
+                            <div class="modal-field-label">Orden TRS</div>
+                            <div class="modal-field-value">${trsInfo.trs}</div>
                         </div>
-                        <div>
-                            <div style="font-size: 0.8em; color: #666;">Código Nuevo</div>
-                            <div style="font-weight: 700; color: var(--warning);">${trsInfo.codigoNuevo}</div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Referencia TRS</div>
+                            <div class="modal-field-value">${trsInfo.referencia || '-'}</div>
                         </div>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <div style="font-size: 0.8em; color: #666;">Orden TRS</div>
-                        <div style="font-weight: 700;">${trsInfo.trs}</div>
-                    </div>
-                `;
-            } else if (orderInfo.ref1 || orderInfo.ref2) {
-                etiquetadoDiv.innerHTML = `
-                    <div style="margin-bottom: 10px;">
-                        <strong>📋 Referencias OBC</strong>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <div style="font-size: 0.8em; color: #666;">Referencia 1</div>
-                            <div style="font-weight: 700;">${orderInfo.ref1 || '-'}</div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Código Original</div>
+                            <div class="modal-field-value">${trsInfo.codigoOriginal}</div>
                         </div>
-                        <div>
-                            <div style="font-size: 0.8em; color: #666;">Referencia 2</div>
-                            <div style="font-weight: 700;">${orderInfo.ref2 || '-'}</div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Código Nuevo</div>
+                            <div class="modal-field-value" style="color: var(--warning);">${trsInfo.codigoNuevo}</div>
                         </div>
-                    </div>
-                    <div style="margin-top: 10px; padding: 10px; background: #e8f5e9; border-radius: 6px;">
-                        ✅ Sin cambio de etiqueta detectado
                     </div>
                 `;
             } else {
-                etiquetadoDiv.innerHTML = `
-                    <div style="padding: 15px; background: #fff3e0; border-radius: 6px; border-left: 3px solid var(--warning);">
-                        ⚠️ No se encontró información de etiquetado. Por favor verifica manualmente.
+                trsSection.innerHTML = `
+                    <div style="padding: 15px; background: #e8f5e9; border-radius: 6px; border-left: 4px solid var(--success);">
+                        ✅ Sin cambio de etiqueta detectado
                     </div>
                 `;
             }
+
+            // ===== SECCIÓN RASTREO =====
+            const rastreoSection = document.getElementById('section-rastreo');
+            const rastreoContent = document.getElementById('rastreo-content');
+            if (orderInfo.trackingCode) {
+                rastreoSection.style.display = 'block';
+                rastreoContent.innerHTML = `
+                    <div class="modal-grid">
+                        <div class="modal-field">
+                            <div class="modal-field-label">Código de Rastreo</div>
+                            <div class="modal-field-value">${orderInfo.trackingCode}</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Servicio</div>
+                            <div class="modal-field-value">${orderInfo.shippingService || '-'}</div>
+                        </div>
+                        <div class="modal-field">
+                            <div class="modal-field-label">Estado</div>
+                            <div class="modal-field-value">📦 En proceso</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                rastreoSection.style.display = 'none';
+            }
+
+            // Limpiar observaciones y resetear estatus
+            document.getElementById('modal-observaciones').value = '';
+            document.getElementById('modal-status-order').value = 'OK';
+            document.getElementById('modal-status-quality').value = 'Completado';
 
             document.getElementById('validation-modal').classList.add('show');
         }
@@ -1926,8 +2211,8 @@
                 hora: now.toTimeString().slice(0, 8),
                 usuario: CURRENT_USER,
                 orden: orderInfo.orden,
-                destino: orderInfo.destino,
-                horario: orderInfo.horario,
+                destino: orderInfo.recipient || orderInfo.destino || '',
+                horario: orderInfo.trackingCode || orderInfo.horario || '',
                 codigo: code,
                 codigo2: trsInfo?.codigoNuevo || '',
                 estatus: statusOrder,
@@ -1936,8 +2221,12 @@
                 incidencias: qtyDispatch < qtyExpected ? 'Envío Parcial' : '',
                 operador: operador || '',
                 unidad: unidad || '',
-                observaciones
+                observaciones,
+                qtyExpected,
+                qtyDispatch
             };
+
+            console.log('Guardando registro de validación:', record);
 
             // Agregar a validadas o pendientes
             if (statusOrder === 'OK' && statusQuality === 'Completado') {
@@ -1949,13 +2238,14 @@
             // Agregar a pending sync
             PENDING_SYNC.push(record);
             savePendingSync();
+            updateSyncStatus();
 
             // Intentar sincronizar
             if (IS_ONLINE && gapi?.client?.getToken()) {
-                await syncData();
+                await syncData(false); // Sin mensajes para no molestar
             }
 
-            showNotification('✅ Validación registrada', 'success');
+            showNotification('✅ Validación registrada correctamente', 'success');
             closeValidationModal();
             clearScan();
             updateUI();
@@ -2159,30 +2449,104 @@ Observaciones: ${order.remark || '-'}
             alert(`📋 DETALLE DE ORDEN\n\nFolio: ${order.folio}\nOrden: ${order.orden}\nDestino: ${order.destino}\nHorario: ${order.horario}\nCódigo: ${order.codigo}\n${order.codigo2 ? `Código 2: ${order.codigo2}\n` : ''}Estatus: ${order.estatus}\nControl Calidad: ${order.estatus2}\nOperador: ${order.operador || '-'}\nUnidad: ${order.unidad || '-'}\nObservaciones: ${order.observaciones || '-'}`);
         }
 
-        // ==================== SYNC ====================
-        async function syncData() {
-            if (PENDING_SYNC.length === 0) return;
+        // ==================== SYNC (Patrón validador.html) ====================
+        /**
+         * Escribir un registro individual a Google Sheets
+         */
+        async function writeToSheets(log) {
+            // Estructura de columnas para BD de Despacho:
+            // Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Codigo, Codigo2,
+            // Estatus, CambioEtiqueta, Estatus2, Incidencias, Operador, Unidad, Observaciones,
+            // QtyExpected, QtyDispatch
+            const values = [[
+                log.folio,
+                log.fecha,
+                log.hora,
+                log.usuario,
+                log.orden,
+                log.destino,
+                log.horario,
+                log.codigo,
+                log.codigo2,
+                log.estatus,
+                log.cambioEtiqueta,
+                log.estatus2,
+                log.incidencias,
+                log.operador,
+                log.unidad,
+                log.observaciones,
+                log.qtyExpected,
+                log.qtyDispatch
+            ]];
 
-            try {
-                const values = PENDING_SYNC.map(r => [
-                    r.folio, r.fecha, r.hora, r.usuario, r.orden, r.destino,
-                    r.horario, r.codigo, r.codigo2, r.estatus, r.cambioEtiqueta,
-                    r.estatus2, r.incidencias, r.operador, r.unidad, r.observaciones
-                ]);
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                range: 'BD!A:R', // Hasta columna R (18 columnas)
+                valueInputOption: 'USER_ENTERED',
+                insertDataOption: 'INSERT_ROWS',
+                resource: { values }
+            });
+        }
 
-                await gapi.client.sheets.spreadsheets.values.append({
-                    spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                    range: 'BD!A:P',
-                    valueInputOption: 'USER_ENTERED',
-                    insertDataOption: 'INSERT_ROWS',
-                    resource: { values }
-                });
+        /**
+         * Sincronizar registros pendientes (uno por uno)
+         */
+        async function syncData(showMessages = true) {
+            if (PENDING_SYNC.length === 0) {
+                if (showMessages) showNotification('✅ Todo sincronizado', 'success');
+                updateSyncStatus();
+                return { success: true, synced: 0 };
+            }
 
-                PENDING_SYNC = [];
-                savePendingSync();
-                showNotification(`✅ ${values.length} registros sincronizados`, 'success');
-            } catch (e) {
-                showNotification('❌ Error en sincronización', 'error');
+            if (!IS_ONLINE) {
+                if (showMessages) showNotification('⚠️ Sin conexión a Internet', 'warning');
+                updateSyncStatus();
+                return { success: false, reason: 'offline' };
+            }
+
+            if (!gapi?.client?.getToken()) {
+                if (showMessages) showNotification('⚠️ No conectado a Google Sheets', 'warning');
+                updateSyncStatus();
+                return { success: false, reason: 'no_token' };
+            }
+
+            const total = PENDING_SYNC.length;
+            if (showMessages) showNotification(`🔄 Sincronizando ${total} registros...`, 'info');
+
+            let success = 0;
+            const errors = [];
+            const toRetry = [];
+
+            // Sincronizar uno por uno (como en validador.html)
+            for (let i = 0; i < PENDING_SYNC.length; i++) {
+                const item = PENDING_SYNC[i];
+                try {
+                    await writeToSheets(item);
+                    success++;
+                    console.log(`✅ Sincronizado ${success}/${total}:`, item.folio);
+                } catch (e) {
+                    console.error('❌ Error sincronizando:', item.folio, e);
+                    toRetry.push(item);
+                    errors.push({ folio: item.folio, error: e.message || 'Error' });
+                }
+
+                // Pequeña pausa entre escrituras para evitar rate limiting
+                if (i < PENDING_SYNC.length - 1) {
+                    await new Promise(r => setTimeout(r, 200));
+                }
+            }
+
+            // Actualizar PENDING_SYNC solo con los que fallaron
+            PENDING_SYNC = toRetry;
+            savePendingSync();
+            updateSyncStatus();
+
+            if (errors.length === 0) {
+                if (showMessages) showNotification(`✅ ${success} registros sincronizados`, 'success');
+                return { success: true, synced: success };
+            } else {
+                if (showMessages) showNotification(`⚠️ ${success} OK, ${errors.length} fallaron`, 'warning');
+                return { success: false, synced: success, failed: errors.length };
             }
         }
 
@@ -2190,8 +2554,54 @@ Observaciones: ${order.remark || '-'}
             localStorage.setItem('desp_pending_sync', JSON.stringify(PENDING_SYNC));
         }
 
-        function showSyncPanel() {
-            alert(`📊 ESTADO DE SINCRONIZACIÓN\n\nPendientes: ${PENDING_SYNC.length}\nValidadas: ${STATE.validatedOrders.length}\nPendientes: ${STATE.pendingOrders.length}`);
+        function loadPendingSync() {
+            try {
+                const saved = localStorage.getItem('desp_pending_sync');
+                if (saved) {
+                    PENDING_SYNC = JSON.parse(saved);
+                    console.log(`📦 Cargados ${PENDING_SYNC.length} registros pendientes de sincronizar`);
+                    updateSyncStatus();
+                }
+            } catch (e) {
+                console.error('Error cargando pending sync:', e);
+            }
+        }
+
+        function updateSyncStatus() {
+            const syncEl = document.getElementById('sync-status');
+            if (!syncEl) return;
+
+            if (!IS_ONLINE) {
+                syncEl.className = 'sync-status sync-warning';
+                syncEl.textContent = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`;
+            } else if (PENDING_SYNC.length > 0) {
+                syncEl.className = 'sync-status sync-warning';
+                syncEl.textContent = `⚠️ ${PENDING_SYNC.length} pendientes`;
+            } else {
+                syncEl.className = 'sync-status sync-ok';
+                syncEl.textContent = '✅ Sincronizado';
+            }
+        }
+
+        async function showSyncPanel() {
+            const hasToken = gapi?.client?.getToken();
+            const message = `📊 ESTADO DE SINCRONIZACIÓN
+
+Registros pendientes de sincronizar: ${PENDING_SYNC.length}
+Órdenes validadas: ${STATE.validatedOrders.length}
+Órdenes pendientes: ${STATE.pendingOrders.length}
+
+Estado de conexión:
+- Internet: ${IS_ONLINE ? '✅ Conectado' : '❌ Sin conexión'}
+- Google Sheets: ${hasToken ? '✅ Autenticado' : '❌ No autenticado'}
+
+${PENDING_SYNC.length > 0 ? '\n¿Deseas sincronizar ahora?' : ''}`;
+
+            if (PENDING_SYNC.length > 0 && confirm(message)) {
+                await syncData(true);
+            } else {
+                alert(message);
+            }
         }
 
         // ==================== MANUAL ORDER ====================
