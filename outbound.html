@@ -670,6 +670,155 @@
 
         .hidden { display: none !important; }
 
+        /* Welcome Screen */
+        .welcome-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .welcome-card {
+            background: white;
+            padding: 50px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .welcome-icon {
+            font-size: 5rem;
+            margin-bottom: 20px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .welcome-title {
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .welcome-btn {
+            padding: 16px 40px;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+        }
+
+        .welcome-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+        }
+
+        /* Preloader */
+        .preloader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .preloader-overlay.show { display: flex; }
+
+        .preloader-content {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .preloader-spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .preloader-text {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+
+        .preloader-subtext {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        /* Date Filter Modal */
+        .date-filter-modal {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 95%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .date-filter-header {
+            font-size: 1.5em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--primary);
+            text-align: center;
+        }
+
+        .date-input-group {
+            margin-bottom: 20px;
+        }
+
+        .date-input-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .date-input-group input[type="date"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        .date-input-group input[type="date"]:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .panels-container { grid-template-columns: 1fr; }
@@ -679,8 +828,20 @@
 <body>
     <div class="notification-container" id="notifications"></div>
 
+    <!-- WELCOME SCREEN -->
+    <div class="welcome-screen" id="welcome-screen">
+        <div class="welcome-card">
+            <div class="welcome-icon">🚚</div>
+            <h1 class="welcome-title">Sistema de Despacho</h1>
+            <p class="welcome-subtitle">Validación y Control Logístico</p>
+            <button class="welcome-btn" onclick="goToLogin()">
+                🚀 Iniciar Validación
+            </button>
+        </div>
+    </div>
+
     <!-- LOGIN -->
-    <div class="login-screen" id="login-screen">
+    <div class="login-screen hidden" id="login-screen">
         <div class="login-card">
             <div class="login-icon">🚚</div>
             <h1 class="login-title">Sistema de Despacho</h1>
@@ -707,6 +868,9 @@
 
                 <div class="sidebar-section">
                     <div class="sidebar-section-title">Acciones</div>
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="showDateFilterModal()">
+                        📅 Filtrar por Fecha
+                    </button>
                     <button class="sidebar-btn sidebar-btn-primary" onclick="showManualOrderModal()">
                         ➕ Orden Manual
                     </button>
@@ -838,6 +1002,44 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- DATE FILTER MODAL -->
+    <div class="modal-overlay" id="date-filter-modal">
+        <div class="date-filter-modal">
+            <div class="date-filter-header">📅 Filtro Temporal</div>
+            <p style="text-align: center; color: #666; margin-bottom: 25px;">
+                Selecciona el rango de fechas para cargar las órdenes
+            </p>
+            <div class="date-input-group">
+                <label>📆 Fecha Inicial</label>
+                <input type="date" id="date-start" required>
+            </div>
+            <div class="date-input-group">
+                <label>📆 Fecha Final</label>
+                <input type="date" id="date-end" required>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="applyDateFilter()" style="flex: 1;">
+                    ✅ Aplicar Filtro
+                </button>
+                <button class="btn btn-warning" onclick="clearDateFilterAndClose()">
+                    🔄 Quitar Filtro
+                </button>
+                <button class="btn btn-secondary" onclick="closeDateFilterModal()">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRELOADER -->
+    <div class="preloader-overlay" id="preloader">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text" id="preloader-text">Conectando con Google Sheets...</div>
+            <div class="preloader-subtext" id="preloader-subtext">Por favor espera un momento</div>
         </div>
     </div>
 
@@ -973,7 +1175,11 @@
             validatedOrders: [],
             pendingOrders: [],
             currentScan: null,
-            folioCounter: 1
+            folioCounter: 1,
+            dateFilter: {
+                startDate: null,
+                endDate: null
+            }
         };
 
         let CURRENT_USER = '';
@@ -1007,9 +1213,18 @@
                 TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
                     client_id: CONFIG.CLIENT_ID,
                     scope: CONFIG.SCOPES,
-                    callback: handleAuthCallback
+                    callback: handleAuthCallback,
+                    error_callback: (error) => {
+                        hidePreloader();
+                        if (error.type !== 'popup_closed') {
+                            showNotification('❌ Error de autenticación: ' + error.message, 'error');
+                        } else {
+                            showNotification('⚠️ Autenticación cancelada', 'warning');
+                        }
+                    }
                 });
             } catch (e) {
+                hidePreloader();
                 showNotification('Error inicializando API', 'error');
             }
         }
@@ -1017,14 +1232,23 @@
         async function handleAuthCallback(response) {
             if (response?.access_token) {
                 gapi.client.setToken(response);
+                showPreloader('Cargando datos...', 'Obteniendo información del sistema');
                 await getUserProfile();
                 await loadAllData();
+                hidePreloader();
+                showNotification('✅ Conexión exitosa con Google Sheets', 'success');
                 showApp();
             }
         }
 
         function handleLogin() {
+            showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
             TOKEN_CLIENT?.requestAccessToken();
+        }
+
+        function goToLogin() {
+            document.getElementById('welcome-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
         }
 
         async function getUserProfile() {
@@ -1062,6 +1286,83 @@
                 gapi.client.setToken(null);
             }
             location.reload();
+        }
+
+        // ==================== DATE FILTER MODAL ====================
+        function showDateFilterModal() {
+            // Set default dates based on current filter or defaults
+            const today = new Date();
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + 7);
+
+            // If filter is already set, use those dates
+            if (STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+                document.getElementById('date-start').value = STATE.dateFilter.startDate;
+                document.getElementById('date-end').value = STATE.dateFilter.endDate;
+            } else {
+                document.getElementById('date-start').value = today.toISOString().slice(0, 10);
+                document.getElementById('date-end').value = endDate.toISOString().slice(0, 10);
+            }
+
+            document.getElementById('date-filter-modal').classList.add('show');
+        }
+
+        function closeDateFilterModal() {
+            document.getElementById('date-filter-modal').classList.remove('show');
+        }
+
+        async function applyDateFilter() {
+            const startDate = document.getElementById('date-start').value;
+            const endDate = document.getElementById('date-end').value;
+
+            if (!startDate || !endDate) {
+                showNotification('⚠️ Por favor selecciona ambas fechas', 'warning');
+                return;
+            }
+
+            if (new Date(startDate) > new Date(endDate)) {
+                showNotification('⚠️ La fecha inicial debe ser menor o igual a la fecha final', 'warning');
+                return;
+            }
+
+            // Save date filter
+            STATE.dateFilter.startDate = startDate;
+            STATE.dateFilter.endDate = endDate;
+
+            closeDateFilterModal();
+
+            // Reload data with filter
+            showPreloader('Aplicando filtro de fecha...', 'Cargando órdenes del periodo seleccionado');
+            await loadAllData();
+            hidePreloader();
+
+            // Show notification about the selected range
+            const start = new Date(startDate).toLocaleDateString('es-ES');
+            const end = new Date(endDate).toLocaleDateString('es-ES');
+            showNotification(`📅 Filtro aplicado: ${start} - ${end}`, 'success');
+        }
+
+        async function clearDateFilterAndClose() {
+            STATE.dateFilter.startDate = null;
+            STATE.dateFilter.endDate = null;
+            closeDateFilterModal();
+
+            showPreloader('Cargando todas las órdenes...', 'Removiendo filtro de fecha');
+            await loadAllData();
+            hidePreloader();
+
+            showNotification('🔄 Filtro de fecha removido - Mostrando todas las órdenes', 'info');
+        }
+
+        // ==================== PRELOADER ====================
+        function showPreloader(text = 'Cargando...', subtext = 'Por favor espera') {
+            document.getElementById('preloader-text').textContent = text;
+            document.getElementById('preloader-subtext').textContent = subtext;
+            document.getElementById('preloader').classList.add('show');
+        }
+
+        function hidePreloader() {
+            document.getElementById('preloader').classList.remove('show');
         }
 
         function changeUserAlias() {
@@ -1117,7 +1418,14 @@
                 const trsCsv = await trsResponse.text();
                 parseTRSData(trsCsv);
 
-                showNotification(`✅ ${STATE.obcData.size} órdenes cargadas`, 'success');
+                // Show notification with date range if filtered
+                let message = `✅ ${STATE.obcData.size} órdenes cargadas`;
+                if (STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+                    const start = new Date(STATE.dateFilter.startDate).toLocaleDateString('es-ES');
+                    const end = new Date(STATE.dateFilter.endDate).toLocaleDateString('es-ES');
+                    message += ` (${start} - ${end})`;
+                }
+                showNotification(message, 'success');
                 updateBdInfo();
             } catch (e) {
                 showNotification('❌ Error cargando datos', 'error');
@@ -1128,22 +1436,101 @@
             const lines = csv.split('\n').filter(l => l.trim());
             STATE.obcData.clear();
 
+            /**
+             * Base de datos OBC (Outbound) - Estructura de columnas:
+             * Columna 0: Outbound_出库单号 (Número de orden de salida)
+             * Columna 1: Reference order No._参考单号 (Número de orden de referencia)
+             * Columna 2: Shipping service_物流渠道 (Servicio de envío/Canal logístico)
+             * Columna 3: 货件追踪码/Reference ID (Código de seguimiento de envío)
+             * Columna 4: Expected Arrival Time _ 期望到仓时间 (Fecha esperada de llegada a almacén)
+             * Columna 5: Remark_备注 (Observaciones)
+             * Columna 6: Recipient_收件人 (Destinatario)
+             * Columna 7: Box type No_箱类型号 (Tipo de caja)
+             * Columna 8: Custom box barcode_自定义箱条码 (Código de barras personalizado de la caja)
+             */
+            const outboundIdx = 0;
+            const refNoIdx = 1;
+            const shippingServiceIdx = 2;
+            const trackingCodeIdx = 3;
+            const expectedArrivalIdx = 4;
+            const remarkIdx = 5;
+            const recipientIdx = 6;
+            const boxTypeIdx = 7;
+            const customBarcodeIdx = 8;
+
             for (let i = 1; i < lines.length; i++) {
                 const cols = parseCSVLine(lines[i]);
                 if (cols.length >= 6) {
-                    const orden = cols[0]?.trim();
+                    const orden = cols[outboundIdx]?.trim();
+                    const expectedArrival = cols[expectedArrivalIdx]?.trim();
+
                     if (orden) {
+                        // Filter by date range if set
+                        if (STATE.dateFilter.startDate && STATE.dateFilter.endDate && expectedArrival) {
+                            const orderDate = parseOrderDate(expectedArrival);
+                            if (orderDate) {
+                                const startDate = new Date(STATE.dateFilter.startDate);
+                                const endDate = new Date(STATE.dateFilter.endDate);
+                                endDate.setHours(23, 59, 59, 999); // Include full end date
+
+                                if (orderDate < startDate || orderDate > endDate) {
+                                    continue; // Skip this order, outside date range
+                                }
+                            }
+                        }
+
                         STATE.obcData.set(orden, {
-                            orden,
-                            ref1: cols[1]?.trim() || '',
-                            ref2: cols[2]?.trim() || '',
-                            horario: cols[3]?.trim() || '',
-                            destino: cols[4]?.trim() || '',
-                            codigo: cols[5]?.trim() || ''
+                            orden, // Outbound_出库单号
+                            referenceNo: cols[refNoIdx]?.trim() || '', // Reference order No._参考单号
+                            shippingService: cols[shippingServiceIdx]?.trim() || '', // Shipping service_物流渠道
+                            trackingCode: cols[trackingCodeIdx]?.trim() || '', // 货件追踪码/Reference ID
+                            expectedArrival: expectedArrival || '', // Expected Arrival Time _ 期望到仓时间
+                            remark: cols[remarkIdx]?.trim() || '', // Remark_备注
+                            recipient: cols[recipientIdx]?.trim() || '', // Recipient_收件人
+                            boxType: cols[boxTypeIdx]?.trim() || '', // Box type No_箱类型号
+                            customBarcode: cols[customBarcodeIdx]?.trim() || '', // Custom box barcode_自定义箱条码
+
+                            // Legacy fields for backward compatibility
+                            ref1: cols[refNoIdx]?.trim() || '',
+                            ref2: cols[shippingServiceIdx]?.trim() || '',
+                            horario: cols[trackingCodeIdx]?.trim() || '',
+                            destino: cols[recipientIdx]?.trim() || '',
+                            codigo: cols[customBarcodeIdx]?.trim() || ''
                         });
                     }
                 }
             }
+        }
+
+        // Helper function to parse dates from OBC (handles various formats)
+        function parseOrderDate(dateStr) {
+            if (!dateStr) return null;
+
+            // Try ISO format first (YYYY-MM-DD)
+            let date = new Date(dateStr);
+            if (!isNaN(date.getTime())) return date;
+
+            // Try DD/MM/YYYY
+            const parts = dateStr.split(/[/-]/);
+            if (parts.length === 3) {
+                // Assume DD/MM/YYYY or MM/DD/YYYY
+                const d = parseInt(parts[0]);
+                const m = parseInt(parts[1]);
+                const y = parseInt(parts[2]);
+
+                // If year is 2 digits, convert to 4
+                const year = y < 100 ? 2000 + y : y;
+
+                // Try DD/MM/YYYY first
+                date = new Date(year, m - 1, d);
+                if (!isNaN(date.getTime())) return date;
+
+                // Try MM/DD/YYYY
+                date = new Date(year, d - 1, m);
+                if (!isNaN(date.getTime())) return date;
+            }
+
+            return null;
         }
 
         function parseListasData(csv) {
@@ -1220,7 +1607,16 @@
 
         function updateBdInfo() {
             document.getElementById('bd-count').textContent = STATE.obcData.size;
-            document.getElementById('bd-update-time').textContent = new Date().toLocaleTimeString();
+            const updateTime = new Date().toLocaleTimeString();
+            let timeText = updateTime;
+
+            if (STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+                const start = new Date(STATE.dateFilter.startDate).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+                const end = new Date(STATE.dateFilter.endDate).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+                timeText += `<br><small style="font-size: 0.85em;">📅 ${start} - ${end}</small>`;
+            }
+
+            document.getElementById('bd-update-time').innerHTML = timeText;
         }
 
         function refreshData() {
