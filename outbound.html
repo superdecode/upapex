@@ -6,16 +6,18 @@
     <title>🚚 Sistema de Despacho Logístico</title>
     <style>
         :root {
-            --primary: #2563eb;
+            --primary: #f97316;
             --success: #4CAF50;
             --warning: #FF9800;
             --error: #F44336;
-            --info: #00BCD4;
+            --info: #2563eb;
             --bg: #f7f7f7;
             --text: #333;
             --card: #ffffff;
             --border: #e2e8f0;
             --gray: #6c757d;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
+            --shadow-hover: 0 4px 12px rgba(0,0,0,0.15);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -34,7 +36,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, #ea580c 100%);
         }
 
         .login-card {
@@ -758,6 +760,34 @@
         }
 
         /* Tabla de datos (estilo track.html) */
+        /* Table Wrapper with Scroll (track.html style) */
+        .table-wrapper {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .table-wrapper::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+
+        .table-wrapper::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .table-wrapper::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .table-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
         .data-table {
             width: 100%;
             border-collapse: collapse;
@@ -766,29 +796,32 @@
         }
 
         .data-table th {
-            background: #f3f4f6;
-            padding: 8px 10px;
+            background: #f9f9f9;
+            padding: 12px;
             text-align: left;
-            font-weight: 600;
+            font-weight: 700;
             font-size: 0.8em;
-            color: #374151;
-            border-bottom: 2px solid #e5e7eb;
+            color: var(--text);
+            border-bottom: 2px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         .data-table td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #e5e7eb;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
         }
 
         .data-table tr:hover {
-            background: #f9fafb;
+            background: #f9f9f9;
         }
 
         .data-table code {
-            background: #f3f4f6;
+            background: #f5f5f5;
             padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
+            border-radius: 4px;
+            font-family: monospace;
             font-size: 0.9em;
         }
 
@@ -921,6 +954,46 @@
         .badge.warning { background: rgba(255, 152, 0, 0.15); color: var(--warning); }
         .badge.error { background: rgba(244, 67, 54, 0.15); color: var(--error); }
         .badge.info { background: rgba(0, 188, 212, 0.15); color: var(--info); }
+        .badge.primary { background: rgba(249, 115, 22, 0.15); color: var(--primary); }
+        .badge.gray { background: rgba(108, 117, 125, 0.15); color: var(--gray); }
+
+        /* Copyable value with hover icon (from track.html) */
+        .copyable {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+        }
+
+        .copy-icon {
+            opacity: 0;
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            color: #888;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .copyable:hover .copy-icon {
+            opacity: 1;
+        }
+
+        .copy-icon:hover {
+            background: #e0e0e0;
+            color: var(--primary);
+        }
+
+        .copy-icon.copied {
+            opacity: 1;
+            color: var(--success);
+        }
+
+        .copy-icon svg {
+            width: 14px;
+            height: 14px;
+        }
 
         /* Notifications */
         .notification-container {
@@ -1848,6 +1921,16 @@
                 const trsCsv = await trsResponse.text();
                 parseTRSData(trsCsv);
 
+                // Load VALIDACION (Val3)
+                const validacionResponse = await fetch(CONFIG.SOURCES.VALIDACION);
+                const validacionCsv = await validacionResponse.text();
+                parseValidacionData(validacionCsv);
+
+                // Load MNE (Rastreo)
+                const mneResponse = await fetch(CONFIG.SOURCES.MNE);
+                const mneCsv = await mneResponse.text();
+                parseMNEData(mneCsv);
+
                 // Show notification with date range if filtered
                 let message = `✅ ${STATE.obcData.size} órdenes cargadas`;
                 if (STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
@@ -1858,6 +1941,7 @@
                 showNotification(message, 'success');
                 updateBdInfo();
             } catch (e) {
+                console.error('Error loading data:', e);
                 showNotification('❌ Error cargando datos', 'error');
             }
         }
@@ -1999,6 +2083,81 @@
                         codigoOriginal: cols[13]?.trim() || '',
                         codigoNuevo: cols[14]?.trim() || ''
                     });
+                }
+            }
+        }
+
+        function parseValidacionData(csv) {
+            const lines = csv.split('\n').filter(l => l.trim());
+            STATE.validacionData.clear();
+
+            /**
+             * Base de datos VALIDACION (Validación de Surtido) - Estructura:
+             * Columna 0: Fecha
+             * Columna 1: Hora
+             * Columna 2: Validador (Usuario)
+             * Columna 3: Orden (OBC)
+             * Columna 4: Codigo
+             * Columna 5: Ubicación
+             * Columna 6: Porcentaje Validado
+             * Columna 7: Nota
+             */
+            for (let i = 1; i < lines.length; i++) {
+                const cols = parseCSVLine(lines[i]);
+                if (cols.length >= 5) {
+                    const orden = cols[3]?.trim();
+                    if (orden) {
+                        if (!STATE.validacionData.has(orden)) {
+                            STATE.validacionData.set(orden, []);
+                        }
+                        STATE.validacionData.get(orden).push({
+                            fecha: cols[0]?.trim() || '',
+                            hora: cols[1]?.trim() || '',
+                            usuario: cols[2]?.trim() || '',
+                            orden: orden,
+                            codigo: cols[4]?.trim() || '',
+                            ubicacion: cols[5]?.trim() || '',
+                            porcentaje: cols[6]?.trim() || '',
+                            nota: cols[7]?.trim() || ''
+                        });
+                    }
+                }
+            }
+        }
+
+        function parseMNEData(csv) {
+            const lines = csv.split('\n').filter(l => l.trim());
+            STATE.mneData.clear();
+
+            /**
+             * Base de datos MNE (Rastreo) - Estructura:
+             * Columna 0: Fecha
+             * Columna 1: Mes
+             * Columna 2: Mes2
+             * Columna 3: OBC 出库单 (Orden OBC)
+             * Columna 4: IB
+             * Columna 5: Código 货号
+             * Columna 12: Responsable
+             * Columna 16: Estado/Estatus 状态 (Columna Q)
+             */
+            for (let i = 1; i < lines.length; i++) {
+                const cols = parseCSVLine(lines[i]);
+                if (cols.length >= 6) {
+                    const obc = cols[3]?.trim();
+                    if (obc && !cols[0]?.toLowerCase().includes('fecha')) {
+                        if (!STATE.mneData.has(obc)) {
+                            STATE.mneData.set(obc, []);
+                        }
+                        STATE.mneData.get(obc).push({
+                            fecha: cols[0]?.trim() || '',
+                            mes: cols[1]?.trim() || '',
+                            obc: obc,
+                            ib: cols[4]?.trim() || '',
+                            codigo: cols[5]?.trim() || '',
+                            responsable: cols[12]?.trim() || '',
+                            estado: cols[16]?.trim() || '📦 En proceso'
+                        });
+                    }
                 }
             }
         }
@@ -2332,7 +2491,7 @@
         function makeCopyable(text) {
             if (!text || text === '-') return text;
             const sanitized = String(text).replace(/'/g, "\\'");
-            return `<span class="copyable">${text}<span class="copy-icon" onclick="copyToClipboard('${sanitized}', this)">📋</span></span>`;
+            return `<span class="copyable">${text}<span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${sanitized}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></span>`;
         }
 
         function copyToClipboard(text, iconElement) {
@@ -2340,13 +2499,17 @@
 
             navigator.clipboard.writeText(text).then(() => {
                 iconElement.classList.add('copied');
-                iconElement.textContent = '✅';
+                iconElement.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
                 setTimeout(() => {
                     iconElement.classList.remove('copied');
-                    iconElement.textContent = '📋';
-                }, 2000);
+                    iconElement.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+                }, 1500);
+
+                showNotification('📋 Copiado al portapapeles', 'success');
             }).catch(err => {
                 console.error('Error copiando:', err);
+                showNotification('❌ Error al copiar', 'error');
             });
         }
 
@@ -2450,11 +2613,14 @@
                 </table>
             `;
 
-            // ===== TABLA HORIZONTAL TRS (con validación integrada) =====
+            // ===== TABLA HORIZONTAL TRS (con validación integrada) - SIEMPRE PRESENTE =====
             const trsSection = document.getElementById('section-trs');
             const trsContainer = document.getElementById('trs-table-container');
+
+            // SIEMPRE mostrar la sección TRS
+            trsSection.style.display = 'block';
+
             if (trsInfo) {
-                trsSection.style.display = 'block';
                 trsContainer.innerHTML = `
                     <div style="padding: 10px 12px; background: #fff3e0; border-radius: 6px; border-left: 4px solid var(--warning); margin-bottom: 12px; font-size: 0.9em;">
                         <strong>⚠️ CAMBIO DE ETIQUETA DETECTADO</strong>
@@ -2492,7 +2658,14 @@
                     </table>
                 `;
             } else {
-                trsSection.style.display = 'none';
+                // Mostrar mensaje cuando NO hay TRS
+                trsContainer.innerHTML = `
+                    <div style="padding: 20px; text-align: center; background: #f9f9f9; border-radius: 8px; border: 2px dashed var(--border);">
+                        <div style="font-size: 2em; margin-bottom: 10px; color: var(--success);">✅</div>
+                        <div style="font-weight: 600; color: var(--text); margin-bottom: 5px;">Sin Orden TRS</div>
+                        <div style="font-size: 0.85em; color: #666;">No se detectaron cambios de etiqueta para esta orden</div>
+                    </div>
+                `;
             }
 
             // ===== TABLA VALIDACIÓN DE SURTIDO (Val3) =====
@@ -2566,27 +2739,70 @@
             document.getElementById('validation-modal').classList.add('show');
         }
 
-        // ===== BUSCAR EN BD VAL3 =====
+        // ===== BUSCAR EN BD VAL3 (Validación de Surtido) =====
         function findVal3ByOrder(ordenOBC) {
-            // TODO: Implementar búsqueda en STATE.mneData (Val3)
-            // Por ahora retornamos null, se implementará cuando se cargue Val3
-            return null;
+            if (!ordenOBC || !STATE.validacionData.has(ordenOBC)) {
+                return null;
+            }
+
+            const records = STATE.validacionData.get(ordenOBC);
+            const validatedCount = records.length;
+
+            // Calcular el porcentaje promedio si está disponible
+            let totalPercent = 0;
+            records.forEach(r => {
+                const percent = parseFloat(r.porcentaje) || 0;
+                totalPercent += percent;
+            });
+            const avgPercent = validatedCount > 0 ? Math.round(totalPercent / validatedCount) : 0;
+
+            return {
+                records: records,
+                validatedCount: validatedCount,
+                percent: avgPercent
+            };
         }
 
         // ===== BUSCAR EN BD MNE (Rastreo) =====
         function findMNEByOrder(ordenOBC) {
-            // TODO: Implementar búsqueda en STATE.mneData
-            // Columna Q (index 16) contiene el Estado (Estatus 状态)
-            // Por ahora retornamos null, se implementará cuando se cargue MNE
-            return null;
+            if (!ordenOBC || !STATE.mneData.has(ordenOBC)) {
+                return null;
+            }
+
+            const records = STATE.mneData.get(ordenOBC);
+
+            // Obtener el último registro (más reciente)
+            const lastRecord = records[records.length - 1];
+
+            return {
+                records: records,
+                estado: lastRecord?.estado || '📦 En proceso',
+                codigo: lastRecord?.codigo || '',
+                responsable: lastRecord?.responsable || ''
+            };
         }
 
-        // ===== NAVEGACIÓN POR ANCLAS =====
+        // ===== NAVEGACIÓN POR ANCLAS (Mejorada para abrir secciones) =====
         function jumpToSection(sectionId) {
             const section = document.getElementById(sectionId);
-            if (section) {
-                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (!section) return;
+
+            // Buscar el content asociado a esta sección
+            const contentId = sectionId + '-content';
+            const content = document.getElementById(contentId);
+            const toggle = document.getElementById(contentId.replace('-content', '-toggle'));
+
+            // Si la sección está colapsada, expandirla
+            if (content && content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                content.style.maxHeight = content.scrollHeight + 'px';
+                if (toggle) toggle.classList.remove('collapsed');
             }
+
+            // Scroll suave a la sección
+            setTimeout(() => {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
         }
 
         // ===== TOGGLE DE SECCIONES =====
@@ -2609,8 +2825,17 @@
             document.getElementById('validation-modal').classList.remove('show');
         }
 
+        // Variable global para prevenir múltiples guardados
+        let IS_SAVING = false;
+
         async function confirmValidation() {
             if (!STATE.currentScan) return;
+
+            // PREVENIR GUARDADO MÚLTIPLE - Verificar si ya está guardando
+            if (IS_SAVING) {
+                showNotification('⏳ Ya se está procesando la validación...', 'warning');
+                return;
+            }
 
             const { code, orderInfo, trsInfo } = STATE.currentScan;
 
@@ -2635,55 +2860,75 @@
                 }
             }
 
-            // Generar folio
-            const folio = generateFolio();
-
-            // Crear registro
-            const now = new Date();
-            const record = {
-                folio,
-                fecha: now.toISOString().slice(0, 10),
-                hora: now.toTimeString().slice(0, 8),
-                usuario: CURRENT_USER,
-                orden: orderInfo.orden,
-                destino: orderInfo.recipient || orderInfo.destino || '',
-                horario: orderInfo.trackingCode || orderInfo.horario || '',
-                codigo: code,
-                codigo2: trsInfo?.codigoNuevo || '',
-                estatus: statusOrder,
-                cambioEtiqueta: trsInfo ? 'SÍ' : 'NO',
-                estatus2: statusQuality,
-                incidencias: qtyDispatch < qtyExpected ? 'Envío Parcial' : '',
-                operador: operador || '',
-                unidad: unidad || '',
-                observaciones,
-                qtyExpected,
-                qtyDispatch
-            };
-
-            console.log('Guardando registro de validación:', record);
-
-            // Agregar a validadas o pendientes
-            if (statusOrder === 'OK' && statusQuality === 'Completado') {
-                STATE.validatedOrders.push(record);
-            } else {
-                STATE.pendingOrders.push(record);
+            // Marcar como guardando y deshabilitar botón
+            IS_SAVING = true;
+            const confirmBtn = document.querySelector('.btn-success');
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = '⏳ Guardando...';
             }
 
-            // Agregar a pending sync
-            PENDING_SYNC.push(record);
-            savePendingSync();
-            updateSyncStatus();
+            try {
+                // Generar folio
+                const folio = generateFolio();
 
-            // Intentar sincronizar
-            if (IS_ONLINE && gapi?.client?.getToken()) {
-                await syncData(false); // Sin mensajes para no molestar
+                // Crear registro
+                const now = new Date();
+                const record = {
+                    folio,
+                    fecha: now.toISOString().slice(0, 10),
+                    hora: now.toTimeString().slice(0, 8),
+                    usuario: CURRENT_USER,
+                    orden: orderInfo.orden,
+                    destino: orderInfo.recipient || orderInfo.destino || '',
+                    horario: orderInfo.trackingCode || orderInfo.horario || '',
+                    codigo: code,
+                    codigo2: trsInfo?.codigoNuevo || '',
+                    estatus: statusOrder,
+                    cambioEtiqueta: trsInfo ? 'SÍ' : 'NO',
+                    estatus2: statusQuality,
+                    incidencias: qtyDispatch < qtyExpected ? 'Envío Parcial' : '',
+                    operador: operador || '',
+                    unidad: unidad || '',
+                    observaciones,
+                    qtyExpected,
+                    qtyDispatch
+                };
+
+                console.log('Guardando registro de validación:', record);
+
+                // Agregar a validadas o pendientes
+                if (statusOrder === 'OK' && statusQuality === 'Completado') {
+                    STATE.validatedOrders.push(record);
+                } else {
+                    STATE.pendingOrders.push(record);
+                }
+
+                // Agregar a pending sync
+                PENDING_SYNC.push(record);
+                savePendingSync();
+                updateSyncStatus();
+
+                // Intentar sincronizar
+                if (IS_ONLINE && gapi?.client?.getToken()) {
+                    await syncData(false); // Sin mensajes para no molestar
+                }
+
+                showNotification('✅ Validación registrada correctamente', 'success');
+                closeValidationModal();
+                clearScan();
+                updateUI();
+            } catch (error) {
+                console.error('Error al guardar validación:', error);
+                showNotification('❌ Error al guardar la validación', 'error');
+            } finally {
+                // Siempre restablecer el estado
+                IS_SAVING = false;
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = '✅ Confirmar Despacho';
+                }
             }
-
-            showNotification('✅ Validación registrada correctamente', 'success');
-            closeValidationModal();
-            clearScan();
-            updateUI();
         }
 
         function generateFolio() {
