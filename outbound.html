@@ -587,31 +587,32 @@
             color: #333;
         }
 
-        /* KPI Cards Header */
+        /* KPI Cards Header (Compactas estilo track.html) */
         .modal-kpi-header {
-            padding: 20px;
+            padding: 15px 20px;
             background: white;
             border-bottom: 1px solid var(--border);
         }
 
         .kpi-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
         }
 
         .kpi-card {
-            padding: 15px;
+            padding: 10px 12px;
             background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border-radius: 8px;
-            border-left: 4px solid;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            border-radius: 6px;
+            border-left: 3px solid;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
             transition: all 0.2s;
+            cursor: pointer;
         }
 
         .kpi-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
         }
 
         .kpi-card.orden { border-color: var(--primary); }
@@ -620,45 +621,121 @@
         .kpi-card.trs { border-color: var(--warning); }
         .kpi-card.rastreo { border-color: #9333ea; }
 
-        .kpi-card-icon {
-            font-size: 1.8em;
-            margin-bottom: 8px;
-        }
-
         .kpi-card-label {
-            font-size: 0.7em;
+            font-size: 0.65em;
             color: #666;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
+            letter-spacing: 0.3px;
+            margin-bottom: 4px;
             font-weight: 600;
         }
 
         .kpi-card-value {
-            font-size: 1.2em;
+            font-size: 1em;
             font-weight: 700;
             color: var(--text);
-            margin-bottom: 3px;
+            margin-bottom: 2px;
         }
 
         .kpi-card-subtitle {
-            font-size: 0.75em;
+            font-size: 0.7em;
             color: #888;
         }
 
         .kpi-progress {
-            margin-top: 8px;
-            height: 6px;
+            margin-top: 6px;
+            height: 4px;
             background: #e0e0e0;
-            border-radius: 3px;
+            border-radius: 2px;
             overflow: hidden;
         }
 
         .kpi-progress-bar {
             height: 100%;
             background: linear-gradient(90deg, var(--success) 0%, #22c55e 100%);
-            border-radius: 3px;
+            border-radius: 2px;
             transition: width 0.3s;
+        }
+
+        /* Sections (estilo track.html) */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .section-header:hover {
+            background: #e9ecef;
+        }
+
+        .section-title {
+            font-size: 0.95em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+        }
+
+        .section-toggle {
+            color: #999;
+            font-size: 0.9em;
+            transition: transform 0.3s;
+        }
+
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+        }
+
+        /* Tabla de datos (estilo track.html) */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+            background: white;
+        }
+
+        .data-table th {
+            background: #f3f4f6;
+            padding: 8px 10px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.8em;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .data-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .data-table tr:hover {
+            background: #f9fafb;
+        }
+
+        .data-table code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
         }
 
         /* Modal Body */
@@ -1206,29 +1283,26 @@
                 <button class="modal-close" onclick="closeValidationModal()">×</button>
             </div>
 
-            <!-- KPI CARDS HEADER -->
+            <!-- KPI CARDS HEADER (Compactas con navegación) -->
             <div class="modal-kpi-header">
                 <div class="kpi-cards">
                     <!-- KPI 1: Orden (OBC) -->
-                    <div class="kpi-card orden">
-                        <div class="kpi-card-icon">📦</div>
-                        <div class="kpi-card-label">Orden OBC</div>
+                    <div class="kpi-card orden" onclick="jumpToSection('section-obc')">
+                        <div class="kpi-card-label">📦 Orden OBC</div>
                         <div class="kpi-card-value" id="kpi-orden">-</div>
                         <div class="kpi-card-subtitle" id="kpi-orden-boxes">-</div>
                     </div>
 
                     <!-- KPI 2: Destino y Horario -->
-                    <div class="kpi-card destino">
-                        <div class="kpi-card-icon">🌍</div>
-                        <div class="kpi-card-label">Destino</div>
+                    <div class="kpi-card destino" onclick="jumpToSection('section-obc')">
+                        <div class="kpi-card-label">🌍 Destino</div>
                         <div class="kpi-card-value" id="kpi-destino">-</div>
                         <div class="kpi-card-subtitle" id="kpi-horario">-</div>
                     </div>
 
                     <!-- KPI 3: Estatus de Validación -->
-                    <div class="kpi-card estatus">
-                        <div class="kpi-card-icon">✅</div>
-                        <div class="kpi-card-label">Validación</div>
+                    <div class="kpi-card estatus" onclick="jumpToSection('section-validacion')">
+                        <div class="kpi-card-label">✅ Validación</div>
                         <div class="kpi-card-value" id="kpi-validacion">0%</div>
                         <div class="kpi-progress">
                             <div class="kpi-progress-bar" id="kpi-progress-bar" style="width: 0%"></div>
@@ -1236,100 +1310,111 @@
                     </div>
 
                     <!-- KPI 4: Orden TRS -->
-                    <div class="kpi-card trs">
-                        <div class="kpi-card-icon">🔄</div>
-                        <div class="kpi-card-label">Orden TRS</div>
+                    <div class="kpi-card trs" onclick="jumpToSection('section-trs')">
+                        <div class="kpi-card-label">🔄 Orden TRS</div>
                         <div class="kpi-card-value" id="kpi-trs">-</div>
                         <div class="kpi-card-subtitle" id="kpi-trs-match">-</div>
                     </div>
 
                     <!-- KPI 5: Rastreo -->
-                    <div class="kpi-card rastreo">
-                        <div class="kpi-card-icon">📍</div>
-                        <div class="kpi-card-label">Rastreo</div>
+                    <div class="kpi-card rastreo" onclick="jumpToSection('section-rastreo')">
+                        <div class="kpi-card-label">📍 Rastreo</div>
                         <div class="kpi-card-value" id="kpi-tracking">-</div>
                         <div class="kpi-card-subtitle" id="kpi-tracking-status">-</div>
                     </div>
                 </div>
             </div>
 
-            <!-- MODAL BODY -->
+            <!-- MODAL BODY (Estilo track.html) -->
             <div class="modal-body">
                 <!-- Sección 1: Detalle OBC -->
-                <div class="modal-section">
-                    <div class="modal-section-title">📋 Detalle de Orden OBC</div>
-                    <div class="modal-grid">
-                        <div class="modal-field">
-                            <div class="modal-field-label">Número OBC</div>
-                            <div class="modal-field-value" id="detail-orden">-</div>
+                <div id="section-obc" style="scroll-margin-top: 20px;">
+                    <div class="section-header" onclick="toggleSection('section-obc-content')">
+                        <div class="section-title">
+                            📦 Orden OBC
                         </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Referencia</div>
-                            <div class="modal-field-value" id="detail-referencia">-</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Servicio</div>
-                            <div class="modal-field-value" id="detail-servicio">-</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Fecha Esperada</div>
-                            <div class="modal-field-value" id="detail-fecha">-</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Cantidad Esperada</div>
-                            <div class="modal-field-value" id="detail-qty-expected">-</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Tipo de Caja</div>
-                            <div class="modal-field-value" id="detail-box-type">-</div>
-                        </div>
+                        <span class="section-toggle" id="section-obc-toggle">▼</span>
                     </div>
-                    <div class="modal-input-group" style="margin-top: 15px;">
-                        <label>Cantidad a Despachar <span style="color: var(--error);">*</span></label>
-                        <input type="number" id="modal-qty-dispatch" min="0" placeholder="Ingresa cantidad...">
+                    <div class="section-content" id="section-obc-content">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Campo</th>
+                                    <th>Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="obc-table-body">
+                                <!-- Se genera dinámicamente -->
+                            </tbody>
+                        </table>
+                        <div class="modal-input-group" style="margin-top: 15px;">
+                            <label>Cantidad a Despachar <span style="color: var(--error);">*</span></label>
+                            <input type="number" id="modal-qty-dispatch" min="0" placeholder="Ingresa cantidad...">
+                        </div>
                     </div>
                 </div>
 
                 <!-- Sección 2: TRS (Cambio de Etiqueta) -->
-                <div class="modal-section" id="section-trs">
-                    <div class="modal-section-title">🔄 Información TRS (Cambio de Etiqueta)</div>
-                    <div id="trs-content">
-                        <!-- Se genera dinámicamente -->
+                <div id="section-trs" style="scroll-margin-top: 20px; margin-top: 15px;">
+                    <div class="section-header" onclick="toggleSection('section-trs-content')">
+                        <div class="section-title">
+                            🔄 Orden TRS
+                        </div>
+                        <span class="section-toggle" id="section-trs-toggle">▼</span>
+                    </div>
+                    <div class="section-content" id="section-trs-content">
+                        <div id="trs-table-container">
+                            <!-- Se genera dinámicamente -->
+                        </div>
                     </div>
                 </div>
 
                 <!-- Sección 3: Validación -->
-                <div class="modal-section">
-                    <div class="modal-section-title">✅ Información de Validación</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div class="modal-input-group">
-                            <label>Estatus de Orden</label>
-                            <select id="modal-status-order">
-                                <option value="OK">OK - Completa</option>
-                                <option value="Envío Parcial">Envío Parcial</option>
-                                <option value="Pendiente">Pendiente</option>
-                                <option value="Anormalidad">Anormalidad</option>
-                            </select>
+                <div id="section-validacion" style="scroll-margin-top: 20px; margin-top: 15px;">
+                    <div class="section-header" onclick="toggleSection('section-validacion-content')">
+                        <div class="section-title">
+                            ✅ Validación
                         </div>
-                        <div class="modal-input-group">
-                            <label>Control de Calidad</label>
-                            <select id="modal-status-quality">
-                                <option value="Completado">Completado</option>
-                                <option value="Pendiente">Pendiente</option>
-                            </select>
-                        </div>
+                        <span class="section-toggle" id="section-validacion-toggle">▼</span>
                     </div>
-                    <div class="modal-input-group">
-                        <label>Observaciones/Incidencias</label>
-                        <textarea id="modal-observaciones" rows="3" placeholder="Notas adicionales..."></textarea>
+                    <div class="section-content" id="section-validacion-content">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                            <div class="modal-input-group">
+                                <label>Estatus de Orden</label>
+                                <select id="modal-status-order">
+                                    <option value="OK">OK - Completa</option>
+                                    <option value="Envío Parcial">Envío Parcial</option>
+                                    <option value="Pendiente">Pendiente</option>
+                                    <option value="Anormalidad">Anormalidad</option>
+                                </select>
+                            </div>
+                            <div class="modal-input-group">
+                                <label>Control de Calidad</label>
+                                <select id="modal-status-quality">
+                                    <option value="Completado">Completado</option>
+                                    <option value="Pendiente">Pendiente</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-input-group">
+                            <label>Observaciones/Incidencias</label>
+                            <textarea id="modal-observaciones" rows="3" placeholder="Notas adicionales..."></textarea>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Sección 4: Rastreo (si existe) -->
-                <div class="modal-section" id="section-rastreo" style="display: none;">
-                    <div class="modal-section-title">📍 Información de Rastreo</div>
-                    <div id="rastreo-content">
-                        <!-- Se genera dinámicamente si hay tracking -->
+                <!-- Sección 4: Rastreo -->
+                <div id="section-rastreo" style="scroll-margin-top: 20px; margin-top: 15px; display: none;">
+                    <div class="section-header" onclick="toggleSection('section-rastreo-content')">
+                        <div class="section-title">
+                            📍 Rastreo de Cajas
+                        </div>
+                        <span class="section-toggle" id="section-rastreo-toggle">▼</span>
+                    </div>
+                    <div class="section-content" id="section-rastreo-content">
+                        <div id="rastreo-table-container">
+                            <!-- Se genera dinámicamente si hay tracking -->
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1909,7 +1994,7 @@
             loadAllData();
         }
 
-        // ==================== SCAN PROCESSING ====================
+        // ==================== SCAN PROCESSING (Algoritmo track.html) ====================
         function processScan() {
             const input = document.getElementById('scan-input');
             const rawCode = input.value.trim();
@@ -1924,57 +2009,198 @@
                 return;
             }
 
-            // Primero intentar búsqueda directa por número de OBC
-            const upperRaw = rawCode.toUpperCase().trim();
-            let orderInfo = STATE.obcData.get(upperRaw);
+            console.log(`🔍 Iniciando búsqueda para: "${rawCode}"`);
 
-            if (orderInfo) {
-                console.log(`✓ Encontrado por número de OBC: ${upperRaw}`);
-                const trsInfo = findTRSByCode(normalizeCode(rawCode));
-                showScanResult(rawCode, orderInfo, trsInfo);
-                input.value = '';
-                return;
-            }
-
-            // Si no se encuentra por OBC, buscar por código de barras
-            // Extraer y normalizar código (como en validador.html)
+            // Extraer y normalizar código
             const extracted = extractCode(rawCode);
             const normalized = normalizeCode(extracted);
+            const baseCode = extractBaseCode(normalized);
 
-            console.log(`Buscando código: raw="${rawCode}" extracted="${extracted}" normalized="${normalized}"`);
+            console.log(`📊 Códigos generados:
+  Raw: "${rawCode}"
+  Extracted: "${extracted}"
+  Normalized: "${normalized}"
+  Base: "${baseCode}"`);
 
-            // Buscar en OBC_BD por columna I (Custom box barcode)
-            orderInfo = findOrderByCode(normalized);
+            // ALGORITMO DE BÚSQUEDA MULTI-NIVEL (basado en track.html)
+            let orderInfo = null;
+            let matchType = 'none';
+            let bestMatch = { order: null, similarity: 0 };
+
+            // NIVEL 1: Búsqueda exacta por número de OBC
+            const upperRaw = rawCode.toUpperCase().trim();
+            orderInfo = STATE.obcData.get(upperRaw);
+            if (orderInfo) {
+                matchType = 'obc-exact';
+                console.log(`✅ NIVEL 1: Encontrado por número OBC exacto: ${upperRaw}`);
+            }
+
+            // NIVEL 2: Búsqueda exacta en customBarcode (Columna I)
             if (!orderInfo) {
-                showNotification(`❌ Código/OBC no encontrado: ${rawCode}`, 'error');
-                console.log(`No se encontró en ${STATE.obcData.size} órdenes cargadas`);
+                for (const [orden, data] of STATE.obcData.entries()) {
+                    if (data.customBarcode) {
+                        const dbNormalized = normalizeCode(data.customBarcode);
+
+                        // Coincidencia exacta
+                        if (dbNormalized === normalized) {
+                            orderInfo = data;
+                            matchType = 'barcode-exact';
+                            console.log(`✅ NIVEL 2: Coincidencia exacta en customBarcode: ${orden}`);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // NIVEL 3: Búsqueda por código base (sin sufijos)
+            if (!orderInfo && baseCode && baseCode !== normalized) {
+                for (const [orden, data] of STATE.obcData.entries()) {
+                    if (data.customBarcode) {
+                        const dbNormalized = normalizeCode(data.customBarcode);
+                        const dbBaseCode = extractBaseCode(dbNormalized);
+
+                        if (dbBaseCode === baseCode) {
+                            orderInfo = data;
+                            matchType = 'base-code';
+                            console.log(`✅ NIVEL 3: Coincidencia por código base: ${orden} (${baseCode})`);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // NIVEL 4: Búsqueda flexible en múltiples campos
+            if (!orderInfo) {
+                console.log('🔄 NIVEL 4: Búsqueda flexible en todos los campos...');
+
+                for (const [orden, data] of STATE.obcData.entries()) {
+                    let similarity = 0;
+
+                    // Buscar en customBarcode
+                    if (data.customBarcode) {
+                        const sim = calculateFieldSimilarity(normalized, data.customBarcode);
+                        similarity = Math.max(similarity, sim);
+                    }
+
+                    // Buscar en número de orden
+                    if (data.orden) {
+                        const sim = calculateFieldSimilarity(normalized, data.orden);
+                        similarity = Math.max(similarity, sim);
+                    }
+
+                    // Buscar en referenceNo
+                    if (data.referenceNo) {
+                        const sim = calculateFieldSimilarity(normalized, data.referenceNo);
+                        similarity = Math.max(similarity, sim);
+                    }
+
+                    // Buscar en trackingCode
+                    if (data.trackingCode) {
+                        const sim = calculateFieldSimilarity(normalized, data.trackingCode);
+                        similarity = Math.max(similarity, sim);
+                    }
+
+                    // Si encontramos alta similitud (>= 75%), considerarlo
+                    if (similarity >= 75 && similarity > bestMatch.similarity) {
+                        bestMatch = { order: data, similarity };
+                    }
+                }
+
+                // Si encontramos coincidencia flexible
+                if (bestMatch.order) {
+                    orderInfo = bestMatch.order;
+                    matchType = 'flexible';
+                    console.log(`✅ NIVEL 4: Coincidencia flexible (${bestMatch.similarity.toFixed(1)}%): ${orderInfo.orden}`);
+                }
+            }
+
+            // Si no se encontró nada
+            if (!orderInfo) {
+                showNotification(`❌ Código/OBC no encontrado en BD: ${rawCode}`, 'error');
+                console.log(`❌ No se encontró en ${STATE.obcData.size} órdenes cargadas`);
+                console.log(`💡 Tip: Verifica que el código esté en la columna "Custom box barcode" de OBC_BD`);
                 return;
             }
 
             // Buscar en TRS
             const trsInfo = findTRSByCode(normalized);
 
-            // Mostrar resultado
+            // Mostrar resultado con info de match
+            console.log(`✅ Orden encontrada: ${orderInfo.orden} (Tipo: ${matchType})`);
             showScanResult(rawCode, orderInfo, trsInfo);
             input.value = '';
         }
 
         /**
-         * Buscar orden por código de barras (columna I - customBarcode)
-         * Normaliza y compara códigos como en validador.html
+         * Extraer código base (sin sufijos numéricos)
+         * Ejemplo: "ABC123/456-001" → "ABC123/456"
          */
-        function findOrderByCode(normalizedCode) {
-            // Buscar en todas las órdenes cargadas (no solo las filtradas)
-            for (const [orden, data] of STATE.obcData.entries()) {
-                if (data.customBarcode) {
-                    const dbNormalized = normalizeCode(data.customBarcode);
-                    if (dbNormalized === normalizedCode) {
-                        console.log(`✓ Encontrado en orden ${orden}: ${data.customBarcode}`);
-                        return data;
-                    }
+        function extractBaseCode(code) {
+            if (!code) return '';
+
+            // Remover sufijos numéricos comunes al final
+            // Patrones: -001, -01, /001, /01, _001, _01
+            let base = code.replace(/[-\/_]\d{1,3}$/i, '');
+
+            // Si el código termina en números después de letra, quitar números finales
+            // Ejemplo: XZH2510237543U002 → XZH2510237543U
+            base = base.replace(/([A-Z])\d+$/i, '$1');
+
+            return base || code;
+        }
+
+        /**
+         * Calcular similitud entre dos códigos (versión simplificada de track.html)
+         */
+        function calculateFieldSimilarity(query, fieldValue) {
+            if (!fieldValue) return 0;
+
+            const normalized = normalizeCode(fieldValue);
+            const queryNorm = normalizeCode(query);
+
+            // Coincidencia exacta
+            if (normalized === queryNorm) return 100;
+
+            // Uno contiene al otro
+            if (normalized.includes(queryNorm) || queryNorm.includes(normalized)) {
+                const overlapRatio = Math.min(queryNorm.length, normalized.length) /
+                                    Math.max(queryNorm.length, normalized.length);
+                return overlapRatio * 100;
+            }
+
+            // Similitud de Levenshtein (simple)
+            return calculateLevenshteinSimilarity(queryNorm, normalized);
+        }
+
+        /**
+         * Calcular similitud usando distancia de Levenshtein
+         */
+        function calculateLevenshteinSimilarity(s1, s2) {
+            const len1 = s1.length;
+            const len2 = s2.length;
+            const matrix = [];
+
+            for (let i = 0; i <= len1; i++) {
+                matrix[i] = [i];
+            }
+            for (let j = 0; j <= len2; j++) {
+                matrix[0][j] = j;
+            }
+
+            for (let i = 1; i <= len1; i++) {
+                for (let j = 1; j <= len2; j++) {
+                    const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j - 1] + cost
+                    );
                 }
             }
-            return null;
+
+            const distance = matrix[len1][len2];
+            const maxLen = Math.max(len1, len2);
+            return maxLen === 0 ? 100 : ((maxLen - distance) / maxLen) * 100;
         }
 
         function findTRSByCode(normalizedCode) {
@@ -2055,119 +2281,185 @@
             document.getElementById('scan-input').focus();
         }
 
-        // ==================== VALIDATION MODAL ====================
+        // ==================== VALIDATION MODAL (Estilo track.html) ====================
         function openValidationModal() {
             if (!STATE.currentScan) return;
 
             const { code, orderInfo, trsInfo } = STATE.currentScan;
 
-            // ===== KPI CARDS =====
-            // KPI 1: Orden OBC
-            document.getElementById('kpi-orden').textContent = orderInfo.orden;
-            // Simular cantidad de cajas (TODO: obtener real de BD)
+            // Cantidad esperada (TODO: obtener real de BD)
             const expectedQty = 10;
-            document.getElementById('kpi-orden-boxes').textContent = `${expectedQty} cajas esperadas`;
 
-            // KPI 2: Destino y Horario
-            document.getElementById('kpi-destino').textContent = orderInfo.recipient || orderInfo.destino || 'Sin destino';
+            // ===== KPI CARDS =====
+            document.getElementById('kpi-orden').textContent = orderInfo.orden;
+            document.getElementById('kpi-orden-boxes').textContent = `${expectedQty} cajas`;
+
+            document.getElementById('kpi-destino').textContent = orderInfo.recipient || 'Sin destino';
             document.getElementById('kpi-horario').textContent = `📅 ${orderInfo.expectedArrival || 'Sin fecha'}`;
 
-            // KPI 3: Estatus de Validación (0% al inicio)
             document.getElementById('kpi-validacion').textContent = '0%';
             document.getElementById('kpi-progress-bar').style.width = '0%';
 
-            // KPI 4: Orden TRS
             if (trsInfo) {
                 document.getElementById('kpi-trs').textContent = trsInfo.trs;
-                document.getElementById('kpi-trs-match').textContent = '✅ Cambio detectado';
+                document.getElementById('kpi-trs-match').textContent = '✅ Detectado';
             } else {
                 document.getElementById('kpi-trs').textContent = 'Sin TRS';
                 document.getElementById('kpi-trs-match').textContent = '✅ Sin cambios';
             }
 
-            // KPI 5: Rastreo
             if (orderInfo.trackingCode) {
-                document.getElementById('kpi-tracking').textContent = orderInfo.trackingCode.substring(0, 12) + '...';
-                document.getElementById('kpi-tracking-status').textContent = '✅ Con tracking';
+                const shortTrack = orderInfo.trackingCode.length > 12 ? orderInfo.trackingCode.substring(0, 12) + '...' : orderInfo.trackingCode;
+                document.getElementById('kpi-tracking').textContent = shortTrack;
+                document.getElementById('kpi-tracking-status').textContent = '✅ Activo';
             } else {
                 document.getElementById('kpi-tracking').textContent = 'Sin código';
                 document.getElementById('kpi-tracking-status').textContent = '⚠️ Sin rastreo';
             }
 
-            // ===== DETALLE OBC =====
-            document.getElementById('detail-orden').textContent = orderInfo.orden;
-            document.getElementById('detail-referencia').textContent = orderInfo.referenceNo || '-';
-            document.getElementById('detail-servicio').textContent = orderInfo.shippingService || '-';
-            document.getElementById('detail-fecha').textContent = orderInfo.expectedArrival || '-';
-            document.getElementById('detail-qty-expected').textContent = expectedQty;
-            document.getElementById('detail-box-type').textContent = orderInfo.boxType || '-';
+            // ===== TABLA OBC =====
+            const obcTableBody = document.getElementById('obc-table-body');
+            obcTableBody.innerHTML = `
+                <tr>
+                    <td><strong>Número de Orden</strong></td>
+                    <td><code>${orderInfo.orden}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Referencia</strong></td>
+                    <td>${orderInfo.referenceNo || '-'}</td>
+                </tr>
+                <tr>
+                    <td><strong>Servicio de Envío</strong></td>
+                    <td>${orderInfo.shippingService || '-'}</td>
+                </tr>
+                <tr>
+                    <td><strong>Fecha Esperada</strong></td>
+                    <td>${orderInfo.expectedArrival || '-'}</td>
+                </tr>
+                <tr>
+                    <td><strong>Destinatario</strong></td>
+                    <td>${orderInfo.recipient || '-'}</td>
+                </tr>
+                <tr>
+                    <td><strong>Tipo de Caja</strong></td>
+                    <td>${orderInfo.boxType || '-'}</td>
+                </tr>
+                <tr>
+                    <td><strong>Código de Barras</strong></td>
+                    <td><code>${orderInfo.customBarcode || '-'}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Cantidad Esperada</strong></td>
+                    <td><strong style="color: var(--primary);">${expectedQty}</strong></td>
+                </tr>
+            `;
             document.getElementById('modal-qty-dispatch').value = expectedQty;
 
-            // ===== SECCIÓN TRS =====
-            const trsSection = document.getElementById('trs-content');
+            // ===== TABLA TRS =====
+            const trsContainer = document.getElementById('trs-table-container');
             if (trsInfo) {
-                trsSection.innerHTML = `
-                    <div style="padding: 15px; background: #fff3e0; border-radius: 6px; border-left: 4px solid var(--warning); margin-bottom: 12px;">
+                trsContainer.innerHTML = `
+                    <div style="padding: 12px; background: #fff3e0; border-radius: 6px; border-left: 4px solid var(--warning); margin-bottom: 12px;">
                         <strong>⚠️ CAMBIO DE ETIQUETA DETECTADO</strong>
                     </div>
-                    <div class="modal-grid">
-                        <div class="modal-field">
-                            <div class="modal-field-label">Orden TRS</div>
-                            <div class="modal-field-value">${trsInfo.trs}</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Referencia TRS</div>
-                            <div class="modal-field-value">${trsInfo.referencia || '-'}</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Código Original</div>
-                            <div class="modal-field-value">${trsInfo.codigoOriginal}</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Código Nuevo</div>
-                            <div class="modal-field-value" style="color: var(--warning);">${trsInfo.codigoNuevo}</div>
-                        </div>
-                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Campo</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Orden TRS</strong></td>
+                                <td><code>${trsInfo.trs}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Referencia</strong></td>
+                                <td>${trsInfo.referencia || '-'}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Código Original</strong></td>
+                                <td><code>${trsInfo.codigoOriginal}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Código Nuevo</strong></td>
+                                <td><code style="color: var(--warning);">${trsInfo.codigoNuevo}</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
                 `;
             } else {
-                trsSection.innerHTML = `
-                    <div style="padding: 15px; background: #e8f5e9; border-radius: 6px; border-left: 4px solid var(--success);">
+                trsContainer.innerHTML = `
+                    <div style="padding: 12px; background: #e8f5e9; border-radius: 6px; border-left: 4px solid var(--success);">
                         ✅ Sin cambio de etiqueta detectado
                     </div>
                 `;
             }
 
-            // ===== SECCIÓN RASTREO =====
+            // ===== TABLA RASTREO =====
             const rastreoSection = document.getElementById('section-rastreo');
-            const rastreoContent = document.getElementById('rastreo-content');
+            const rastreoContainer = document.getElementById('rastreo-table-container');
             if (orderInfo.trackingCode) {
                 rastreoSection.style.display = 'block';
-                rastreoContent.innerHTML = `
-                    <div class="modal-grid">
-                        <div class="modal-field">
-                            <div class="modal-field-label">Código de Rastreo</div>
-                            <div class="modal-field-value">${orderInfo.trackingCode}</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Servicio</div>
-                            <div class="modal-field-value">${orderInfo.shippingService || '-'}</div>
-                        </div>
-                        <div class="modal-field">
-                            <div class="modal-field-label">Estado</div>
-                            <div class="modal-field-value">📦 En proceso</div>
-                        </div>
-                    </div>
+                rastreoContainer.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Campo</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Código de Rastreo</strong></td>
+                                <td><code>${orderInfo.trackingCode}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Servicio</strong></td>
+                                <td>${orderInfo.shippingService || '-'}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Estado</strong></td>
+                                <td>📦 En proceso de entrega</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 `;
             } else {
                 rastreoSection.style.display = 'none';
             }
 
-            // Limpiar observaciones y resetear estatus
+            // Limpiar formulario
             document.getElementById('modal-observaciones').value = '';
             document.getElementById('modal-status-order').value = 'OK';
             document.getElementById('modal-status-quality').value = 'Completado';
 
             document.getElementById('validation-modal').classList.add('show');
+        }
+
+        // ===== NAVEGACIÓN POR ANCLAS =====
+        function jumpToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // ===== TOGGLE DE SECCIONES =====
+        function toggleSection(contentId) {
+            const content = document.getElementById(contentId);
+            const toggle = document.getElementById(contentId.replace('-content', '-toggle'));
+
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                content.style.maxHeight = content.scrollHeight + 'px';
+                if (toggle) toggle.classList.remove('collapsed');
+            } else {
+                content.classList.add('collapsed');
+                content.style.maxHeight = '0';
+                if (toggle) toggle.classList.add('collapsed');
+            }
         }
 
         function closeValidationModal() {
