@@ -828,20 +828,8 @@
 <body>
     <div class="notification-container" id="notifications"></div>
 
-    <!-- WELCOME SCREEN -->
-    <div class="welcome-screen" id="welcome-screen">
-        <div class="welcome-card">
-            <div class="welcome-icon">🚚</div>
-            <h1 class="welcome-title">Sistema de Despacho</h1>
-            <p class="welcome-subtitle">Validación y Control Logístico</p>
-            <button class="welcome-btn" onclick="goToLogin()">
-                🚀 Iniciar Validación
-            </button>
-        </div>
-    </div>
-
     <!-- LOGIN -->
-    <div class="login-screen hidden" id="login-screen">
+    <div class="login-screen" id="login-screen">
         <div class="login-card">
             <div class="login-icon">🚚</div>
             <h1 class="login-title">Sistema de Despacho</h1>
@@ -907,12 +895,24 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
-                <!-- Header -->
-                <div class="header">
-                    <h1>📦 Validación de Despacho</h1>
+                <!-- Empty Dashboard (shown initially) -->
+                <div id="empty-dashboard" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
+                    <div style="font-size: 5em; margin-bottom: 20px;">🚚</div>
+                    <h2 style="font-size: 1.8em; color: var(--text); margin-bottom: 10px;">Sistema de Despacho</h2>
+                    <p style="font-size: 1.1em; color: #666; margin-bottom: 30px;">Bienvenido al sistema de validación logística</p>
+                    <button class="btn btn-primary" onclick="showDateFilterModal()" style="padding: 16px 40px; font-size: 1.2em;">
+                        🚀 Iniciar Validación
+                    </button>
                 </div>
 
-                <!-- Resumen del Día -->
+                <!-- Validation Content (shown after selecting date range) -->
+                <div id="validation-content" style="display: none; height: 100%; display: flex; flex-direction: column;">
+                    <!-- Header -->
+                    <div class="header">
+                        <h1>📦 Validación de Despacho</h1>
+                    </div>
+
+                    <!-- Resumen del Día -->
                 <div class="day-summary">
                     <div class="day-summary-card total">
                         <div class="day-summary-label">Total Órdenes</div>
@@ -1001,6 +1001,8 @@
                         </div>
                     </div>
                 </div>
+                </div>
+                <!-- End validation-content -->
             </div>
         </div>
     </div>
@@ -1166,7 +1168,8 @@
 
         // ==================== STATE ====================
         let STATE = {
-            obcData: new Map(),
+            obcData: new Map(), // TODA la BD OBC (sin filtro)
+            obcDataFiltered: new Map(), // Solo las órdenes del rango de fechas seleccionado
             validacionData: new Map(),
             mneData: new Map(),
             trsData: [],
@@ -1178,7 +1181,8 @@
             folioCounter: 1,
             dateFilter: {
                 startDate: null,
-                endDate: null
+                endDate: null,
+                active: false // Indica si hay un filtro activo
             }
         };
 
@@ -1232,11 +1236,11 @@
         async function handleAuthCallback(response) {
             if (response?.access_token) {
                 gapi.client.setToken(response);
-                showPreloader('Cargando datos...', 'Obteniendo información del sistema');
+                showPreloader('Cargando base de datos...', 'Obteniendo información del sistema');
                 await getUserProfile();
-                await loadAllData();
+                await loadAllData(); // Carga TODA la BD sin filtro
                 hidePreloader();
-                showNotification('✅ Conexión exitosa con Google Sheets', 'success');
+                showNotification('✅ Conexión exitosa - BD cargada completa', 'success');
                 showApp();
             }
         }
@@ -1244,11 +1248,6 @@
         function handleLogin() {
             showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
             TOKEN_CLIENT?.requestAccessToken();
-        }
-
-        function goToLogin() {
-            document.getElementById('welcome-screen').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
         }
 
         async function getUserProfile() {
@@ -1276,8 +1275,12 @@
         function showApp() {
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
+
+            // Mostrar dashboard vacío al inicio
+            document.getElementById('empty-dashboard').style.display = 'flex';
+            document.getElementById('validation-content').style.display = 'none';
+
             updateUI();
-            document.getElementById('scan-input').focus();
         }
 
         function handleLogout() {
@@ -1328,30 +1331,66 @@
             // Save date filter
             STATE.dateFilter.startDate = startDate;
             STATE.dateFilter.endDate = endDate;
+            STATE.dateFilter.active = true;
 
             closeDateFilterModal();
 
-            // Reload data with filter
-            showPreloader('Aplicando filtro de fecha...', 'Cargando órdenes del periodo seleccionado');
-            await loadAllData();
+            // Filtrar las órdenes cargadas por el rango de fechas
+            showPreloader('Filtrando órdenes...', 'Seleccionando órdenes del periodo');
+            filterOrdersByDateRange();
             hidePreloader();
+
+            // Mostrar contenido de validación y ocultar dashboard vacío
+            document.getElementById('empty-dashboard').style.display = 'none';
+            document.getElementById('validation-content').style.display = 'flex';
+
+            // Focus en el input de escaneo
+            setTimeout(() => {
+                document.getElementById('scan-input')?.focus();
+            }, 100);
 
             // Show notification about the selected range
             const start = new Date(startDate).toLocaleDateString('es-ES');
             const end = new Date(endDate).toLocaleDateString('es-ES');
-            showNotification(`📅 Filtro aplicado: ${start} - ${end}`, 'success');
+            const count = STATE.obcDataFiltered.size;
+            showNotification(`📅 Filtro aplicado: ${start} - ${end} (${count} órdenes)`, 'success');
+
+            updateUI();
+        }
+
+        function filterOrdersByDateRange() {
+            STATE.obcDataFiltered.clear();
+
+            const startDate = new Date(STATE.dateFilter.startDate);
+            const endDate = new Date(STATE.dateFilter.endDate);
+            endDate.setHours(23, 59, 59, 999); // Include full end date
+
+            // Filtrar órdenes por fecha
+            for (const [orden, data] of STATE.obcData.entries()) {
+                if (data.expectedArrival) {
+                    const orderDate = parseOrderDate(data.expectedArrival);
+                    if (orderDate && orderDate >= startDate && orderDate <= endDate) {
+                        STATE.obcDataFiltered.set(orden, data);
+                    }
+                }
+            }
+
+            console.log(`Filtradas ${STATE.obcDataFiltered.size} órdenes de ${STATE.obcData.size} totales`);
         }
 
         async function clearDateFilterAndClose() {
             STATE.dateFilter.startDate = null;
             STATE.dateFilter.endDate = null;
+            STATE.dateFilter.active = false;
+            STATE.obcDataFiltered.clear();
+
             closeDateFilterModal();
 
-            showPreloader('Cargando todas las órdenes...', 'Removiendo filtro de fecha');
-            await loadAllData();
-            hidePreloader();
+            // Volver al dashboard vacío
+            document.getElementById('validation-content').style.display = 'none';
+            document.getElementById('empty-dashboard').style.display = 'flex';
 
-            showNotification('🔄 Filtro de fecha removido - Mostrando todas las órdenes', 'info');
+            showNotification('🔄 Filtro removido - Volviendo al dashboard', 'info');
         }
 
         // ==================== PRELOADER ====================
@@ -1434,7 +1473,7 @@
 
         function parseOBCData(csv) {
             const lines = csv.split('\n').filter(l => l.trim());
-            STATE.obcData.clear();
+            STATE.obcData.clear(); // Limpiar TODA la BD
 
             /**
              * Base de datos OBC (Outbound) - Estructura de columnas:
@@ -1446,7 +1485,7 @@
              * Columna 5: Remark_备注 (Observaciones)
              * Columna 6: Recipient_收件人 (Destinatario)
              * Columna 7: Box type No_箱类型号 (Tipo de caja)
-             * Columna 8: Custom box barcode_自定义箱条码 (Código de barras personalizado de la caja)
+             * Columna 8: Custom box barcode_自定义箱条码 (Código de barras personalizado de la caja) ⚠️ USADO PARA BÚSQUEDA
              */
             const outboundIdx = 0;
             const refNoIdx = 1;
@@ -1456,29 +1495,17 @@
             const remarkIdx = 5;
             const recipientIdx = 6;
             const boxTypeIdx = 7;
-            const customBarcodeIdx = 8;
+            const customBarcodeIdx = 8; // ⚠️ COLUMNA I - Usada para buscar códigos escaneados
 
+            // Cargar TODO sin filtro
             for (let i = 1; i < lines.length; i++) {
                 const cols = parseCSVLine(lines[i]);
                 if (cols.length >= 6) {
                     const orden = cols[outboundIdx]?.trim();
                     const expectedArrival = cols[expectedArrivalIdx]?.trim();
+                    const customBarcode = cols[customBarcodeIdx]?.trim();
 
                     if (orden) {
-                        // Filter by date range if set
-                        if (STATE.dateFilter.startDate && STATE.dateFilter.endDate && expectedArrival) {
-                            const orderDate = parseOrderDate(expectedArrival);
-                            if (orderDate) {
-                                const startDate = new Date(STATE.dateFilter.startDate);
-                                const endDate = new Date(STATE.dateFilter.endDate);
-                                endDate.setHours(23, 59, 59, 999); // Include full end date
-
-                                if (orderDate < startDate || orderDate > endDate) {
-                                    continue; // Skip this order, outside date range
-                                }
-                            }
-                        }
-
                         STATE.obcData.set(orden, {
                             orden, // Outbound_出库单号
                             referenceNo: cols[refNoIdx]?.trim() || '', // Reference order No._参考单号
@@ -1488,14 +1515,14 @@
                             remark: cols[remarkIdx]?.trim() || '', // Remark_备注
                             recipient: cols[recipientIdx]?.trim() || '', // Recipient_收件人
                             boxType: cols[boxTypeIdx]?.trim() || '', // Box type No_箱类型号
-                            customBarcode: cols[customBarcodeIdx]?.trim() || '', // Custom box barcode_自定义箱条码
+                            customBarcode: customBarcode || '', // Custom box barcode_自定义箱条码
 
                             // Legacy fields for backward compatibility
                             ref1: cols[refNoIdx]?.trim() || '',
                             ref2: cols[shippingServiceIdx]?.trim() || '',
                             horario: cols[trackingCodeIdx]?.trim() || '',
                             destino: cols[recipientIdx]?.trim() || '',
-                            codigo: cols[customBarcodeIdx]?.trim() || ''
+                            codigo: customBarcode || '' // Usa customBarcode para búsqueda
                         });
                     }
                 }
@@ -1626,53 +1653,119 @@
         // ==================== SCAN PROCESSING ====================
         function processScan() {
             const input = document.getElementById('scan-input');
-            const rawCode = input.value.trim().toUpperCase();
+            const rawCode = input.value.trim();
 
             if (!rawCode) {
                 showNotification('⚠️ Ingresa un código', 'warning');
                 return;
             }
 
-            // Buscar en OBC_BD
-            const orderInfo = findOrderByCode(rawCode);
+            if (STATE.obcData.size === 0) {
+                showNotification('⚠️ Base de datos no cargada', 'warning');
+                return;
+            }
+
+            // Extraer y normalizar código (como en validador.html)
+            const extracted = extractCode(rawCode);
+            const normalized = normalizeCode(extracted);
+
+            console.log(`Buscando código: raw="${rawCode}" extracted="${extracted}" normalized="${normalized}"`);
+
+            // Buscar en OBC_BD por columna I (Custom box barcode)
+            const orderInfo = findOrderByCode(normalized);
             if (!orderInfo) {
-                showNotification('❌ Código no encontrado en OBC_BD', 'error');
+                showNotification(`❌ Código no encontrado en BD OBC: ${extracted}`, 'error');
+                console.log(`No se encontró en ${STATE.obcData.size} órdenes cargadas`);
                 return;
             }
 
             // Buscar en TRS
-            const trsInfo = findTRSByCode(rawCode);
+            const trsInfo = findTRSByCode(normalized);
 
             // Mostrar resultado
             showScanResult(rawCode, orderInfo, trsInfo);
             input.value = '';
         }
 
-        function findOrderByCode(code) {
+        /**
+         * Buscar orden por código de barras (columna I - customBarcode)
+         * Normaliza y compara códigos como en validador.html
+         */
+        function findOrderByCode(normalizedCode) {
+            // Buscar en todas las órdenes cargadas (no solo las filtradas)
             for (const [orden, data] of STATE.obcData.entries()) {
-                if (data.codigo.toUpperCase().includes(code)) {
-                    return data;
+                if (data.customBarcode) {
+                    const dbNormalized = normalizeCode(data.customBarcode);
+                    if (dbNormalized === normalizedCode) {
+                        console.log(`✓ Encontrado en orden ${orden}: ${data.customBarcode}`);
+                        return data;
+                    }
                 }
             }
             return null;
         }
 
-        function findTRSByCode(code) {
-            const normalizedCode = normalizeCode(code);
+        function findTRSByCode(normalizedCode) {
             for (const trs of STATE.trsData) {
                 const normalizedOriginal = normalizeCode(trs.codigoOriginal);
                 const normalizedNuevo = normalizeCode(trs.codigoNuevo);
-                
-                if (normalizedOriginal === normalizedCode || normalizedNuevo === normalizedCode || 
-                    trs.referencia.toUpperCase().includes(code)) {
+
+                if (normalizedOriginal === normalizedCode || normalizedNuevo === normalizedCode) {
                     return trs;
                 }
             }
             return null;
         }
 
+        /**
+         * Extraer código de barras del texto escaneado (como en validador.html)
+         */
+        function extractCode(raw) {
+            if (raw === null || raw === undefined) return '';
+            let code = String(raw).trim();
+
+            // Remover caracteres invisibles
+            code = code.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '').trim();
+
+            // Convertir *, & y - (entre números) a /
+            code = code.replace(/\*/g, '/');
+            code = code.replace(/&/g, '/');
+            code = code.replace(/(\d)-(\d)/g, '$1/$2');
+
+            // Normalizar comillas
+            code = code.replace(/[""«»„‟‚‛''¨]/g, '"');
+
+            // Patrones de extracción (en orden de prioridad)
+            const patterns = [
+                // Números con slash: 123/456
+                /([0-9]+\/[0-9]+)/,
+                // Alfanumérico con slash: ABC/123
+                /([A-Za-z0-9]{2,}\/[A-Za-z0-9\/\-\._:]{1,})/,
+                // Tokens largos alfanuméricos
+                /.*?([A-Za-z0-9]{6,}).*/,
+                // Números largos
+                /([0-9]{6,})/
+            ];
+
+            for (const p of patterns) {
+                const m = code.match(p);
+                if (m && m[1]) return m[1].trim();
+            }
+
+            return code.trim();
+        }
+
+        /**
+         * Normalizar código para comparación (como en validador.html)
+         */
         function normalizeCode(code) {
-            return code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            if (!code) return '';
+
+            return String(code)
+                .replace(/&/g, '/')
+                .replace(/-/g, '/')
+                .toLowerCase()
+                .trim();
         }
 
         function showScanResult(code, orderInfo, trsInfo) {
