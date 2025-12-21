@@ -587,59 +587,62 @@
             color: #333;
         }
 
-        /* KPI Cards Header (Compactas estilo track.html) */
+        /* KPI Cards Header (Estilo track.html exacto) */
         .modal-kpi-header {
-            padding: 15px 20px;
+            padding: 18px 20px;
             background: white;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .kpi-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
         }
 
         .kpi-card {
-            padding: 10px 12px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border-radius: 6px;
-            border-left: 3px solid;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            transition: all 0.2s;
+            padding: 12px 14px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
             cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
         .kpi-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+            background: #fafafa;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
 
-        .kpi-card.orden { border-color: var(--primary); }
-        .kpi-card.destino { border-color: var(--info); }
-        .kpi-card.estatus { border-color: var(--success); }
-        .kpi-card.trs { border-color: var(--warning); }
-        .kpi-card.rastreo { border-color: #9333ea; }
+        .kpi-card.orden { border-left: 3px solid var(--primary); }
+        .kpi-card.destino { border-left: 3px solid var(--info); }
+        .kpi-card.estatus { border-left: 3px solid var(--success); }
+        .kpi-card.trs { border-left: 3px solid var(--warning); }
+        .kpi-card.rastreo { border-left: 3px solid #9333ea; }
 
         .kpi-card-label {
-            font-size: 0.65em;
+            font-size: 0.8em;
             color: #666;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
             margin-bottom: 4px;
-            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .kpi-card-value {
             font-size: 1em;
             font-weight: 700;
-            color: var(--text);
-            margin-bottom: 2px;
+            word-break: break-word;
+            line-height: 1.3;
         }
 
         .kpi-card-subtitle {
-            font-size: 0.7em;
-            color: #888;
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 4px;
         }
 
         .kpi-progress {
@@ -657,35 +660,86 @@
             transition: width 0.3s;
         }
 
-        /* Sections (estilo track.html) */
+        /* Copyable text (track.html) */
+        .copyable {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .copy-icon {
+            opacity: 0;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: opacity 0.2s;
+            color: #999;
+        }
+
+        .copyable:hover .copy-icon {
+            opacity: 1;
+        }
+
+        .copy-icon:hover {
+            color: var(--primary);
+        }
+
+        .copy-icon.copied {
+            color: var(--success);
+        }
+
+        /* Sections (estilo track.html exacto) */
+        .section-card {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid #e5e7eb;
+        }
+
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
+            padding: 8px;
+            border-radius: 8px;
             margin-bottom: 10px;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .section-header:hover {
-            background: #e9ecef;
+            background: #f8f9fa;
+        }
+
+        .section-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .section-title-wrapper {
+            cursor: pointer;
+            flex: 1;
         }
 
         .section-title {
-            font-size: 0.95em;
+            font-size: 1.05em;
             font-weight: 700;
             display: flex;
             align-items: center;
             gap: 8px;
-            color: var(--text);
+            transition: color 0.2s;
+        }
+
+        .section-title-wrapper:hover .section-title {
+            color: var(--primary);
         }
 
         .section-toggle {
-            color: #999;
-            font-size: 0.9em;
+            cursor: pointer;
             transition: transform 0.3s;
         }
 
@@ -1300,9 +1354,9 @@
                         <div class="kpi-card-subtitle" id="kpi-horario">-</div>
                     </div>
 
-                    <!-- KPI 3: Estatus de Validación -->
-                    <div class="kpi-card estatus" onclick="jumpToSection('section-validacion')">
-                        <div class="kpi-card-label">✅ Validación</div>
+                    <!-- KPI 3: Validación de Surtido -->
+                    <div class="kpi-card estatus" onclick="jumpToSection('section-val3')">
+                        <div class="kpi-card-label">✅ Validación Surtido</div>
                         <div class="kpi-card-value" id="kpi-validacion">0%</div>
                         <div class="kpi-progress">
                             <div class="kpi-progress-bar" id="kpi-progress-bar" style="width: 0%"></div>
@@ -1327,93 +1381,86 @@
 
             <!-- MODAL BODY (Estilo track.html) -->
             <div class="modal-body">
-                <!-- Sección 1: Detalle OBC -->
-                <div id="section-obc" style="scroll-margin-top: 20px;">
+                <!-- Sección 1: Orden OBC (con validación integrada) -->
+                <div class="section-card" id="section-obc" style="scroll-margin-top: 20px;">
                     <div class="section-header" onclick="toggleSection('section-obc-content')">
-                        <div class="section-title">
-                            📦 Orden OBC
+                        <div class="section-header-left">
+                            <div class="section-title-wrapper" onclick="event.stopPropagation(); toggleSection('section-obc-content')">
+                                <div class="section-title">📦 Orden OBC</div>
+                            </div>
                         </div>
-                        <span class="section-toggle" id="section-obc-toggle">▼</span>
+                        <span class="section-toggle" id="section-obc-toggle" onclick="toggleSection('section-obc-content')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </span>
                     </div>
                     <div class="section-content" id="section-obc-content">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Campo</th>
-                                    <th>Valor</th>
-                                </tr>
-                            </thead>
-                            <tbody id="obc-table-body">
-                                <!-- Se genera dinámicamente -->
-                            </tbody>
-                        </table>
-                        <div class="modal-input-group" style="margin-top: 15px;">
-                            <label>Cantidad a Despachar <span style="color: var(--error);">*</span></label>
-                            <input type="number" id="modal-qty-dispatch" min="0" placeholder="Ingresa cantidad...">
+                        <div id="obc-table-container">
+                            <!-- Tabla horizontal generada dinámicamente -->
                         </div>
                     </div>
                 </div>
 
-                <!-- Sección 2: TRS (Cambio de Etiqueta) -->
-                <div id="section-trs" style="scroll-margin-top: 20px; margin-top: 15px;">
+                <!-- Sección 2: Orden TRS (con validación integrada) -->
+                <div class="section-card" id="section-trs" style="scroll-margin-top: 20px; display: none;">
                     <div class="section-header" onclick="toggleSection('section-trs-content')">
-                        <div class="section-title">
-                            🔄 Orden TRS
+                        <div class="section-header-left">
+                            <div class="section-title-wrapper" onclick="event.stopPropagation(); toggleSection('section-trs-content')">
+                                <div class="section-title">🔄 Orden TRS</div>
+                            </div>
                         </div>
-                        <span class="section-toggle" id="section-trs-toggle">▼</span>
+                        <span class="section-toggle" id="section-trs-toggle" onclick="toggleSection('section-trs-content')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </span>
                     </div>
                     <div class="section-content" id="section-trs-content">
                         <div id="trs-table-container">
-                            <!-- Se genera dinámicamente -->
+                            <!-- Tabla horizontal generada dinámicamente -->
                         </div>
                     </div>
                 </div>
 
-                <!-- Sección 3: Validación -->
-                <div id="section-validacion" style="scroll-margin-top: 20px; margin-top: 15px;">
-                    <div class="section-header" onclick="toggleSection('section-validacion-content')">
-                        <div class="section-title">
-                            ✅ Validación
+                <!-- Sección 3: Validación de Surtido (BD Val3) -->
+                <div class="section-card" id="section-val3" style="scroll-margin-top: 20px; display: none;">
+                    <div class="section-header" onclick="toggleSection('section-val3-content')">
+                        <div class="section-header-left">
+                            <div class="section-title-wrapper" onclick="event.stopPropagation(); toggleSection('section-val3-content')">
+                                <div class="section-title">✅ Validación de Surtido</div>
+                            </div>
                         </div>
-                        <span class="section-toggle" id="section-validacion-toggle">▼</span>
+                        <span class="section-toggle" id="section-val3-toggle" onclick="toggleSection('section-val3-content')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </span>
                     </div>
-                    <div class="section-content" id="section-validacion-content">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                            <div class="modal-input-group">
-                                <label>Estatus de Orden</label>
-                                <select id="modal-status-order">
-                                    <option value="OK">OK - Completa</option>
-                                    <option value="Envío Parcial">Envío Parcial</option>
-                                    <option value="Pendiente">Pendiente</option>
-                                    <option value="Anormalidad">Anormalidad</option>
-                                </select>
-                            </div>
-                            <div class="modal-input-group">
-                                <label>Control de Calidad</label>
-                                <select id="modal-status-quality">
-                                    <option value="Completado">Completado</option>
-                                    <option value="Pendiente">Pendiente</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="modal-input-group">
-                            <label>Observaciones/Incidencias</label>
-                            <textarea id="modal-observaciones" rows="3" placeholder="Notas adicionales..."></textarea>
+                    <div class="section-content" id="section-val3-content">
+                        <div id="val3-table-container">
+                            <!-- Tabla horizontal generada dinámicamente -->
                         </div>
                     </div>
                 </div>
 
-                <!-- Sección 4: Rastreo -->
-                <div id="section-rastreo" style="scroll-margin-top: 20px; margin-top: 15px; display: none;">
+                <!-- Sección 4: Rastreo MNE -->
+                <div class="section-card" id="section-rastreo" style="scroll-margin-top: 20px; display: none;">
                     <div class="section-header" onclick="toggleSection('section-rastreo-content')">
-                        <div class="section-title">
-                            📍 Rastreo de Cajas
+                        <div class="section-header-left">
+                            <div class="section-title-wrapper" onclick="event.stopPropagation(); toggleSection('section-rastreo-content')">
+                                <div class="section-title">📍 Rastreo de Cajas</div>
+                            </div>
                         </div>
-                        <span class="section-toggle" id="section-rastreo-toggle">▼</span>
+                        <span class="section-toggle" id="section-rastreo-toggle" onclick="toggleSection('section-rastreo-content')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </span>
                     </div>
                     <div class="section-content" id="section-rastreo-content">
                         <div id="rastreo-table-container">
-                            <!-- Se genera dinámicamente si hay tracking -->
+                            <!-- Tabla horizontal generada dinámicamente -->
                         </div>
                     </div>
                 </div>
@@ -2281,6 +2328,28 @@
             document.getElementById('scan-input').focus();
         }
 
+        // ==================== COPY FUNCTION (track.html) ====================
+        function makeCopyable(text) {
+            if (!text || text === '-') return text;
+            const sanitized = String(text).replace(/'/g, "\\'");
+            return `<span class="copyable">${text}<span class="copy-icon" onclick="copyToClipboard('${sanitized}', this)">📋</span></span>`;
+        }
+
+        function copyToClipboard(text, iconElement) {
+            if (!text || text === '-') return;
+
+            navigator.clipboard.writeText(text).then(() => {
+                iconElement.classList.add('copied');
+                iconElement.textContent = '✅';
+                setTimeout(() => {
+                    iconElement.classList.remove('copied');
+                    iconElement.textContent = '📋';
+                }, 2000);
+            }).catch(err => {
+                console.error('Error copiando:', err);
+            });
+        }
+
         // ==================== VALIDATION MODAL (Estilo track.html) ====================
         function openValidationModal() {
             if (!STATE.currentScan) return;
@@ -2290,139 +2359,203 @@
             // Cantidad esperada (TODO: obtener real de BD)
             const expectedQty = 10;
 
+            // Buscar datos de validación de surtido (Val3)
+            const val3Info = findVal3ByOrder(orderInfo.orden);
+
+            // Buscar datos de rastreo (MNE)
+            const mneInfo = findMNEByOrder(orderInfo.orden);
+
             // ===== KPI CARDS =====
-            document.getElementById('kpi-orden').textContent = orderInfo.orden;
+            document.getElementById('kpi-orden').innerHTML = makeCopyable(orderInfo.orden);
             document.getElementById('kpi-orden-boxes').textContent = `${expectedQty} cajas`;
 
             document.getElementById('kpi-destino').textContent = orderInfo.recipient || 'Sin destino';
             document.getElementById('kpi-horario').textContent = `📅 ${orderInfo.expectedArrival || 'Sin fecha'}`;
 
-            document.getElementById('kpi-validacion').textContent = '0%';
-            document.getElementById('kpi-progress-bar').style.width = '0%';
+            // KPI Validación de Surtido
+            if (val3Info) {
+                const validatedCount = val3Info.validatedCount || 0;
+                const totalCount = expectedQty;
+                const percent = totalCount > 0 ? Math.min(100, Math.round((validatedCount / totalCount) * 100)) : 0;
+                document.getElementById('kpi-validacion').textContent = `${percent}%`;
+                document.getElementById('kpi-progress-bar').style.width = `${percent}%`;
+            } else {
+                document.getElementById('kpi-validacion').textContent = '0%';
+                document.getElementById('kpi-progress-bar').style.width = '0%';
+            }
 
             if (trsInfo) {
-                document.getElementById('kpi-trs').textContent = trsInfo.trs;
+                document.getElementById('kpi-trs').innerHTML = makeCopyable(trsInfo.trs);
                 document.getElementById('kpi-trs-match').textContent = '✅ Detectado';
             } else {
                 document.getElementById('kpi-trs').textContent = 'Sin TRS';
                 document.getElementById('kpi-trs-match').textContent = '✅ Sin cambios';
             }
 
-            if (orderInfo.trackingCode) {
-                const shortTrack = orderInfo.trackingCode.length > 12 ? orderInfo.trackingCode.substring(0, 12) + '...' : orderInfo.trackingCode;
-                document.getElementById('kpi-tracking').textContent = shortTrack;
-                document.getElementById('kpi-tracking-status').textContent = '✅ Activo';
+            // KPI Rastreo
+            if (mneInfo) {
+                const shortTrack = orderInfo.trackingCode && orderInfo.trackingCode.length > 12 ? orderInfo.trackingCode.substring(0, 12) + '...' : orderInfo.trackingCode || 'REGISTRADA';
+                document.getElementById('kpi-tracking').innerHTML = makeCopyable(shortTrack);
+                document.getElementById('kpi-tracking-status').textContent = mneInfo.estado || '📦 En proceso';
             } else {
-                document.getElementById('kpi-tracking').textContent = 'Sin código';
+                document.getElementById('kpi-tracking').textContent = 'Sin registro';
                 document.getElementById('kpi-tracking-status').textContent = '⚠️ Sin rastreo';
             }
 
-            // ===== TABLA OBC =====
-            const obcTableBody = document.getElementById('obc-table-body');
-            obcTableBody.innerHTML = `
-                <tr>
-                    <td><strong>Número de Orden</strong></td>
-                    <td><code>${orderInfo.orden}</code></td>
-                </tr>
-                <tr>
-                    <td><strong>Referencia</strong></td>
-                    <td>${orderInfo.referenceNo || '-'}</td>
-                </tr>
-                <tr>
-                    <td><strong>Servicio de Envío</strong></td>
-                    <td>${orderInfo.shippingService || '-'}</td>
-                </tr>
-                <tr>
-                    <td><strong>Fecha Esperada</strong></td>
-                    <td>${orderInfo.expectedArrival || '-'}</td>
-                </tr>
-                <tr>
-                    <td><strong>Destinatario</strong></td>
-                    <td>${orderInfo.recipient || '-'}</td>
-                </tr>
-                <tr>
-                    <td><strong>Tipo de Caja</strong></td>
-                    <td>${orderInfo.boxType || '-'}</td>
-                </tr>
-                <tr>
-                    <td><strong>Código de Barras</strong></td>
-                    <td><code>${orderInfo.customBarcode || '-'}</code></td>
-                </tr>
-                <tr>
-                    <td><strong>Cantidad Esperada</strong></td>
-                    <td><strong style="color: var(--primary);">${expectedQty}</strong></td>
-                </tr>
+            // ===== TABLA HORIZONTAL OBC (con validación integrada) =====
+            const obcContainer = document.getElementById('obc-table-container');
+            obcContainer.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Número Orden</th>
+                            <th>Referencia</th>
+                            <th>Servicio</th>
+                            <th>Destinatario</th>
+                            <th>Fecha Esperada</th>
+                            <th>Código Barras</th>
+                            <th>Qty Esperada</th>
+                            <th>Qty Despacho</th>
+                            <th>Estatus</th>
+                            <th>Observaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>${makeCopyable(orderInfo.orden)}</code></td>
+                            <td>${orderInfo.referenceNo || '-'}</td>
+                            <td>${orderInfo.shippingService || '-'}</td>
+                            <td>${orderInfo.recipient || '-'}</td>
+                            <td>${orderInfo.expectedArrival || '-'}</td>
+                            <td><code>${makeCopyable(orderInfo.customBarcode || '-')}</code></td>
+                            <td><strong style="color: var(--primary);">${expectedQty}</strong></td>
+                            <td>
+                                <input type="number" id="modal-qty-dispatch" min="0" value="${expectedQty}"
+                                       style="width: 80px; padding: 4px 8px; border: 2px solid #e5e7eb; border-radius: 4px;">
+                            </td>
+                            <td>
+                                <select id="modal-status-order" style="padding: 4px 8px; border: 2px solid #e5e7eb; border-radius: 4px;">
+                                    <option value="OK">OK</option>
+                                    <option value="Envío Parcial">Parcial</option>
+                                    <option value="Pendiente">Pendiente</option>
+                                    <option value="Anormalidad">Anormalidad</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" id="modal-observaciones-obc" placeholder="Notas..."
+                                       style="width: 150px; padding: 4px 8px; border: 2px solid #e5e7eb; border-radius: 4px;">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             `;
-            document.getElementById('modal-qty-dispatch').value = expectedQty;
 
-            // ===== TABLA TRS =====
+            // ===== TABLA HORIZONTAL TRS (con validación integrada) =====
+            const trsSection = document.getElementById('section-trs');
             const trsContainer = document.getElementById('trs-table-container');
             if (trsInfo) {
+                trsSection.style.display = 'block';
                 trsContainer.innerHTML = `
-                    <div style="padding: 12px; background: #fff3e0; border-radius: 6px; border-left: 4px solid var(--warning); margin-bottom: 12px;">
+                    <div style="padding: 10px 12px; background: #fff3e0; border-radius: 6px; border-left: 4px solid var(--warning); margin-bottom: 12px; font-size: 0.9em;">
                         <strong>⚠️ CAMBIO DE ETIQUETA DETECTADO</strong>
                     </div>
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Campo</th>
-                                <th>Valor</th>
+                                <th>Orden TRS</th>
+                                <th>Referencia</th>
+                                <th>Código Original</th>
+                                <th>Código Nuevo</th>
+                                <th>Estatus Cambio</th>
+                                <th>Observaciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td><strong>Orden TRS</strong></td>
-                                <td><code>${trsInfo.trs}</code></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Referencia</strong></td>
+                                <td><code>${makeCopyable(trsInfo.trs)}</code></td>
                                 <td>${trsInfo.referencia || '-'}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Código Original</strong></td>
-                                <td><code>${trsInfo.codigoOriginal}</code></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Código Nuevo</strong></td>
-                                <td><code style="color: var(--warning);">${trsInfo.codigoNuevo}</code></td>
+                                <td><code>${makeCopyable(trsInfo.codigoOriginal)}</code></td>
+                                <td><code style="color: var(--warning);">${makeCopyable(trsInfo.codigoNuevo)}</code></td>
+                                <td>
+                                    <select id="modal-status-trs" style="padding: 4px 8px; border: 2px solid #e5e7eb; border-radius: 4px;">
+                                        <option value="Aplicado">Aplicado</option>
+                                        <option value="Pendiente">Pendiente</option>
+                                        <option value="No Aplica">No Aplica</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" id="modal-observaciones-trs" placeholder="Notas..."
+                                           style="width: 150px; padding: 4px 8px; border: 2px solid #e5e7eb; border-radius: 4px;">
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 `;
             } else {
-                trsContainer.innerHTML = `
-                    <div style="padding: 12px; background: #e8f5e9; border-radius: 6px; border-left: 4px solid var(--success);">
-                        ✅ Sin cambio de etiqueta detectado
-                    </div>
-                `;
+                trsSection.style.display = 'none';
             }
 
-            // ===== TABLA RASTREO =====
+            // ===== TABLA VALIDACIÓN DE SURTIDO (Val3) =====
+            const val3Section = document.getElementById('section-val3');
+            const val3Container = document.getElementById('val3-table-container');
+            if (val3Info && val3Info.records && val3Info.records.length > 0) {
+                val3Section.style.display = 'block';
+                val3Container.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Hora</th>
+                                <th>Usuario</th>
+                                <th>Código</th>
+                                <th>Ubicación</th>
+                                <th>% Validado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${val3Info.records.map(record => `
+                                <tr>
+                                    <td>${record.fecha || '-'}</td>
+                                    <td>${record.hora || '-'}</td>
+                                    <td>${record.usuario || '-'}</td>
+                                    <td><code>${makeCopyable(record.codigo || '-')}</code></td>
+                                    <td>${record.ubicacion || '-'}</td>
+                                    <td><strong style="color: var(--success);">${val3Info.percent || 0}%</strong></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } else {
+                val3Section.style.display = 'none';
+            }
+
+            // ===== TABLA HORIZONTAL RASTREO (MNE) =====
             const rastreoSection = document.getElementById('section-rastreo');
             const rastreoContainer = document.getElementById('rastreo-table-container');
-            if (orderInfo.trackingCode) {
+            if (mneInfo && mneInfo.records && mneInfo.records.length > 0) {
                 rastreoSection.style.display = 'block';
                 rastreoContainer.innerHTML = `
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Campo</th>
-                                <th>Valor</th>
+                                <th>Fecha</th>
+                                <th>Orden OBC</th>
+                                <th>Código</th>
+                                <th>Responsable</th>
+                                <th>Estado</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td><strong>Código de Rastreo</strong></td>
-                                <td><code>${orderInfo.trackingCode}</code></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Servicio</strong></td>
-                                <td>${orderInfo.shippingService || '-'}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Estado</strong></td>
-                                <td>📦 En proceso de entrega</td>
-                            </tr>
+                            ${mneInfo.records.map(record => `
+                                <tr>
+                                    <td>${record.fecha || '-'}</td>
+                                    <td><code>${makeCopyable(record.obc || '-')}</code></td>
+                                    <td><code>${makeCopyable(record.codigo || '-')}</code></td>
+                                    <td>${record.responsable || '-'}</td>
+                                    <td><strong>${record.estado || '📦 En proceso'}</strong></td>
+                                </tr>
+                            `).join('')}
                         </tbody>
                     </table>
                 `;
@@ -2430,12 +2563,22 @@
                 rastreoSection.style.display = 'none';
             }
 
-            // Limpiar formulario
-            document.getElementById('modal-observaciones').value = '';
-            document.getElementById('modal-status-order').value = 'OK';
-            document.getElementById('modal-status-quality').value = 'Completado';
-
             document.getElementById('validation-modal').classList.add('show');
+        }
+
+        // ===== BUSCAR EN BD VAL3 =====
+        function findVal3ByOrder(ordenOBC) {
+            // TODO: Implementar búsqueda en STATE.mneData (Val3)
+            // Por ahora retornamos null, se implementará cuando se cargue Val3
+            return null;
+        }
+
+        // ===== BUSCAR EN BD MNE (Rastreo) =====
+        function findMNEByOrder(ordenOBC) {
+            // TODO: Implementar búsqueda en STATE.mneData
+            // Columna Q (index 16) contiene el Estado (Estatus 状态)
+            // Por ahora retornamos null, se implementará cuando se cargue MNE
+            return null;
         }
 
         // ===== NAVEGACIÓN POR ANCLAS =====
@@ -2471,14 +2614,14 @@
 
             const { code, orderInfo, trsInfo } = STATE.currentScan;
 
-            // Validar campos obligatorios
+            // Validar campos obligatorios (ahora están en la tabla)
             const qtyDispatch = parseInt(document.getElementById('modal-qty-dispatch').value);
-            const qtyExpected = parseInt(document.getElementById('modal-qty-expected').textContent);
+            const qtyExpected = 10; // TODO: obtener de BD
             const statusOrder = document.getElementById('modal-status-order').value;
-            const statusQuality = document.getElementById('modal-status-quality').value;
+            const statusQuality = 'Completado'; // Por defecto en despacho
             const operador = document.getElementById('modal-operador').value;
             const unidad = document.getElementById('modal-unidad').value;
-            const observaciones = document.getElementById('modal-observaciones').value;
+            const observaciones = document.getElementById('modal-observaciones-obc')?.value || '';
 
             if (!qtyDispatch || qtyDispatch <= 0) {
                 showNotification('⚠️ Ingresa cantidad a despachar', 'warning');
