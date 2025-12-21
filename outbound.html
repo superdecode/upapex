@@ -936,8 +936,8 @@
                 <div class="scan-section">
                     <div class="scan-row">
                         <div class="scan-input-group">
-                            <label>🔍 Escanear Código de Caja</label>
-                            <input type="text" class="scan-input" id="scan-input" placeholder="Escanea aquí..." autocomplete="off">
+                            <label>🔍 Buscar por Código de Barras o Número de OBC</label>
+                            <input type="text" class="scan-input" id="scan-input" placeholder="Escanea código o ingresa OBC..." autocomplete="off">
                         </div>
                         <button class="btn btn-primary" onclick="processScan()">🔍 Buscar</button>
                         <button class="btn btn-secondary" onclick="clearScan()">🗑️ Limpiar</button>
@@ -1665,6 +1665,19 @@
                 return;
             }
 
+            // Primero intentar búsqueda directa por número de OBC
+            const upperRaw = rawCode.toUpperCase().trim();
+            let orderInfo = STATE.obcData.get(upperRaw);
+
+            if (orderInfo) {
+                console.log(`✓ Encontrado por número de OBC: ${upperRaw}`);
+                const trsInfo = findTRSByCode(normalizeCode(rawCode));
+                showScanResult(rawCode, orderInfo, trsInfo);
+                input.value = '';
+                return;
+            }
+
+            // Si no se encuentra por OBC, buscar por código de barras
             // Extraer y normalizar código (como en validador.html)
             const extracted = extractCode(rawCode);
             const normalized = normalizeCode(extracted);
@@ -1672,9 +1685,9 @@
             console.log(`Buscando código: raw="${rawCode}" extracted="${extracted}" normalized="${normalized}"`);
 
             // Buscar en OBC_BD por columna I (Custom box barcode)
-            const orderInfo = findOrderByCode(normalized);
+            orderInfo = findOrderByCode(normalized);
             if (!orderInfo) {
-                showNotification(`❌ Código no encontrado en BD OBC: ${extracted}`, 'error');
+                showNotification(`❌ Código/OBC no encontrado: ${rawCode}`, 'error');
                 console.log(`No se encontró en ${STATE.obcData.size} órdenes cargadas`);
                 return;
             }
@@ -1963,25 +1976,30 @@
         }
 
         function updateDaySummary() {
-            const total = STATE.validatedOrders.length + STATE.pendingOrders.length;
+            // Usar órdenes filtradas si hay filtro activo
+            const totalOBC = STATE.dateFilter.active ? STATE.obcDataFiltered.size : 0;
             const validated = STATE.validatedOrders.length;
-            const pending = STATE.pendingOrders.length;
+            const pending = STATE.dateFilter.active ? STATE.obcDataFiltered.size - validated : 0;
             const problems = STATE.pendingOrders.filter(o => o.estatus === 'Anormalidad').length;
 
-            document.getElementById('summary-total').textContent = total;
+            document.getElementById('summary-total').textContent = totalOBC;
             document.getElementById('summary-validated').textContent = validated;
             document.getElementById('summary-pending').textContent = pending;
             document.getElementById('summary-problems').textContent = problems;
         }
 
         function updatePanels() {
-            updatePanel('validated', STATE.validatedOrders);
-            updatePanel('pending', STATE.pendingOrders);
+            // Panel de validadas: mostrar órdenes validadas
+            updateValidatedPanel();
+
+            // Panel de pendientes: mostrar órdenes OBC filtradas que NO han sido validadas
+            updatePendingPanel();
         }
 
-        function updatePanel(type, orders) {
-            const listEl = document.getElementById(`${type}-list`);
-            const countEl = document.getElementById(`${type}-count`);
+        function updateValidatedPanel() {
+            const listEl = document.getElementById('validated-list');
+            const countEl = document.getElementById('validated-count');
+            const orders = STATE.validatedOrders;
 
             countEl.textContent = orders.length;
 
@@ -1989,14 +2007,14 @@
                 listEl.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #999;">
                         <div style="font-size: 3em; margin-bottom: 10px;">📭</div>
-                        <div>Sin ${type === 'validated' ? 'validaciones' : 'pendientes'}</div>
+                        <div>Sin validaciones</div>
                     </div>
                 `;
                 return;
             }
 
             listEl.innerHTML = orders.map(order => `
-                <div class="panel-item ${type === 'validated' ? 'validated' : 'pending'}" data-order="${order.orden}">
+                <div class="panel-item validated" data-order="${order.orden}">
                     <div class="panel-item-info">
                         <div class="panel-item-order">
                             ${order.orden}
@@ -2011,12 +2029,93 @@
                         </div>
                     </div>
                     <div class="panel-item-actions">
-                        <button class="btn-expand" onclick="showOrderDetails('${order.folio}', '${type}')">
+                        <button class="btn-expand" onclick="showOrderDetails('${order.folio}', 'validated')">
                             📋 Ver
                         </button>
                     </div>
                 </div>
             `).join('');
+        }
+
+        function updatePendingPanel() {
+            const listEl = document.getElementById('pending-list');
+            const countEl = document.getElementById('pending-count');
+
+            if (!STATE.dateFilter.active || STATE.obcDataFiltered.size === 0) {
+                countEl.textContent = '0';
+                listEl.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #999;">
+                        <div style="font-size: 3em; margin-bottom: 10px;">📭</div>
+                        <div>Selecciona un rango de fechas para ver órdenes pendientes</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Obtener OBC validadas
+            const validatedOBCs = new Set(STATE.validatedOrders.map(o => o.orden));
+
+            // Filtrar órdenes pendientes (no validadas)
+            const pendingOrders = Array.from(STATE.obcDataFiltered.values())
+                .filter(order => !validatedOBCs.has(order.orden));
+
+            countEl.textContent = pendingOrders.length;
+
+            if (pendingOrders.length === 0) {
+                listEl.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #999;">
+                        <div style="font-size: 3em; margin-bottom: 10px;">✅</div>
+                        <div>Todas las órdenes del periodo han sido validadas</div>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = pendingOrders.map(order => `
+                <div class="panel-item pending" data-order="${order.orden}">
+                    <div class="panel-item-info">
+                        <div class="panel-item-order">
+                            ${order.orden}
+                        </div>
+                        <div class="panel-item-meta">
+                            👤 ${order.recipient || 'Sin destinatario'} •
+                            📦 ${order.shippingService || 'Sin servicio'} •
+                            🕐 ${order.expectedArrival || 'Sin fecha'}
+                        </div>
+                        <div class="panel-item-meta">
+                            📋 Ref: ${order.referenceNo || '-'} •
+                            🔢 Tracking: ${order.trackingCode || '-'}
+                        </div>
+                    </div>
+                    <div class="panel-item-actions">
+                        <button class="btn-expand" onclick="showOBCDetails('${order.orden}')">
+                            📋 Ver
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showOBCDetails(ordenOBC) {
+            const order = STATE.obcDataFiltered.get(ordenOBC) || STATE.obcData.get(ordenOBC);
+
+            if (!order) return;
+
+            const details = `
+📦 DETALLE DE ORDEN OBC
+
+Orden: ${order.orden}
+Destinatario: ${order.recipient || '-'}
+Servicio: ${order.shippingService || '-'}
+Tracking: ${order.trackingCode || '-'}
+Fecha Esperada: ${order.expectedArrival || '-'}
+Referencia: ${order.referenceNo || '-'}
+Tipo de Caja: ${order.boxType || '-'}
+Código de Barras: ${order.customBarcode || '-'}
+Observaciones: ${order.remark || '-'}
+            `.trim();
+
+            alert(details);
         }
 
         function filterPanel(type) {
