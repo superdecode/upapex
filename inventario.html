@@ -3443,7 +3443,7 @@
                     <div class="validation-input-group">
                         <label>¿Cuántas cajas físicas hay en la tarima?</label>
                         <input type="number" id="physical-count-input" min="0" placeholder="" autofocus
-                               onkeyup="validateBoxCount(${boxCount})" onchange="validateBoxCount(${boxCount})">
+                               oninput="validateBoxCount(${boxCount})">
                     </div>
                     <div id="validation-status"></div>
                     <div class="popup-buttons">
@@ -4299,6 +4299,8 @@
                     return;
                 }
 
+                this.saveCurrentTabState();
+
                 const tabId = this.generateTabId();
                 const newTab = {
                     id: tabId,
@@ -5148,7 +5150,7 @@
                         <div class="validation-input-group">
                             <label>¿Cuántas cajas físicas hay en la tarima?</label>
                             <input type="number" id="unified-physical-count-input" min="0" placeholder="" autofocus
-                                   onkeyup="UnifiedModule.validateBoxCount(${boxCount})" onchange="UnifiedModule.validateBoxCount(${boxCount})">
+                                   oninput="UnifiedModule.validateBoxCount(${boxCount})">
                         </div>
                         <div id="unified-validation-status"></div>
                         <div class="popup-buttons">
