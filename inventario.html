@@ -3025,6 +3025,22 @@
                     code2Input.value = '';  // Limpiar automáticamente
                 }
             });
+
+            // Agregar event listeners para los campos de ubicación
+            // Para actualizar el estado de los botones "Enviar Tarima"
+            const locationOk = document.getElementById('location-ok');
+            const locationBlocked = document.getElementById('location-blocked');
+            const locationNowms = document.getElementById('location-nowms');
+
+            if (locationOk) {
+                locationOk.addEventListener('input', updateSendButtons);
+            }
+            if (locationBlocked) {
+                locationBlocked.addEventListener('input', updateSendButtons);
+            }
+            if (locationNowms) {
+                locationNowms.addEventListener('input', updateSendButtons);
+            }
         }
 
         function processScan(rawCode) {
@@ -3894,13 +3910,22 @@
         }
 
         function updateSidebar() {
-            document.getElementById('sidebar-ok-count').textContent = STATE.pallets.ok.boxes.length;
-            document.getElementById('sidebar-blocked-count').textContent = STATE.pallets.blocked.boxes.length;
-            document.getElementById('sidebar-nowms-count').textContent = STATE.pallets.nowms.boxes.length;
+            // These sidebar elements no longer exist - function kept for compatibility
+            // The global summary is now updated by GlobalTabs.updateGlobalSummary()
+            // If sidebar elements are added in the future, update them here with null checks
+            const sidebarOkCount = document.getElementById('sidebar-ok-count');
+            const sidebarBlockedCount = document.getElementById('sidebar-blocked-count');
+            const sidebarNowmsCount = document.getElementById('sidebar-nowms-count');
+            const sidebarOkPallet = document.getElementById('sidebar-ok-pallet');
+            const sidebarBlockedPallet = document.getElementById('sidebar-blocked-pallet');
+            const sidebarNowmsPallet = document.getElementById('sidebar-nowms-pallet');
 
-            document.getElementById('sidebar-ok-pallet').textContent = STATE.pallets.ok.id;
-            document.getElementById('sidebar-blocked-pallet').textContent = STATE.pallets.blocked.id;
-            document.getElementById('sidebar-nowms-pallet').textContent = STATE.pallets.nowms.id;
+            if (sidebarOkCount) sidebarOkCount.textContent = STATE.pallets.ok.boxes.length;
+            if (sidebarBlockedCount) sidebarBlockedCount.textContent = STATE.pallets.blocked.boxes.length;
+            if (sidebarNowmsCount) sidebarNowmsCount.textContent = STATE.pallets.nowms.boxes.length;
+            if (sidebarOkPallet) sidebarOkPallet.textContent = STATE.pallets.ok.id;
+            if (sidebarBlockedPallet) sidebarBlockedPallet.textContent = STATE.pallets.blocked.id;
+            if (sidebarNowmsPallet) sidebarNowmsPallet.textContent = STATE.pallets.nowms.id;
         }
 
         function updateSendButtons() {
@@ -3924,11 +3949,20 @@
                 const blockedBoxes = STATE.pallets.blocked?.boxes?.length || 0;
                 const nowmsBoxes = STATE.pallets.nowms?.boxes?.length || 0;
 
-                if (okBtn) okBtn.disabled = okBoxes === 0;
-                if (blockedBtn) blockedBtn.disabled = blockedBoxes === 0;
-                if (nowmsBtn) nowmsBtn.disabled = nowmsBoxes === 0;
+                // Obtener valores de ubicación
+                const okLocation = (document.getElementById('location-ok')?.value || '').trim();
+                const blockedLocation = (document.getElementById('location-blocked')?.value || '').trim();
+                const nowmsLocation = (document.getElementById('location-nowms')?.value || '').trim();
 
-                console.log('updateSendButtons:', { okBoxes, blockedBoxes, nowmsBoxes });
+                // Botón habilitado solo si hay cajas Y hay ubicación
+                if (okBtn) okBtn.disabled = okBoxes === 0 || okLocation === '';
+                if (blockedBtn) blockedBtn.disabled = blockedBoxes === 0 || blockedLocation === '';
+                if (nowmsBtn) nowmsBtn.disabled = nowmsBoxes === 0 || nowmsLocation === '';
+
+                console.log('updateSendButtons:', {
+                    okBoxes, blockedBoxes, nowmsBoxes,
+                    okLocation, blockedLocation, nowmsLocation
+                });
             } catch (e) {
                 console.error('Error en updateSendButtons:', e);
             }
@@ -4457,6 +4491,11 @@
                 tab.state.classic.pallets = JSON.parse(JSON.stringify(STATE.pallets));
                 tab.state.classic.originLocation = document.getElementById('origin-location')?.value || '';
 
+                // Guardar ubicaciones de destino para cada columna
+                tab.state.classic.pallets.ok.location = document.getElementById('location-ok')?.value || '';
+                tab.state.classic.pallets.blocked.location = document.getElementById('location-blocked')?.value || '';
+                tab.state.classic.pallets.nowms.location = document.getElementById('location-nowms')?.value || '';
+
                 // Guardar estado del módulo Unificado
                 tab.state.unified.originLocation = document.getElementById('unified-origin-location')?.value || '';
                 tab.state.unified.location = document.getElementById('unified-location')?.value || '';
@@ -4486,6 +4525,15 @@
                 const originInput = document.getElementById('origin-location');
                 if (originInput) originInput.value = tab.state.classic.originLocation || '';
 
+                // Cargar ubicaciones de destino para cada columna
+                const locationOkInput = document.getElementById('location-ok');
+                const locationBlockedInput = document.getElementById('location-blocked');
+                const locationNowmsInput = document.getElementById('location-nowms');
+
+                if (locationOkInput) locationOkInput.value = tab.state.classic.pallets.ok?.location || '';
+                if (locationBlockedInput) locationBlockedInput.value = tab.state.classic.pallets.blocked?.location || '';
+                if (locationNowmsInput) locationNowmsInput.value = tab.state.classic.pallets.nowms?.location || '';
+
                 // Cargar estado del módulo Unificado
                 const unifiedOriginInput = document.getElementById('unified-origin-location');
                 if (unifiedOriginInput) unifiedOriginInput.value = tab.state.unified.originLocation || '';
@@ -4495,6 +4543,7 @@
                 // Actualizar botones de envío después de cargar estado
                 // No usar setTimeout aquí porque showModuleForTab() lo hará
                 // pero agregamos esto como respaldo
+                updateSendButtons();
             },
 
             renderTabs() {
