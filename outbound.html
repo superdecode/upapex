@@ -36,7 +36,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, var(--primary) 0%, #ea580c 100%);
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         }
 
         .login-card {
@@ -1668,9 +1668,11 @@
                         }
                     }
                 });
+                console.log('✅ Google API inicializada correctamente');
             } catch (e) {
                 hidePreloader();
-                showNotification('Error inicializando API', 'error');
+                console.error('Error inicializando API:', e);
+                showNotification('❌ Error inicializando API: ' + e.message, 'error');
             }
         }
 
@@ -1694,8 +1696,13 @@
         }
 
         function handleLogin() {
+            if (!TOKEN_CLIENT) {
+                showNotification('⚠️ Inicializando conexión con Google...', 'warning');
+                setTimeout(handleLogin, 1000); // Reintentar después de 1 segundo
+                return;
+            }
             showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
-            TOKEN_CLIENT?.requestAccessToken();
+            TOKEN_CLIENT.requestAccessToken();
         }
 
         // ================= AVATAR / USER SYSTEM =================
