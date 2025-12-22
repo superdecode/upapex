@@ -1771,7 +1771,7 @@
                             📋 Número de Orden ${flexIndicator('obcBd')}
                         </div>
                         <div class="summary-value">${makeCopyable(obcOrden)}</div>
-                        ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas${obcValidatedCount > 0 ? ` • <span style="color: ${obcValidationPercent >= 100 ? '#4CAF50' : obcValidationPercent >= 50 ? '#FF9800' : '#F44336'};">${obcValidationPercent >= 100 ? '✅' : '⏳'} ${obcValidatedCount}/${obcBoxCount} (${obcValidationPercent}%)</span>` : ''}${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} rastreo` : ''}</div>` : ''}
+                        ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas</div>` : ''}
                     </div>
 
                     <div class="summary-item info" onclick="jumpToSection('obcBd')">
@@ -1800,6 +1800,12 @@
                     <div class="summary-item ${validacionInfo ? 'success' : 'gray'}" onclick="jumpToSection('validacion')">
                         <div class="summary-label">✅ Estatus Validación ${flexIndicator('validacion')}</div>
                         <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
+                        ${validacionInfo ? `<div style="font-size:0.75em;color:#666;margin-top:4px;">
+                            <span style="color:${obcValidationPercent >= 100 ? '#4CAF50' : obcValidationPercent >= 50 ? '#FF9800' : '#F44336'};">
+                                ${obcValidationPercent >= 100 ? '✅' : '⌛'} ${obcValidatedCount || 0}/${obcBoxCount || 0} (${obcValidationPercent || 0}%)
+                            </span>
+                            ${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} rastreo` : ''}
+                        </div>` : ''}
                     </div>
 
                     <div class="summary-item ${trsExact ? 'primary' : (isExactMode ? 'gray' : trsMultipleFlex > 0 ? 'warning' : 'gray')}" onclick="jumpToSection('trs')">
