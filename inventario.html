@@ -3904,9 +3904,34 @@
         }
 
         function updateSendButtons() {
-            document.getElementById('send-ok-btn').disabled = STATE.pallets.ok.boxes.length === 0;
-            document.getElementById('send-blocked-btn').disabled = STATE.pallets.blocked.boxes.length === 0;
-            document.getElementById('send-nowms-btn').disabled = STATE.pallets.nowms.boxes.length === 0;
+            try {
+                const okBtn = document.getElementById('send-ok-btn');
+                const blockedBtn = document.getElementById('send-blocked-btn');
+                const nowmsBtn = document.getElementById('send-nowms-btn');
+
+                // Validar que STATE.pallets existe y tiene estructura correcta
+                if (!STATE || !STATE.pallets) {
+                    console.warn('updateSendButtons: STATE.pallets no existe');
+                    // Deshabilitar todos los botones si no hay datos
+                    if (okBtn) okBtn.disabled = true;
+                    if (blockedBtn) blockedBtn.disabled = true;
+                    if (nowmsBtn) nowmsBtn.disabled = true;
+                    return;
+                }
+
+                // Actualizar estado de cada botón
+                const okBoxes = STATE.pallets.ok?.boxes?.length || 0;
+                const blockedBoxes = STATE.pallets.blocked?.boxes?.length || 0;
+                const nowmsBoxes = STATE.pallets.nowms?.boxes?.length || 0;
+
+                if (okBtn) okBtn.disabled = okBoxes === 0;
+                if (blockedBtn) blockedBtn.disabled = blockedBoxes === 0;
+                if (nowmsBtn) nowmsBtn.disabled = nowmsBoxes === 0;
+
+                console.log('updateSendButtons:', { okBoxes, blockedBoxes, nowmsBoxes });
+            } catch (e) {
+                console.error('Error en updateSendButtons:', e);
+            }
         }
 
         // ==================== PALLET MANAGEMENT ====================
@@ -4056,10 +4081,16 @@
                     STATE.inventoryLastUpdate = data.inventoryLastUpdate;
                     if (data.pallets) STATE.pallets = data.pallets;
                     STATE.history = data.history || [];
+                    console.log('Datos cargados desde storage:', {
+                        pallets: STATE.pallets,
+                        inventory: STATE.inventory.size
+                    });
                 }
                 updateBdInfo();
-                // Actualizar botones de envío después de cargar datos desde storage
-                updateSendButtons();
+                // Actualizar botones de envío con delay para asegurar DOM listo
+                setTimeout(() => {
+                    updateSendButtons();
+                }, 50);
             } catch (e) {
                 console.error('Error loading from storage:', e);
             }
