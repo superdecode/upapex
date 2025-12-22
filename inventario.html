@@ -4464,16 +4464,25 @@
 
             loadTabState() {
                 const tab = this.getActiveTab();
-                if (!tab) return;
+                if (!tab) {
+                    console.warn('loadTabState: No active tab found');
+                    return;
+                }
 
                 // Validate tab has proper state
                 if (!tab.state || !tab.state.classic || !tab.state.unified) {
-                    console.error('loadTabState: Tab has invalid state structure');
+                    console.error('loadTabState: Tab has invalid state structure', tab.id);
                     return;
                 }
 
                 // Cargar estado del módulo Clasificar
                 STATE.pallets = JSON.parse(JSON.stringify(tab.state.classic.pallets));
+                console.log('loadTabState: Loaded pallets:', {
+                    ok: STATE.pallets.ok.boxes.length,
+                    blocked: STATE.pallets.blocked.boxes.length,
+                    nowms: STATE.pallets.nowms.boxes.length
+                });
+
                 const originInput = document.getElementById('origin-location');
                 if (originInput) originInput.value = tab.state.classic.originLocation || '';
 
@@ -4483,8 +4492,9 @@
                 const unifiedLocationInput = document.getElementById('unified-location');
                 if (unifiedLocationInput) unifiedLocationInput.value = tab.state.unified.location || '';
 
-                // Solo actualizar la UI del módulo activo para evitar conflictos
-                // La UI se actualizará en showModuleForTab
+                // Actualizar botones de envío después de cargar estado
+                // No usar setTimeout aquí porque showModuleForTab() lo hará
+                // pero agregamos esto como respaldo
             },
 
             renderTabs() {
