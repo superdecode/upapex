@@ -4,6 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚚 Sistema de Despacho Logístico</title>
+    <!-- Google API Scripts -->
+    <script src="https://apis.google.com/js/api.js" async></script>
+    <script src="https://accounts.google.com/gsi/client" async></script>
+    <script>
+        // Ensure CONFIG is defined
+        window.CONFIG = window.CONFIG || {
+            CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
+            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
+        };
+        
+        // Initialize global variables if they don't exist
+        window.TOKEN_CLIENT = window.TOKEN_CLIENT || null;
+        window.CURRENT_USER = window.CURRENT_USER || '';
+        window.USER_EMAIL = window.USER_EMAIL || '';
+        window.USER_GOOGLE_NAME = window.USER_GOOGLE_NAME || '';
+        window.IS_ONLINE = window.IS_ONLINE || navigator.onLine;
+        window.PENDING_SYNC = window.PENDING_SYNC || [];
+        
+        // Basic notification function
+        window.showNotification = function(message, type = 'info') {
+            const container = document.getElementById('notifications');
+            if (!container) return;
+            
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = message;
+            container.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        };
+        
+        // Stub function to prevent errors if called before full script loads
+        window.handleLogin = function() {
+            if (typeof gapi === 'undefined' || !gapi.client) {
+                console.error('Google API not loaded yet');
+                showNotification('⚠️ Cargando Google API... Por favor espera un momento e intenta de nuevo.', 'warning');
+                return;
+            }
+            // The real implementation will replace this when the full script loads
+            console.log('handleLogin called but full implementation not loaded yet');
+        };
+    </script>
     <style>
         :root {
             --primary: #f97316;
@@ -1533,6 +1578,9 @@
                         <option value="">🚛 Unidad/Placas...</option>
                     </select>
                 </div>
+                <!-- 
+                    Botones para confirmar o cancelar la validación de despacho.
+                -->
                 <div class="modal-buttons">
                     <button class="btn btn-success" onclick="confirmValidation()">
                         ✅ Confirmar Despacho
@@ -1545,9 +1593,10 @@
         </div>
     </div>
 
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script src="https://accounts.google.com/gsi/client"></script>
     <script>
+        let IS_ONLINE = navigator.onLine;
+        let PENDING_SYNC = [];
+        let TOKEN_CLIENT = null;
         // ==================== CONFIGURATION ====================
         const CONFIG = {
             CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
@@ -1593,8 +1642,8 @@
         // ==================== INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', () => {
             setupEventListeners();
-            loadPendingSync(); // Cargar registros pendientes de localStorage
-            setupConnectionMonitoring(); // Monitorear conexión a internet
+            loadPendingSync();
+            setupConnectionMonitoring();
             gapi.load('client', initGAPI);
         });
 
@@ -1652,27 +1701,42 @@
 
         async function initGAPI() {
             try {
+                console.log('Inicializando Google API...');
+                
+                // Primero cargamos el cliente de la API
                 await gapi.client.init({
-                    discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
+                    apiKey: '',
+                    discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+                    clientId: CONFIG.CLIENT_ID,
+                    scope: CONFIG.SCOPES
                 });
+                
+                console.log('Google API inicializada, creando cliente de token...');
+                
+                // Luego inicializamos el cliente de token OAuth2
                 TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
                     client_id: CONFIG.CLIENT_ID,
                     scope: CONFIG.SCOPES,
                     callback: handleAuthCallback,
                     error_callback: (error) => {
+                        console.error('Error en OAuth2:', error);
                         hidePreloader();
                         if (error.type !== 'popup_closed') {
-                            showNotification('❌ Error de autenticación: ' + error.message, 'error');
+                            showNotification('❌ Error de autenticación: ' + (error.message || 'Error desconocido'), 'error');
                         } else {
                             showNotification('⚠️ Autenticación cancelada', 'warning');
                         }
                     }
                 });
-                console.log('✅ Google API inicializada correctamente');
+                
+                console.log('Cliente de token creado exitosamente');
+                return true;
+                
             } catch (e) {
+                console.error('Error en initGAPI:', e);
                 hidePreloader();
-                console.error('Error inicializando API:', e);
-                showNotification('❌ Error inicializando API: ' + e.message, 'error');
+                showNotification('❌ Error al inicializar la API de Google: ' + (e.message || 'Error desconocido'), 'error');
+                throw e; // Relanzamos el error para que pueda ser manejado por el llamador
             }
         }
 
@@ -1687,7 +1751,6 @@
                 updateSyncStatus();
                 showNotification('✅ Conexión exitosa - BD cargada completa', 'success');
                 showApp();
-
                 // Si hay registros pendientes, intentar sincronizar
                 if (PENDING_SYNC.length > 0) {
                     setTimeout(() => syncData(true), 1000);
@@ -1696,13 +1759,36 @@
         }
 
         function handleLogin() {
-            if (!TOKEN_CLIENT) {
-                showNotification('⚠️ Inicializando conexión con Google...', 'warning');
-                setTimeout(handleLogin, 1000); // Reintentar después de 1 segundo
-                return;
+            try {
+                showPreloader('Iniciando sesión...', 'Por favor espera');
+                
+                if (!TOKEN_CLIENT) {
+                    showNotification('⚠️ Inicializando conexión con Google...', 'info');
+                    initGAPI().then(() => {
+                        if (TOKEN_CLIENT) {
+                            showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
+                            TOKEN_CLIENT.requestAccessToken();
+                        } else {
+                            hidePreloader();
+                            showNotification('❌ No se pudo inicializar la conexión con Google', 'error');
+                        }
+                    }).catch(error => {
+                        console.error('Error al inicializar GAPI:', error);
+                        hidePreloader();
+                        showNotification('❌ Error al conectar con Google: ' + (error.message || 'Error desconocido'), 'error');
+                    });
+                    return;
+                }
+                
+                // Si ya tenemos el cliente de token, proceder directamente
+                showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
+                TOKEN_CLIENT.requestAccessToken();
+                
+            } catch (error) {
+                console.error('Error en handleLogin:', error);
+                hidePreloader();
+                showNotification('❌ Error al iniciar sesión: ' + (error.message || 'Error desconocido'), 'error');
             }
-            showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
-            TOKEN_CLIENT.requestAccessToken();
         }
 
         // ================= AVATAR / USER SYSTEM =================
@@ -1767,8 +1853,6 @@
         }
 
         // ================= SYNC MANAGER =================
-        let IS_ONLINE = navigator.onLine;
-        let PENDING_SYNC = [];
 
         window.addEventListener('online', () => {
             IS_ONLINE = true;
@@ -1859,6 +1943,14 @@
                 }
             }
         };
+
+        // Make functions globally available (overwrite stubs if any)
+        window.handleLogin = handleLogin;
+        window.initGAPI = initGAPI;
+        window.handleAuthCallback = handleAuthCallback;
+        
+        // Log that the full implementation is loaded
+        console.log('Google API handlers initialized');
 
         document.addEventListener('DOMContentLoaded', () => {
             SyncManager.init();
@@ -3615,5 +3707,72 @@ ${PENDING_SYNC.length > 0 ? '\n¿Deseas sincronizar ahora?' : ''}`;
             setTimeout(() => notification.remove(), 4000);
         }
     </script>
+    
+    <!-- PRELOADER -->
+    <div id="preloader" class="preloader">
+        <div class="preloader-content">
+            <div class="spinner"></div>
+            <div id="preloader-text" class="preloader-text">Cargando...</div>
+            <div id="preloader-subtext" class="preloader-subtext">Por favor espera</div>
+        </div>
+    </div>
+    
+    <style>
+        .preloader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        
+        .preloader.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .preloader-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 1rem;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #f97316;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .preloader-text {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+        
+        .preloader-subtext {
+            color: #666;
+            font-size: 0.9rem;
+        }
+    </style>
 </body>
 </html>
