@@ -4426,27 +4426,43 @@
             },
 
             switchTab(tabId) {
-                if (this.activeTabId === tabId) return;
-
-                // Guardar estado actual antes de cambiar
+                // Save current tab state before switching
                 this.saveCurrentTabState();
 
-                this.activeTabId = tabId;
-                this.saveToStorage();
-                this.renderTabs();
-                this.loadTabState();
-
-                // Show the correct module for the new active tab
-                const tab = this.getActiveTab();
-                if (tab) {
-                    this.showModuleForTab(tab);
-                    // Focus the appropriate input
-                    if (tab.workType === 'unified') {
-                        setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
-                    } else {
-                        setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
-                    }
+                const tab = this.tabs.find(t => t.id === tabId);
+                if (!tab) {
+                    console.error('Tab not found:', tabId);
+                    return;
                 }
+
+                this.activeTabId = tabId;
+                
+                // Update UI
+                this.renderTabs();
+                
+                // Load the tab's state
+                this.loadTabState();
+                
+                // Show the appropriate module
+                switchModule(tab.workType, true);
+                
+                // Update the UI
+                updateUI();
+                
+                // Focus the appropriate input
+                if (tab.workType === 'unified') {
+                    const unifiedInput = document.getElementById('unified-scan-input');
+                    if (unifiedInput) unifiedInput.focus();
+                } else {
+                    const scanInput = document.getElementById('scan-input');
+                    if (scanInput) scanInput.focus();
+                }
+                
+                // Save to storage
+                this.saveToStorage();
+                
+                // Update global summary
+                this.updateGlobalSummary();
             },
 
             closeTab(tabId, event) {
