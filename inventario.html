@@ -4058,6 +4058,8 @@
                     STATE.history = data.history || [];
                 }
                 updateBdInfo();
+                // Actualizar botones de envío después de cargar datos desde storage
+                updateSendButtons();
             } catch (e) {
                 console.error('Error loading from storage:', e);
             }
