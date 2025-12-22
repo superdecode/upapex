@@ -3482,19 +3482,19 @@
             const input = document.getElementById('physical-count-input');
             const statusDiv = document.getElementById('validation-status');
             const confirmBtn = document.getElementById('confirm-send-btn');
-            const physicalCount = parseInt(input.value) || 0;
+            const physicalCount = parseInt(input?.value) || 0;  // AÑADE ?. para evitar error
 
             if (physicalCount === expectedCount) {
-                statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${expectedCount} cajas)</div>`;
-                confirmBtn.disabled = false;
+                if (statusDiv) statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${expectedCount} cajas)</div>`;
+                if (confirmBtn) confirmBtn.disabled = false;  // AÑADE verificación
             } else if (physicalCount > 0) {
                 const diff = physicalCount - expectedCount;
                 const diffText = diff > 0 ? `+${diff} de más` : `${Math.abs(diff)} faltan`;
-                statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${expectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
-                confirmBtn.disabled = true;
+                if (statusDiv) statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${expectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
+                if (confirmBtn) confirmBtn.disabled = true;
             } else {
-                statusDiv.innerHTML = '';
-                confirmBtn.disabled = true;
+                if (statusDiv) statusDiv.innerHTML = '';
+                if (confirmBtn) confirmBtn.disabled = true;
             }
         }
 
@@ -3581,19 +3581,32 @@
             updateSidebar();
             updateSendButtons();
             updateGlobalCounter();
-            updateVerificationBadges();
-            GlobalTabs.updateGlobalSummary();
         }
 
         function updateGlobalCounter() {
-            const total = STATE.pallets.ok.boxes.length +
-                          STATE.pallets.blocked.boxes.length +
-                          STATE.pallets.nowms.boxes.length;
-            const counterEl = document.getElementById('global-box-count');
-            if (counterEl) {
-                counterEl.textContent = total;
-            }
-        }
+    const tab = GlobalTabs.getActiveTab();
+    if (!tab) {
+        const counterEl = document.getElementById('global-box-count');
+        if (counterEl) counterEl.textContent = '0';
+        return;
+    }
+    
+    // Obtener total de la pestaña activa según su tipo
+    let total = 0;
+    if (tab.workType === 'unified') {
+        total = tab.state.unified.boxes.length;
+    } else {
+        const classicPallets = tab.state.classic.pallets;
+        total = classicPallets.ok.boxes.length +
+                classicPallets.blocked.boxes.length +
+                classicPallets.nowms.boxes.length;
+    }
+    
+    const counterEl = document.getElementById('global-box-count');
+    if (counterEl) {
+        counterEl.textContent = total;
+    }
+}
 
         function updateCounts() {
             document.getElementById('ok-count').textContent = STATE.pallets.ok.boxes.length;
@@ -4293,6 +4306,9 @@
                     console.error('createTab: Invalid workType:', workType, '- defaulting to classic');
                     workType = 'classic';
                 }
+
+                // 🔥 GUARDAR ESTADO ACTUAL ANTES DE CREAR NUEVA PESTAÑA
+                this.saveCurrentTabState();
 
                 if (this.tabs.length >= this.MAX_TABS) {
                     showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
