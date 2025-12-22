@@ -1800,6 +1800,7 @@
                     <div class="summary-item ${validacionInfo ? 'success' : 'gray'}" onclick="jumpToSection('validacion')">
                         <div class="summary-label">✅ Estatus Validación ${flexIndicator('validacion')}</div>
                         <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
+                       ${validacionInfo ? `<div style="font-size:0.75em;color:#666;margin-top:4px;">${obcValidatedCount > 0 ? `<span style="color:${obcValidationPercent >= 100 ? '#4CAF50' : obcValidationPercent >= 50 ? '#FF9800' : '#F44336'};">${obcValidationPercent >= 100 ? '✅' : '⏳'} ${obcValidatedCount}/${obcBoxCount} (${obcValidationPercent}%)</span>` : ''}${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} rastreo` : ''}</div>` : ''}
                     </div>
 
                     <div class="summary-item ${trsExact ? 'primary' : (isExactMode ? 'gray' : trsMultipleFlex > 0 ? 'warning' : 'gray')}" onclick="jumpToSection('trs')">
@@ -2079,10 +2080,10 @@
                 mne: [
                     { key: 0, label: 'Fecha', type: 'date' },             // Col A - Fecha
                     { key: 1, label: 'Mes', type: 'text' },               // Col B - Mes
-                    { key: 3, label: 'Orden OBC', type: 'code' },         // Col D - OBC 出库单
-                    { key: 4, label: 'IB', type: 'code' },                // Col E - IB
+                    { key: 3, label: 'Orden', type: 'code' },         // Col D - OBC 出库单
                     { key: 5, label: 'Código', type: 'code' },            // Col F - Código 货号
                     { key: 12, label: 'Responsable', type: 'text' }       // Col M - Responsable
+                    { key: 16, label: 'Estatus', type: 'code' },                // Col Q - Estatus
                 ],
                 trs: [
                     { key: 0, label: 'No. Servicio', type: 'code' },          // Col A - 增值服务单号
