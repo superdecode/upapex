@@ -3609,13 +3609,41 @@
 }
 
         function updateCounts() {
-            document.getElementById('ok-count').textContent = STATE.pallets.ok.boxes.length;
-            document.getElementById('blocked-count').textContent = STATE.pallets.blocked.boxes.length;
-            document.getElementById('nowms-count').textContent = STATE.pallets.nowms.boxes.length;
+            const tab = GlobalTabs.getActiveTab();
+            if (!tab) {
+                // Reset all counts if no active tab
+                document.getElementById('ok-count').textContent = '0';
+                document.getElementById('blocked-count').textContent = '0';
+                document.getElementById('nowms-count').textContent = '0';
+                document.getElementById('ok-pallet').textContent = '-';
+                document.getElementById('blocked-pallet').textContent = '-';
+                document.getElementById('nowms-pallet').textContent = '-';
+                return;
+            }
 
-            document.getElementById('ok-pallet').textContent = STATE.pallets.ok.id;
-            document.getElementById('blocked-pallet').textContent = STATE.pallets.blocked.id;
-            document.getElementById('nowms-pallet').textContent = STATE.pallets.nowms.id;
+            if (tab.workType === 'unified') {
+                // Hide classic UI elements for unified view
+                document.querySelectorAll('.classic-only').forEach(el => el.style.display = 'none');
+                document.querySelector('.unified-module-container').style.display = 'block';
+                
+                // Update unified counter
+                const unifiedCount = tab.state.unified.boxes.length;
+                document.getElementById('unified-box-count').textContent = unifiedCount;
+            } else {
+                // Show classic UI elements
+                document.querySelectorAll('.classic-only').forEach(el => el.style.display = '');
+                document.querySelector('.unified-module-container').style.display = 'none';
+                
+                // Update classic counters
+                const pallets = tab.state.classic.pallets;
+                document.getElementById('ok-count').textContent = pallets.ok.boxes.length;
+                document.getElementById('blocked-count').textContent = pallets.blocked.boxes.length;
+                document.getElementById('nowms-count').textContent = pallets.nowms.boxes.length;
+
+                document.getElementById('ok-pallet').textContent = pallets.ok.id;
+                document.getElementById('blocked-pallet').textContent = pallets.blocked.id;
+                document.getElementById('nowms-pallet').textContent = pallets.nowms.id;
+            }
         }
 
         function updateLists() {
@@ -3908,9 +3936,47 @@
         }
 
         function updateSendButtons() {
-            document.getElementById('send-ok-btn').disabled = STATE.pallets.ok.boxes.length === 0;
-            document.getElementById('send-blocked-btn').disabled = STATE.pallets.blocked.boxes.length === 0;
-            document.getElementById('send-nowms-btn').disabled = STATE.pallets.nowms.boxes.length === 0;
+            const tab = GlobalTabs.getActiveTab();
+            if (!tab) {
+                // Disable all buttons if no active tab
+                document.getElementById('send-ok-btn').disabled = true;
+                document.getElementById('send-blocked-btn').disabled = true;
+                document.getElementById('send-nowms-btn').disabled = true;
+                return;
+            }
+
+            if (tab.workType === 'unified') {
+                // Handle unified tab
+                const unifiedBoxes = tab.state.unified.boxes;
+                const sendBtn = document.getElementById('unified-send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = unifiedBoxes.length === 0;
+                }
+                
+                // Hide classic buttons
+                document.querySelectorAll('.send-btn').forEach(btn => {
+                    if (!btn.id.includes('unified-')) {
+                        btn.style.display = 'none';
+                    } else {
+                        btn.style.display = '';
+                    }
+                });
+            } else {
+                // Handle classic tab
+                const pallets = tab.state.classic.pallets;
+                document.getElementById('send-ok-btn').disabled = pallets.ok.boxes.length === 0;
+                document.getElementById('send-blocked-btn').disabled = pallets.blocked.boxes.length === 0;
+                document.getElementById('send-nowms-btn').disabled = pallets.nowms.boxes.length === 0;
+                
+                // Show classic buttons, hide unified
+                document.querySelectorAll('.send-btn').forEach(btn => {
+                    if (btn.id.includes('unified-')) {
+                        btn.style.display = 'none';
+                    } else {
+                        btn.style.display = '';
+                    }
+                });
+            }
         }
 
         // ==================== PALLET MANAGEMENT ====================
@@ -4301,14 +4367,14 @@
             },
 
             createTab(workType = 'classic') {
+                // Save current tab state before creating a new one
+                this.saveCurrentTabState();
+
                 // Validate workType
                 if (workType !== 'classic' && workType !== 'unified') {
                     console.error('createTab: Invalid workType:', workType, '- defaulting to classic');
                     workType = 'classic';
                 }
-
-                // 🔥 GUARDAR ESTADO ACTUAL ANTES DE CREAR NUEVA PESTAÑA
-                this.saveCurrentTabState();
 
                 if (this.tabs.length >= this.MAX_TABS) {
                     showNotification(`⚠️ Máximo ${this.MAX_TABS} pestañas permitidas`, 'warning');
@@ -4319,29 +4385,37 @@
                 const newTab = {
                     id: tabId,
                     name: `Sesión ${this.tabs.length + 1}`,
-                    workType: workType,  // Store the work type (locked after creation)
+                    workType: workType,
                     state: this.createEmptyTabState(),
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 };
 
-                // Add tab to array and set as active
+                // Add the new tab
                 this.tabs.push(newTab);
-                this.activeTabId = tabId;
-
-                // Save and render tabs first
-                this.saveToStorage();
+                
+                // Switch to the new tab
+                this.switchTab(tabId);
+                
+                // Force UI update
                 this.renderTabs();
-
-                // Load the tab state
-                this.loadTabState();
-
-                // CRITICAL: Show the correct module for this tab
-                // This must happen after everything else is set up
-                this.showModuleForTab(newTab);
-
-                // Focus the appropriate input
+                
+                // Update UI elements based on the new tab's workType
                 if (workType === 'unified') {
-                    setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
+                    // Reset unified module UI
+                    const unifiedInput = document.getElementById('unified-scan-input');
+                    if (unifiedInput) {
+                        unifiedInput.value = '';
+                        unifiedInput.focus();
+                    }
+                    const unifiedCode2Input = document.getElementById('unified-code2-input');
+                    if (unifiedCode2Input) unifiedCode2Input.value = '';
+                    
+                    const unifiedBoxCount = document.getElementById('unified-box-count');
+                    if (unifiedBoxCount) unifiedBoxCount.textContent = '0';
+                    
+                    const unifiedPalletId = document.getElementById('unified-pallet-id');
+                    if (unifiedPalletId) unifiedPalletId.textContent = newTab.state.unified.palletId;
                 } else {
                     setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
                 }
