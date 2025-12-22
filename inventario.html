@@ -3484,13 +3484,21 @@
             const confirmBtn = document.getElementById('confirm-send-btn');
             const physicalCount = parseInt(input.value) || 0;
 
-            if (physicalCount === expectedCount) {
-                statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${expectedCount} cajas)</div>`;
+            // Validar que expectedCount sea un número válido
+            const validExpectedCount = parseInt(expectedCount) || 0;
+            if (validExpectedCount <= 0) {
+                statusDiv.innerHTML = '';
+                confirmBtn.disabled = true;
+                return;
+            }
+
+            if (physicalCount === validExpectedCount) {
+                statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${validExpectedCount} cajas)</div>`;
                 confirmBtn.disabled = false;
             } else if (physicalCount > 0) {
-                const diff = physicalCount - expectedCount;
+                const diff = physicalCount - validExpectedCount;
                 const diffText = diff > 0 ? `+${diff} de más` : `${Math.abs(diff)} faltan`;
-                statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${expectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
+                statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${validExpectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
                 confirmBtn.disabled = true;
             } else {
                 statusDiv.innerHTML = '';
@@ -3714,7 +3722,8 @@
         function moveBox(fromCategory, index, toCategory) {
             const box = STATE.pallets[fromCategory].boxes.splice(index, 1)[0];
             box.verified = false; // Reset verificación al mover
-            STATE.pallets[toCategory].boxes.push(box);
+            // Clonar el objeto para evitar referencias compartidas entre categorías
+            STATE.pallets[toCategory].boxes.push(JSON.parse(JSON.stringify(box)));
             saveToStorage();
             updateUI();
             showNotification(`✅ Caja movida a ${toCategory.toUpperCase()}`, 'success');
@@ -4049,6 +4058,8 @@
                     STATE.history = data.history || [];
                 }
                 updateBdInfo();
+                // Actualizar botones de envío después de cargar datos desde storage
+                updateSendButtons();
             } catch (e) {
                 console.error('Error loading from storage:', e);
             }
@@ -5188,13 +5199,21 @@
                 const confirmBtn = document.getElementById('unified-confirm-send-btn');
                 const physicalCount = parseInt(input.value) || 0;
 
-                if (physicalCount === expectedCount) {
-                    statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${expectedCount} cajas)</div>`;
+                // Validar que expectedCount sea un número válido
+                const validExpectedCount = parseInt(expectedCount) || 0;
+                if (validExpectedCount <= 0) {
+                    statusDiv.innerHTML = '';
+                    confirmBtn.disabled = true;
+                    return;
+                }
+
+                if (physicalCount === validExpectedCount) {
+                    statusDiv.innerHTML = `<div class="validation-match">✅ ¡Correcto! Cantidad coincide (${validExpectedCount} cajas)</div>`;
                     confirmBtn.disabled = false;
                 } else if (physicalCount > 0) {
-                    const diff = physicalCount - expectedCount;
+                    const diff = physicalCount - validExpectedCount;
                     const diffText = diff > 0 ? `+${diff} de más` : `${Math.abs(diff)} faltan`;
-                    statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${expectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
+                    statusDiv.innerHTML = `<div class="validation-mismatch">❌ No coincide: Escaneadas ${validExpectedCount}, Físicas ${physicalCount} (${diffText})</div>`;
                     confirmBtn.disabled = true;
                 } else {
                     statusDiv.innerHTML = '';
