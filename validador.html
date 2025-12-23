@@ -1305,85 +1305,12 @@
 
     <!-- MAIN APP -->
     <div id="main-app" class="hidden">
-    <!-- DASHBOARD -->
-    <div id="dashboard">
-        <div class="dash-header">
-            <h1>🏭 Sistema de Validación WMS</h1>
-            <p>Warehouse Management System</p>
-        </div>
-
-        <div class="dash-grid">
-            <div class="dash-card no-hover">
-                <div class="dash-card-icon">📦</div>
-                <div>Órdenes de Hoy</div>
-                <div class="dash-card-value" id="dash-orders">-</div>
-            </div>
-            <div class="dash-card" onclick="showUserStats()">
-                <div class="dash-card-icon">✅</div>
-                <div>Cajas Validadas Hoy</div>
-                <div class="dash-card-value" id="dash-validated">-</div>
-                <div style="font-size: 0.8em; color: #666; margin-top: 10px;">👆 Click para ver por usuario</div>
-            </div>
-            <div class="dash-card no-hover">
-                <div class="dash-card-icon">📊</div>
-                <div>Códigos en BD</div>
-                <div class="dash-card-value" id="dash-bd">0</div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2 style="margin-bottom: 20px; color: var(--primary);">Estado del Sistema</h2>
-            <div class="status-grid">
-                <div class="status-row">
-                    <div style="display: flex; align-items: center;">
-                        <div class="status-indicator" id="status-conn"></div>
-                        Conexión Google Sheets
-                    </div>
-                    <span id="conn-label">Desconectado</span>
-                </div>
-                <div class="status-row">
-                    <div style="display: flex; align-items: center;">
-                        <div class="status-indicator" id="status-bd"></div>
-                        Base de Datos
-                    </div>
-                    <span id="bd-label">No cargada</span>
-                </div>
-                <div class="status-row">
-                    <div style="display: flex; align-items: center;">
-                        <div class="status-indicator" id="status-sync"></div>
-                        Sincronización
-                    </div>
-                    <span id="sync-label">Pendiente</span>
-                </div>
-                <div class="status-row">
-                    <div style="display: flex; align-items: center;">
-                        <div class="status-indicator status-ok" id="status-cache"></div>
-                        Caché Persistente
-                    </div>
-                    <span id="cache-label">Activo</span>
-                </div>
-            </div>
-            <button id="connect-btn" class="btn btn-google" onclick="handleAuthClick()">🔗 Conectar con Google Sheets</button>
-            <button id="load-bd-btn" class="btn btn-secondary" onclick="loadDatabase()" style="display:none; margin-top:10px;">📊 Cargar Base de Datos</button>
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button id="safe-exit-btn-dash" class="btn btn-exit" onclick="showSafeExitDialog()" style="flex: 1; margin: 0;">🚪 Salida Segura</button>
-                <button class="btn-clear-cache" onclick="CacheManager.clearCache()" title="Limpiar caché local">
-                    🗑️ Limpiar Caché
-                </button>
-            </div>
-        </div>
-
-        <button id="start-btn" class="btn btn-success" onclick="startValidation()" disabled style="margin-top: 20px;">
-            🚀 Iniciar Validación
-        </button>
-    </div>
 
     <!-- VALIDATION SCREEN -->
-    <div id="validation">
+    <div id="validation" style="display: block;">
         <div class="container">
             <div class="sidebar">
                 <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">WMS</h2>
-                <button class="btn btn-primary btn-small" onclick="returnToDashboard()" style="margin-bottom: 10px; width: 100%;">← Dashboard</button>
                 <button class="btn btn-secondary btn-small" onclick="showResumen()" style="margin-bottom: 10px; width: 100%;">
                     📋 Resumen <span id="pending-badge"></span>
                 </button>
@@ -1427,9 +1354,12 @@
 
                 <div id="content-area">
                     <div id="empty-state" class="empty-state">
-                        <div class="empty-state-icon">📦</div>
-                        <div class="empty-state-text">No hay órdenes activas</div>
-                        <button class="btn btn-primary" onclick="addOBC()" style="width: auto; padding: 12px 30px;">+ Nueva Orden</button>
+                        <div class="empty-state-icon">🎯</div>
+                        <div class="empty-state-text">¡Bienvenido al Sistema de Validación!</div>
+                        <p style="color: #999; margin-bottom: 30px;">Comienza agregando una nueva orden para validar</p>
+                        <button class="btn btn-success" onclick="addOBC()" style="width: auto; padding: 18px 50px; font-size: 1.2em; font-weight: 700;">
+                            🚀 Iniciar Validación
+                        </button>
                     </div>
 
                     <div id="validation-content" style="display: none;">
@@ -3068,6 +2998,9 @@
             function showMainApp() {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('main-app').classList.remove('hidden');
+                // Mostrar pantalla de validación (con empty-state como bienvenida)
+                renderValidation();
+                addSafeExitButtonToSidebar();
             }
 
             function showLoginScreen() {
@@ -3285,18 +3218,8 @@
             } catch (e) {}
             }
     
-            function handleAuthClick() {
-                if (gapi.client.getToken()) {
-                    google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
-                        gapi.client.setToken(null);
-                        updateConnectionStatus(false);
-                        updateSidebarAuthButton(false);
-                        showNotification('🔓 Sesión cerrada', 'info');
-                    });
-                } else {
-                    TOKEN_CLIENT.requestAccessToken();
-                }
-            }
+            // ELIMINADO: Dashboard removido - función handleAuthClick() ya no necesaria
+            // function handleAuthClick() {...}
 
             // Función robusta para conectar/desconectar desde el sidebar
             function toggleGoogleConnection() {
@@ -3383,19 +3306,13 @@
             }
     
             function updateConnectionStatus(connected) {
-            document.getElementById('status-conn').className = `status-indicator ${connected ? 'status-ok' : 'status-error'}`;
-            document.getElementById('conn-label').textContent = connected ? 'Conectado' : 'Desconectado';
-            document.getElementById('connect-btn').textContent = connected ? '🔓 Cerrar Sesión' : '🔗 Conectar';
-            document.getElementById('load-bd-btn').style.display = connected ? 'block' : 'none';
-            updateStartButton();
+            // Dashboard removido - solo actualizar sincronización
             updateSyncStatus(connected);
             }
     
-            // Función unificada - siempre se basa en el estado REAL
+            // Actualizar estado de sincronización (Dashboard removido - solo sidebar)
             function updateSyncStatus(synced) {
                 const syncEl = document.getElementById('sync-status-sidebar');
-                const statusIndicator = document.getElementById('status-sync');
-                const statusLabel = document.getElementById('sync-label');
                 const pendingBadge = document.getElementById('pending-badge');
                 const exportBtn = document.getElementById('export-pending-btn');
                 const hasToken = gapi?.client?.getToken();
@@ -3408,29 +3325,17 @@
                 const hasPending = PENDING_SYNC.length > 0;
 
                 if (!IS_ONLINE) {
-                    // Sin internet
                     syncEl.className = 'sync-status sync-warning';
                     syncEl.innerHTML = `⚠️ Sin conexión${hasPending ? ` (${PENDING_SYNC.length})` : ''}`;
-                    if (statusIndicator) statusIndicator.className = 'status-indicator status-warning';
-                    if (statusLabel) statusLabel.textContent = 'Offline';
                 } else if (!hasToken) {
-                    // Sin conexión a Google
                     syncEl.className = 'sync-status sync-warning';
                     syncEl.textContent = '⚠️ No conectado';
-                    if (statusIndicator) statusIndicator.className = 'status-indicator status-warning';
-                    if (statusLabel) statusLabel.textContent = 'No conectado';
                 } else if (hasPending) {
-                    // Hay pendientes
                     syncEl.className = 'sync-status sync-warning';
                     syncEl.innerHTML = `⚠️ ${PENDING_SYNC.length} pendientes`;
-                    if (statusIndicator) statusIndicator.className = 'status-indicator status-warning';
-                    if (statusLabel) statusLabel.textContent = `${PENDING_SYNC.length} pendientes`;
                 } else {
-                    // Todo sincronizado
                     syncEl.className = 'sync-status sync-ok';
                     syncEl.textContent = '✅ Sincronizado';
-                    if (statusIndicator) statusIndicator.className = 'status-indicator status-ok';
-                    if (statusLabel) statusLabel.textContent = 'Sincronizado';
                 }
 
                 // Actualizar badge y botón de exportar
@@ -3443,10 +3348,8 @@
                 }
             }
     
-            function updateStartButton() {
-            const canStart = gapi.client.getToken() && BD_CODES.size > 0;
-            document.getElementById('start-btn').disabled = !canStart;
-            }
+            // ELIMINADO: Dashboard removido - función updateStartButton() ya no necesaria
+            // function updateStartButton() {...}
     
             async function loadDatabase() {
             if (!gapi.client.getToken()) {
@@ -3593,15 +3496,11 @@
         }
 
         function updateDashboardStats() {
-            document.getElementById('dash-bd').textContent = BD_CODES.size.toLocaleString();
-            document.getElementById('bd-count-sidebar').textContent = BD_CODES.size.toLocaleString();
-            document.getElementById('dash-orders').textContent = OBC_TOTALS.size || '-';
-            
-            let totalValidated = 0;
-            for (const obc in STATE.tabs) {
-                totalValidated += STATE.tabs[obc].validations.length;
+            // Dashboard removido - solo actualizar sidebar
+            const bdCountEl = document.getElementById('bd-count-sidebar');
+            if (bdCountEl) {
+                bdCountEl.textContent = BD_CODES.size.toLocaleString();
             }
-            document.getElementById('dash-validated').textContent = totalValidated || '-';
         }
 
         function showUserStats() {
@@ -4227,19 +4126,8 @@
             saveState();
         }
 
-        function startValidation() {
-            document.getElementById('dashboard').style.display = 'none';
-            document.getElementById('validation').style.display = 'block';
-            addSafeExitButtonToSidebar(); 
-            renderValidation();
-            if (STATE.activeOBC) document.getElementById('scanner').focus();
-        }
-
-        function returnToDashboard() {
-            document.getElementById('validation').style.display = 'none';
-            document.getElementById('dashboard').style.display = 'block';
-            updateDashboardStats();
-        }
+        // ELIMINADO: Ya no hay pantalla de bienvenida separada
+        // La pantalla de validación con empty-state funciona como bienvenida
 
         function showResumen() {
             document.getElementById('validation').style.display = 'none';
