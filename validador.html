@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Validación WMS</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
     <style>
         :root {
             --primary: #ed5224;
@@ -493,6 +494,150 @@
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 16px;
+        }
+
+        /* Tarjetas individuales de OBC para consulta rápida */
+        .obc-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .obc-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: 2px solid #e8e8e8;
+            transition: all 0.3s ease;
+        }
+        .obc-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            border-color: var(--primary);
+        }
+        .obc-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .obc-card-title {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .obc-card-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .obc-card-badge.complete {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        .obc-card-badge.partial {
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+            color: white;
+        }
+        .obc-card-badge.pending {
+            background: linear-gradient(135deg, #e0e0e0, #bdbdbd);
+            color: #666;
+        }
+        .obc-card-info {
+            margin-bottom: 15px;
+        }
+        .obc-card-info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        .obc-card-info-row:last-child {
+            border-bottom: none;
+        }
+        .obc-card-label {
+            font-size: 0.85em;
+            color: #666;
+            font-weight: 600;
+        }
+        .obc-card-value {
+            font-weight: 700;
+            color: #333;
+        }
+        .obc-card-progress {
+            margin-bottom: 15px;
+        }
+        .obc-card-progress-bar {
+            background: #e0e0e0;
+            height: 8px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .obc-card-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #ff8a52);
+            transition: width 0.5s ease;
+        }
+        .obc-card-progress-fill.complete {
+            background: linear-gradient(90deg, var(--success), #45a049);
+        }
+        .obc-card-button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--primary), #ff8a52);
+            color: white;
+            font-weight: 700;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .obc-card-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(237, 82, 36, 0.3);
+        }
+        .obc-card-button:active {
+            transform: translateY(0);
+        }
+
+        /* Badges circulares para logs */
+        .log-header-with-badge {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .log-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            padding: 0 10px;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 1.1em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .log-count-badge.ok {
+            background: var(--success);
+            color: white;
+        }
+        .log-count-badge.error {
+            background: var(--error);
+            color: white;
         }
 
         /* Prerecepción Module */
@@ -1067,6 +1212,71 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
+
+        /* LOGIN SCREEN */
+        .login-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #ed5224 0%, #c94519 100%);
+        }
+
+        .login-card {
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .login-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+        }
+
+        .btn-google {
+            background: #4285F4;
+            color: white;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Media queries para login responsive */
+        @media (max-width: 768px) {
+            .login-card {
+                padding: 2rem;
+            }
+            .login-title {
+                font-size: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1081,6 +1291,20 @@
         <div id="user-stats-content"></div>
     </div>
 
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🎯</div>
+            <h1 class="login-title">Sistema de Validación WMS</h1>
+            <p class="login-subtitle">Warehouse Management System</p>
+            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
+                🔐 Iniciar Sesión con Google
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="main-app" class="hidden">
     <!-- DASHBOARD -->
     <div id="dashboard">
         <div class="dash-header">
@@ -1266,24 +1490,19 @@
                             </div>
                         </div>
 
-                        <div class="stats">
-                            <div class="stat-box stat-ok">
-                                VALIDADAS
-                                <div class="stat-number" id="stat-ok">0</div>
-                            </div>
-                            <div class="stat-box stat-error">
-                                RECHAZADAS
-                                <div class="stat-number" id="stat-error">0</div>
-                            </div>
-                        </div>
-
                         <div class="logs-container">
                             <div class="card">
-                                <h3>✅ Validaciones OK</h3>
+                                <div class="log-header-with-badge">
+                                    <h3>✅ Validaciones OK</h3>
+                                    <span class="log-count-badge ok" id="stat-ok">0</span>
+                                </div>
                                 <ul id="log-ok" class="log-list"></ul>
                             </div>
                             <div class="card">
-                                <h3>❌ Rechazos</h3>
+                                <div class="log-header-with-badge">
+                                    <h3>❌ Rechazos</h3>
+                                    <span class="log-count-badge error" id="stat-error">0</span>
+                                </div>
                                 <ul id="log-reject" class="log-list"></ul>
                             </div>
                         </div>
@@ -1564,6 +1783,9 @@
         </div>
     </div>
 
+    </div>
+    <!-- End MAIN APP -->
+
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script>
@@ -1597,6 +1819,41 @@
         let typingTimer = null;
         let scannerBuffer = '';
         let pendingReloadOBC = null;
+
+        // ==================== HELPER PARA EVITAR DUPLICADOS EN SINCRONIZACIÓN ====================
+
+        /**
+         * Genera un ID único para un elemento de sincronización
+         * @param {Object} log - Objeto con datos del log
+         * @returns {string} - ID único
+         */
+        function generateSyncId(log) {
+            return `${log.date}_${log.timestamp}_${log.code || log.raw || ''}_${log.obc}`;
+        }
+
+        /**
+         * Agrega un elemento a PENDING_SYNC solo si no existe (evita duplicados)
+         * @param {string} sheet - Nombre de la hoja
+         * @param {Object} log - Datos del log
+         * @returns {boolean} - true si se agregó, false si ya existía
+         */
+        function addToPendingSync(sheet, log) {
+            const newId = generateSyncId(log);
+
+            // Verificar si ya existe un elemento con el mismo ID
+            const exists = PENDING_SYNC.some(item => {
+                const existingId = generateSyncId(item.log);
+                return existingId === newId && item.sheet === sheet;
+            });
+
+            if (!exists) {
+                PENDING_SYNC.push({ sheet, log, syncId: newId });
+                return true;
+            }
+
+            console.warn(`⚠️ Elemento duplicado no agregado a PENDING_SYNC:`, newId);
+            return false;
+        }
 
         // ==================== SISTEMA DE CACHÉ PERSISTENTE AVANZADO ====================
 
@@ -1643,7 +1900,7 @@
                 }
 
                 // Crear indicador de salud visual
-                this.createHealthIndicator();
+                // ELIMINADO: this.createHealthIndicator(); // Icono "Subido a la nube" eliminado según requerimiento
 
                 // Verificar si hay caché existente al cargar
                 await this.checkAndRestoreCache();
@@ -2750,21 +3007,74 @@
                     callback: async (res) => {
                         if (res?.access_token) {
                             gapi.client.setToken(res);
+                            // Guardar token para restaurar sesión
+                            localStorage.setItem('wms_google_token', JSON.stringify(res));
                             await getUserProfile();
                             updateConnectionStatus(true);
                             updateSidebarAuthButton(true);  // Actualizar botón sidebar
                             updateConnectionIndicator();     // Actualizar indicador
+                            showMainApp();                   // Mostrar app principal y ocultar login
                             loadDatabase();
                             await loadPendingSync();
                             if (PENDING_SYNC.length > 0) syncPendingData();
                         }
                     }
                 });
+
+                // Verificar si ya hay un token guardado (restaurar sesión)
+                const savedToken = localStorage.getItem('wms_google_token');
+                if (savedToken) {
+                    try {
+                        const tokenObj = JSON.parse(savedToken);
+                        gapi.client.setToken(tokenObj);
+                        // Verificar que el token siga siendo válido
+                        await getUserProfile();
+                        updateConnectionStatus(true);
+                        updateSidebarAuthButton(true);
+                        updateConnectionIndicator();
+                        showMainApp();
+                        loadDatabase();
+                        await loadPendingSync();
+                        if (PENDING_SYNC.length > 0) syncPendingData();
+                    } catch (e) {
+                        // Token inválido o expirado, eliminarlo
+                        localStorage.removeItem('wms_google_token');
+                        console.log('Token guardado inválido o expirado');
+                    }
+                }
             } catch (e) {
                 showNotification('❌ Error al inicializar Google API', 'error');
             }
             }
-    
+
+            // ==================== MANEJO DE PANTALLAS LOGIN/APP ====================
+
+            function handleLogin() {
+                if (!TOKEN_CLIENT) {
+                    showNotification('⏳ Inicializando sistema...', 'info');
+                    setTimeout(handleLogin, 500);
+                    return;
+                }
+
+                showNotification('🔄 Conectando con Google...', 'info');
+                try {
+                    TOKEN_CLIENT.requestAccessToken();
+                } catch (e) {
+                    showNotification('❌ Error al conectar. Intenta de nuevo.', 'error');
+                    console.error('Error conectando:', e);
+                }
+            }
+
+            function showMainApp() {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+            }
+
+            function showLoginScreen() {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-app').classList.add('hidden');
+            }
+
             async function getUserProfile() {
                 try {
                     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -2997,9 +3307,11 @@
                     showNotification('🔄 Cerrando sesión...', 'info');
                     google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
                         gapi.client.setToken(null);
+                        localStorage.removeItem('wms_google_token');  // Eliminar token guardado
                         updateConnectionStatus(false);
                         updateSidebarAuthButton(false);
                         updateUserFooterDisconnected();
+                        showLoginScreen();  // Volver a pantalla de login
                         showNotification('🔓 Sesión cerrada', 'info');
                     });
                 } else {
@@ -3611,7 +3923,7 @@
                     updateSyncStatus(true);
                     CacheManager.updateHealthIndicator(); // Actualizar indicador
                 } catch (e) {
-                    PENDING_SYNC.push({ sheet: 'Val3', log });
+                    addToPendingSync('Val3', log);
                     await savePendingSync();
                     updatePendingBadge();
                     updateSyncStatus(false);
@@ -3620,7 +3932,7 @@
                     showNotification('⚠️ Guardado localmente - Se sincronizará cuando haya conexión', 'warning');
                 }
             } else {
-                PENDING_SYNC.push({ sheet: 'Val3', log });
+                addToPendingSync('Val3', log);
                 await savePendingSync();
                 updatePendingBadge();
                 updateSyncStatus(false);
@@ -3652,14 +3964,14 @@
                     await writeToSheets('Validaciones_RECHAZADAS', log);
                     CacheManager.updateHealthIndicator(); // Actualizar indicador
                 } catch (e) {
-                    PENDING_SYNC.push({ sheet: 'Validaciones_RECHAZADAS', log });
+                    addToPendingSync('Validaciones_RECHAZADAS', log);
                     await savePendingSync();
                     updatePendingBadge();
                     CacheManager.saveToCache(); // Auto-guardar en caché
                     CacheManager.updateHealthIndicator(); // Actualizar indicador
                 }
             } else {
-                PENDING_SYNC.push({ sheet: 'Validaciones_RECHAZADAS', log });
+                addToPendingSync('Validaciones_RECHAZADAS', log);
                 await savePendingSync();
                 updatePendingBadge();
                 CacheManager.saveToCache(); // Auto-guardar en caché
@@ -4352,40 +4664,51 @@
             const extracted = extractCode(raw);
             const normalized = normalizeCode(extracted);
 
-            let foundOBC = null;
-            let isValidatedInHistory = false;
-            let historyData = null;
-            let locationData = '';
+            // NUEVA LÓGICA: Buscar TODAS las coincidencias de OBC
+            const foundOBCs = [];
 
-            // Buscar en qué OBC está el código
+            // Buscar en qué OBCs está el código
             for (const [obc, codes] of OBC_MAP.entries()) {
                 const concatenated = normalized + obc.toLowerCase();
                 if (codes.has(concatenated) || codes.has(normalized + obc.toLowerCase())) {
-                    foundOBC = obc;
                     // Verificar si está validado en historial
                     const histKey = `${normalized}_${obc.toLowerCase()}`;
+                    let isValidatedInHistory = false;
+                    let historyData = null;
+                    let locationData = '';
+
                     if (HISTORY.has(histKey)) {
                         isValidatedInHistory = true;
                         historyData = HISTORY.get(histKey);
                         locationData = historyData.location || '';
                     }
+
                     // También verificar ubicación en tabs activos
                     if (STATE.tabs[obc]) {
                         locationData = STATE.tabs[obc].location || locationData;
                     }
-                    break;
+
+                    foundOBCs.push({
+                        obc: obc,
+                        isValidated: isValidatedInHistory,
+                        historyData: historyData,
+                        locationData: locationData
+                    });
                 }
             }
 
             // También buscar directamente en BD_CODES
-            if (!foundOBC) {
+            if (foundOBCs.length === 0) {
                 for (const code of BD_CODES) {
                     if (code.startsWith(normalized)) {
                         // Extraer el OBC del código concatenado
                         const possibleOBC = code.slice(normalized.length).toUpperCase();
                         if (OBC_TOTALS.has(possibleOBC)) {
-                            foundOBC = possibleOBC;
                             const histKey = `${normalized}_${possibleOBC.toLowerCase()}`;
+                            let isValidatedInHistory = false;
+                            let historyData = null;
+                            let locationData = '';
+
                             if (HISTORY.has(histKey)) {
                                 isValidatedInHistory = true;
                                 historyData = HISTORY.get(histKey);
@@ -4394,13 +4717,32 @@
                             if (STATE.tabs[possibleOBC]) {
                                 locationData = STATE.tabs[possibleOBC].location || locationData;
                             }
-                            break;
+
+                            // Evitar duplicados
+                            if (!foundOBCs.find(item => item.obc === possibleOBC)) {
+                                foundOBCs.push({
+                                    obc: possibleOBC,
+                                    isValidated: isValidatedInHistory,
+                                    historyData: historyData,
+                                    locationData: locationData
+                                });
+                            }
                         }
                     }
                 }
             }
 
-            renderConsultaResult(normalized, foundOBC, isValidatedInHistory, historyData, locationData);
+            // Renderizar resultados
+            if (foundOBCs.length === 0) {
+                renderConsultaResult(normalized, null, false, null, '');
+            } else if (foundOBCs.length === 1) {
+                // Si solo hay una coincidencia, usar el formato original
+                const match = foundOBCs[0];
+                renderConsultaResult(normalized, match.obc, match.isValidated, match.historyData, match.locationData);
+            } else {
+                // Si hay múltiples coincidencias, usar el nuevo formato de tarjetas
+                renderMultipleOBCResults(normalized, foundOBCs);
+            }
         }
 
         // Nueva función para mostrar resultado por orden
@@ -4629,6 +4971,133 @@
 
             resultDiv.style.display = 'block';
             playSound(isValidated ? 'ok' : 'duplicate');
+        }
+
+        // Nueva función para renderizar múltiples coincidencias de OBC en tarjetas
+        function renderMultipleOBCResults(code, obcMatches) {
+            const resultDiv = document.getElementById('consulta-result');
+
+            let cardsHTML = `
+                <div style="margin-bottom: 20px;">
+                    <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 15px 20px; border-radius: 10px; border-left: 4px solid var(--primary);">
+                        <div style="font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Código escaneado</div>
+                        <div style="font-size: 1.5em; font-weight: 700; color: #333; font-family: 'Monaco', 'Consolas', monospace;">${code}</div>
+                    </div>
+                    <div style="text-align: center; margin: 20px 0; padding: 15px; background: #fff3e0; border-radius: 8px; border: 2px solid #FF9800;">
+                        <span style="font-size: 1.1em; font-weight: 600; color: #e65100;">
+                            📦 Se encontraron ${obcMatches.length} coincidencias para este código
+                        </span>
+                    </div>
+                </div>
+                <div class="obc-cards-container">
+            `;
+
+            obcMatches.forEach(match => {
+                const info = OBC_INFO.get(match.obc) || {};
+                const total = OBC_TOTALS.get(match.obc) || 0;
+
+                // Contar validaciones de esta orden
+                let validatedCount = 0;
+                for (const [key, data] of HISTORY.entries()) {
+                    if (data.obc === match.obc) validatedCount++;
+                }
+
+                const pct = total > 0 ? ((validatedCount / total) * 100).toFixed(1) : 0;
+                const isComplete = validatedCount >= total && total > 0;
+
+                // Determinar badge
+                let badgeClass = 'pending';
+                let badgeText = '⏳ PENDIENTE';
+                if (isComplete) {
+                    badgeClass = 'complete';
+                    badgeText = '✅ COMPLETA';
+                } else if (validatedCount > 0) {
+                    badgeClass = 'partial';
+                    badgeText = `${pct}% PARCIAL`;
+                }
+
+                const prerec = PREREC_DATA.get(match.obc);
+                const locationData = match.locationData || prerec?.location || '-';
+
+                cardsHTML += `
+                    <div class="obc-card">
+                        <div class="obc-card-header">
+                            <div class="obc-card-title">${match.obc}</div>
+                            <div class="obc-card-badge ${badgeClass}">${badgeText}</div>
+                        </div>
+
+                        ${match.isValidated ? `
+                            <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--success);">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 1.2em;">✅</span>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: var(--success); font-size: 0.9em;">Este código ya fue validado</div>
+                                        <div style="font-size: 0.75em; color: #666; margin-top: 2px;">${match.historyData?.date || ''} a las ${match.historyData?.timestamp || ''}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${prerec && !isComplete ? `
+                            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 10px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid #1565c0;">
+                                <div style="font-weight: 600; color: #1565c0; font-size: 0.85em; margin-bottom: 2px;">📋 Prerecibida</div>
+                                <div style="font-size: 0.75em; color: #555;">${prerec.date} a las ${prerec.time}</div>
+                            </div>
+                        ` : ''}
+
+                        <div class="obc-card-info">
+                            <div class="obc-card-info-row">
+                                <span class="obc-card-label">Total Cajas:</span>
+                                <span class="obc-card-value" style="color: var(--primary);">${total}</span>
+                            </div>
+                            <div class="obc-card-info-row">
+                                <span class="obc-card-label">Validadas:</span>
+                                <span class="obc-card-value" style="color: ${isComplete ? 'var(--success)' : 'var(--warning)'};">${validatedCount}</span>
+                            </div>
+                            <div class="obc-card-info-row">
+                                <span class="obc-card-label">Destino:</span>
+                                <span class="obc-card-value">${info.recipient || '-'}</span>
+                            </div>
+                            <div class="obc-card-info-row">
+                                <span class="obc-card-label">Ubicación:</span>
+                                <span class="obc-card-value">${locationData}</span>
+                            </div>
+                            <div class="obc-card-info-row">
+                                <span class="obc-card-label">Horario:</span>
+                                <span class="obc-card-value">${info.arrivalTime || '-'}</span>
+                            </div>
+                        </div>
+
+                        <div class="obc-card-progress">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="font-size: 0.8em; font-weight: 600; color: #666;">Progreso</span>
+                                <span style="font-size: 0.8em; font-weight: 700; color: ${isComplete ? 'var(--success)' : 'var(--primary)'};">${pct}%</span>
+                            </div>
+                            <div class="obc-card-progress-bar">
+                                <div class="obc-card-progress-fill ${isComplete ? 'complete' : ''}" style="width: ${pct}%"></div>
+                            </div>
+                        </div>
+
+                        ${!isComplete ? `
+                            <button class="obc-card-button" onclick="goToValidateFromConsulta('${match.obc}')">
+                                <span>📋</span>
+                                <span>Ir a Validar Orden</span>
+                            </button>
+                        ` : `
+                            <button class="obc-card-button" style="background: linear-gradient(135deg, var(--success), #45a049); cursor: default;" disabled>
+                                <span>✅</span>
+                                <span>Orden Completada</span>
+                            </button>
+                        `}
+                    </div>
+                `;
+            });
+
+            cardsHTML += '</div>';
+
+            resultDiv.innerHTML = cardsHTML;
+            resultDiv.style.display = 'block';
+            playSound('ok');
         }
 
         function goToValidateFromConsulta(obc) {
@@ -4883,7 +5352,7 @@
                     obc: PREREC_CURRENT,
                     location: location || '-'
                 };
-                PENDING_SYNC.push({ sheet: 'Previa', log });
+                addToPendingSync('Previa', log);
                 await SyncManager.save();
                 SyncManager.updateUI(false);
                 CacheManager.saveToCache(); // Auto-guardar en caché
