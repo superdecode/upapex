@@ -1212,6 +1212,71 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
+
+        /* LOGIN SCREEN */
+        .login-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #ed5224 0%, #c94519 100%);
+        }
+
+        .login-card {
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .login-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+        }
+
+        .btn-google {
+            background: #4285F4;
+            color: white;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Media queries para login responsive */
+        @media (max-width: 768px) {
+            .login-card {
+                padding: 2rem;
+            }
+            .login-title {
+                font-size: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1226,6 +1291,20 @@
         <div id="user-stats-content"></div>
     </div>
 
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🎯</div>
+            <h1 class="login-title">Sistema de Validación WMS</h1>
+            <p class="login-subtitle">Warehouse Management System</p>
+            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
+                🔐 Iniciar Sesión con Google
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="main-app" class="hidden">
     <!-- DASHBOARD -->
     <div id="dashboard">
         <div class="dash-header">
@@ -1703,6 +1782,9 @@
             </div>
         </div>
     </div>
+
+    </div>
+    <!-- End MAIN APP -->
 
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
@@ -2925,21 +3007,74 @@
                     callback: async (res) => {
                         if (res?.access_token) {
                             gapi.client.setToken(res);
+                            // Guardar token para restaurar sesión
+                            localStorage.setItem('wms_google_token', JSON.stringify(res));
                             await getUserProfile();
                             updateConnectionStatus(true);
                             updateSidebarAuthButton(true);  // Actualizar botón sidebar
                             updateConnectionIndicator();     // Actualizar indicador
+                            showMainApp();                   // Mostrar app principal y ocultar login
                             loadDatabase();
                             await loadPendingSync();
                             if (PENDING_SYNC.length > 0) syncPendingData();
                         }
                     }
                 });
+
+                // Verificar si ya hay un token guardado (restaurar sesión)
+                const savedToken = localStorage.getItem('wms_google_token');
+                if (savedToken) {
+                    try {
+                        const tokenObj = JSON.parse(savedToken);
+                        gapi.client.setToken(tokenObj);
+                        // Verificar que el token siga siendo válido
+                        await getUserProfile();
+                        updateConnectionStatus(true);
+                        updateSidebarAuthButton(true);
+                        updateConnectionIndicator();
+                        showMainApp();
+                        loadDatabase();
+                        await loadPendingSync();
+                        if (PENDING_SYNC.length > 0) syncPendingData();
+                    } catch (e) {
+                        // Token inválido o expirado, eliminarlo
+                        localStorage.removeItem('wms_google_token');
+                        console.log('Token guardado inválido o expirado');
+                    }
+                }
             } catch (e) {
                 showNotification('❌ Error al inicializar Google API', 'error');
             }
             }
-    
+
+            // ==================== MANEJO DE PANTALLAS LOGIN/APP ====================
+
+            function handleLogin() {
+                if (!TOKEN_CLIENT) {
+                    showNotification('⏳ Inicializando sistema...', 'info');
+                    setTimeout(handleLogin, 500);
+                    return;
+                }
+
+                showNotification('🔄 Conectando con Google...', 'info');
+                try {
+                    TOKEN_CLIENT.requestAccessToken();
+                } catch (e) {
+                    showNotification('❌ Error al conectar. Intenta de nuevo.', 'error');
+                    console.error('Error conectando:', e);
+                }
+            }
+
+            function showMainApp() {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+            }
+
+            function showLoginScreen() {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-app').classList.add('hidden');
+            }
+
             async function getUserProfile() {
                 try {
                     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -3172,9 +3307,11 @@
                     showNotification('🔄 Cerrando sesión...', 'info');
                     google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
                         gapi.client.setToken(null);
+                        localStorage.removeItem('wms_google_token');  // Eliminar token guardado
                         updateConnectionStatus(false);
                         updateSidebarAuthButton(false);
                         updateUserFooterDisconnected();
+                        showLoginScreen();  // Volver a pantalla de login
                         showNotification('🔓 Sesión cerrada', 'info');
                     });
                 } else {
