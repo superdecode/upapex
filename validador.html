@@ -1306,48 +1306,11 @@
     <!-- MAIN APP -->
     <div id="main-app" class="hidden">
 
-    <!-- WELCOME SCREEN (Pantalla de Bienvenida) -->
-    <div id="welcome-screen">
-        <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f7f7f7 0%, #e8e8e8 100%);">
-            <div style="background: white; padding: 4rem; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); text-align: center; max-width: 500px; width: 90%;">
-                <div style="font-size: 5rem; margin-bottom: 2rem; animation: float 3s ease-in-out infinite;">🎯</div>
-                <h1 style="font-size: 2.2rem; font-weight: 700; color: var(--primary); margin-bottom: 1rem;">Sistema de Validación WMS</h1>
-                <p style="color: #666; font-size: 1.1rem; margin-bottom: 3rem;">¡Bienvenido! Estás listo para comenzar a validar órdenes</p>
-
-                <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; border-left: 4px solid var(--primary);">
-                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                        <span style="font-size: 2rem;">✅</span>
-                        <div style="text-align: left;">
-                            <div style="font-weight: 600; color: #333;">Conectado como</div>
-                            <div style="color: #666; font-size: 0.9rem;" id="welcome-user-name">Usuario</div>
-                        </div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <span style="font-size: 2rem;">📊</span>
-                        <div style="text-align: left;">
-                            <div style="font-weight: 600; color: #333;">Base de datos</div>
-                            <div style="color: #666; font-size: 0.9rem;"><span id="welcome-bd-count">0</span> códigos cargados</div>
-                        </div>
-                    </div>
-                </div>
-
-                <button class="btn btn-success" onclick="startValidation()" style="width: 100%; padding: 20px; font-size: 1.3em; margin-bottom: 1rem;">
-                    🚀 Iniciar Validación
-                </button>
-
-                <button class="btn btn-secondary" onclick="toggleGoogleConnection()" style="width: 100%; padding: 12px; font-size: 1em;">
-                    🚪 Cerrar Sesión
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- VALIDATION SCREEN -->
-    <div id="validation" style="display: none;">
+    <div id="validation" style="display: block;">
         <div class="container">
             <div class="sidebar">
                 <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">WMS</h2>
-                <button class="btn btn-primary btn-small" onclick="returnToWelcome()" style="margin-bottom: 10px; width: 100%;">← Inicio</button>
                 <button class="btn btn-secondary btn-small" onclick="showResumen()" style="margin-bottom: 10px; width: 100%;">
                     📋 Resumen <span id="pending-badge"></span>
                 </button>
@@ -1391,9 +1354,12 @@
 
                 <div id="content-area">
                     <div id="empty-state" class="empty-state">
-                        <div class="empty-state-icon">📦</div>
-                        <div class="empty-state-text">No hay órdenes activas</div>
-                        <button class="btn btn-primary" onclick="addOBC()" style="width: auto; padding: 12px 30px;">+ Nueva Orden</button>
+                        <div class="empty-state-icon">🎯</div>
+                        <div class="empty-state-text">¡Bienvenido al Sistema de Validación!</div>
+                        <p style="color: #999; margin-bottom: 30px;">Comienza agregando una nueva orden para validar</p>
+                        <button class="btn btn-success" onclick="addOBC()" style="width: auto; padding: 18px 50px; font-size: 1.2em; font-weight: 700;">
+                            🚀 Iniciar Validación
+                        </button>
                     </div>
 
                     <div id="validation-content" style="display: none;">
@@ -3032,27 +2998,9 @@
             function showMainApp() {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('main-app').classList.remove('hidden');
-                // Mostrar pantalla de bienvenida
-                showWelcomeScreen();
-            }
-
-            function showWelcomeScreen() {
-                document.getElementById('welcome-screen').style.display = 'block';
-                document.getElementById('validation').style.display = 'none';
-                // Actualizar información de bienvenida
-                updateWelcomeScreen();
-            }
-
-            function updateWelcomeScreen() {
-                const welcomeUserName = document.getElementById('welcome-user-name');
-                const welcomeBdCount = document.getElementById('welcome-bd-count');
-
-                if (welcomeUserName) {
-                    welcomeUserName.textContent = CURRENT_USER || USER_GOOGLE_NAME || 'Usuario';
-                }
-                if (welcomeBdCount) {
-                    welcomeBdCount.textContent = BD_CODES.size.toLocaleString();
-                }
+                // Mostrar pantalla de validación (con empty-state como bienvenida)
+                renderValidation();
+                addSafeExitButtonToSidebar();
             }
 
             function showLoginScreen() {
@@ -4178,23 +4126,8 @@
             saveState();
         }
 
-        function startValidation() {
-            document.getElementById('welcome-screen').style.display = 'none';
-            document.getElementById('validation').style.display = 'block';
-            addSafeExitButtonToSidebar();
-            renderValidation();
-            // Focus en scanner si hay una orden activa
-            setTimeout(() => {
-                const scanner = document.getElementById('scanner');
-                if (scanner && STATE.activeOBC) scanner.focus();
-            }, 100);
-        }
-
-        function returnToWelcome() {
-            document.getElementById('validation').style.display = 'none';
-            document.getElementById('welcome-screen').style.display = 'block';
-            updateWelcomeScreen();
-        }
+        // ELIMINADO: Ya no hay pantalla de bienvenida separada
+        // La pantalla de validación con empty-state funciona como bienvenida
 
         function showResumen() {
             document.getElementById('validation').style.display = 'none';
