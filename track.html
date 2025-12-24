@@ -692,6 +692,82 @@
             font-size: 0.95em;
         }
 
+        /* Search Preloader */
+        .search-preloader {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .search-preloader.show {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 20px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .search-preloader-text {
+            color: #666;
+            font-size: 1.1em;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .search-preloader-subtext {
+            color: #999;
+            font-size: 0.9em;
+        }
+
+        /* Enhanced Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+            animation: fadeIn 0.4s ease-in;
+        }
+
+        .empty-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+            opacity: 0.5;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.05); opacity: 0.7; }
+        }
+
+        .empty-text {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .empty-subtext {
+            font-size: 0.95em;
+            color: #999;
+        }
+
         /* Notification */
         .notification-container {
             position: fixed;
@@ -887,6 +963,13 @@
 
             <!-- Section Cards -->
             <div id="sections-container"></div>
+        </div>
+
+        <!-- Search Preloader -->
+        <div class="search-preloader" id="search-preloader">
+            <div class="spinner"></div>
+            <div class="search-preloader-text">🔍 Buscando en todas las bases de datos...</div>
+            <div class="search-preloader-subtext">Esto tomará solo un momento</div>
         </div>
 
         <!-- Empty State -->
@@ -1112,9 +1195,54 @@
                 return;
             }
 
-            CURRENT_SEARCH = query;
-            const results = searchAllSources(query);
-            displayResults(results, query);
+            // Show preloader and hide other elements
+            showSearchPreloader(true);
+
+            // Use setTimeout to allow the browser to render the preloader
+            // before blocking with synchronous search operation
+            setTimeout(() => {
+                try {
+                    CURRENT_SEARCH = query;
+                    const results = searchAllSources(query);
+                    displayResults(results, query);
+
+                    // Clear input after successful search
+                    input.value = '';
+
+                    // Show success notification
+                    const totalResults = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
+                    if (totalResults > 0) {
+                        showNotification(`✅ Búsqueda completada: ${totalResults} coincidencia${totalResults > 1 ? 's' : ''} encontrada${totalResults > 1 ? 's' : ''}`, 'success');
+                    } else {
+                        showNotification('ℹ️ No se encontraron resultados', 'info');
+                    }
+                } catch (error) {
+                    console.error('Error during search:', error);
+                    showNotification('❌ Error al realizar la búsqueda', 'error');
+                } finally {
+                    // Hide preloader
+                    showSearchPreloader(false);
+                }
+            }, 100);
+        }
+
+        function showSearchPreloader(show) {
+            const preloader = document.getElementById('search-preloader');
+            const resultsContainer = document.getElementById('results-container');
+            const emptyState = document.getElementById('empty-state');
+            const searchBtn = document.getElementById('search-btn');
+
+            if (show) {
+                preloader.classList.add('show');
+                resultsContainer.classList.remove('show');
+                emptyState.style.display = 'none';
+                searchBtn.disabled = true;
+                searchBtn.style.opacity = '0.6';
+            } else {
+                preloader.classList.remove('show');
+                searchBtn.disabled = false;
+                searchBtn.style.opacity = '1';
+            }
         }
 
         function toggleGlobalSearchMode() {
@@ -1900,11 +2028,16 @@
             });
 
             if (!hasResults) {
+                const isExactMode = GLOBAL_SEARCH_MODE === 'exact';
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">🔍</div>
-                        <div class="empty-text">No se encontraron resultados</div>
-                        <div class="empty-subtext">Intenta activar "Búsqueda Flexible" o usa otro código</div>
+                        <div class="empty-text">No se encontraron resultados para "${results.query}"</div>
+                        <div class="empty-subtext">
+                            ${isExactMode
+                                ? '💡 Intenta activar <strong>Búsqueda Flexible</strong> para ver coincidencias parciales'
+                                : '🤔 Verifica que el código sea correcto o intenta con otro formato'}
+                        </div>
                     </div>
                 `;
             }
