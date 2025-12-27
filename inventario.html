@@ -3044,7 +3044,10 @@
         }
 
         function processScan(rawCode) {
-            const code = normalizeCode(rawCode);
+            // Búsqueda inteligente: intenta con "-" y "/" antes de marcar como NO ENCONTRADO
+            const result = findCodeInInventory(rawCode);
+            const code = result.code;
+            const item = result.item;
 
             // Check duplicates across all pallets con info detallada
             const duplicateInfo = findDuplicate(code);
@@ -3055,8 +3058,6 @@
                 playSound('warning');
                 return;
             }
-
-            const item = STATE.inventory.get(code);
 
             if (!item) {
                 // Not found - show Code2 input
@@ -3164,16 +3165,19 @@
 
         // Forzar inserción de duplicado
         function forceInsertDuplicate(code, rawCode) {
-            const item = STATE.inventory.get(code);
+            // Usar búsqueda inteligente para el duplicado también
+            const result = findCodeInInventory(rawCode);
+            const finalCode = result.code;
+            const item = result.item;
 
             if (!item) {
-                addBox('nowms', createBoxData(rawCode, code, '', null));
+                addBox('nowms', createBoxData(rawCode, finalCode, '', null));
                 showNotification('⚡ Duplicado insertado en No WMS', 'warning');
             } else if (item.isBlocked) {
-                addBox('blocked', createBoxData(rawCode, code, '', item));
+                addBox('blocked', createBoxData(rawCode, finalCode, '', item));
                 showNotification('⚡ Duplicado insertado en Bloqueado', 'warning');
             } else {
-                addBox('ok', createBoxData(rawCode, code, '', item));
+                addBox('ok', createBoxData(rawCode, finalCode, '', item));
                 showNotification('⚡ Duplicado insertado en OK', 'warning');
             }
 
@@ -3184,8 +3188,10 @@
         function processCode2(rawCode2) {
             if (!STATE.pendingCode1) return;
 
-            const code2 = normalizeCode(rawCode2);
-            const item = STATE.inventory.get(code2);
+            // Búsqueda inteligente para Code2 también
+            const result = findCodeInInventory(rawCode2);
+            const code2 = result.code;
+            const item = result.item;
 
             document.getElementById('code2-container').classList.remove('show');
 
@@ -3274,17 +3280,44 @@
                 if (match) return match[1];
             }
 
-            // CRÍTICO: Preservar guiones ANTES de convertir - a /
-            // Detectar patrones tipo: LETRAS+NÚMEROS+GUION+NÚMEROS (ej: BY9888548520-07)
-            const hasValidDash = /^[A-Z]+\d+\-\d+$/i.test(code);
-
-            if (!hasValidDash) {
-                // Solo si NO es un patrón válido con guion, entonces convertir - a /
-                code = code.replace(/(\d)-(\d)/g, '$1/$2');
-            }
-
             // Limpiar caracteres especiales excepto guiones, diagonales y letras/números
             return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+        }
+
+        /**
+         * Búsqueda inteligente de código en inventario
+         * Intenta primero con "-", luego con "/" si no encuentra
+         * Retorna: { code: string, item: object|null, variant: 'dash'|'slash'|'original' }
+         */
+        function findCodeInInventory(rawCode) {
+            const normalized = normalizeCode(rawCode);
+
+            // 1. Intentar buscar tal como viene (después de normalizar)
+            let item = STATE.inventory.get(normalized);
+            if (item) {
+                return { code: normalized, item, variant: 'original' };
+            }
+
+            // 2. Si contiene "/", intentar con "-"
+            if (normalized.includes('/')) {
+                const withDash = normalized.replace(/\//g, '-');
+                item = STATE.inventory.get(withDash);
+                if (item) {
+                    return { code: withDash, item, variant: 'dash' };
+                }
+            }
+
+            // 3. Si contiene "-", intentar con "/"
+            if (normalized.includes('-')) {
+                const withSlash = normalized.replace(/-/g, '/');
+                item = STATE.inventory.get(withSlash);
+                if (item) {
+                    return { code: withSlash, item, variant: 'slash' };
+                }
+            }
+
+            // No encontrado en ninguna variante
+            return { code: normalized, item: null, variant: 'none' };
         }
 
         // ==================== VALIDADOR DE UBICACIONES ====================
@@ -4992,7 +5025,10 @@
                     return;
                 }
 
-                const code = normalizeCode(rawCode);
+                // Búsqueda inteligente: intenta con "-" y "/" antes de marcar como NO ENCONTRADO
+                const result = findCodeInInventory(rawCode);
+                const code = result.code;
+                const item = result.item;
 
                 // Check duplicates
                 const duplicateIndex = tab.boxes.findIndex(b => b.code === code);
@@ -5002,8 +5038,6 @@
                     playSound('warning');
                     return;
                 }
-
-                const item = STATE.inventory.get(code);
 
                 if (!item) {
                     // Not found - show Code2 input
@@ -5044,8 +5078,10 @@
             processCode2(rawCode2) {
                 if (!this.pendingCode1) return;
 
-                const code2 = normalizeCode(rawCode2);
-                const item = STATE.inventory.get(code2);
+                // Búsqueda inteligente para Code2 también
+                const result = findCodeInInventory(rawCode2);
+                const code2 = result.code;
+                const item = result.item;
 
                 document.getElementById('unified-code2-container').classList.remove('show');
 
@@ -5160,7 +5196,10 @@
             },
 
             forceInsertDuplicate(code, rawCode) {
-                const item = STATE.inventory.get(code);
+                // Usar búsqueda inteligente para el duplicado también
+                const result = findCodeInInventory(rawCode);
+                const finalCode = result.code;
+                const item = result.item;
                 let status;
 
                 if (!item) {
@@ -5174,7 +5213,7 @@
                     showNotification('⚡ Duplicado insertado en OK', 'warning');
                 }
 
-                this.addBox(status, this.createBoxData(rawCode, code, '', item));
+                this.addBox(status, this.createBoxData(rawCode, finalCode, '', item));
                 playSound('warning');
                 document.getElementById('unified-scan-input').focus();
             },
