@@ -1,0 +1,207 @@
+.dash-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.dash-header h1 {
+    font-size: 2.2em;
+    color: var(--primary);
+    margin-bottom: 8px;
+}
+
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.dash-card {
+    background: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.dash-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.dash-card.no-hover {
+    cursor: default;
+}
+
+.dash-card.no-hover:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.dash-card-icon {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+}
+
+.dash-card-value {
+    font-size: 2em;
+    font-weight: 700;
+    color: var(--primary);
+    margin-top: 5px;
+}
+
+.status-grid {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 6px;
+}
+
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-ok { background: var(--success); }
+.status-error { background: var(--error); }
+.status-warning { background: var(--warning); }
+
+.validation-screen {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 30px 20px;
+}
+
+.validation-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.validation-header h2 {
+    font-size: 1.8em;
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.validation-input-container {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.validation-input {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.5em;
+    text-align: center;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.validation-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(237, 82, 36, 0.1);
+}
+
+.validation-result {
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 600;
+    margin-top: 15px;
+    display: none;
+}
+
+.validation-result.show {
+    display: block;
+}
+
+.validation-result.success {
+    background: #e8f5e9;
+    color: var(--success);
+    border: 2px solid var(--success);
+}
+
+.validation-result.error {
+    background: #ffebee;
+    color: var(--error);
+    border: 2px solid var(--error);
+}
+
+.validation-result.warning {
+    background: #fff3e0;
+    color: var(--warning);
+    border: 2px solid var(--warning);
+}
+
+.validation-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.validation-stat {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.validation-stat-value {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.validation-stat-label {
+    font-size: 0.85em;
+    color: #666;
+    margin-top: 5px;
+}
+
+.user-stats-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    z-index: 1000;
+    max-width: 500px;
+    width: 90%;
+}
+
+.popup-overlay.show {
+    display: flex;
+}
+
+.btn-exit {
+    background: linear-gradient(135deg, #6c757d, #5a6268);
+    color: white;
+    margin-top: 15px;
+}
+
+.btn-exit:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5a6268, #495057);
+}

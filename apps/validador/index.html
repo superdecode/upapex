@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 Sistema de Validación</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <link rel="stylesheet" href="../../shared/css/variables.css">
+    <link rel="stylesheet" href="../../shared/css/base.css">
+    <link rel="stylesheet" href="../../shared/css/layout.css">
+    <link rel="stylesheet" href="../../shared/css/components.css">
+    <link rel="stylesheet" href="../../shared/css/validador.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+</head>
+<body>
+    <div class="connection-banner" id="connection-banner"></div>
+
+    <div id="dashboard">
+        <div class="dash-header">
+            <h1>🎯 Sistema de Validación WMS</h1>
+            <p style="color: #666;">Valida códigos y ubicaciones en tiempo real</p>
+        </div>
+
+        <div class="dash-grid">
+            <div class="dash-card no-hover">
+                <div class="dash-card-icon">📊</div>
+                <h3>Total Validaciones</h3>
+                <div class="dash-card-value" id="total-validations">0</div>
+            </div>
+
+            <div class="dash-card no-hover">
+                <div class="dash-card-icon">✅</div>
+                <h3>Códigos Válidos</h3>
+                <div class="dash-card-value" id="valid-codes">0</div>
+            </div>
+
+            <div class="dash-card no-hover">
+                <div class="dash-card-icon">❌</div>
+                <h3>Códigos Inválidos</h3>
+                <div class="dash-card-value" id="invalid-codes">0</div>
+            </div>
+
+            <div class="dash-card no-hover">
+                <div class="dash-card-icon">📍</div>
+                <h3>Base de Datos</h3>
+                <div class="dash-card-value" id="db-count">0</div>
+            </div>
+        </div>
+
+        <div class="status-grid">
+            <div class="status-row">
+                <div style="display: flex; align-items: center;">
+                    <div class="status-indicator status-ok"></div>
+                    <span>Conexión a Google Sheets</span>
+                </div>
+                <span id="connection-status">Conectado</span>
+            </div>
+            <div class="status-row">
+                <div style="display: flex; align-items: center;">
+                    <div class="status-indicator status-ok"></div>
+                    <span>Base de datos</span>
+                </div>
+                <span id="db-status">Cargada</span>
+            </div>
+        </div>
+
+        <button class="btn btn-success" onclick="startValidation()">
+            🎯 Iniciar Validación
+        </button>
+
+        <button class="btn btn-secondary" onclick="refreshDatabase()" style="margin-top: 10px;">
+            🔄 Actualizar Base de Datos
+        </button>
+
+        <button class="btn btn-exit" onclick="goToHome()">
+            🏠 Volver al Inicio
+        </button>
+    </div>
+
+    <div id="validation-screen" class="validation-screen hidden">
+        <div class="validation-header">
+            <h2>🎯 Validación de Códigos</h2>
+            <p style="color: #666;">Escanea o ingresa códigos para validar</p>
+        </div>
+
+        <div class="validation-input-container">
+            <input type="text" class="validation-input" id="validation-input" 
+                   placeholder="Escanea código..." autocomplete="off">
+            
+            <div class="validation-result" id="validation-result"></div>
+        </div>
+
+        <div class="validation-stats">
+            <div class="validation-stat">
+                <div class="validation-stat-value" id="session-total">0</div>
+                <div class="validation-stat-label">Total</div>
+            </div>
+            <div class="validation-stat">
+                <div class="validation-stat-value" id="session-valid" style="color: var(--success);">0</div>
+                <div class="validation-stat-label">Válidos</div>
+            </div>
+            <div class="validation-stat">
+                <div class="validation-stat-value" id="session-invalid" style="color: var(--error);">0</div>
+                <div class="validation-stat-label">Inválidos</div>
+            </div>
+        </div>
+
+        <button class="btn btn-secondary" onclick="endValidation()" style="margin-top: 20px; width: 100%;">
+            ⬅️ Volver al Dashboard
+        </button>
+    </div>
+
+    <div class="notification-container" id="notifications"></div>
+    <div class="preloader-overlay" id="loading-overlay">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text">Cargando...</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

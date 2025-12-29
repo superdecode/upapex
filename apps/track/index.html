@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Sistema de Rastreo</title>
+    <link rel="stylesheet" href="../../shared/css/variables.css">
+    <link rel="stylesheet" href="../../shared/css/base.css">
+    <link rel="stylesheet" href="../../shared/css/layout.css">
+    <link rel="stylesheet" href="../../shared/css/components.css">
+    <link rel="stylesheet" href="../../shared/css/track.css">
+    <script src="../../shared/js/wms-utils.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header" style="background: linear-gradient(135deg, var(--primary) 0%, #ea580c 100%); color: white; padding: 20px 25px; border-radius: 12px; margin-bottom: 15px; position: relative;">
+            <h1 style="font-size: 1.6em; margin-bottom: 6px; display: flex; align-items: center; gap: 10px;">
+                🔍 Sistema de Rastreo
+                <span id="offline-indicator" class="offline-badge" style="display: none; font-size: 0.5em; background: #ff9800; padding: 4px 8px; border-radius: 4px;">📡 OFFLINE</span>
+            </h1>
+            <p style="opacity: 0.95; font-size: 0.95em;">Consulta y seguimiento de cajas</p>
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+                <button class="refresh-db-btn" onclick="refreshDatabase()" style="flex: 1;">
+                    🔄 Actualizar BD
+                </button>
+                <button class="refresh-db-btn" onclick="showStatistics()" style="flex: 1; background: #4caf50;">
+                    📊 Estadísticas
+                </button>
+            </div>
+            <div id="db-status" style="font-size: 0.8em; margin-top: 8px; opacity: 0.9;">
+                📦 Cargando base de datos...
+            </div>
+        </div>
+
+        <div class="search-section">
+            <div class="search-row">
+                <input type="text" class="search-input" id="search-input" 
+                       placeholder="Ingresa código de caja..." autocomplete="off">
+                <button class="search-btn" onclick="searchBox()">
+                    🔍 Buscar
+                </button>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div style="font-size: 0.85em; color: #666;">
+                    💡 Búsqueda inteligente con variantes automáticas
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-small btn-secondary" onclick="exportResults()" title="Exportar resultados">
+                        📥 Exportar
+                    </button>
+                    <button class="btn btn-small btn-secondary" onclick="printResults()" title="Imprimir resultados">
+                        🖨️ Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="results-container" class="results-container hidden">
+            <div class="kpi-cards" id="kpi-cards"></div>
+            
+            <div class="section-card">
+                <div class="section-header" onclick="toggleSection('details')">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span class="section-toggle" id="toggle-details">🔽</span>
+                        <span class="section-title">📋 Detalles de la Caja</span>
+                    </div>
+                </div>
+                <div class="section-content" id="content-details">
+                    <div class="table-wrapper">
+                        <table class="data-table" id="details-table">
+                            <thead>
+                                <tr>
+                                    <th>Campo</th>
+                                    <th>Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="details-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="no-results" class="no-results">
+            <div class="no-results-icon">🔍</div>
+            <h3>Busca una caja para ver su información</h3>
+            <p style="color: #999; margin-top: 10px;">Ingresa un código de caja en el campo de búsqueda</p>
+        </div>
+    </div>
+
+    <div class="notification-container" id="notifications"></div>
+    <div class="preloader-overlay" id="loading-overlay">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text">🔍 Buscando...</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
