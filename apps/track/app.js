@@ -370,8 +370,8 @@ function levenshteinDistance(str1, str2) {
 
 // ==================== VISUALIZACIÓN DE RESULTADOS ====================
 function displayResults(results, searchCode) {
-    document.getElementById('no-results').classList.add('hidden');
-    document.getElementById('results-container').classList.remove('hidden');
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('results-container').classList.add('show');
 
     // KPI Cards
     const kpiCards = document.getElementById('kpi-cards');
@@ -504,8 +504,8 @@ function copyRowData(data) {
 }
 
 function hideResults() {
-    document.getElementById('results-container').classList.add('hidden');
-    document.getElementById('no-results').classList.remove('hidden');
+    document.getElementById('results-container').classList.remove('show');
+    document.getElementById('empty-state').style.display = 'block';
 }
 
 function toggleSection(sectionId) {

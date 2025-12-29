@@ -194,6 +194,43 @@
     margin-left: 6px;
 }
 
+.copyable {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+}
+
+.copy-icon {
+    opacity: 0;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    color: #888;
+    display: inline-flex;
+    align-items: center;
+}
+
+.copyable:hover .copy-icon {
+    opacity: 1;
+}
+
+.copy-icon:hover {
+    background: #e0e0e0;
+    color: var(--primary);
+}
+
+.copy-icon.copied {
+    opacity: 1;
+    color: var(--success);
+}
+
+.copy-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 .badge.success { background: rgba(76, 175, 80, 0.15); color: var(--success); }
 .badge.warning { background: rgba(255, 152, 0, 0.15); color: var(--warning); }
 .badge.error { background: rgba(244, 67, 54, 0.15); color: var(--error); }
@@ -206,13 +243,13 @@
     top: 20px;
     right: 20px;
     z-index: 9999;
-    max-width: 350px;
+    max-width: 400px;
 }
 
 .notification {
     background: white;
-    padding: 12px 15px;
-    margin-bottom: 8px;
+    padding: 15px 20px;
+    margin-bottom: 10px;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     border-left: 4px solid;
@@ -222,7 +259,12 @@
 .notification.success { border-color: var(--success); }
 .notification.error { border-color: var(--error); }
 .notification.warning { border-color: var(--warning); }
-.notification.info { border-color: var(--primary); }
+.notification.info { border-color: var(--info); }
+
+@keyframes slideIn {
+    from { transform: translateX(400px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
 
 .connection-banner {
     position: fixed;

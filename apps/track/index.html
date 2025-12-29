@@ -13,72 +13,36 @@
 </head>
 <body>
     <div class="container">
-        <div class="header" style="background: linear-gradient(135deg, var(--primary) 0%, #ea580c 100%); color: white; padding: 20px 25px; border-radius: 12px; margin-bottom: 15px; position: relative;">
-            <h1 style="font-size: 1.6em; margin-bottom: 6px; display: flex; align-items: center; gap: 10px;">
-                🔍 Sistema de Rastreo
-                <span id="offline-indicator" class="offline-badge" style="display: none; font-size: 0.5em; background: #ff9800; padding: 4px 8px; border-radius: 4px;">📡 OFFLINE</span>
-            </h1>
-            <p style="opacity: 0.95; font-size: 0.95em;">Consulta y seguimiento de cajas</p>
-            <div style="display: flex; gap: 8px; margin-top: 10px;">
-                <button class="refresh-db-btn" onclick="refreshDatabase()" style="flex: 1;">
-                    🔄 Actualizar BD
-                </button>
-                <button class="refresh-db-btn" onclick="showStatistics()" style="flex: 1; background: #4caf50;">
-                    📊 Estadísticas
-                </button>
-            </div>
-            <div id="db-status" style="font-size: 0.8em; margin-top: 8px; opacity: 0.9;">
-                📦 Cargando base de datos...
-            </div>
+        <div class="header">
+            <h1>🔍 Sistema de Consulta de Cajas</h1>
+            <p>Rastreo unificado de mercancía - Consulta información de múltiples fuentes</p>
+            <button class="refresh-db-btn" onclick="refreshDatabase()">
+                🔄 Actualizar BD
+            </button>
         </div>
 
         <div class="search-section">
             <div class="search-row">
                 <input type="text" class="search-input" id="search-input" 
-                       placeholder="Ingresa código de caja..." autocomplete="off">
-                <button class="search-btn" onclick="searchBox()">
+                       placeholder="Ingresa código de caja o número de orden..." autocomplete="off">
+                <button class="btn btn-primary" onclick="searchBox()">
                     🔍 Buscar
                 </button>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                <div style="font-size: 0.85em; color: #666;">
-                    💡 Búsqueda inteligente con variantes automáticas
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-small btn-secondary" onclick="exportResults()" title="Exportar resultados">
-                        📥 Exportar
-                    </button>
-                    <button class="btn btn-small btn-secondary" onclick="printResults()" title="Imprimir resultados">
-                        🖨️ Imprimir
-                    </button>
-                </div>
+            <div class="search-tips">
+                💡 <strong>Tips:</strong> Busca por código completo (ej: PLEC25071567355U010), código base (PLEC25071567355) o número de orden (OBC2832510050RV)
             </div>
         </div>
 
-        <div id="results-container" class="results-container hidden">
-            <div class="kpi-cards" id="kpi-cards"></div>
-            
-            <div class="section-card">
-                <div class="section-header" onclick="toggleSection('details')">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span class="section-toggle" id="toggle-details">🔽</span>
-                        <span class="section-title">📋 Detalles de la Caja</span>
-                    </div>
-                </div>
-                <div class="section-content" id="content-details">
-                    <div class="table-wrapper">
-                        <table class="data-table" id="details-table">
-                            <thead>
-                                <tr>
-                                    <th>Campo</th>
-                                    <th>Valor</th>
-                                </tr>
-                            </thead>
-                            <tbody id="details-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+        <div class="results-container" id="results-container">
+            <div class="summary-card" id="summary-card"></div>
+            <div id="sections-container"></div>
+        </div>
+
+        <div class="empty-state" id="empty-state">
+            <div class="empty-icon">📦</div>
+            <div class="empty-text">Ingresa un código para buscar</div>
+            <div class="empty-subtext">El sistema buscará en todas las bases de datos disponibles</div>
         </div>
 
         <div id="no-results" class="no-results">
