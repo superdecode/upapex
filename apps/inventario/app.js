@@ -16,13 +16,13 @@ const STATE = {
         blocked: { boxes: [], id: generatePalletId('BLK') },
         nowms: { boxes: [], id: generatePalletId('NWS') }
     },
-    pendingCode1: null,  // Para sistema Code2
+    pendingCode1: null,
     user: null,
     userEmail: '',
     userName: '',
-    userAlias: '',  // Alias personalizado del usuario
-    history: [],  // Historial de envíos
-    globalSummary: { ok: 0, blocked: 0, nowms: 0, total: 0 }  // Resumen global
+    userAlias: '',
+    history: [],
+    globalSummary: { ok: 0, blocked: 0, nowms: 0, total: 0 }
 };
 
 // Variables globales
@@ -30,6 +30,467 @@ let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 let syncManager = null;
+
+// ==================== GLOBAL TABS SYSTEM ====================
+const GlobalTabs = {
+    tabs: [],
+    activeTabId: null,
+    tabCounter: 0,
+
+    init() {
+        this.loadFromStorage();
+        this.render();
+        this.updateVisibility();
+    },
+
+    createTab(type = null) {
+        if (!type) {
+            this.showWorkTypePopup();
+            return;
+        }
+
+        const tabId = `tab-${Date.now()}-${++this.tabCounter}`;
+        const tab = {
+            id: tabId,
+            type: type,
+            name: type === 'classic' ? 'Clasificado' : 'Unificado',
+            createdAt: new Date().toISOString(),
+            data: type === 'classic' ? {
+                pallets: {
+                    ok: { boxes: [], id: generatePalletId('OK') },
+                    blocked: { boxes: [], id: generatePalletId('BLK') },
+                    nowms: { boxes: [], id: generatePalletId('NWS') }
+                },
+                originLocation: ''
+            } : {
+                items: [],
+                originLocation: '',
+                destLocation: ''
+            }
+        };
+
+        this.tabs.push(tab);
+        this.setActiveTab(tabId);
+        this.saveToStorage();
+        this.render();
+        showNotification(`Nueva sesión ${tab.name} creada`, 'success');
+        playSound('success');
+    },
+
+    setActiveTab(tabId) {
+        const tab = this.tabs.find(t => t.id === tabId);
+        if (!tab) return;
+
+        this.activeTabId = tabId;
+
+        // Save current tab data before switching
+        this.saveCurrentTabData();
+
+        // Load new tab data
+        if (tab.type === 'classic') {
+            STATE.pallets = JSON.parse(JSON.stringify(tab.data.pallets));
+            document.getElementById('origin-location').value = tab.data.originLocation || '';
+        } else {
+            UnifiedModule.items = tab.data.items || [];
+            document.getElementById('unified-origin-location').value = tab.data.originLocation || '';
+            document.getElementById('unified-dest-location').value = tab.data.destLocation || '';
+        }
+
+        this.updateVisibility();
+        this.render();
+        this.saveToStorage();
+
+        // Update UI
+        if (tab.type === 'classic') {
+            updateUI();
+            setTimeout(() => document.getElementById('scan-input')?.focus(), 100);
+        } else {
+            UnifiedModule.updateUI();
+            setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
+        }
+    },
+
+    saveCurrentTabData() {
+        const tab = this.tabs.find(t => t.id === this.activeTabId);
+        if (!tab) return;
+
+        if (tab.type === 'classic') {
+            tab.data.pallets = JSON.parse(JSON.stringify(STATE.pallets));
+            tab.data.originLocation = document.getElementById('origin-location')?.value || '';
+        } else {
+            tab.data.items = [...UnifiedModule.items];
+            tab.data.originLocation = document.getElementById('unified-origin-location')?.value || '';
+            tab.data.destLocation = document.getElementById('unified-dest-location')?.value || '';
+        }
+    },
+
+    closeTab(tabId, event) {
+        if (event) event.stopPropagation();
+
+        const tab = this.tabs.find(t => t.id === tabId);
+        if (!tab) return;
+
+        const itemCount = tab.type === 'classic'
+            ? (tab.data.pallets.ok.boxes.length + tab.data.pallets.blocked.boxes.length + tab.data.pallets.nowms.boxes.length)
+            : tab.data.items.length;
+
+        if (itemCount > 0) {
+            if (!confirm(`Esta sesión tiene ${itemCount} registros. ¿Cerrar de todos modos?`)) {
+                return;
+            }
+        }
+
+        const index = this.tabs.findIndex(t => t.id === tabId);
+        this.tabs.splice(index, 1);
+
+        if (this.activeTabId === tabId) {
+            if (this.tabs.length > 0) {
+                this.setActiveTab(this.tabs[Math.max(0, index - 1)].id);
+            } else {
+                this.activeTabId = null;
+            }
+        }
+
+        this.updateVisibility();
+        this.render();
+        this.saveToStorage();
+        showNotification('Sesión cerrada', 'info');
+    },
+
+    updateVisibility() {
+        const welcomeState = document.getElementById('welcome-state');
+        const classicModule = document.getElementById('classic-module');
+        const unifiedModule = document.getElementById('unified-module');
+        const tabsContainer = document.getElementById('unified-tabs-container');
+
+        if (this.tabs.length === 0) {
+            welcomeState?.classList.remove('module-hidden');
+            welcomeState?.classList.add('module-visible');
+            classicModule?.classList.remove('module-visible');
+            classicModule?.classList.add('module-hidden');
+            unifiedModule?.classList.remove('module-visible');
+            unifiedModule?.classList.add('module-hidden');
+            if (tabsContainer) tabsContainer.style.display = 'none';
+        } else {
+            welcomeState?.classList.remove('module-visible');
+            welcomeState?.classList.add('module-hidden');
+            if (tabsContainer) tabsContainer.style.display = 'flex';
+
+            const activeTab = this.tabs.find(t => t.id === this.activeTabId);
+            if (activeTab?.type === 'classic') {
+                classicModule?.classList.remove('module-hidden');
+                classicModule?.classList.add('module-visible');
+                unifiedModule?.classList.remove('module-visible');
+                unifiedModule?.classList.add('module-hidden');
+            } else if (activeTab?.type === 'unified') {
+                unifiedModule?.classList.remove('module-hidden');
+                unifiedModule?.classList.add('module-visible');
+                classicModule?.classList.remove('module-visible');
+                classicModule?.classList.add('module-hidden');
+            }
+        }
+    },
+
+    render() {
+        const container = document.getElementById('global-tabs-container');
+        if (!container) return;
+
+        container.innerHTML = this.tabs.map(tab => {
+            const itemCount = tab.type === 'classic'
+                ? (tab.data.pallets.ok.boxes.length + tab.data.pallets.blocked.boxes.length + tab.data.pallets.nowms.boxes.length)
+                : tab.data.items.length;
+
+            const icon = tab.type === 'classic' ? '📋' : '📦';
+            const isActive = tab.id === this.activeTabId;
+
+            return `
+                <div class="global-tab ${tab.type} ${isActive ? 'active' : ''}"
+                     onclick="GlobalTabs.setActiveTab('${tab.id}')">
+                    <span class="tab-icon">${icon}</span>
+                    <span class="tab-name">${tab.name}</span>
+                    <span class="tab-count">${itemCount}</span>
+                    <button class="tab-close" onclick="GlobalTabs.closeTab('${tab.id}', event)">×</button>
+                </div>
+            `;
+        }).join('');
+    },
+
+    showWorkTypePopup() {
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay show';
+        overlay.innerHTML = `
+            <div class="popup-content" style="max-width: 500px;">
+                <div class="popup-header">
+                    <span>📋 Seleccionar Tipo de Trabajo</span>
+                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                </div>
+                <div class="work-type-options">
+                    <div class="work-type-option" onclick="GlobalTabs.selectWorkType('classic', this)">
+                        <span class="work-type-icon">📋</span>
+                        <div class="work-type-title">Clasificado</div>
+                        <div class="work-type-desc">Separar por OK, Bloqueado y No WMS</div>
+                    </div>
+                    <div class="work-type-option" onclick="GlobalTabs.selectWorkType('unified', this)">
+                        <span class="work-type-icon">📦</span>
+                        <div class="work-type-title">Unificado</div>
+                        <div class="work-type-desc">Registro directo sin clasificación</div>
+                    </div>
+                </div>
+                <div class="popup-buttons">
+                    <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove()">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+    },
+
+    selectWorkType(type, element) {
+        document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
+        this.createTab(type);
+    },
+
+    getTabCount(tabId) {
+        const tab = this.tabs.find(t => t.id === tabId);
+        if (!tab) return 0;
+
+        if (tab.type === 'classic') {
+            return tab.data.pallets.ok.boxes.length +
+                   tab.data.pallets.blocked.boxes.length +
+                   tab.data.pallets.nowms.boxes.length;
+        }
+        return tab.data.items.length;
+    },
+
+    saveToStorage() {
+        try {
+            this.saveCurrentTabData();
+            localStorage.setItem('wms_global_tabs', JSON.stringify({
+                tabs: this.tabs,
+                activeTabId: this.activeTabId,
+                tabCounter: this.tabCounter
+            }));
+        } catch (e) {
+            console.error('Error saving tabs:', e);
+        }
+    },
+
+    loadFromStorage() {
+        try {
+            const saved = localStorage.getItem('wms_global_tabs');
+            if (saved) {
+                const data = JSON.parse(saved);
+                this.tabs = data.tabs || [];
+                this.activeTabId = data.activeTabId;
+                this.tabCounter = data.tabCounter || 0;
+            }
+        } catch (e) {
+            console.error('Error loading tabs:', e);
+            this.tabs = [];
+        }
+    }
+};
+
+// ==================== UNIFIED MODULE ====================
+const UnifiedModule = {
+    items: [],
+
+    init() {
+        this.setupEventListeners();
+    },
+
+    setupEventListeners() {
+        const scanInput = document.getElementById('unified-scan-input');
+        if (scanInput) {
+            scanInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && scanInput.value.trim()) {
+                    e.preventDefault();
+                    this.processScan(scanInput.value.trim());
+                    scanInput.value = '';
+                }
+            });
+        }
+    },
+
+    processScan(rawCode) {
+        const result = findCodeInInventory(rawCode, STATE.inventory);
+        const code = result.code;
+        const item = result.item;
+
+        // Check duplicates
+        const dupIndex = this.items.findIndex(i => i.code === code);
+        if (dupIndex !== -1) {
+            if (!confirm(`Código ${code} ya registrado. ¿Agregar duplicado?`)) {
+                return;
+            }
+        }
+
+        let status = 'nowms';
+        let statusText = 'NO WMS';
+
+        if (item) {
+            if (item.isBlocked) {
+                status = 'blocked';
+                statusText = 'BLOQUEADO';
+            } else if (item.isAvailable) {
+                status = 'ok';
+                statusText = 'OK';
+            } else {
+                status = 'blocked';
+                statusText = 'SIN STOCK';
+            }
+        }
+
+        const newItem = {
+            raw: rawCode,
+            code: code,
+            status: status,
+            statusText: statusText,
+            sku: item?.sku || '-',
+            product: item?.productName || '-',
+            location: item?.cellNo || '-',
+            timestamp: getTimestamp()
+        };
+
+        this.items.push(newItem);
+        this.updateUI();
+        this.showResult(status, code, statusText);
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
+
+        playSound(status === 'ok' ? 'success' : status === 'blocked' ? 'warning' : 'error');
+    },
+
+    showResult(type, code, title) {
+        const box = document.getElementById('unified-result-box');
+        const icons = { ok: '✅', blocked: '⚠️', nowms: '❌' };
+
+        box.className = `result-box show ${type === 'ok' ? 'success' : type === 'blocked' ? 'warning' : 'error'}`;
+        document.getElementById('unified-result-icon').textContent = icons[type] || '📦';
+        document.getElementById('unified-result-title').textContent = `${title}: ${code}`;
+    },
+
+    updateUI() {
+        const list = document.getElementById('unified-list');
+        const countEl = document.getElementById('unified-box-count');
+        const sendBtn = document.getElementById('unified-send-btn');
+
+        if (countEl) countEl.textContent = this.items.length;
+        if (sendBtn) sendBtn.disabled = this.items.length === 0;
+
+        if (!list) return;
+
+        if (this.items.length === 0) {
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>Sin registros</div></div>';
+            return;
+        }
+
+        list.innerHTML = this.items.map((item, i) => `
+            <div class="unified-item ${item.status}">
+                <div class="unified-item-info">
+                    <div class="unified-item-code">${item.code}</div>
+                    <div class="unified-item-meta">
+                        <span>${item.timestamp}</span>
+                        <span>${item.location}</span>
+                    </div>
+                </div>
+                <span class="unified-item-status ${item.status}">${item.statusText}</span>
+                <button class="unified-item-delete" onclick="UnifiedModule.deleteItem(${i})">×</button>
+            </div>
+        `).join('');
+    },
+
+    deleteItem(index) {
+        if (confirm('¿Eliminar este registro?')) {
+            this.items.splice(index, 1);
+            this.updateUI();
+            GlobalTabs.saveToStorage();
+            updateGlobalSummaryFromTabs();
+            showNotification('Registro eliminado', 'info');
+        }
+    },
+
+    clearList() {
+        if (this.items.length === 0) return;
+        if (confirm(`¿Limpiar ${this.items.length} registros?`)) {
+            this.items = [];
+            this.updateUI();
+            GlobalTabs.saveToStorage();
+            updateGlobalSummaryFromTabs();
+            showNotification('Lista limpiada', 'info');
+        }
+    },
+
+    async sendAll() {
+        const originLocation = document.getElementById('unified-origin-location')?.value.trim().toUpperCase() || '';
+        const destLocation = document.getElementById('unified-dest-location')?.value.trim().toUpperCase() || '';
+
+        if (!destLocation) {
+            showNotification('⚠️ Ingresa la ubicación destino', 'warning');
+            document.getElementById('unified-dest-location')?.focus();
+            return;
+        }
+
+        const locationCheck = confirmInvalidLocation(destLocation);
+        if (!locationCheck.confirmed) {
+            showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
+            return;
+        }
+
+        if (!confirm(`¿Enviar ${this.items.length} registros a ${locationCheck.formatted}?`)) {
+            return;
+        }
+
+        showLoading(true);
+        try {
+            const now = new Date();
+            const dateStr = getCurrentDate();
+            const timeStr = getCurrentTime();
+            const palletId = generatePalletId('UNI');
+
+            const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+
+            const records = this.items.map(item => ({
+                date: dateStr,
+                time: timeStr,
+                user: STATE.userAlias || STATE.userName || 'Usuario',
+                scan1: item.code,
+                scan2: '',
+                location: locationCheck.formatted,
+                status: statusMap[item.status],
+                note: 'UNIFICADO',
+                pallet: palletId,
+                originLocation: originLocation
+            }));
+
+            STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+            if (syncManager) {
+                syncManager.addToQueue(records);
+                if (checkOnlineStatus() && gapi?.client?.getToken()) {
+                    await syncManager.sync();
+                }
+            }
+
+            this.items = [];
+            this.updateUI();
+            GlobalTabs.saveToStorage();
+            updateGlobalSummaryFromTabs();
+
+            showNotification(`✅ ${records.length} registros enviados`, 'success');
+            playSound('success');
+        } catch (error) {
+            console.error('Error sending unified:', error);
+            showNotification('❌ Error al enviar', 'error');
+        } finally {
+            showLoading(false);
+        }
+    }
+};
 
 // ==================== INICIALIZACIÓN ====================
 function initializeApp() {
@@ -39,7 +500,10 @@ function initializeApp() {
     setupEventListeners();
     setupConnectionMonitor(updateConnectionStatus);
     loadFromStorage();
+    GlobalTabs.init();
+    UnifiedModule.init();
     updateUI();
+    updateGlobalSummaryFromTabs();
 }
 
 function gapiLoaded() {
@@ -76,12 +540,11 @@ function handleLogin() {
             showNotification('❌ Error de autenticación', 'error');
             return;
         }
-        
+
         gapi.client.setToken(resp);
         await getUserProfile();
         await loadInventory();
-        
-        // Inicializar Sync Manager
+
         syncManager = new SyncManager({
             spreadsheetId: CONFIG.SPREADSHEET_WRITE,
             sheetName: CONFIG.SHEET_NAME,
@@ -89,9 +552,10 @@ function handleLogin() {
         });
         syncManager.init();
         window.syncManager = syncManager;
-        
+
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('main-app').classList.remove('hidden');
+        GlobalTabs.updateVisibility();
         updateConnectionStatus();
     };
 
@@ -110,14 +574,12 @@ async function getUserProfile() {
         const profile = await response.json();
         STATE.userEmail = profile.email;
         STATE.userName = profile.name || profile.email.split('@')[0];
-        
-        // Cargar alias guardado
+
         const savedAlias = localStorage.getItem('wms_user_alias');
         STATE.userAlias = savedAlias || STATE.userName;
-        
+
         updateUserDisplay();
-        
-        // Mostrar popup de alias si es primera vez
+
         if (!savedAlias) {
             setTimeout(() => showAliasPopup(), 1000);
         }
@@ -129,31 +591,29 @@ async function getUserProfile() {
 }
 
 function handleLogout() {
-    // Verificar datos sin sincronizar
     if (syncManager && syncManager.getPendingCount() > 0) {
         if (!confirm(`⚠️ Tienes ${syncManager.getPendingCount()} registros sin sincronizar. ¿Salir de todos modos?`)) {
             return;
         }
     }
-    
-    // Verificar cajas sin enviar
+
     const totalBoxes = STATE.pallets.ok.boxes.length + STATE.pallets.blocked.boxes.length + STATE.pallets.nowms.boxes.length;
     if (totalBoxes > 0) {
         if (!confirm(`⚠️ Tienes ${totalBoxes} cajas sin enviar. ¿Salir de todos modos?`)) {
             return;
         }
     }
-    
+
     const token = gapi.client.getToken();
     if (token !== null) {
         google.accounts.oauth2.revoke(token.access_token);
         gapi.client.setToken('');
     }
-    
+
     if (syncManager) {
         syncManager.stopAutoSync();
     }
-    
+
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('hidden');
     updateConnectionStatus();
@@ -165,9 +625,9 @@ async function loadInventory() {
         const response = await fetch(CONFIG.INVENTORY_CSV_URL);
         const csvText = await response.text();
         const rows = csvText.split('\n').map(row => row.split(','));
-        
+
         STATE.inventory.clear();
-        
+
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             const code = row[0]?.trim();
@@ -184,6 +644,7 @@ async function loadInventory() {
             }
         }
 
+        STATE.inventoryLastUpdate = getTimestamp();
         updateBdInfo();
         showNotification('✅ Inventario cargado: ' + STATE.inventory.size + ' códigos', 'success');
     } catch (error) {
@@ -198,22 +659,26 @@ async function loadInventory() {
 function setupEventListeners() {
     const scanInput = document.getElementById('scan-input');
     const code2Input = document.getElementById('code2-input');
-    
-    scanInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && scanInput.value.trim()) {
-            e.preventDefault();
-            processScan(scanInput.value.trim());
-            scanInput.value = '';
-        }
-    });
-    
-    code2Input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && code2Input.value.trim()) {
-            e.preventDefault();
-            processCode2(code2Input.value.trim());
-            code2Input.value = '';
-        }
-    });
+
+    if (scanInput) {
+        scanInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && scanInput.value.trim()) {
+                e.preventDefault();
+                processScan(scanInput.value.trim());
+                scanInput.value = '';
+            }
+        });
+    }
+
+    if (code2Input) {
+        code2Input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && code2Input.value.trim()) {
+                e.preventDefault();
+                processCode2(code2Input.value.trim());
+                code2Input.value = '';
+            }
+        });
+    }
 
     ['ok', 'blocked', 'nowms'].forEach(cat => {
         const locationInput = document.getElementById(`location-${cat}`);
@@ -225,12 +690,10 @@ function setupEventListeners() {
 
 // ==================== PROCESAMIENTO DE ESCANEO ====================
 function processScan(rawCode) {
-    // Búsqueda inteligente usando función compartida
     const result = findCodeInInventory(rawCode, STATE.inventory);
     const code = result.code;
     const item = result.item;
-    
-    // Verificar duplicados
+
     const duplicateInfo = findDuplicate(code);
     if (duplicateInfo) {
         showDuplicatePopup(code, duplicateInfo, rawCode);
@@ -238,9 +701,8 @@ function processScan(rawCode) {
         playSound('warning');
         return;
     }
-    
+
     if (!item) {
-        // No encontrado - mostrar Code2 input
         STATE.pendingCode1 = { raw: rawCode, code };
         showResultBox('error', code, 'NO ENCONTRADO', 'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.');
         document.getElementById('code2-container').style.display = 'block';
@@ -249,12 +711,10 @@ function processScan(rawCode) {
         setTimeout(() => document.getElementById('code2-input').focus(), 100);
         return;
     }
-    
-    // Ocultar code2 container
+
     document.getElementById('code2-container').style.display = 'none';
     STATE.pendingCode1 = null;
-    
-    // Determinar estado y agregar a pallet apropiado
+
     if (item.isBlocked) {
         addBox('blocked', createBoxData(rawCode, code, '', item));
         showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado');
@@ -268,24 +728,22 @@ function processScan(rawCode) {
         showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible');
         playSound('warning');
     }
-    
+
     flashInput('success');
 }
 
 function processCode2(rawCode2) {
     if (!STATE.pendingCode1) return;
-    
-    // Búsqueda inteligente para Code2
+
     const result = findCodeInInventory(rawCode2, STATE.inventory);
     const code2 = result.code;
     const item = result.item;
-    
+
     document.getElementById('code2-container').style.display = 'none';
-    
+
     if (!item) {
-        // Ambos códigos fallaron - agregar a No WMS con AMBOS códigos
         addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
-        showResultBox('error', STATE.pendingCode1.code, 'NO WMS', 
+        showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
             `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`);
         playSound('error');
     } else if (item.isBlocked) {
@@ -297,7 +755,7 @@ function processCode2(rawCode2) {
         showResultBox('success', code2, 'OK (Código 2)', 'Validado correctamente con Código 2');
         playSound('success');
     }
-    
+
     STATE.pendingCode1 = null;
     flashInput('success');
     document.getElementById('scan-input').focus();
@@ -308,27 +766,26 @@ function forceInsert() {
         showNotification('⚠️ Primero escanea un código', 'warning');
         return;
     }
-    
+
     const code2Value = document.getElementById('code2-input').value.trim();
-    
-    // Guardar AMBOS códigos
+
     addBox('nowms', createBoxData(
         STATE.pendingCode1.raw,
         STATE.pendingCode1.code,
         code2Value,
         null
     ));
-    
+
     const msg = code2Value
         ? `Insertado con códigos: ${STATE.pendingCode1.code} y ${code2Value}`
         : `Insertado con código: ${STATE.pendingCode1.code}`;
-    
+
     showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', msg);
-    
+
     document.getElementById('code2-container').style.display = 'none';
     document.getElementById('code2-input').value = '';
     STATE.pendingCode1 = null;
-    
+
     playSound('warning');
     flashInput('warning');
     document.getElementById('scan-input').focus();
@@ -339,7 +796,7 @@ function forceInsert() {
 function findDuplicate(code) {
     const categories = ['ok', 'blocked', 'nowms'];
     const categoryNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
-    
+
     for (const cat of categories) {
         const boxes = STATE.pallets[cat].boxes;
         const index = boxes.findIndex(b => b.code === code);
@@ -380,14 +837,7 @@ function showDuplicatePopup(code, duplicateInfo, rawCode) {
                     <span class="duplicate-info-label">Hora de registro:</span>
                     <span class="duplicate-info-value">${duplicateInfo.timestamp}</span>
                 </div>
-                <div class="duplicate-info-row">
-                    <span class="duplicate-info-label">Registrado por:</span>
-                    <span class="duplicate-info-value">${duplicateInfo.user || 'Usuario'}</span>
-                </div>
             </div>
-            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
-                Este código ya fue escaneado anteriormente. ¿Deseas forzar un nuevo registro?
-            </p>
             <div class="popup-buttons">
                 <button class="btn btn-warning btn-full" onclick="forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();">
                     ⚡ Ingreso Forzado (Duplicado)
@@ -405,11 +855,10 @@ function showDuplicatePopup(code, duplicateInfo, rawCode) {
 }
 
 function forceInsertDuplicate(code, rawCode) {
-    // Usar búsqueda inteligente para el duplicado también
     const result = findCodeInInventory(rawCode, STATE.inventory);
     const finalCode = result.code;
     const item = result.item;
-    
+
     if (!item) {
         addBox('nowms', createBoxData(rawCode, finalCode, '', null));
         showNotification('⚡ Duplicado insertado en No WMS', 'warning');
@@ -420,7 +869,7 @@ function forceInsertDuplicate(code, rawCode) {
         addBox('ok', createBoxData(rawCode, finalCode, '', item));
         showNotification('⚡ Duplicado insertado en OK', 'warning');
     }
-    
+
     playSound('warning');
     document.getElementById('scan-input').focus();
 }
@@ -442,14 +891,13 @@ function createBoxData(raw, code, scan2, item) {
 
 function addBox(category, boxData) {
     STATE.pallets[category].boxes.push(boxData);
-    
-    // Actualizar resumen global
     STATE.globalSummary[category]++;
     STATE.globalSummary.total++;
-    
+
     saveToStorage();
     updateUI();
-    updateGlobalSummary();
+    GlobalTabs.saveToStorage();
+    updateGlobalSummaryFromTabs();
 }
 
 function updateUI() {
@@ -458,29 +906,33 @@ function updateUI() {
         const list = document.getElementById(`${cat}-list`);
         const count = document.getElementById(`${cat}-count`);
         const palletId = document.getElementById(`${cat}-pallet`);
-        
-        count.textContent = boxes.length;
-        palletId.textContent = STATE.pallets[cat].id;
 
-        if (boxes.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div>';
-        } else {
-            list.innerHTML = boxes.map((box, i) => `
-                <div class="box-item ${cat}">
-                    <div class="box-info">
-                        <div class="box-code">${box.code}</div>
-                        <div class="box-meta">${box.timestamp} • ${box.location}</div>
+        if (count) count.textContent = boxes.length;
+        if (palletId) palletId.textContent = STATE.pallets[cat].id;
+
+        if (list) {
+            if (boxes.length === 0) {
+                list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div>';
+            } else {
+                list.innerHTML = boxes.map((box, i) => `
+                    <div class="box-item ${cat}">
+                        <div class="box-info">
+                            <div class="box-code">${box.code}</div>
+                            <div class="box-meta">${box.timestamp} • ${box.location}</div>
+                        </div>
+                        <button onclick="deleteBox('${cat}', ${i})" style="background: none; border: none; cursor: pointer; color: var(--error); font-size: 1.2em;">×</button>
                     </div>
-                    <button onclick="deleteBox('${cat}', ${i})" style="background: none; border: none; cursor: pointer; color: var(--error); font-size: 1.2em;">×</button>
-                </div>
-            `).join('');
+                `).join('');
+            }
         }
     });
 
     const totalBoxes = STATE.pallets.ok.boxes.length + STATE.pallets.blocked.boxes.length + STATE.pallets.nowms.boxes.length;
-    document.getElementById('global-box-count').textContent = totalBoxes;
-    
+    const globalCount = document.getElementById('global-box-count');
+    if (globalCount) globalCount.textContent = totalBoxes;
+
     updateSendButtons();
+    GlobalTabs.render();
 }
 
 function deleteBox(category, index) {
@@ -488,6 +940,8 @@ function deleteBox(category, index) {
         STATE.pallets[category].boxes.splice(index, 1);
         saveToStorage();
         updateUI();
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
         showNotification('Caja eliminada', 'info');
     }
 }
@@ -495,9 +949,12 @@ function deleteBox(category, index) {
 function updateSendButtons() {
     ['ok', 'blocked', 'nowms'].forEach(cat => {
         const btn = document.getElementById(`send-${cat}-btn`);
-        const location = document.getElementById(`location-${cat}`).value.trim();
-        const hasBoxes = STATE.pallets[cat].boxes.length > 0;
-        btn.disabled = !(hasBoxes && location);
+        const locationInput = document.getElementById(`location-${cat}`);
+        if (btn && locationInput) {
+            const location = locationInput.value.trim();
+            const hasBoxes = STATE.pallets[cat].boxes.length > 0;
+            btn.disabled = !(hasBoxes && location);
+        }
     });
 }
 
@@ -518,7 +975,6 @@ async function sendPallet(category) {
         return;
     }
 
-    // Validar ubicación con doble confirmación
     const locationCheck = confirmInvalidLocation(location);
     if (!locationCheck.confirmed) {
         showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
@@ -529,7 +985,6 @@ async function sendPallet(category) {
     const finalLocation = locationCheck.formatted;
     document.getElementById(`location-${category}`).value = finalLocation;
 
-    // Validación ciega si está activada
     if (pallet.blindCount) {
         const blindConfirmed = await confirmBlindCount(category, finalLocation);
         if (!blindConfirmed) {
@@ -545,15 +1000,13 @@ async function sendPallet(category) {
     showLoading(true);
     try {
         const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-        const now = new Date();
         const dateStr = getCurrentDate();
         const timeStr = getCurrentTime();
 
-        // Crear registros para sincronización
         const records = pallet.boxes.map(box => ({
             date: dateStr,
             time: timeStr,
-            user: STATE.userName || 'Usuario',
+            user: STATE.userAlias || STATE.userName || 'Usuario',
             scan1: box.code,
             scan2: box.scan2 || '',
             location: finalLocation,
@@ -563,25 +1016,23 @@ async function sendPallet(category) {
             originLocation: originLocation
         }));
 
-        // Agregar a historial
         STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-        // Agregar a cola de sincronización
         if (syncManager) {
             syncManager.addToQueue(records);
-            showNotification(`💾 ${records.length} registros agregados a cola de sincronización`, 'info');
-            
-            // Intentar sincronizar inmediatamente
+            showNotification(`💾 ${records.length} registros agregados a cola`, 'info');
+
             if (checkOnlineStatus() && gapi?.client?.getToken()) {
                 await syncManager.sync();
             }
         }
 
-        // Resetear pallet
         STATE.pallets[category] = { boxes: [], id: generatePalletId(category.toUpperCase().slice(0, 3)) };
         document.getElementById(`location-${category}`).value = '';
         saveToStorage();
         updateUI();
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
         playSound('success');
 
     } catch (error) {
@@ -595,52 +1046,38 @@ async function sendPallet(category) {
 function showResultBox(type, code, title, message) {
     const box = document.getElementById('result-box');
     const icons = { success: '✅', warning: '⚠️', blocked: '⚠️', error: '❌' };
-    
-    box.className = `result-box show ${type}`;
-    document.getElementById('result-icon').textContent = icons[type] || '📦';
-    document.getElementById('result-title').textContent = `${title}: ${code}`;
-    document.getElementById('result-details').textContent = message;
+
+    if (box) {
+        box.className = `result-box show ${type}`;
+        document.getElementById('result-icon').textContent = icons[type] || '📦';
+        document.getElementById('result-title').textContent = `${title}: ${code}`;
+        document.getElementById('result-details').textContent = message;
+    }
 }
 
 function flashInput(type) {
     const input = document.getElementById('scan-input');
-    input.classList.remove('success', 'error');
-    input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
-    setTimeout(() => input.classList.remove('success', 'error'), 500);
-}
-
-function showNotification(message, type = 'info') {
-    const container = document.getElementById('notifications');
-    const notif = document.createElement('div');
-    notif.className = `notification ${type}`;
-    notif.textContent = message;
-    container.appendChild(notif);
-    setTimeout(() => notif.remove(), 3000);
+    if (input) {
+        input.classList.remove('success', 'error');
+        input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
+        setTimeout(() => input.classList.remove('success', 'error'), 500);
+    }
 }
 
 function showLoading(show) {
-    document.getElementById('loading-overlay').classList.toggle('show', show);
-}
-
-function playSound(type) {
-    const frequencies = { success: 800, warning: 600, error: 400 };
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    oscillator.frequency.value = frequencies[type] || 500;
-    oscillator.connect(audioContext.destination);
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.1);
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.toggle('show', show);
 }
 
 // ==================== FUNCIONES DE UI ====================
 function updateConnectionStatus(isOnline) {
     const dot = document.getElementById('connection-dot');
     const text = document.getElementById('connection-text');
-    
+
     if (isOnline === undefined) {
         isOnline = checkOnlineStatus();
     }
-    
+
     if (isOnline) {
         dot?.classList.add('online');
         dot?.classList.remove('offline');
@@ -655,30 +1092,58 @@ function updateConnectionStatus(isOnline) {
 function updateUserDisplay() {
     const avatar = document.getElementById('user-avatar');
     const userName = document.getElementById('user-name-display');
-    
+
     const displayName = STATE.userAlias || STATE.userName || 'Usuario';
-    
+
     if (avatar) {
         avatar.textContent = displayName[0].toUpperCase();
         avatar.onclick = () => showAliasPopup();
         avatar.style.cursor = 'pointer';
-        avatar.title = 'Click para cambiar nombre';
     }
-    
+
     if (userName) {
         userName.textContent = displayName;
         userName.onclick = () => showAliasPopup();
         userName.style.cursor = 'pointer';
-        userName.title = 'Click para cambiar nombre';
     }
 }
 
 function updateBdInfo() {
     const bdCount = document.getElementById('bd-count');
     const bdTime = document.getElementById('bd-update-time');
-    
+
     if (bdCount) bdCount.textContent = STATE.inventory.size.toLocaleString();
     if (bdTime) bdTime.textContent = STATE.inventoryLastUpdate || getTimestamp();
+}
+
+function updateGlobalSummaryFromTabs() {
+    let ok = 0, blocked = 0, nowms = 0, total = 0;
+
+    GlobalTabs.tabs.forEach(tab => {
+        if (tab.type === 'classic') {
+            ok += tab.data.pallets.ok.boxes.length;
+            blocked += tab.data.pallets.blocked.boxes.length;
+            nowms += tab.data.pallets.nowms.boxes.length;
+        } else {
+            tab.data.items.forEach(item => {
+                if (item.status === 'ok') ok++;
+                else if (item.status === 'blocked') blocked++;
+                else nowms++;
+            });
+        }
+    });
+
+    total = ok + blocked + nowms;
+
+    const okEl = document.getElementById('global-ok-count');
+    const blockedEl = document.getElementById('global-blocked-count');
+    const nowmsEl = document.getElementById('global-nowms-count');
+    const totalEl = document.getElementById('global-total-count');
+
+    if (okEl) okEl.textContent = ok;
+    if (blockedEl) blockedEl.textContent = blocked;
+    if (nowmsEl) nowmsEl.textContent = nowms;
+    if (totalEl) totalEl.textContent = total;
 }
 
 // ==================== PERSISTENCIA ====================
@@ -715,78 +1180,78 @@ function refreshInventory() {
 }
 
 function startNewSession() {
-    if (confirm('¿Iniciar nueva sesión? Se mantendrán los datos actuales.')) {
-        document.getElementById('scan-input').focus();
-        showNotification('Nueva sesión iniciada', 'success');
-    }
+    GlobalTabs.createTab();
 }
 
 function showResumen() {
-    const currentTotal = STATE.pallets.ok.boxes.length + STATE.pallets.blocked.boxes.length + STATE.pallets.nowms.boxes.length;
+    let totalOk = 0, totalBlocked = 0, totalNowms = 0;
+
+    GlobalTabs.tabs.forEach(tab => {
+        if (tab.type === 'classic') {
+            totalOk += tab.data.pallets.ok.boxes.length;
+            totalBlocked += tab.data.pallets.blocked.boxes.length;
+            totalNowms += tab.data.pallets.nowms.boxes.length;
+        } else {
+            tab.data.items.forEach(item => {
+                if (item.status === 'ok') totalOk++;
+                else if (item.status === 'blocked') totalBlocked++;
+                else totalNowms++;
+            });
+        }
+    });
+
+    const currentTotal = totalOk + totalBlocked + totalNowms;
     const pending = syncManager ? syncManager.getPendingCount() : 0;
-    const lastUpdate = STATE.inventoryLastUpdate || 'Sin actualizar';
-    
+
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
     overlay.innerHTML = `
         <div class="popup-content" style="max-width: 500px;">
             <div class="popup-header">
-                <span>📊 Resumen de Sesión</span>
+                <span>📊 Resumen General</span>
                 <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
             </div>
             <div style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 15px; color: var(--primary);">Sesión Actual</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--success);">${STATE.pallets.ok.boxes.length}</div>
-                        <div style="font-size: 0.9em; color: #666;">✅ OK</div>
+                <div class="resumen-stats">
+                    <div class="resumen-stat ok">
+                        <div class="resumen-stat-number">${totalOk}</div>
+                        <div class="resumen-stat-label">✅ OK</div>
                     </div>
-                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--warning);">${STATE.pallets.blocked.boxes.length}</div>
-                        <div style="font-size: 0.9em; color: #666;">⚠️ Bloqueado</div>
+                    <div class="resumen-stat blocked">
+                        <div class="resumen-stat-number">${totalBlocked}</div>
+                        <div class="resumen-stat-label">⚠️ Bloqueado</div>
                     </div>
-                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--error);">${STATE.pallets.nowms.boxes.length}</div>
-                        <div style="font-size: 0.9em; color: #666;">❌ No WMS</div>
+                    <div class="resumen-stat nowms">
+                        <div class="resumen-stat-number">${totalNowms}</div>
+                        <div class="resumen-stat-label">❌ No WMS</div>
                     </div>
-                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--info);">${currentTotal}</div>
-                        <div style="font-size: 0.9em; color: #666;">📦 Total</div>
+                    <div class="resumen-stat pending">
+                        <div class="resumen-stat-number">${pending}</div>
+                        <div class="resumen-stat-label">⏳ Pendientes</div>
                     </div>
                 </div>
-                
-                <h3 style="margin: 20px 0 15px; color: var(--primary);">Resumen Global</h3>
-                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; font-size: 0.9em;">
+
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-top: 15px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>Total procesado:</span>
-                        <strong>${STATE.globalSummary.total.toLocaleString()}</strong>
+                        <span>📦 Total registros:</span>
+                        <strong>${currentTotal}</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>✅ OK procesados:</span>
-                        <strong>${STATE.globalSummary.ok.toLocaleString()}</strong>
+                        <span>📋 Sesiones activas:</span>
+                        <strong>${GlobalTabs.tabs.length}</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>⚠️ Bloqueados:</span>
-                        <strong>${STATE.globalSummary.blocked.toLocaleString()}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>❌ No WMS:</span>
-                        <strong>${STATE.globalSummary.nowms.toLocaleString()}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>📋 Envíos realizados:</span>
+                        <span>📜 Historial:</span>
                         <strong>${STATE.history.length}</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span>⏳ Pendientes sync:</span>
-                        <strong style="color: ${pending > 0 ? 'var(--warning)' : 'var(--success)'}">${pending}</strong>
+                        <span>💾 BD Códigos:</span>
+                        <strong>${STATE.inventory.size.toLocaleString()}</strong>
                     </div>
                 </div>
-                
-                <div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-radius: 6px; font-size: 0.85em; color: #666;">
-                    <div>👤 Usuario: <strong>${STATE.userAlias || STATE.userName}</strong></div>
-                    <div>📅 BD actualizada: <strong>${lastUpdate}</strong></div>
-                    <div>💾 Códigos en BD: <strong>${STATE.inventory.size.toLocaleString()}</strong></div>
+
+                <div style="margin-top: 15px; font-size: 0.85em; color: #666; text-align: center;">
+                    👤 ${STATE.userAlias || STATE.userName} • 📅 ${STATE.inventoryLastUpdate || 'Sin actualizar'}
                 </div>
             </div>
             <div class="popup-buttons">
@@ -818,7 +1283,7 @@ function exportData() {
     showNotification('✅ Datos exportados', 'success');
 }
 
-// ==================== SISTEMA DE ALIAS/NICKNAME ====================
+// ==================== SISTEMA DE ALIAS ====================
 function showAliasPopup() {
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
@@ -830,91 +1295,80 @@ function showAliasPopup() {
             </div>
             <div style="margin-bottom: 20px;">
                 <p style="color: #666; margin-bottom: 15px;">
-                    Ingresa un nombre o alias para identificarte en los registros:
+                    Ingresa un nombre para identificarte:
                 </p>
-                <input type="text" id="alias-input" class="scan-input" 
-                       placeholder="Tu nombre o alias..." 
-                       value="${STATE.userAlias || STATE.userName || ''}" 
-                       autocomplete="off" 
+                <input type="text" id="alias-input" class="scan-input"
+                       placeholder="Tu nombre..."
+                       value="${STATE.userAlias || STATE.userName || ''}"
+                       autocomplete="off"
                        style="width: 100%; margin-bottom: 10px;">
-                <div style="font-size: 0.85em; color: #999;">
-                    💡 Este nombre aparecerá en todos tus registros
-                </div>
             </div>
             <div class="popup-buttons">
                 <button class="btn btn-primary btn-full" onclick="saveUserAlias()">
                     💾 Guardar
                 </button>
-                <button class="btn btn-secondary btn-full" onclick="saveUserAlias('${STATE.userName}', true)">
-                    Usar nombre de Google
+                <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                    Cancelar
                 </button>
             </div>
         </div>
     `;
     document.body.appendChild(overlay);
-    
+
     setTimeout(() => {
         const input = document.getElementById('alias-input');
-        input.focus();
-        input.select();
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveUserAlias();
-            }
-        });
+        if (input) {
+            input.focus();
+            input.select();
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveUserAlias();
+                }
+            });
+        }
     }, 100);
-    
+
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) overlay.remove();
     });
 }
 
-function saveUserAlias(alias, isGoogleName = false) {
+function saveUserAlias() {
     const input = document.getElementById('alias-input');
-    const finalAlias = alias || input?.value?.trim() || STATE.userName;
-    
-    if (!finalAlias) {
+    const alias = input?.value?.trim() || STATE.userName;
+
+    if (!alias) {
         showNotification('⚠️ Ingresa un nombre válido', 'warning');
         return;
     }
-    
-    STATE.userAlias = finalAlias;
-    localStorage.setItem('wms_user_alias', finalAlias);
-    
+
+    STATE.userAlias = alias;
+    localStorage.setItem('wms_user_alias', alias);
+
     document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
     updateUserDisplay();
-    
-    const msg = isGoogleName ? 'Usando nombre de Google' : `Nombre actualizado: ${finalAlias}`;
-    showNotification(`✅ ${msg}`, 'success');
+
+    showNotification(`✅ Nombre actualizado: ${alias}`, 'success');
     playSound('success');
 }
 
-// ==================== RESUMEN GLOBAL EN SIDEBAR ====================
-function updateGlobalSummary() {
-    // Actualizar contador global en header
-    const globalCount = document.getElementById('global-box-count');
-    if (globalCount) {
-        const total = STATE.pallets.ok.boxes.length + STATE.pallets.blocked.boxes.length + STATE.pallets.nowms.boxes.length;
-        globalCount.textContent = total;
-    }
-}
-
-// ==================== VALIDACIÓN CIEGA (BLIND COUNT) ====================
+// ==================== VALIDACIÓN CIEGA ====================
 function toggleBlindCount(category) {
     const pallet = STATE.pallets[category];
     pallet.blindCount = !pallet.blindCount;
-    
+
     const btn = document.getElementById(`send-${category}-btn`);
     if (btn) {
         if (pallet.blindCount) {
             btn.textContent = `🔒 Enviar Tarima ${category.toUpperCase()} (Ciega)`;
             btn.style.background = 'var(--warning)';
-            showNotification(`⚠️ Modo ciego activado para ${category.toUpperCase()}`, 'warning');
+            showNotification(`⚠️ Modo ciego activado`, 'warning');
         } else {
-            btn.textContent = `📤 Enviar Tarima ${category.toUpperCase()}`;
+            const labels = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
+            btn.textContent = `📤 Enviar Tarima ${labels[category]}`;
             btn.style.background = '';
-            showNotification(`✅ Modo normal activado para ${category.toUpperCase()}`, 'success');
+            showNotification(`✅ Modo normal activado`, 'success');
         }
     }
 }
@@ -923,7 +1377,7 @@ function confirmBlindCount(category, location) {
     return new Promise((resolve) => {
         const pallet = STATE.pallets[category];
         const boxCount = pallet.boxes.length;
-        
+
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay show';
         overlay.innerHTML = `
@@ -935,27 +1389,22 @@ function confirmBlindCount(category, location) {
                     <p style="font-weight: 600; margin-bottom: 15px; color: var(--warning);">
                         ⚠️ MODO CIEGO ACTIVADO
                     </p>
-                    <p style="margin-bottom: 15px; color: #666;">
-                        Confirma el conteo físico de cajas en esta tarima:
-                    </p>
                     <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                         <div style="font-size: 0.9em; color: #666; margin-bottom: 8px;">Ubicación destino:</div>
                         <div style="font-size: 1.2em; font-weight: 700; margin-bottom: 15px;">${location}</div>
-                        <div style="font-size: 0.9em; color: #666; margin-bottom: 8px;">Cajas escaneadas en sistema:</div>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 8px;">Cajas en sistema:</div>
                         <div style="font-size: 2em; font-weight: 700; color: var(--primary);">${boxCount}</div>
                     </div>
                     <label style="display: block; margin-bottom: 10px; font-weight: 600;">
-                        Ingresa el conteo físico real:
+                        Ingresa el conteo físico:
                     </label>
-                    <input type="number" id="blind-count-input" class="scan-input" 
-                           placeholder="Número de cajas contadas..." 
-                           min="0" 
-                           autocomplete="off" 
-                           style="width: 100%; font-size: 1.5em; text-align: center;">
+                    <input type="number" id="blind-count-input" class="scan-input"
+                           placeholder="Número de cajas..."
+                           min="0" style="width: 100%; font-size: 1.5em; text-align: center;">
                 </div>
                 <div class="popup-buttons">
                     <button class="btn btn-primary btn-full" onclick="validateBlindCount(${boxCount})">
-                        ✅ Confirmar Conteo
+                        ✅ Confirmar
                     </button>
                     <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove(); window.blindCountResolve(false);">
                         Cancelar
@@ -964,18 +1413,20 @@ function confirmBlindCount(category, location) {
             </div>
         `;
         document.body.appendChild(overlay);
-        
+
         window.blindCountResolve = resolve;
-        
+
         setTimeout(() => {
             const input = document.getElementById('blind-count-input');
-            input.focus();
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    validateBlindCount(boxCount);
-                }
-            });
+            if (input) {
+                input.focus();
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        validateBlindCount(boxCount);
+                    }
+                });
+            }
         }, 100);
     });
 }
@@ -983,30 +1434,24 @@ function confirmBlindCount(category, location) {
 function validateBlindCount(expectedCount) {
     const input = document.getElementById('blind-count-input');
     const physicalCount = parseInt(input.value);
-    
+
     if (isNaN(physicalCount) || physicalCount < 0) {
         showNotification('⚠️ Ingresa un número válido', 'warning');
         input.focus();
         return;
     }
-    
+
     const difference = Math.abs(physicalCount - expectedCount);
-    
+
     if (physicalCount === expectedCount) {
         document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
-        showNotification('✅ Conteo correcto - Coincide con sistema', 'success');
+        showNotification('✅ Conteo correcto', 'success');
         playSound('success');
         window.blindCountResolve(true);
     } else {
-        const confirmMsg = `⚠️ DISCREPANCIA DETECTADA\n\n` +
-            `Sistema: ${expectedCount} cajas\n` +
-            `Físico: ${physicalCount} cajas\n` +
-            `Diferencia: ${difference} caja(s)\n\n` +
-            `¿Deseas continuar de todos modos?`;
-        
-        if (confirm(confirmMsg)) {
+        if (confirm(`⚠️ DISCREPANCIA: Sistema ${expectedCount}, Físico ${physicalCount}\nDiferencia: ${difference}\n\n¿Continuar?`)) {
             document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
-            showNotification(`⚠️ Enviado con discrepancia: ${difference} caja(s)`, 'warning');
+            showNotification(`⚠️ Enviado con discrepancia: ${difference}`, 'warning');
             playSound('warning');
             window.blindCountResolve(true);
         } else {
@@ -1018,3 +1463,7 @@ function validateBlindCount(expectedCount) {
 
 // ==================== INICIALIZACIÓN AL CARGAR ====================
 window.addEventListener('load', initializeApp);
+
+// Exponer funciones globalmente para onclick handlers
+window.GlobalTabs = GlobalTabs;
+window.UnifiedModule = UnifiedModule;
