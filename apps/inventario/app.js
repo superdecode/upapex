@@ -917,10 +917,14 @@ function updateUI() {
                 list.innerHTML = boxes.map((box, i) => `
                     <div class="box-item ${cat}">
                         <div class="box-info">
-                            <div class="box-code">${box.code}</div>
+                            <div class="box-code">${box.code}${box.scan2 ? ' / ' + box.scan2 : ''}</div>
                             <div class="box-meta">${box.timestamp} • ${box.location}</div>
                         </div>
-                        <button onclick="deleteBox('${cat}', ${i})" style="background: none; border: none; cursor: pointer; color: var(--error); font-size: 1.2em;">×</button>
+                        <div class="box-actions">
+                            <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar">⧉</button>
+                            <button class="box-action-btn move" onclick="showMoveBoxPopup('${cat}', ${i})" title="Mover">⇄</button>
+                            <button class="box-action-btn delete" onclick="deleteBox('${cat}', ${i})" title="Eliminar">×</button>
+                        </div>
                     </div>
                 `).join('');
             }
@@ -932,6 +936,7 @@ function updateUI() {
     if (globalCount) globalCount.textContent = totalBoxes;
 
     updateSendButtons();
+    updateVerificationBadges();
     GlobalTabs.render();
 }
 
@@ -1461,9 +1466,424 @@ function validateBlindCount(expectedCount) {
     }
 }
 
+// ==================== TRANSFERENCIA ENTRE TARIMAS ====================
+function showMoveBoxPopup(fromCategory, index) {
+    const box = STATE.pallets[fromCategory].boxes[index];
+    const categories = ['ok', 'blocked', 'nowms'].filter(c => c !== fromCategory);
+    const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay show';
+    overlay.innerHTML = `
+        <div class="popup-content" style="max-width: 350px;">
+            <div class="popup-header">
+                <span>↔️ Mover Caja</span>
+                <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+            </div>
+            <p style="margin-bottom: 15px; font-size: 0.9em;">
+                <strong>Código:</strong> <code>${box.code}</code><br>
+                <strong>Desde:</strong> ${categoryNames[fromCategory]}
+            </p>
+            <p style="margin-bottom: 10px; font-weight: 600;">Mover a:</p>
+            <div class="popup-buttons">
+                ${categories.map(cat => `
+                    <button class="btn btn-${cat === 'ok' ? 'success' : cat === 'blocked' ? 'warning' : 'danger'} btn-full"
+                            onclick="moveBox('${fromCategory}', ${index}, '${cat}'); this.closest('.popup-overlay').remove();">
+                        ${categoryNames[cat]}
+                    </button>
+                `).join('')}
+                <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+}
+
+function moveBox(fromCategory, index, toCategory) {
+    const box = STATE.pallets[fromCategory].boxes.splice(index, 1)[0];
+    box.verified = false;
+    STATE.pallets[toCategory].boxes.push(JSON.parse(JSON.stringify(box)));
+    saveToStorage();
+    updateUI();
+    GlobalTabs.saveToStorage();
+    updateGlobalSummaryFromTabs();
+    showNotification(`✅ Caja movida a ${toCategory.toUpperCase()}`, 'success');
+    playSound('success');
+}
+
+// ==================== MODAL DETALLE DE PALLET ====================
+let detailModalSort = { column: 'index', direction: 'asc' };
+let detailModalFilter = { code: '', location: '' };
+
+function showPalletDetailModal(category) {
+    const pallet = STATE.pallets[category];
+    const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+    const categoryColors = { ok: 'var(--success)', blocked: 'var(--blocked)', nowms: 'var(--error)' };
+
+    if (pallet.boxes.length === 0) {
+        showNotification('⚠️ No hay cajas en esta tarima', 'warning');
+        return;
+    }
+
+    const verifiedCount = category === 'ok' ? pallet.boxes.filter(b => b.verified).length : 0;
+    const pendingCount = pallet.boxes.length - verifiedCount;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay show';
+    overlay.id = 'pallet-detail-modal';
+    overlay.innerHTML = `
+        <div class="popup-content pallet-detail-modal" style="max-width: 800px;">
+            <div class="popup-header" style="border-bottom: 3px solid ${categoryColors[category]};">
+                <div>
+                    <span style="font-size: 1.2em; font-weight: 700; color: ${categoryColors[category]};">
+                        ${categoryNames[category]} - ${pallet.id}
+                    </span>
+                    <span style="font-size: 0.9em; color: #666; margin-left: 10px;">${pallet.boxes.length} cajas</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    ${category === 'ok' ? `
+                        <div class="pallet-detail-counters">
+                            <span class="counter-badge ok">✓ ${verifiedCount}</span>
+                            <span class="counter-badge pending">○ ${pendingCount}</span>
+                        </div>
+                    ` : ''}
+                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                <input type="text" class="scan-input" style="flex: 1; min-width: 150px; font-size: 0.9em; padding: 8px;"
+                       placeholder="🔍 Filtrar código..." id="detail-filter-code" onkeyup="filterDetailModal('${category}')">
+                <input type="text" class="scan-input" style="flex: 1; min-width: 150px; font-size: 0.9em; padding: 8px;"
+                       placeholder="📍 Filtrar ubicación..." id="detail-filter-location" onkeyup="filterDetailModal('${category}')">
+                <button class="btn btn-small btn-secondary" onclick="clearDetailFilters('${category}')">Limpiar</button>
+            </div>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                    <thead>
+                        <tr style="background: #f5f5f5; position: sticky; top: 0;">
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortDetailModal('${category}', 'index')"># ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortDetailModal('${category}', 'code')">Código ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortDetailModal('${category}', 'scan2')">Código 2 ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortDetailModal('${category}', 'location')">Ubicación ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortDetailModal('${category}', 'timestamp')">Hora ↕</th>
+                            <th style="padding: 8px; text-align: center;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detail-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    renderDetailTable(category);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function renderDetailTable(category) {
+    const pallet = STATE.pallets[category];
+    const tbody = document.getElementById('detail-table-body');
+    if (!tbody) return;
+
+    let filtered = pallet.boxes.map((box, index) => ({ ...box, originalIndex: index }));
+
+    if (detailModalFilter.code) {
+        const s = detailModalFilter.code.toUpperCase();
+        filtered = filtered.filter(b => b.code.toUpperCase().includes(s) || (b.scan2 && b.scan2.toUpperCase().includes(s)));
+    }
+    if (detailModalFilter.location) {
+        const s = detailModalFilter.location.toUpperCase();
+        filtered = filtered.filter(b => b.location.toUpperCase().includes(s));
+    }
+
+    filtered.sort((a, b) => {
+        let valA, valB;
+        switch (detailModalSort.column) {
+            case 'code': valA = a.code; valB = b.code; break;
+            case 'scan2': valA = a.scan2 || ''; valB = b.scan2 || ''; break;
+            case 'location': valA = a.location; valB = b.location; break;
+            case 'timestamp': valA = a.timestamp; valB = b.timestamp; break;
+            default: valA = a.originalIndex; valB = b.originalIndex;
+        }
+        if (typeof valA === 'string') return detailModalSort.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return detailModalSort.direction === 'asc' ? valA - valB : valB - valA;
+    });
+
+    tbody.innerHTML = filtered.map((box, i) => {
+        const verified = box.verified || false;
+        const style = verified ? 'background: rgba(76, 175, 80, 0.1);' : '';
+        const checkBtn = category === 'ok' ?
+            `<button class="btn btn-small" style="padding: 2px 6px;" onclick="toggleBoxVerifiedModal('${category}', ${box.originalIndex})">${verified ? '✓' : '○'}</button>` : '';
+
+        return `
+            <tr style="${style} border-bottom: 1px solid #eee;">
+                <td style="padding: 8px;">${i + 1}</td>
+                <td style="padding: 8px; font-family: monospace; font-weight: 600;">${box.code}</td>
+                <td style="padding: 8px; font-family: monospace;">${box.scan2 || '-'}</td>
+                <td style="padding: 8px;">${box.location}</td>
+                <td style="padding: 8px;">${box.timestamp}</td>
+                <td style="padding: 8px; text-align: center;">
+                    <button class="btn btn-small btn-secondary" style="padding: 2px 6px;" onclick="copyToClipboard('${box.code}')" title="Copiar código">⧉</button>
+                    ${checkBtn}
+                    <button class="btn btn-small btn-secondary" style="padding: 2px 6px;" onclick="showMoveBoxPopup('${category}', ${box.originalIndex}); document.getElementById('pallet-detail-modal')?.remove();" title="Mover">⇄</button>
+                    <button class="btn btn-small btn-danger" style="padding: 2px 6px;" onclick="deleteBoxModal('${category}', ${box.originalIndex})" title="Eliminar">✕</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function sortDetailModal(category, column) {
+    if (detailModalSort.column === column) {
+        detailModalSort.direction = detailModalSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        detailModalSort.column = column;
+        detailModalSort.direction = 'asc';
+    }
+    renderDetailTable(category);
+}
+
+function filterDetailModal(category) {
+    detailModalFilter.code = document.getElementById('detail-filter-code')?.value || '';
+    detailModalFilter.location = document.getElementById('detail-filter-location')?.value || '';
+    renderDetailTable(category);
+}
+
+function clearDetailFilters(category) {
+    document.getElementById('detail-filter-code').value = '';
+    document.getElementById('detail-filter-location').value = '';
+    detailModalFilter = { code: '', location: '' };
+    renderDetailTable(category);
+}
+
+function deleteBoxModal(category, index) {
+    if (confirm('¿Eliminar esta caja?')) {
+        STATE.pallets[category].boxes.splice(index, 1);
+        saveToStorage();
+        updateUI();
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
+
+        if (STATE.pallets[category].boxes.length === 0) {
+            document.getElementById('pallet-detail-modal')?.remove();
+            showNotification('Tarima vacía', 'info');
+        } else {
+            renderDetailTable(category);
+            showNotification('Caja eliminada', 'info');
+        }
+    }
+}
+
+// ==================== SISTEMA DE VERIFICACIÓN ====================
+function toggleBoxVerified(category, index) {
+    const box = STATE.pallets[category].boxes[index];
+    box.verified = !box.verified;
+    saveToStorage();
+    updateUI();
+}
+
+function toggleBoxVerifiedModal(category, index) {
+    toggleBoxVerified(category, index);
+    renderDetailTable(category);
+
+    const pallet = STATE.pallets[category];
+    const v = pallet.boxes.filter(b => b.verified).length;
+    const p = pallet.boxes.length - v;
+    const counters = document.querySelector('.pallet-detail-counters');
+    if (counters) {
+        counters.innerHTML = `<span class="counter-badge ok">✓ ${v}</span><span class="counter-badge pending">○ ${p}</span>`;
+    }
+}
+
+function updateVerificationBadges() {
+    const pallet = STATE.pallets.ok;
+    const v = pallet.boxes.filter(b => b.verified).length;
+    const p = pallet.boxes.length - v;
+
+    const vBadge = document.getElementById('ok-verified-badge');
+    const pBadge = document.getElementById('ok-pending-badge');
+
+    if (pallet.boxes.length > 0) {
+        if (vBadge) {
+            vBadge.style.display = v > 0 ? 'flex' : 'none';
+            const vCount = document.getElementById('ok-verified-count');
+            if (vCount) vCount.textContent = v;
+        }
+        if (pBadge) {
+            pBadge.style.display = p > 0 ? 'flex' : 'none';
+            const pCount = document.getElementById('ok-pending-count');
+            if (pCount) pCount.textContent = p;
+        }
+    } else {
+        if (vBadge) vBadge.style.display = 'none';
+        if (pBadge) pBadge.style.display = 'none';
+    }
+}
+
+// ==================== NUEVA SESIÓN ====================
+function newSession() {
+    const total = STATE.pallets.ok.boxes.length +
+                  STATE.pallets.blocked.boxes.length +
+                  STATE.pallets.nowms.boxes.length;
+
+    if (total > 0) {
+        if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin enviar?`)) {
+            return;
+        }
+    }
+
+    STATE.pallets = {
+        ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+        blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+        nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+    };
+    STATE.pendingCode1 = null;
+
+    const resultBox = document.getElementById('result-box');
+    if (resultBox) resultBox.classList.remove('show');
+
+    const code2Container = document.getElementById('code2-container');
+    if (code2Container) code2Container.style.display = 'none';
+
+    ['ok', 'blocked', 'nowms'].forEach(cat => {
+        const locInput = document.getElementById(`location-${cat}`);
+        if (locInput) locInput.value = '';
+    });
+
+    const originInput = document.getElementById('origin-location');
+    if (originInput) originInput.value = '';
+
+    saveToStorage();
+    updateUI();
+    GlobalTabs.saveToStorage();
+    updateGlobalSummaryFromTabs();
+
+    showNotification('✅ Nueva sesión iniciada', 'success');
+    playSound('success');
+
+    if (originInput) originInput.focus();
+}
+
+// ==================== MODO CANCELADOS (UnifiedModule) ====================
+// Extender UnifiedModule con funcionalidad de cancelados
+UnifiedModule.canceladosMode = false;
+
+UnifiedModule.toggleCancelados = function(isChecked) {
+    this.canceladosMode = isChecked;
+
+    const toggleLabel = document.getElementById('cancelados-toggle-label');
+    if (toggleLabel) {
+        if (isChecked) {
+            toggleLabel.classList.add('active');
+            showNotification('🚫 Modo CANCELADOS activado', 'warning');
+        } else {
+            toggleLabel.classList.remove('active');
+            showNotification('✅ Modo normal activado', 'success');
+        }
+    }
+
+    this.updateUI();
+    GlobalTabs.saveToStorage();
+};
+
+UnifiedModule.isCancelados = function() {
+    return this.canceladosMode || false;
+};
+
+// Override sendAll para manejar cancelados
+const originalSendAll = UnifiedModule.sendAll;
+UnifiedModule.sendAll = async function() {
+    const originLocation = document.getElementById('unified-origin-location')?.value.trim().toUpperCase() || '';
+    const destLocation = document.getElementById('unified-dest-location')?.value.trim().toUpperCase() || '';
+
+    if (!destLocation) {
+        showNotification('⚠️ Ingresa la ubicación destino', 'warning');
+        document.getElementById('unified-dest-location')?.focus();
+        return;
+    }
+
+    const locationCheck = confirmInvalidLocation(destLocation);
+    if (!locationCheck.confirmed) {
+        showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
+        return;
+    }
+
+    const isCancelados = this.isCancelados();
+    const modeText = isCancelados ? ' como CANCELADOS' : '';
+
+    if (!confirm(`¿Enviar ${this.items.length} registros a ${locationCheck.formatted}${modeText}?`)) {
+        return;
+    }
+
+    showLoading(true);
+    try {
+        const dateStr = getCurrentDate();
+        const timeStr = getCurrentTime();
+        const palletId = generatePalletId('UNI');
+
+        const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+
+        const records = this.items.map(item => {
+            const finalStatus = isCancelados ? 'CANCELADO' : statusMap[item.status];
+            const note = isCancelados ? `Original: ${statusMap[item.status]}` : 'UNIFICADO';
+
+            return {
+                date: dateStr,
+                time: timeStr,
+                user: STATE.userAlias || STATE.userName || 'Usuario',
+                scan1: item.code,
+                scan2: '',
+                location: locationCheck.formatted,
+                status: finalStatus,
+                note: note,
+                pallet: palletId,
+                originLocation: originLocation
+            };
+        });
+
+        STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+        if (syncManager) {
+            syncManager.addToQueue(records);
+            if (checkOnlineStatus() && gapi?.client?.getToken()) {
+                await syncManager.sync();
+            }
+        }
+
+        const count = this.items.length;
+        this.items = [];
+        this.updateUI();
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
+
+        showNotification(`✅ ${count} registros enviados${modeText}`, 'success');
+        playSound('success');
+    } catch (error) {
+        console.error('Error sending unified:', error);
+        showNotification('❌ Error al enviar', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
 // ==================== INICIALIZACIÓN AL CARGAR ====================
 window.addEventListener('load', initializeApp);
 
 // Exponer funciones globalmente para onclick handlers
 window.GlobalTabs = GlobalTabs;
 window.UnifiedModule = UnifiedModule;
+window.showMoveBoxPopup = showMoveBoxPopup;
+window.moveBox = moveBox;
+window.showPalletDetailModal = showPalletDetailModal;
+window.renderDetailTable = renderDetailTable;
+window.sortDetailModal = sortDetailModal;
+window.filterDetailModal = filterDetailModal;
+window.clearDetailFilters = clearDetailFilters;
+window.deleteBoxModal = deleteBoxModal;
+window.toggleBoxVerified = toggleBoxVerified;
+window.toggleBoxVerifiedModal = toggleBoxVerifiedModal;
+window.newSession = newSession;

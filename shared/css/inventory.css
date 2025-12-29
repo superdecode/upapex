@@ -1378,3 +1378,187 @@
     background: linear-gradient(135deg, var(--info) 0%, #1565c0 100%);
     border-color: var(--info);
 }
+
+/* ==================== CANCELADOS TOGGLE ==================== */
+.cancelados-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+
+.cancelados-toggle:hover {
+    background: rgba(244, 67, 54, 0.1);
+}
+
+.cancelados-toggle input[type="checkbox"] {
+    display: none;
+}
+
+.cancelados-slider {
+    width: 32px;
+    height: 18px;
+    background: #ccc;
+    border-radius: 9px;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.cancelados-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: all 0.3s;
+}
+
+.cancelados-toggle input:checked + .cancelados-slider {
+    background: var(--error);
+}
+
+.cancelados-toggle input:checked + .cancelados-slider::before {
+    transform: translateX(14px);
+}
+
+.cancelados-text {
+    font-size: 1.1em;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.cancelados-toggle input:checked ~ .cancelados-text {
+    opacity: 1;
+}
+
+.cancelados-toggle.active {
+    background: rgba(244, 67, 54, 0.15);
+    border-color: var(--error);
+}
+
+/* ==================== COUNTER BADGES ==================== */
+.counter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.counter-badge.ok {
+    background: rgba(76, 175, 80, 0.2);
+    color: var(--success);
+}
+
+.counter-badge.pending {
+    background: rgba(158, 158, 158, 0.2);
+    color: #666;
+}
+
+.pallet-detail-counters {
+    display: flex;
+    gap: 8px;
+}
+
+/* ==================== PALLET DETAIL MODAL ==================== */
+.pallet-detail-modal {
+    max-width: 800px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==================== CANCELADO MODE ITEM ==================== */
+.unified-item.cancelado-mode {
+    background: rgba(244, 67, 54, 0.1);
+    border-left-color: var(--error);
+}
+
+.cancelado-badge {
+    background: var(--error);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7em;
+    font-weight: 700;
+    margin-left: 8px;
+}
+
+/* ==================== BOX ITEM WITH ACTIONS ==================== */
+.box-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: #f9f9f9;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    border-left: 3px solid var(--primary);
+    transition: all 0.15s;
+}
+
+.box-item:hover {
+    background: #f0f0f0;
+}
+
+.box-item.ok { border-color: var(--success); }
+.box-item.blocked { border-color: var(--warning); }
+.box-item.nowms { border-color: var(--error); }
+
+.box-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.box-code {
+    font-weight: 600;
+    font-family: monospace;
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.box-meta {
+    font-size: 0.7em;
+    color: #888;
+}
+
+.box-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.box-item:hover .box-actions {
+    opacity: 1;
+}
+
+.box-action-btn {
+    background: none;
+    border: none;
+    padding: 3px 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-radius: 3px;
+    transition: all 0.15s;
+}
+
+.box-action-btn:hover {
+    background: rgba(0,0,0,0.1);
+}
+
+.box-action-btn.move { color: var(--info); }
+.box-action-btn.delete { color: var(--error); }
+.box-action-btn.copy { color: #666; }
+.box-action-btn.check { color: var(--success); }

@@ -83,8 +83,11 @@
                     <button class="sidebar-btn sidebar-btn-secondary" onclick="GlobalTabs.createTab()">
                         ➕ Nueva Sesión
                     </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
+                        🔄 Reiniciar Sesión
+                    </button>
                     <button class="sidebar-btn sidebar-btn-secondary" onclick="window.syncManager?.showPanel()">
-                        🔄 Sincronización
+                        ☁️ Sincronización
                     </button>
                     <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
                         📥 Exportar
@@ -186,7 +189,7 @@
 
                     <div class="columns-container">
                         <div class="column ok">
-                            <div class="column-header">
+                            <div class="column-header" onclick="showPalletDetailModal('ok')" style="cursor: pointer;" title="Ver detalles">
                                 <span class="column-title">✅ OK</span>
                                 <span class="column-count" id="ok-count">0</span>
                             </div>
@@ -212,7 +215,7 @@
                         </div>
 
                         <div class="column blocked">
-                            <div class="column-header">
+                            <div class="column-header" onclick="showPalletDetailModal('blocked')" style="cursor: pointer;" title="Ver detalles">
                                 <span class="column-title">⚠️ Bloqueado</span>
                                 <span class="column-count" id="blocked-count">0</span>
                             </div>
@@ -238,7 +241,7 @@
                         </div>
 
                         <div class="column nowms">
-                            <div class="column-header">
+                            <div class="column-header" onclick="showPalletDetailModal('nowms')" style="cursor: pointer;" title="Ver detalles">
                                 <span class="column-title">❌ No WMS</span>
                                 <span class="column-count" id="nowms-count">0</span>
                             </div>
@@ -301,6 +304,11 @@
                         <div class="unified-list-header">
                             <span class="unified-list-title">📋 Registros</span>
                             <div class="unified-list-actions">
+                                <label class="cancelados-toggle" id="cancelados-toggle-label" title="Modo Cancelados">
+                                    <input type="checkbox" id="unified-cancelados-check" onchange="UnifiedModule.toggleCancelados(this.checked)">
+                                    <span class="cancelados-slider"></span>
+                                    <span class="cancelados-text">🚫</span>
+                                </label>
                                 <button class="btn btn-small btn-secondary" onclick="UnifiedModule.clearList()">
                                     🗑️ Limpiar
                                 </button>
