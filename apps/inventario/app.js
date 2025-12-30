@@ -88,18 +88,20 @@ const GlobalTabs = {
         const tab = this.tabs.find(t => t.id === tabId);
         if (!tab) return;
 
+        // Save current tab data before switching
+        if (this.activeTabId && this.activeTabId !== tabId) {
+            this.saveCurrentTabData();
+        }
+
         this.activeTabId = tabId;
 
-        // Save current tab data before switching
-        this.saveCurrentTabData();
-
-        // Load new tab data
+        // Load new tab data - use deep copy to avoid reference issues
         if (tab.type === 'classic') {
             STATE.pallets = JSON.parse(JSON.stringify(tab.data.pallets));
             const originInput = document.getElementById('origin-location');
             if (originInput) originInput.value = tab.data.originLocation || '';
         } else {
-            UnifiedModule.items = tab.data.items || [];
+            UnifiedModule.items = JSON.parse(JSON.stringify(tab.data.items || []));
             const originInput = document.getElementById('unified-origin-location');
             const destInput = document.getElementById('unified-dest-location');
             if (originInput) originInput.value = tab.data.originLocation || '';

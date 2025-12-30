@@ -158,11 +158,19 @@ async function initGAPI() {
         await gapi.client.init({
             discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
         });
-        TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: '',
-        });
+        
+        // Initialize TOKEN_CLIENT
+        if (typeof google !== 'undefined' && google.accounts) {
+            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: '',
+            });
+            console.log('TOKEN_CLIENT initialized successfully');
+        } else {
+            console.error('Google Identity Services not loaded');
+        }
+        
         checkSavedSession();
     } catch (error) {
         console.error('Error initializing GAPI:', error);
@@ -190,6 +198,19 @@ function showLoading(show) {
 
 // ==================== AUTENTICACIÓN ====================
 function handleLogin() {
+    if (!TOKEN_CLIENT) {
+        console.error('TOKEN_CLIENT not initialized');
+        showNotification('⚠️ Inicializando autenticación...', 'warning');
+        setTimeout(() => {
+            if (TOKEN_CLIENT) {
+                handleLogin();
+            } else {
+                showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
+            }
+        }, 1000);
+        return;
+    }
+    
     TOKEN_CLIENT.callback = async (resp) => {
         if (resp.error) {
             console.error('Auth error:', resp);

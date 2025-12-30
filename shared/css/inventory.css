@@ -443,7 +443,7 @@
     gap: 4px;
 }
 
-.result-info-label { color: #666; }
+.result-info-label { color: rgba(249, 115, 22, 0.7); }
 .result-info-value { font-weight: 600; font-family: monospace; }
 
 /* ==================== CODE2 CONTAINER ==================== */
@@ -608,7 +608,7 @@
 
 .box-info { flex: 1; min-width: 0; }
 .box-code { font-weight: 600; font-family: monospace; font-size: 0.8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.box-meta { font-size: 0.7em; color: #666; }
+.box-meta { font-size: 0.7em; color: rgba(249, 115, 22, 0.65); }
 
 .box-actions {
     display: flex;
@@ -855,7 +855,7 @@
     font-size: 0.9em;
 }
 
-.duplicate-info-label { color: #666; }
+.duplicate-info-label { color: rgba(249, 115, 22, 0.7); }
 .duplicate-info-value { font-weight: 600; }
 
 /* ==================== RESUMEN ==================== */
@@ -1474,7 +1474,7 @@
 
 .unified-item-meta {
     font-size: 0.75em;
-    color: #666;
+    color: rgba(249, 115, 22, 0.65);
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
@@ -1982,10 +1982,10 @@
     gap: 8px;
 }
 
-/* ==================== EXPAND BUTTON (ICONO PROFESIONAL) ==================== */
+/* ==================== EXPAND BUTTON (ICONO BRACKETS []) ==================== */
 .expand-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: none;
     background: transparent;
     cursor: pointer;
@@ -1998,39 +1998,31 @@
 }
 
 .expand-btn::before {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 2px solid #666;
-    border-radius: 3px;
+    content: '[';
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #666;
     transition: all 0.2s;
+    margin-right: 2px;
 }
 
 .expand-btn::after {
-    content: '';
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    border-top: 2px solid #666;
-    border-right: 2px solid #666;
-    top: 6px;
-    right: 6px;
+    content: ']';
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #666;
     transition: all 0.2s;
+    margin-left: 2px;
 }
 
-.expand-btn:hover::before {
-    border-color: var(--primary);
-    transform: scale(1.1);
-}
-
+.expand-btn:hover::before,
 .expand-btn:hover::after {
-    border-color: var(--primary);
-    transform: scale(1.1);
+    color: var(--primary);
+    transform: scale(1.15);
 }
 
 .expand-btn:hover {
-    background: rgba(249, 115, 22, 0.1);
+    background: rgba(249, 115, 22, 0.08);
     border-radius: 4px;
 }
 
@@ -2062,9 +2054,9 @@
 
 /* ==================== COUNT VALIDATION POPUP ==================== */
 .count-validation-popup {
-    max-width: 380px;
+    max-width: 320px;
     position: relative;
-    padding: 30px 25px 25px;
+    padding: 20px 18px 18px;
 }
 
 .validation-info {
