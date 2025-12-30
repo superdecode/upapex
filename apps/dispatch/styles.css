@@ -1,11 +1,28 @@
 /* ==================== DISPATCH MODULE STYLES ==================== */
 
+/* Ensure desktop layout persists after data load */
+@media (min-width: 1024px) {
+    .container {
+        max-width: none !important;
+        min-width: 1024px;
+    }
+
+    .main-content {
+        padding: 20px !important;
+    }
+
+    .card {
+        padding: 20px !important;
+    }
+}
+
 /* Sidebar Summary */
 .sidebar-summary {
     background: rgba(249, 115, 22, 0.1);
     border-radius: 8px;
     padding: 12px;
     margin-bottom: 15px;
+    overflow: hidden;
 }
 
 .summary-title {
@@ -17,10 +34,19 @@
     text-align: center;
 }
 
+/* Fixed grid with proper overflow handling */
 .summary-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
     gap: 8px;
+    max-width: 100%;
+}
+
+/* On larger screens in sidebar, use 3 columns */
+@media (min-width: 1024px) {
+    .summary-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
 }
 
 .summary-item {
@@ -29,6 +55,8 @@
     padding: 8px;
     text-align: center;
     border-left: 3px solid;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .summary-item.total { border-color: var(--primary); }
@@ -46,6 +74,7 @@
     font-weight: 700;
     display: block;
     color: var(--text);
+    word-break: break-word;
 }
 
 .summary-label {
@@ -258,12 +287,27 @@
     padding: 18px 20px;
     background: white;
     border-bottom: 1px solid #e5e7eb;
+    overflow-x: auto;
 }
 
 .kpi-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 12px;
+    min-width: 0;
+}
+
+/* Responsive KPI cards */
+@media (max-width: 768px) {
+    .kpi-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .kpi-cards {
+        grid-template-columns: 1fr;
+    }
 }
 
 .kpi-card {
@@ -275,6 +319,7 @@
     transition: all 0.2s;
     position: relative;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    min-width: 0;
 }
 
 .kpi-card:hover {
@@ -532,4 +577,350 @@
 .orders-list-empty-subtext {
     font-size: 0.9em;
     color: #bbb;
+}
+
+/* Section Search Input */
+.section-search {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.9em;
+    width: 100%;
+    max-width: 400px;
+}
+
+.section-search:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+.section-search-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.section-search-icon {
+    color: #999;
+    font-size: 1em;
+}
+
+/* Control de Calidad Section */
+.qc-toggle-container {
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px solid #e5e7eb;
+}
+
+.qc-toggle-label {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 0.95em;
+}
+
+.qc-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+}
+
+.qc-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.qc-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 26px;
+}
+
+.qc-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+.qc-toggle-switch input:checked + .qc-toggle-slider {
+    background-color: var(--success);
+}
+
+.qc-toggle-switch input:checked + .qc-toggle-slider:before {
+    transform: translateX(24px);
+}
+
+/* QC Task Selection */
+.qc-step {
+    margin-bottom: 25px;
+}
+
+.qc-step-title {
+    font-weight: 700;
+    font-size: 1em;
+    color: var(--primary);
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+}
+
+.qc-task-options {
+    display: grid;
+    gap: 12px;
+}
+
+.qc-task-option {
+    padding: 12px 15px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.qc-task-option:hover {
+    border-color: var(--primary);
+    background: #fff5ed;
+}
+
+.qc-task-option.selected {
+    border-color: var(--primary);
+    background: rgba(249, 115, 22, 0.05);
+}
+
+.qc-task-checkbox {
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    cursor: pointer;
+}
+
+.qc-task-content {
+    flex: 1;
+}
+
+.qc-task-label {
+    font-weight: 600;
+    font-size: 0.95em;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: block;
+    cursor: pointer;
+}
+
+.qc-task-description {
+    font-size: 0.8em;
+    color: #666;
+    line-height: 1.4;
+}
+
+/* QC Task Cards */
+.qc-task-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.qc-task-card {
+    padding: 15px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    border-left: 4px solid;
+}
+
+.qc-task-card.cambio-etiqueta {
+    border-left-color: #3b82f6;
+}
+
+.qc-task-card.cambio-sku {
+    border-left-color: #10b981;
+}
+
+.qc-task-card.reparacion {
+    border-left-color: #f59e0b;
+}
+
+.qc-task-card.cambio-caja {
+    border-left-color: #8b5cf6;
+}
+
+.qc-task-card-header {
+    font-weight: 700;
+    font-size: 0.95em;
+    color: var(--text);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.qc-status-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.9em;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.qc-status-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+.qc-status-options {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.qc-status-option {
+    padding: 10px 12px;
+    background: #f9fafb;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.qc-status-option:hover {
+    background: white;
+    border-color: var(--primary);
+}
+
+.qc-status-option.selected {
+    background: rgba(249, 115, 22, 0.05);
+    border-color: var(--primary);
+}
+
+.qc-status-option.pendiente {
+    border-left: 4px solid #9ca3af;
+}
+
+.qc-status-option.parcial {
+    border-left: 4px solid #f59e0b;
+}
+
+.qc-status-option.completado {
+    border-left: 4px solid #10b981;
+}
+
+.qc-status-radio {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.qc-status-label {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.qc-status-icon {
+    font-size: 1.2em;
+}
+
+/* Editable Fields in General Info */
+.editable-field {
+    background: #fff5ed;
+    border: 2px solid var(--primary);
+}
+
+.editable-field:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+.general-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.general-info-field {
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 6px;
+}
+
+.general-info-field.editable {
+    background: #fff5ed;
+    border: 1px solid var(--primary);
+}
+
+.general-info-label {
+    font-size: 0.7em;
+    color: #666;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.general-info-value {
+    font-weight: 700;
+    color: var(--text);
+}
+
+.general-info-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.general-info-textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9em;
+    resize: vertical;
+    min-height: 60px;
+}
+
+/* Section Badge */
+.section-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: 600;
+    margin-left: 8px;
+    background: rgba(249, 115, 22, 0.15);
+    color: var(--primary);
 }

@@ -630,20 +630,23 @@ function renderKPICards(orderData) {
     const cajasValidadas = validaciones.length;
     const rastreoData = STATE.mneData.get(orderData.orden) || [];
     const totalCajas = rastreoData.length || cajasValidadas;
+    const trsRelacionados = STATE.trsData.filter(t =>
+        t.referencia.includes(orderData.orden) || orderData.orden.includes(t.referencia)
+    );
 
     kpiCards.innerHTML = `
-        <div class="kpi-card orden">
+        <div class="kpi-card orden" onclick="scrollToSection('section-general')">
             <div class="kpi-card-label">📦 Orden</div>
             <div class="kpi-card-value copyable">
                 <span>${orderData.orden}</span>
-                <span class="copy-icon" onclick="copyToClipboard('${orderData.orden}', this)">📋</span>
+                <span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${orderData.orden}', this)">📋</span>
             </div>
         </div>
-        <div class="kpi-card destino">
+        <div class="kpi-card destino" onclick="scrollToSection('section-general')">
             <div class="kpi-card-label">🏢 Destino</div>
             <div class="kpi-card-value">${orderData.recipient || 'N/A'}</div>
         </div>
-        <div class="kpi-card estatus">
+        <div class="kpi-card estatus" onclick="scrollToSection('section-validaciones')">
             <div class="kpi-card-label">✅ Validación</div>
             <div class="kpi-card-value">${cajasValidadas}/${totalCajas} cajas</div>
             ${totalCajas > 0 ? `
@@ -652,18 +655,31 @@ function renderKPICards(orderData) {
                 </div>
             ` : ''}
         </div>
-        <div class="kpi-card trs">
-            <div class="kpi-card-label">📅 Llegada Esperada</div>
-            <div class="kpi-card-value">${orderData.expectedArrival || 'N/A'}</div>
+        <div class="kpi-card trs" onclick="scrollToSection('section-trs')">
+            <div class="kpi-card-label">🔄 TRS</div>
+            <div class="kpi-card-value">${trsRelacionados.length} relacionados</div>
         </div>
-        <div class="kpi-card cajas">
-            <div class="kpi-card-label">📍 Tracking</div>
-            <div class="kpi-card-value copyable">
-                <span>${orderData.trackingCode || 'N/A'}</span>
-                ${orderData.trackingCode ? `<span class="copy-icon" onclick="copyToClipboard('${orderData.trackingCode}', this)">📋</span>` : ''}
-            </div>
+        <div class="kpi-card cajas" onclick="scrollToSection('section-rastreo')">
+            <div class="kpi-card-label">📍 Rastreo</div>
+            <div class="kpi-card-value">${rastreoData.length} cajas</div>
         </div>
     `;
+}
+
+function scrollToSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        // Expand if collapsed
+        const content = section.querySelector('.section-content');
+        const toggle = section.querySelector('.section-toggle');
+        if (content && content.classList.contains('collapsed')) {
+            content.classList.remove('collapsed');
+            if (toggle) toggle.classList.remove('collapsed');
+        }
+
+        // Scroll to section
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function renderModalBody(orden, orderData) {
@@ -674,33 +690,55 @@ function renderModalBody(orden, orderData) {
         t.referencia.includes(orden) || orden.includes(t.referencia)
     );
 
+    // Detectar si hay TRS para auto-activar Control de Calidad
+    const hasTRS = trsRelacionados.length > 0;
+
     let html = '';
 
-    // Información General
+    // Información General con campos editables
     html += `
-        <div class="section-card">
+        <div class="section-card" id="section-general">
             <div class="section-header">
                 <div class="section-header-left">
                     <div class="section-title">📋 Información General</div>
                 </div>
             </div>
             <div class="section-content">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                    <div style="padding: 10px; background: #f9f9f9; border-radius: 6px;">
-                        <div style="font-size: 0.7em; color: #666; margin-bottom: 4px;">REFERENCIA</div>
-                        <div style="font-weight: 700;">${orderData.referenceNo || 'N/A'}</div>
+                <div class="general-info-grid">
+                    <div class="general-info-field">
+                        <div class="general-info-label">ORDEN</div>
+                        <div class="general-info-value">${orderData.orden}</div>
                     </div>
-                    <div style="padding: 10px; background: #f9f9f9; border-radius: 6px;">
-                        <div style="font-size: 0.7em; color: #666; margin-bottom: 4px;">SERVICIO</div>
-                        <div style="font-weight: 700;">${orderData.shippingService || 'N/A'}</div>
+                    <div class="general-info-field">
+                        <div class="general-info-label">DESTINO</div>
+                        <div class="general-info-value">${orderData.recipient || 'N/A'}</div>
                     </div>
-                    <div style="padding: 10px; background: #f9f9f9; border-radius: 6px;">
-                        <div style="font-size: 0.7em; color: #666; margin-bottom: 4px;">TIPO CAJA</div>
-                        <div style="font-weight: 700;">${orderData.boxType || 'N/A'}</div>
+                    <div class="general-info-field">
+                        <div class="general-info-label">HORARIO</div>
+                        <div class="general-info-value">${orderData.expectedArrival || 'N/A'}</div>
                     </div>
-                    <div style="padding: 10px; background: #f9f9f9; border-radius: 6px;">
-                        <div style="font-size: 0.7em; color: #666; margin-bottom: 4px;">OBSERVACIONES</div>
-                        <div style="font-weight: 700;">${orderData.remark || 'N/A'}</div>
+                    <div class="general-info-field">
+                        <div class="general-info-label">REFERENCIA</div>
+                        <div class="general-info-value">${orderData.referenceNo || 'N/A'}</div>
+                    </div>
+                    <div class="general-info-field">
+                        <div class="general-info-label">CÓDIGO TRACK</div>
+                        <div class="general-info-value copyable">
+                            <span>${orderData.trackingCode || 'N/A'}</span>
+                            ${orderData.trackingCode ? `<span class="copy-icon" onclick="copyToClipboard('${orderData.trackingCode}', this)">📋</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="general-info-field">
+                        <div class="general-info-label">CANTIDAD CAJAS</div>
+                        <div class="general-info-value">${rastreoData.length || validaciones.length || 'N/A'}</div>
+                    </div>
+                    <div class="general-info-field editable">
+                        <div class="general-info-label">CANTIDAD DESPACHAR</div>
+                        <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Ingrese cantidad...">
+                    </div>
+                    <div class="general-info-field editable" style="grid-column: span 2;">
+                        <div class="general-info-label">NOTA</div>
+                        <textarea class="general-info-textarea" id="nota-despacho" placeholder="Ingrese observaciones..."></textarea>
                     </div>
                 </div>
             </div>
@@ -710,18 +748,18 @@ function renderModalBody(orden, orderData) {
     // Validaciones
     if (validaciones.length > 0) {
         html += `
-            <div class="section-card">
-                <div class="section-header" onclick="toggleSection('section-validaciones')">
+            <div class="section-card" id="section-validaciones">
+                <div class="section-header" onclick="toggleSection('section-validaciones-content')">
                     <div class="section-header-left">
                         <div class="section-title">✅ Validación de Surtido (${validaciones.length})</div>
                     </div>
-                    <span class="section-toggle" id="section-validaciones-toggle">
+                    <span class="section-toggle" id="section-validaciones-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content" id="section-validaciones">
+                <div class="section-content" id="section-validaciones-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -756,18 +794,18 @@ function renderModalBody(orden, orderData) {
     // Rastreo
     if (rastreoData.length > 0) {
         html += `
-            <div class="section-card">
-                <div class="section-header" onclick="toggleSection('section-rastreo')">
+            <div class="section-card" id="section-rastreo">
+                <div class="section-header" onclick="toggleSection('section-rastreo-content')">
                     <div class="section-header-left">
                         <div class="section-title">📍 Rastreo de Cajas (${rastreoData.length})</div>
                     </div>
-                    <span class="section-toggle" id="section-rastreo-toggle">
+                    <span class="section-toggle" id="section-rastreo-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content" id="section-rastreo">
+                <div class="section-content" id="section-rastreo-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -800,18 +838,18 @@ function renderModalBody(orden, orderData) {
     // TRS Relacionados
     if (trsRelacionados.length > 0) {
         html += `
-            <div class="section-card">
-                <div class="section-header" onclick="toggleSection('section-trs')">
+            <div class="section-card" id="section-trs">
+                <div class="section-header" onclick="toggleSection('section-trs-content')">
                     <div class="section-header-left">
                         <div class="section-title">🔄 TRS Relacionados (${trsRelacionados.length})</div>
                     </div>
-                    <span class="section-toggle collapsed" id="section-trs-toggle">
+                    <span class="section-toggle collapsed" id="section-trs-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content collapsed" id="section-trs">
+                <div class="section-content collapsed" id="section-trs-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -839,7 +877,84 @@ function renderModalBody(orden, orderData) {
         `;
     }
 
+    // Control de Calidad (con toggle manual o auto-activado si hay TRS)
+    html += `
+        <div class="section-card" id="section-qc">
+            <div class="qc-toggle-container">
+                <label class="qc-toggle-label">¿Tiene Orden de Trabajo?</label>
+                <label class="qc-toggle-switch">
+                    <input type="checkbox" id="qc-toggle" ${hasTRS ? 'checked' : ''} onchange="toggleQualityControl(this.checked)">
+                    <span class="qc-toggle-slider"></span>
+                </label>
+            </div>
+            <div id="qc-content" style="display: ${hasTRS ? 'block' : 'none'};">
+                <div class="section-header" onclick="toggleSection('section-qc-body')">
+                    <div class="section-header-left">
+                        <div class="section-title">🔧 Control de Calidad</div>
+                        <span class="section-badge" id="qc-status-badge">Activo - Orden de Trabajo</span>
+                    </div>
+                    <span class="section-toggle" id="section-qc-body-toggle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </span>
+                </div>
+                <div class="section-content" id="section-qc-body">
+                    <!-- PASO 1: Selección de Tipos -->
+                    <div class="qc-step">
+                        <div class="qc-step-title">Paso 1: Selecciona los tipos de tarea a realizar</div>
+                        <div class="qc-task-options">
+                            <div class="qc-task-option" onclick="selectQCTask('cambio-etiqueta', this)">
+                                <input type="checkbox" class="qc-task-checkbox" id="task-cambio-etiqueta" onchange="selectQCTask('cambio-etiqueta', this.parentElement)">
+                                <div class="qc-task-content">
+                                    <label class="qc-task-label" for="task-cambio-etiqueta">Cambio Etiqueta Exterior</label>
+                                    <div class="qc-task-description">Reemplazo de etiqueta de producto o lote</div>
+                                </div>
+                            </div>
+                            <div class="qc-task-option" onclick="selectQCTask('cambio-sku', this)">
+                                <input type="checkbox" class="qc-task-checkbox" id="task-cambio-sku" onchange="selectQCTask('cambio-sku', this.parentElement)">
+                                <div class="qc-task-content">
+                                    <label class="qc-task-label" for="task-cambio-sku">Cambio SKU</label>
+                                    <div class="qc-task-description">Modificación del código o referencia de producto</div>
+                                </div>
+                            </div>
+                            <div class="qc-task-option" onclick="selectQCTask('reparacion', this)">
+                                <input type="checkbox" class="qc-task-checkbox" id="task-reparacion" onchange="selectQCTask('reparacion', this.parentElement)">
+                                <div class="qc-task-content">
+                                    <label class="qc-task-label" for="task-reparacion">Reparación</label>
+                                    <div class="qc-task-description">Arreglo o ajuste del producto</div>
+                                </div>
+                            </div>
+                            <div class="qc-task-option" onclick="selectQCTask('cambio-caja', this)">
+                                <input type="checkbox" class="qc-task-checkbox" id="task-cambio-caja" onchange="selectQCTask('cambio-caja', this.parentElement)">
+                                <div class="qc-task-content">
+                                    <label class="qc-task-label" for="task-cambio-caja">Cambio de Caja</label>
+                                    <div class="qc-task-description">Cambio de empaque o presentación</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PASO 2: Asignar Estatus -->
+                    <div class="qc-step">
+                        <div class="qc-step-title">Paso 2: Define el estatus de cada tarea seleccionada</div>
+                        <div class="qc-task-cards" id="qc-task-cards">
+                            <div style="text-align: center; padding: 30px; color: #999;">
+                                Selecciona al menos una tarea arriba para asignar estatus
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
     modalBody.innerHTML = html;
+
+    // Auto-seleccionar y pre-poblar si hay TRS
+    if (hasTRS) {
+        setTimeout(() => initializeQCFromTRS(trsRelacionados), 100);
+    }
 }
 
 function toggleSection(sectionId) {
@@ -1076,6 +1191,126 @@ function exportData() {
     link.click();
 
     showNotification('✅ Datos exportados', 'success');
+}
+
+// ==================== QUALITY CONTROL ====================
+function toggleQualityControl(isChecked) {
+    const qcContent = document.getElementById('qc-content');
+    if (qcContent) {
+        qcContent.style.display = isChecked ? 'block' : 'none';
+    }
+}
+
+const QC_TASKS = {
+    'cambio-etiqueta': 'Cambio Etiqueta Exterior',
+    'cambio-sku': 'Cambio SKU',
+    'reparacion': 'Reparación',
+    'cambio-caja': 'Cambio de Caja'
+};
+
+let selectedQCTasks = new Set();
+let qcTaskStatuses = {};
+
+function selectQCTask(taskId, element) {
+    const checkbox = document.getElementById(`task-${taskId}`);
+    const isChecked = checkbox.checked;
+
+    // Toggle checkbox if clicking on the element
+    if (!element.contains(checkbox)) {
+        checkbox.checked = !isChecked;
+    }
+
+    // Toggle selection
+    if (checkbox.checked) {
+        selectedQCTasks.add(taskId);
+        element.classList.add('selected');
+    } else {
+        selectedQCTasks.delete(taskId);
+        element.classList.remove('selected');
+        delete qcTaskStatuses[taskId];
+    }
+
+    renderQCTaskCards();
+}
+
+function renderQCTaskCards() {
+    const container = document.getElementById('qc-task-cards');
+    if (!container) return;
+
+    if (selectedQCTasks.size === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 30px; color: #999;">
+                Selecciona al menos una tarea arriba para asignar estatus
+            </div>
+        `;
+        return;
+    }
+
+    const html = Array.from(selectedQCTasks).map(taskId => {
+        const taskName = QC_TASKS[taskId];
+        const currentStatus = qcTaskStatuses[taskId] || '';
+
+        return `
+            <div class="qc-task-card ${taskId}">
+                <div class="qc-task-card-header">${taskName}</div>
+                <div class="qc-status-options">
+                    <div class="qc-status-option pendiente ${currentStatus === 'pendiente' ? 'selected' : ''}"
+                         onclick="setQCStatus('${taskId}', 'pendiente', this)">
+                        <input type="radio" name="status-${taskId}" class="qc-status-radio" ${currentStatus === 'pendiente' ? 'checked' : ''}>
+                        <label class="qc-status-label">Pendiente</label>
+                        <span class="qc-status-icon">○</span>
+                    </div>
+                    <div class="qc-status-option parcial ${currentStatus === 'parcial' ? 'selected' : ''}"
+                         onclick="setQCStatus('${taskId}', 'parcial', this)">
+                        <input type="radio" name="status-${taskId}" class="qc-status-radio" ${currentStatus === 'parcial' ? 'checked' : ''}>
+                        <label class="qc-status-label">Parcial</label>
+                        <span class="qc-status-icon">◑</span>
+                    </div>
+                    <div class="qc-status-option completado ${currentStatus === 'completado' ? 'selected' : ''}"
+                         onclick="setQCStatus('${taskId}', 'completado', this)">
+                        <input type="radio" name="status-${taskId}" class="qc-status-radio" ${currentStatus === 'completado' ? 'checked' : ''}>
+                        <label class="qc-status-label">Completado</label>
+                        <span class="qc-status-icon">✓</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+function setQCStatus(taskId, status, element) {
+    // Update status
+    qcTaskStatuses[taskId] = status;
+
+    // Update UI - remove selected from siblings
+    const siblings = element.parentElement.querySelectorAll('.qc-status-option');
+    siblings.forEach(s => s.classList.remove('selected'));
+    element.classList.add('selected');
+
+    // Update radio
+    const radio = element.querySelector('.qc-status-radio');
+    if (radio) radio.checked = true;
+
+    console.log('QC Status updated:', taskId, status);
+}
+
+function initializeQCFromTRS(trsRelacionados) {
+    // Pre-select tasks based on TRS types (if we can determine from the data)
+    // For now, we'll just auto-expand the QC section
+    const qcBody = document.getElementById('section-qc-body');
+    if (qcBody) {
+        qcBody.classList.remove('collapsed');
+        const toggle = document.getElementById('section-qc-body-toggle');
+        if (toggle) toggle.classList.remove('collapsed');
+    }
+
+    // You could add logic here to auto-select certain tasks based on TRS data
+    // For example:
+    // if (trsRelacionados.some(t => t.trs.includes('ETIQ'))) {
+    //     document.getElementById('task-cambio-etiqueta')?.click();
+    // }
 }
 
 // ==================== UTILITIES ====================
