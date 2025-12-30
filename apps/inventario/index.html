@@ -40,7 +40,7 @@
 
     <div id="main-app" class="hidden">
         <div class="main-container">
-            <!-- SIDEBAR SIMPLIFICADO -->
+            <!-- SIDEBAR -->
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h2>📦 Inventario</h2>
@@ -95,11 +95,16 @@
                             </div>
                         </div>
                     </div>
-                    <div class="user-footer-actions" style="display: flex; gap: 5px; margin-bottom: 8px;">
+                    <!-- Botón de conexión Google -->
+                    <button class="btn-google-connect" id="btn-google-connect" onclick="toggleGoogleConnection()">
+                        <span class="link-icon">🔗</span>
+                        <span class="link-text" id="google-connect-text">Conectado</span>
+                    </button>
+                    <div class="user-footer-actions">
                         <button class="btn btn-secondary btn-small" onclick="refreshInventory()">🔄 BD</button>
-                        <button class="btn btn-danger btn-small" onclick="handleLogout()">🚪</button>
+                        <button class="btn btn-danger btn-small" onclick="handleLogout()">🚪 Salir</button>
                     </div>
-                    <div class="bd-info" style="font-size: 0.7em; color: #aaa; text-align: center; line-height: 1.4;">
+                    <div class="bd-info">
                         <div><span id="bd-count">0</span> códigos cargados</div>
                         <div id="bd-update-time">Sin actualizar</div>
                     </div>
@@ -107,27 +112,30 @@
             </div>
 
             <div class="main-content">
-                <!-- Tab Bar homogéneo con validador -->
-                <div class="header" id="tabs-header" style="display: none;">
+                <!-- Tab Bar -->
+                <div class="tabs-header" id="tabs-header" style="display: none;">
                     <div class="tab-bar" id="tab-bar"></div>
-                    <div class="header-actions">
+                    <button class="tab-add-btn" id="tab-add-btn" onclick="GlobalTabs.createTab()" title="Nueva pestaña">
+                        <span>+</span>
+                    </button>
+                    <div class="tabs-actions">
                         <button class="btn btn-secondary btn-small" onclick="exportData()">📥 CSV</button>
                     </div>
                 </div>
 
-                <!-- Welcome State (visible when no sessions) -->
+                <!-- Welcome State -->
                 <div class="welcome-state module-visible" id="welcome-state">
                     <div class="welcome-content">
                         <div class="welcome-icon">📦</div>
                         <h2 class="welcome-title">Sistema de Inventario</h2>
                         <p class="welcome-subtitle">Comienza agregando una nueva sesión de trabajo</p>
-                        <button class="btn btn-success btn-start" onclick="GlobalTabs.createTab()" style="padding: 18px 50px; font-size: 1.2em; font-weight: 700;">
+                        <button class="btn btn-success btn-start" onclick="GlobalTabs.createTab()">
                             🚀 Nuevo
                         </button>
                     </div>
                 </div>
 
-                <!-- Classic Module (columns view) -->
+                <!-- Classic Module -->
                 <div class="classic-module module-hidden" id="classic-module">
                     <div class="scan-header-bar">
                         <div class="origin-location-group">
@@ -163,7 +171,7 @@
                                     <span id="result-title">Estado</span>
                                 </div>
                                 <div class="result-info">
-                                    <span id="result-details" style="color: #666; font-size: 0.85em;"></span>
+                                    <span id="result-details"></span>
                                 </div>
                             </div>
                         </div>
@@ -171,16 +179,15 @@
 
                     <div class="columns-container">
                         <div class="column ok">
-                            <div class="column-header" onclick="showPalletDetailModal('ok')" style="cursor: pointer;" title="Ver detalles">
+                            <div class="column-header">
                                 <span class="column-title">✅ OK</span>
-                                <div style="display: flex; align-items: center; gap: 6px;">
-                                    <span class="verification-badge" id="ok-verified-badge" style="display: none;">
-                                        <span class="badge-icon">✓</span><span id="ok-verified-count">0</span>
-                                    </span>
-                                    <span class="verification-badge pending" id="ok-pending-badge" style="display: none;">
-                                        <span class="badge-icon">○</span><span id="ok-pending-count">0</span>
-                                    </span>
+                                <div class="column-header-right">
+                                    <div class="verification-badges" id="ok-verification-badges">
+                                        <span class="v-badge ok" id="ok-verified-badge">✓ <span id="ok-verified-count">0</span></span>
+                                        <span class="v-badge pending" id="ok-pending-badge">○ <span id="ok-pending-count">0</span></span>
+                                    </div>
                                     <span class="column-count" id="ok-count">0</span>
+                                    <button class="expand-btn" onclick="showPalletDetailModal('ok')" title="Ver detalles">⬜</button>
                                 </div>
                             </div>
                             <div class="column-pallet-info">
@@ -200,9 +207,12 @@
                         </div>
 
                         <div class="column blocked">
-                            <div class="column-header" onclick="showPalletDetailModal('blocked')" style="cursor: pointer;" title="Ver detalles">
+                            <div class="column-header">
                                 <span class="column-title">⚠️ Bloqueado</span>
-                                <span class="column-count" id="blocked-count">0</span>
+                                <div class="column-header-right">
+                                    <span class="column-count" id="blocked-count">0</span>
+                                    <button class="expand-btn" onclick="showPalletDetailModal('blocked')" title="Ver detalles">⬜</button>
+                                </div>
                             </div>
                             <div class="column-pallet-info">
                                 <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
@@ -221,9 +231,12 @@
                         </div>
 
                         <div class="column nowms">
-                            <div class="column-header" onclick="showPalletDetailModal('nowms')" style="cursor: pointer;" title="Ver detalles">
+                            <div class="column-header">
                                 <span class="column-title">❌ No WMS</span>
-                                <span class="column-count" id="nowms-count">0</span>
+                                <div class="column-header-right">
+                                    <span class="column-count" id="nowms-count">0</span>
+                                    <button class="expand-btn" onclick="showPalletDetailModal('nowms')" title="Ver detalles">⬜</button>
+                                </div>
                             </div>
                             <div class="column-pallet-info">
                                 <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
@@ -273,7 +286,7 @@
                                     <span id="unified-result-title">Listo para escanear</span>
                                 </div>
                                 <div class="result-info">
-                                    <span id="unified-result-details" style="color: #666; font-size: 0.85em;"></span>
+                                    <span id="unified-result-details"></span>
                                 </div>
                             </div>
                         </div>
