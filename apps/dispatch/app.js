@@ -630,9 +630,26 @@ function renderKPICards(orderData) {
     const cajasValidadas = validaciones.length;
     const rastreoData = STATE.mneData.get(orderData.orden) || [];
     const totalCajas = rastreoData.length || cajasValidadas;
-    const trsRelacionados = STATE.trsData.filter(t =>
-        t.referencia.includes(orderData.orden) || orderData.orden.includes(t.referencia)
-    );
+
+    // Búsqueda cruzada TRS usando códigos de cajas
+    const boxCodes = new Set();
+    validaciones.forEach(v => {
+        if (v.codigo) boxCodes.add(v.codigo.trim());
+    });
+    rastreoData.forEach(r => {
+        if (r.codigo) boxCodes.add(r.codigo.trim());
+    });
+
+    let trsCount = 0;
+    STATE.trsData.forEach(t => {
+        for (const code of boxCodes) {
+            if ((t.codigoOriginal && t.codigoOriginal.includes(code)) ||
+                (t.codigoNuevo && t.codigoNuevo.includes(code))) {
+                trsCount++;
+                break;
+            }
+        }
+    });
 
     kpiCards.innerHTML = `
         <div class="kpi-card orden" onclick="scrollToSection('section-general')">
@@ -657,7 +674,7 @@ function renderKPICards(orderData) {
         </div>
         <div class="kpi-card trs" onclick="scrollToSection('section-trs')">
             <div class="kpi-card-label">🔄 TRS</div>
-            <div class="kpi-card-value">${trsRelacionados.length} relacionados</div>
+            <div class="kpi-card-value">${trsCount} relacionados</div>
         </div>
         <div class="kpi-card cajas" onclick="scrollToSection('section-rastreo')">
             <div class="kpi-card-label">📍 Rastreo</div>
@@ -686,9 +703,40 @@ function renderModalBody(orden, orderData) {
     const modalBody = document.getElementById('modal-body');
     const validaciones = STATE.validacionData.get(orden) || [];
     const rastreoData = STATE.mneData.get(orden) || [];
-    const trsRelacionados = STATE.trsData.filter(t =>
-        t.referencia.includes(orden) || orden.includes(t.referencia)
-    );
+
+    // Búsqueda cruzada TRS usando códigos de cajas (no OBC directo)
+    const boxCodes = new Set();
+    validaciones.forEach(v => {
+        if (v.codigo) boxCodes.add(v.codigo.trim());
+    });
+    rastreoData.forEach(r => {
+        if (r.codigo) boxCodes.add(r.codigo.trim());
+    });
+
+    // Buscar TRS que coincidan con códigos de cajas
+    const trsRelacionados = [];
+    STATE.trsData.forEach(t => {
+        let matchParam = null;
+
+        // Buscar coincidencia en codigoOriginal o codigoNuevo
+        for (const code of boxCodes) {
+            if (t.codigoOriginal && t.codigoOriginal.includes(code)) {
+                matchParam = code;
+                break;
+            }
+            if (t.codigoNuevo && t.codigoNuevo.includes(code)) {
+                matchParam = code;
+                break;
+            }
+        }
+
+        if (matchParam) {
+            trsRelacionados.push({
+                ...t,
+                matchParam: matchParam
+            });
+        }
+    });
 
     // Detectar si hay TRS para auto-activar Control de Calidad
     const hasTRS = trsRelacionados.length > 0;
@@ -705,9 +753,13 @@ function renderModalBody(orden, orderData) {
             </div>
             <div class="section-content">
                 <div class="general-info-grid">
+                    <!-- Fila 1: 5 Columnas -->
                     <div class="general-info-field">
                         <div class="general-info-label">ORDEN</div>
-                        <div class="general-info-value">${orderData.orden}</div>
+                        <div class="general-info-value copyable">
+                            <span>${orderData.orden}</span>
+                            <span class="copy-icon" onclick="copyToClipboard('${orderData.orden}', this)">📋</span>
+                        </div>
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">DESTINO</div>
@@ -719,7 +771,10 @@ function renderModalBody(orden, orderData) {
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">REFERENCIA</div>
-                        <div class="general-info-value">${orderData.referenceNo || 'N/A'}</div>
+                        <div class="general-info-value copyable">
+                            <span>${orderData.referenceNo || 'N/A'}</span>
+                            ${orderData.referenceNo && orderData.referenceNo !== 'N/A' ? `<span class="copy-icon" onclick="copyToClipboard('${orderData.referenceNo}', this)">📋</span>` : ''}
+                        </div>
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">CÓDIGO TRACK</div>
@@ -728,17 +783,21 @@ function renderModalBody(orden, orderData) {
                             ${orderData.trackingCode ? `<span class="copy-icon" onclick="copyToClipboard('${orderData.trackingCode}', this)">📋</span>` : ''}
                         </div>
                     </div>
-                    <div class="general-info-field">
-                        <div class="general-info-label">CANTIDAD CAJAS</div>
-                        <div class="general-info-value">${rastreoData.length || validaciones.length || 'N/A'}</div>
-                    </div>
-                    <div class="general-info-field editable">
-                        <div class="general-info-label">CANTIDAD DESPACHAR</div>
-                        <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Ingrese cantidad...">
-                    </div>
-                    <div class="general-info-field editable" style="grid-column: span 2;">
-                        <div class="general-info-label">NOTA</div>
-                        <textarea class="general-info-textarea" id="nota-despacho" placeholder="Ingrese observaciones..."></textarea>
+
+                    <!-- Fila 2: Distribución Mixta (1fr 1fr 3fr) -->
+                    <div class="row-2">
+                        <div class="general-info-field">
+                            <div class="general-info-label">CANT. CAJAS</div>
+                            <div class="general-info-value">${rastreoData.length || validaciones.length || 'N/A'}</div>
+                        </div>
+                        <div class="general-info-field editable">
+                            <div class="general-info-label">CANT. DESPACHAR</div>
+                            <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Cantidad..." min="0">
+                        </div>
+                        <div class="general-info-field editable">
+                            <div class="general-info-label">NOTA</div>
+                            <textarea class="general-info-textarea" id="nota-despacho" placeholder="Observaciones del despacho..." rows="2"></textarea>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -753,13 +812,13 @@ function renderModalBody(orden, orderData) {
                     <div class="section-header-left">
                         <div class="section-title">✅ Validación de Surtido (${validaciones.length})</div>
                     </div>
-                    <span class="section-toggle" id="section-validaciones-content-toggle">
+                    <span class="section-toggle collapsed" id="section-validaciones-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content" id="section-validaciones-content">
+                <div class="section-content collapsed" id="section-validaciones-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -799,13 +858,13 @@ function renderModalBody(orden, orderData) {
                     <div class="section-header-left">
                         <div class="section-title">📍 Rastreo de Cajas (${rastreoData.length})</div>
                     </div>
-                    <span class="section-toggle" id="section-rastreo-content-toggle">
+                    <span class="section-toggle collapsed" id="section-rastreo-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content" id="section-rastreo-content">
+                <div class="section-content collapsed" id="section-rastreo-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -843,17 +902,18 @@ function renderModalBody(orden, orderData) {
                     <div class="section-header-left">
                         <div class="section-title">🔄 TRS Relacionados (${trsRelacionados.length})</div>
                     </div>
-                    <span class="section-toggle collapsed" id="section-trs-content-toggle">
+                    <span class="section-toggle" id="section-trs-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content collapsed" id="section-trs-content">
+                <div class="section-content" id="section-trs-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
                                 <tr>
+                                    <th>Código Match</th>
                                     <th>TRS</th>
                                     <th>Referencia</th>
                                     <th>Código Original</th>
@@ -863,10 +923,11 @@ function renderModalBody(orden, orderData) {
                             <tbody>
                                 ${trsRelacionados.map(t => `
                                     <tr>
+                                        <td><code class="highlight">${t.matchParam}</code></td>
                                         <td><code>${t.trs}</code></td>
                                         <td>${t.referencia}</td>
-                                        <td><code>${t.codigoOriginal}</code></td>
-                                        <td><code>${t.codigoNuevo}</code></td>
+                                        <td><code>${t.codigoOriginal || '-'}</code></td>
+                                        <td><code>${t.codigoNuevo || '-'}</code></td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -900,47 +961,56 @@ function renderModalBody(orden, orderData) {
                     </span>
                 </div>
                 <div class="section-content" id="section-qc-body">
-                    <!-- PASO 1: Selección de Tipos -->
-                    <div class="qc-step">
-                        <div class="qc-step-title">Paso 1: Selecciona los tipos de tarea a realizar</div>
-                        <div class="qc-task-options">
-                            <div class="qc-task-option" onclick="selectQCTask('cambio-etiqueta', this)">
-                                <input type="checkbox" class="qc-task-checkbox" id="task-cambio-etiqueta" onchange="selectQCTask('cambio-etiqueta', this.parentElement)">
-                                <div class="qc-task-content">
-                                    <label class="qc-task-label" for="task-cambio-etiqueta">Cambio Etiqueta Exterior</label>
-                                    <div class="qc-task-description">Reemplazo de etiqueta de producto o lote</div>
+                    <div class="qc-horizontal-layout">
+                        <!-- PASO 1: Selección de Tipos -->
+                        <div class="qc-step qc-step-left">
+                            <div class="qc-step-title">Paso 1: Selecciona los tipos de tarea</div>
+                            <div class="qc-task-options">
+                                <div class="qc-task-option" onclick="selectQCTask('cambio-etiqueta', this)">
+                                    <input type="checkbox" class="qc-task-checkbox" id="task-cambio-etiqueta" onchange="selectQCTask('cambio-etiqueta', this.parentElement)">
+                                    <div class="qc-task-content">
+                                        <label class="qc-task-label" for="task-cambio-etiqueta">Cambio Etiqueta Exterior</label>
+                                        <div class="qc-task-description">Reemplazo de etiqueta</div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="qc-task-option" onclick="selectQCTask('cambio-sku', this)">
-                                <input type="checkbox" class="qc-task-checkbox" id="task-cambio-sku" onchange="selectQCTask('cambio-sku', this.parentElement)">
-                                <div class="qc-task-content">
-                                    <label class="qc-task-label" for="task-cambio-sku">Cambio SKU</label>
-                                    <div class="qc-task-description">Modificación del código o referencia de producto</div>
+                                <div class="qc-task-option" onclick="selectQCTask('cambio-sku', this)">
+                                    <input type="checkbox" class="qc-task-checkbox" id="task-cambio-sku" onchange="selectQCTask('cambio-sku', this.parentElement)">
+                                    <div class="qc-task-content">
+                                        <label class="qc-task-label" for="task-cambio-sku">Cambio SKU</label>
+                                        <div class="qc-task-description">Modificación de código</div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="qc-task-option" onclick="selectQCTask('reparacion', this)">
-                                <input type="checkbox" class="qc-task-checkbox" id="task-reparacion" onchange="selectQCTask('reparacion', this.parentElement)">
-                                <div class="qc-task-content">
-                                    <label class="qc-task-label" for="task-reparacion">Reparación</label>
-                                    <div class="qc-task-description">Arreglo o ajuste del producto</div>
+                                <div class="qc-task-option" onclick="selectQCTask('reparacion', this)">
+                                    <input type="checkbox" class="qc-task-checkbox" id="task-reparacion" onchange="selectQCTask('reparacion', this.parentElement)">
+                                    <div class="qc-task-content">
+                                        <label class="qc-task-label" for="task-reparacion">Reparación</label>
+                                        <div class="qc-task-description">Arreglo del producto</div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="qc-task-option" onclick="selectQCTask('cambio-caja', this)">
-                                <input type="checkbox" class="qc-task-checkbox" id="task-cambio-caja" onchange="selectQCTask('cambio-caja', this.parentElement)">
-                                <div class="qc-task-content">
-                                    <label class="qc-task-label" for="task-cambio-caja">Cambio de Caja</label>
-                                    <div class="qc-task-description">Cambio de empaque o presentación</div>
+                                <div class="qc-task-option" onclick="selectQCTask('cambio-caja', this)">
+                                    <input type="checkbox" class="qc-task-checkbox" id="task-cambio-caja" onchange="selectQCTask('cambio-caja', this.parentElement)">
+                                    <div class="qc-task-content">
+                                        <label class="qc-task-label" for="task-cambio-caja">Cambio de Caja</label>
+                                        <div class="qc-task-description">Cambio de empaque</div>
+                                    </div>
+                                </div>
+                                <div class="qc-task-option" onclick="selectQCTask('otros', this)">
+                                    <input type="checkbox" class="qc-task-checkbox" id="task-otros" onchange="selectQCTask('otros', this.parentElement)">
+                                    <div class="qc-task-content">
+                                        <label class="qc-task-label" for="task-otros">Otros</label>
+                                        <div class="qc-task-description">Otra tarea específica</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- PASO 2: Asignar Estatus -->
-                    <div class="qc-step">
-                        <div class="qc-step-title">Paso 2: Define el estatus de cada tarea seleccionada</div>
-                        <div class="qc-task-cards" id="qc-task-cards">
-                            <div style="text-align: center; padding: 30px; color: #999;">
-                                Selecciona al menos una tarea arriba para asignar estatus
+                        <!-- PASO 2: Asignar Estatus -->
+                        <div class="qc-step qc-step-right">
+                            <div class="qc-step-title">Paso 2: Define el estatus</div>
+                            <div class="qc-task-cards" id="qc-task-cards">
+                                <div style="text-align: center; padding: 30px; color: #999; font-size: 0.95em;">
+                                    Selecciona al menos una tarea para asignar estatus
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -976,9 +1046,17 @@ function closeInfoModal() {
 async function confirmDispatch() {
     const operador = document.getElementById('modal-operador').value;
     const unidad = document.getElementById('modal-unidad').value;
+    const cantidadDespachar = document.getElementById('cantidad-despachar').value;
+    const notaDespacho = document.getElementById('nota-despacho').value.trim();
 
+    // Validación de campos requeridos
     if (!operador || !unidad) {
-        showNotification('⚠️ Selecciona conductor y unidad', 'warning');
+        showNotification('⚠️ Debes seleccionar conductor y unidad', 'warning');
+        return;
+    }
+
+    if (!cantidadDespachar || cantidadDespachar <= 0) {
+        showNotification('⚠️ Debes ingresar la cantidad a despachar', 'warning');
         return;
     }
 
@@ -993,6 +1071,37 @@ async function confirmDispatch() {
         return;
     }
 
+    // Validación de discrepancia en cantidad
+    const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
+    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
+    const totalCajas = rastreoData.length || validaciones.length;
+    const cantidadDespacharNum = parseInt(cantidadDespachar);
+
+    if (totalCajas > 0 && cantidadDespacharNum !== totalCajas) {
+        if (!notaDespacho) {
+            const tipoDiscrepancia = cantidadDespacharNum < totalCajas ? 'parcial' : 'excedente';
+            const mensaje = cantidadDespacharNum < totalCajas
+                ? `⚠️ DESPACHO PARCIAL DETECTADO\n\nCajas totales: ${totalCajas}\nCantidad a despachar: ${cantidadDespacharNum}\n\nDebe ingresar una NOTA explicando el motivo del despacho parcial.`
+                : `⚠️ DISCREPANCIA DETECTADA\n\nCajas totales: ${totalCajas}\nCantidad a despachar: ${cantidadDespacharNum}\n\nDebe ingresar una NOTA explicando esta diferencia.`;
+
+            alert(mensaje);
+            document.getElementById('nota-despacho').focus();
+            return;
+        }
+    }
+
+    // Recopilar datos de QC si están activos
+    const qcToggle = document.getElementById('qc-toggle');
+    const qcData = {};
+    if (qcToggle && qcToggle.checked) {
+        qcData.tasks = Array.from(selectedQCTasks);
+        qcData.statuses = {...qcTaskStatuses};
+        if (selectedQCTasks.has('otros')) {
+            const otrosNote = document.getElementById('qc-otros-note');
+            qcData.otrosNote = otrosNote ? otrosNote.value.trim() : '';
+        }
+    }
+
     const timestamp = new Date();
     const dispatchRecord = {
         timestamp: timestamp.toISOString(),
@@ -1004,7 +1113,11 @@ async function confirmDispatch() {
         operador: operador,
         unidad: unidad,
         trackingCode: orderData.trackingCode,
-        referenceNo: orderData.referenceNo
+        referenceNo: orderData.referenceNo,
+        cantidadDespachar: cantidadDespacharNum,
+        totalCajas: totalCajas,
+        nota: notaDespacho,
+        qc: Object.keys(qcData).length > 0 ? qcData : null
     };
 
     // Save to pending sync
@@ -1205,7 +1318,8 @@ const QC_TASKS = {
     'cambio-etiqueta': 'Cambio Etiqueta Exterior',
     'cambio-sku': 'Cambio SKU',
     'reparacion': 'Reparación',
-    'cambio-caja': 'Cambio de Caja'
+    'cambio-caja': 'Cambio de Caja',
+    'otros': 'Otros'
 };
 
 let selectedQCTasks = new Set();
@@ -1273,6 +1387,20 @@ function renderQCTaskCards() {
                         <span class="qc-status-icon">✓</span>
                     </div>
                 </div>
+                ${taskId === 'otros' ? `
+                    <div class="qc-otros-note" style="margin-top: 12px;">
+                        <label style="display: block; font-size: 0.9em; color: var(--primary); margin-bottom: 6px; font-weight: 600;">
+                            Especifica la tarea:
+                        </label>
+                        <textarea
+                            id="qc-otros-note"
+                            class="general-info-textarea"
+                            placeholder="Describe la tarea específica a realizar..."
+                            rows="3"
+                            style="width: 100%; resize: vertical;"
+                        ></textarea>
+                    </div>
+                ` : ''}
             </div>
         `;
     }).join('');
