@@ -1,6 +1,6 @@
 # 📦 WMS System - Sistema de Gestión de Almacén
 
-Sistema profesional de gestión de almacén (Warehouse Management System) con 3 aplicaciones web integradas.
+Sistema profesional de gestión de almacén (Warehouse Management System) con 4 aplicaciones web integradas.
 
 ## 🎯 Características Principales
 
@@ -16,7 +16,7 @@ Sistema profesional de gestión de almacén (Warehouse Management System) con 3 
 
 ```
 wms-system/
-├── index.html                 # Página principal con enlaces a las 3 apps
+├── index.html                 # Página principal con enlaces a las apps
 ├── apps/
 │   ├── inventario/           # 📦 Sistema de Inventario
 │   │   ├── index.html
@@ -24,23 +24,35 @@ wms-system/
 │   ├── track/                # 🔍 Sistema de Rastreo
 │   │   ├── index.html
 │   │   └── app.js
-│   └── validador/            # 🎯 Sistema de Validación
+│   ├── validador/            # 🎯 Sistema de Validación
+│   │   ├── index.html
+│   │   └── app.js
+│   └── dispatch/             # 🚚 Sistema de Despacho
 │       ├── index.html
-│       └── app.js
+│       ├── app.js
+│       └── styles.css
 ├── shared/
 │   ├── css/
 │   │   ├── variables.css     # Variables CSS globales
 │   │   ├── base.css          # Estilos base y animaciones
 │   │   ├── layout.css        # Layouts y estructura
 │   │   ├── components.css    # Componentes reutilizables
+│   │   ├── sidebar.css       # Sidebar compartido
+│   │   ├── avatar-system.css # Sistema de avatares
 │   │   ├── inventory.css     # Estilos específicos de Inventario
 │   │   ├── track.css         # Estilos específicos de Rastreo
 │   │   └── validador.css     # Estilos específicos de Validador
-│   ├── js/                   # JavaScript compartido (futuro)
+│   ├── js/
+│   │   ├── wms-utils.js      # Utilidades compartidas
+│   │   ├── sync-manager.js   # Gestor de sincronización
+│   │   ├── sidebar-component.js  # Componente sidebar
+│   │   ├── avatar-system.js  # Sistema de avatares
+│   │   └── auth-manager.js   # Gestor de autenticación
 │   └── config/               # Configuraciones compartidas (futuro)
 └── docs/
     ├── README.md             # Este archivo
-    └── ARCHITECTURE.md       # Documentación técnica
+    ├── ARCHITECTURE.md       # Documentación técnica
+    └── VALIDACION_UBICACIONES.md  # Docs de validación
 ```
 
 ## 🚀 Aplicaciones
@@ -101,6 +113,31 @@ wms-system/
 - Modo de validación enfocado
 - Contador de sesión independiente
 - Alertas visuales claras
+
+### 4. 🚚 Sistema de Despacho (`/apps/dispatch`)
+
+**Funcionalidad:**
+- Búsqueda y validación de órdenes de despacho
+- Gestión de despachos pendientes y validados
+- Integración con múltiples fuentes de datos:
+  - BD Stock
+  - OBC BD (Órdenes de compra)
+  - Validación
+  - MNE (Movimientos)
+  - TRS (Transportes)
+  - Listas de operadores y unidades
+- Generación automática de folios de despacho
+- Sistema de tabs para pendientes/validados
+- Sincronización con Google Sheets
+
+**Características Especiales:**
+- Validación local con persistencia
+- Verificación de órdenes ya validadas
+- Filtros por fecha y operador
+- Sidebar de navegación integrado
+- Sistema de avatares de usuario
+- Modo offline con sincronización automática
+- Gestión de estado local y remoto
 
 ## ⚙️ Configuración
 
@@ -190,6 +227,15 @@ Cada app tiene su CSS específico en `shared/css/`:
 2. **Iniciar** → Comienza sesión de validación
 3. **Escanear** → Valida códigos uno por uno
 4. **Revisar** → Ve resultados en tiempo real
+
+### Flujo de Trabajo - Dispatch
+
+1. **Login** → Autenticación con Google
+2. **Cargar Datos** → Descarga múltiples fuentes automáticamente
+3. **Buscar Orden** → Ingresa número de orden
+4. **Verificar** → Sistema verifica si ya fue validada
+5. **Validar** → Genera folio y marca como despachada
+6. **Sincronizar** → Envía a Google Sheets automáticamente
 
 ## 🔧 Mantenimiento
 

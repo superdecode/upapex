@@ -2,9 +2,19 @@
  * SIDEBAR-COMPONENT.JS
  * Componente de sidebar compartido para aplicaciones WMS
  * Proporciona funcionalidad unificada para todas las apps
+ * Incluye: Sistema de avatar integrado, validación de nombres, gestión de Google
  *
- * @version 1.0.0
+ * @version 2.0.0
  */
+
+const AVATAR_CONFIG = {
+    storageKeys: {
+        userName: 'wms_user_name',
+        userEmail: 'wms_user_email',
+        googleToken: 'wms_google_token',
+        googleExpiry: 'wms_google_expiry'
+    }
+};
 
 class SidebarComponent {
     constructor(config = {}) {
@@ -27,6 +37,15 @@ class SidebarComponent {
         this.bdCount = 0;
         this.bdUpdateTime = null;
         this.isOnline = navigator.onLine;
+        
+        this.avatarState = {
+            userName: '',
+            userEmail: '',
+            isGoogleConnected: false,
+            onUpdateCallbacks: []
+        };
+        
+        this.loadAvatarData();
     }
 
     /**
@@ -35,6 +54,7 @@ class SidebarComponent {
     init() {
         this.setupConnectionListeners();
         this.updateConnectionUI();
+        this.setupAvatarUI();
     }
 
     /**
@@ -83,9 +103,289 @@ class SidebarComponent {
                 nameEl.textContent = this.user.name || this.user.email || 'Usuario';
             }
         } else {
-            if (avatarEl) avatarEl.textContent = '?';
-            if (nameEl) nameEl.textContent = 'No conectado';
+            this.updateAvatarDisplay();
         }
+    }
+
+    loadAvatarData() {
+        const savedName = localStorage.getItem(AVATAR_CONFIG.storageKeys.userName);
+        const savedEmail = localStorage.getItem(AVATAR_CONFIG.storageKeys.userEmail);
+        
+        if (savedName) {
+            this.avatarState.userName = savedName;
+        }
+        if (savedEmail) {
+            this.avatarState.userEmail = savedEmail;
+        }
+        
+        this.checkGoogleConnection();
+    }
+
+    checkGoogleConnection() {
+        const token = localStorage.getItem(AVATAR_CONFIG.storageKeys.googleToken);
+        const expiry = localStorage.getItem(AVATAR_CONFIG.storageKeys.googleExpiry);
+        
+        if (token && expiry) {
+            const expiryTime = parseInt(expiry, 10);
+            if (Date.now() < expiryTime) {
+                this.avatarState.isGoogleConnected = true;
+                return true;
+            } else {
+                this.clearGoogleConnection();
+            }
+        }
+        
+        this.avatarState.isGoogleConnected = false;
+        return false;
+    }
+
+    saveGoogleConnection(token, expiresIn = 3600) {
+        const expiryTime = Date.now() + (expiresIn * 1000);
+        localStorage.setItem(AVATAR_CONFIG.storageKeys.googleToken, token);
+        localStorage.setItem(AVATAR_CONFIG.storageKeys.googleExpiry, expiryTime.toString());
+        this.avatarState.isGoogleConnected = true;
+        this.notifyAvatarUpdate();
+        this.updateAvatarButtons();
+    }
+
+    clearGoogleConnection() {
+        localStorage.removeItem(AVATAR_CONFIG.storageKeys.googleToken);
+        localStorage.removeItem(AVATAR_CONFIG.storageKeys.googleExpiry);
+        this.avatarState.isGoogleConnected = false;
+        this.notifyAvatarUpdate();
+        this.updateAvatarButtons();
+    }
+
+    validateName(name) {
+        if (!name || typeof name !== 'string') {
+            return { valid: false, message: 'El nombre es requerido' };
+        }
+        
+        const trimmed = name.trim();
+        const words = trimmed.split(/\s+/);
+        
+        if (words.length < 2) {
+            return { valid: false, message: 'Ingresa nombre y apellido (mínimo 2 palabras)' };
+        }
+        
+        return { valid: true, formatted: this.formatNameToTitle(trimmed) };
+    }
+
+    formatNameToTitle(name) {
+        return name
+            .trim()
+            .toLowerCase()
+            .split(/\s+/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
+    setUserName(name) {
+        const validation = this.validateName(name);
+        
+        if (!validation.valid) {
+            return { success: false, message: validation.message };
+        }
+        
+        this.avatarState.userName = validation.formatted;
+        localStorage.setItem(AVATAR_CONFIG.storageKeys.userName, validation.formatted);
+        this.notifyAvatarUpdate();
+        
+        return { success: true, formatted: validation.formatted };
+    }
+
+    setUserEmail(email) {
+        this.avatarState.userEmail = email;
+        localStorage.setItem(AVATAR_CONFIG.storageKeys.userEmail, email);
+        this.notifyAvatarUpdate();
+    }
+
+    setupAvatarUI() {
+        const avatarContainer = document.querySelector('.user-info');
+        if (!avatarContainer) return;
+        
+        this.updateAvatarDisplay();
+        
+        const avatar = document.getElementById('user-avatar');
+        const userName = document.getElementById('user-name-display');
+        
+        if (avatar) {
+            avatar.onclick = () => this.showNameEditPopup();
+            avatar.style.cursor = 'pointer';
+            avatar.title = 'Click para editar nombre';
+        }
+        
+        if (userName) {
+            userName.onclick = () => this.showNameEditPopup();
+            userName.style.cursor = 'pointer';
+            userName.title = 'Click para editar nombre';
+        }
+    }
+
+    updateAvatarDisplay() {
+        const avatar = document.getElementById('user-avatar');
+        const userName = document.getElementById('user-name-display');
+        
+        const displayName = this.avatarState.userName || 'Usuario';
+        
+        if (avatar) {
+            avatar.textContent = displayName.charAt(0).toUpperCase();
+        }
+        
+        if (userName) {
+            userName.textContent = displayName;
+        }
+        
+        this.updateAvatarButtons();
+    }
+
+    updateAvatarButtons() {
+        const actionsContainer = document.querySelector('.user-footer-actions');
+        if (!actionsContainer) return;
+        
+        const googleBtn = actionsContainer.querySelector('#sidebar-auth-btn');
+        if (googleBtn) {
+            if (this.avatarState.isGoogleConnected) {
+                googleBtn.textContent = '🔗';
+                googleBtn.title = 'Desconectar Google';
+                googleBtn.classList.add('connected');
+            } else {
+                googleBtn.textContent = '🔌';
+                googleBtn.title = 'Conectar Google';
+                googleBtn.classList.remove('connected');
+            }
+        }
+    }
+
+    showNameEditPopup() {
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay show';
+        overlay.innerHTML = `
+            <div class="popup-content" style="max-width: 450px;">
+                <div class="popup-header">
+                    <span>👤 Editar Nombre</span>
+                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                </div>
+                <div style="padding: 20px;">
+                    <p style="color: #666; margin-bottom: 15px; font-size: 0.95em;">
+                        Ingresa tu nombre y apellido para identificarte en los registros:
+                    </p>
+                    <input type="text" id="avatar-name-input" 
+                           placeholder="Nombre Apellido" 
+                           value="${this.avatarState.userName || ''}" 
+                           autocomplete="off" 
+                           style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 1em; margin-bottom: 8px;">
+                    <p style="color: #999; font-size: 0.8em; margin-bottom: 15px;">
+                        💡 Ejemplo: JUAN PEREZ → Se guardará como "Juan Pérez"
+                    </p>
+                    <div id="avatar-name-error" style="color: var(--error); font-size: 0.85em; margin-bottom: 10px; display: none;"></div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary" onclick="window.sidebarComponent.saveAvatarName()" style="flex: 1;">
+                            💾 Guardar
+                        </button>
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove()">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        const input = document.getElementById('avatar-name-input');
+        input.focus();
+        input.select();
+        
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.saveAvatarName();
+            }
+        });
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+    }
+
+    saveAvatarName() {
+        const input = document.getElementById('avatar-name-input');
+        const errorDiv = document.getElementById('avatar-name-error');
+        const name = input.value.trim();
+        
+        const result = this.setUserName(name);
+        
+        if (!result.success) {
+            errorDiv.textContent = '⚠️ ' + result.message;
+            errorDiv.style.display = 'block';
+            input.focus();
+            return;
+        }
+        
+        this.updateAvatarDisplay();
+        document.querySelector('.popup-overlay')?.remove();
+        
+        if (typeof showNotification === 'function') {
+            showNotification(`✅ Nombre actualizado: ${result.formatted}`, 'success');
+        }
+    }
+
+    handleAvatarAction(action) {
+        switch (action) {
+            case 'refresh':
+                this.reloadBD();
+                break;
+                
+            case 'google':
+                this.handleToggleConnection();
+                break;
+                
+            case 'logout':
+                this.handleLogout();
+                break;
+        }
+    }
+
+    handleToggleConnection() {
+        if (this.avatarState.isGoogleConnected) {
+            if (confirm('¿Desconectar de Google? Deberás volver a iniciar sesión.')) {
+                this.clearGoogleConnection();
+                if (typeof showNotification === 'function') {
+                    showNotification('🔌 Desconectado de Google', 'info');
+                }
+            }
+        } else {
+            this.toggleConnection();
+        }
+    }
+
+    onAvatarUpdate(callback) {
+        if (typeof callback === 'function') {
+            this.avatarState.onUpdateCallbacks.push(callback);
+        }
+    }
+
+    notifyAvatarUpdate() {
+        this.avatarState.onUpdateCallbacks.forEach(callback => {
+            try {
+                callback(this.avatarState);
+            } catch (e) {
+                console.error('Error in avatar update callback:', e);
+            }
+        });
+    }
+
+    getUserName() {
+        return this.avatarState.userName;
+    }
+
+    getUserEmail() {
+        return this.avatarState.userEmail;
+    }
+
+    isGoogleConnected() {
+        return this.avatarState.isGoogleConnected;
     }
 
     /**
@@ -228,9 +528,9 @@ class SidebarComponent {
                     </div>
                 </div>
                 <div class="user-footer-actions">
-                    <button class="btn btn-secondary btn-small" onclick="window.sidebarComponent?.reloadBD() || reloadBD()" title="Actualizar BD">🔄 BD</button>
-                    <button class="btn btn-secondary btn-small" onclick="window.sidebarComponent?.toggleConnection() || toggleGoogleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗</button>
-                    <button class="btn btn-secondary btn-small" onclick="window.sidebarComponent?.handleLogout() || handleLogout()" title="Cerrar Sesión">🚪</button>
+                    <button class="btn btn-secondary btn-small" onclick="window.sidebarComponent?.handleAvatarAction('refresh')" title="Actualizar BD">🔄</button>
+                    <button class="btn btn-secondary btn-small" onclick="window.sidebarComponent?.handleAvatarAction('google')" id="sidebar-auth-btn" title="Conectar/Desconectar">🔌</button>
+                    <button class="btn btn-secondary btn-small" onclick="window.sidebarComponent?.handleAvatarAction('logout')" title="Cerrar Sesión">🚪</button>
                 </div>
                 <div class="bd-info">
                     <div><span id="bd-count">0</span> registros cargados</div>

@@ -47,7 +47,7 @@
         .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary { background: var(--primary); color: white; }
-        .btn-success { background: linear-gradient(135deg, #4CAF50, #45a049); color: white; font-size: 1.4em; padding: 20px; }
+        .btn-success { background: linear-gradient(135deg, var(--primary), #1e40af); color: white; font-size: 1.4em; padding: 20px; }
         .btn-google { background: #4285F4; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-small { padding: 8px 15px; font-size: 0.85em; width: auto; }
@@ -167,7 +167,7 @@
             margin-bottom: 15px; 
         }
         .progress-card.completed {
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%) !important;
+            background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%) !important;
         }
         .progress-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
         .progress-obc-name { font-size: 1.2em; font-weight: 700; }
@@ -481,7 +481,7 @@
             text-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
         .consulta-progress-bar.complete {
-            background: linear-gradient(90deg, var(--success), #45a049);
+            background: linear-gradient(90deg, var(--primary), #1e40af);
         }
         .consulta-action {
             text-align: center;
@@ -538,7 +538,7 @@
             letter-spacing: 0.5px;
         }
         .obc-card-badge.complete {
-            background: linear-gradient(135deg, #4CAF50, #45a049);
+            background: linear-gradient(135deg, var(--primary), #1e40af);
             color: white;
         }
         .obc-card-badge.partial {
@@ -586,7 +586,7 @@
             transition: width 0.5s ease;
         }
         .obc-card-progress-fill.complete {
-            background: linear-gradient(90deg, var(--success), #45a049);
+            background: linear-gradient(90deg, var(--primary), #1e40af);
         }
         .obc-card-button {
             width: 100%;
@@ -1040,7 +1040,7 @@
             box-shadow: 0 6px 25px rgba(0,0,0,0.3);
         }
         .cache-health-indicator.healthy {
-            background: linear-gradient(135deg, #4CAF50, #45a049);
+            background: linear-gradient(135deg, var(--primary), #1e40af);
             color: white;
         }
         .cache-health-indicator.warning {

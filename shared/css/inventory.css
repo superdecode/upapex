@@ -1585,7 +1585,7 @@
 }
 
 .global-tab.classic.active {
-    background: linear-gradient(135deg, var(--success) 0%, #2e7d32 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%);
     border-color: var(--success);
 }
 

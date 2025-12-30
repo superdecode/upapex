@@ -106,7 +106,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupConnectionMonitor();
     initSyncManager();
     renderValidation();
-    gapi.load('client', initGAPI);
+    
+    // Debug mode: bypass Google auth
+    if (DebugMode.autoInit('Validador', (userData) => {
+        CURRENT_USER = userData.user;
+        USER_EMAIL = userData.email;
+        USER_GOOGLE_NAME = userData.name;
+        showMainApp();
+        updateUserFooter();
+        showNotification('🔧 DEBUG MODE: Sesión simulada', 'info');
+        // Cargar datos mock o reales según necesites
+        loadDatabase();
+    })) {
+        return; // Si debug está activo, no cargar Google API
+    }
+    
+    // Modo normal: Inicializar AuthManager
+    gapi.load('client', async () => {
+        await AuthManager.init(
+            // onAuthSuccess
+            (userData) => {
+                CURRENT_USER = userData.user;
+                USER_EMAIL = userData.email;
+                USER_GOOGLE_NAME = userData.name;
+                showMainApp();
+                updateUserFooter();
+                loadDatabase();
+            },
+            // onAuthError
+            (error) => {
+                console.error('Auth error:', error);
+            }
+        );
+    });
 });
 
 function initAudio() {
@@ -114,42 +146,6 @@ function initAudio() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         document.addEventListener('click', () => audioCtx.state === 'suspended' && audioCtx.resume(), { once: true });
     } catch (e) {}
-}
-
-async function initGAPI() {
-    try {
-        await gapi.client.init({
-            discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-        });
-        
-        // Initialize TOKEN_CLIENT
-        if (typeof google !== 'undefined' && google.accounts) {
-            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: '',
-            });
-            console.log('TOKEN_CLIENT initialized successfully');
-        } else {
-            console.error('Google Identity Services not loaded');
-        }
-        
-        checkSavedSession();
-    } catch (error) {
-        console.error('Error initializing GAPI:', error);
-    }
-}
-
-function checkSavedSession() {
-    const savedUser = localStorage.getItem('wms_current_user');
-    if (savedUser) {
-        CURRENT_USER = savedUser;
-        USER_EMAIL = localStorage.getItem('wms_user_email') || '';
-        USER_GOOGLE_NAME = localStorage.getItem('wms_google_name') || '';
-        showMainApp();
-        updateUserFooter();
-        loadDatabase();
-    }
 }
 
 function showLoading(show) {
@@ -161,55 +157,7 @@ function showLoading(show) {
 
 // ==================== AUTENTICACIÓN ====================
 function handleLogin() {
-    if (!TOKEN_CLIENT) {
-        console.error('TOKEN_CLIENT not initialized');
-        showNotification('⚠️ Inicializando autenticación...', 'warning');
-        setTimeout(() => {
-            if (TOKEN_CLIENT) {
-                handleLogin();
-            } else {
-                showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
-            }
-        }, 1000);
-        return;
-    }
-    
-    TOKEN_CLIENT.callback = async (resp) => {
-        if (resp.error) {
-            console.error('Auth error:', resp);
-            showNotification('❌ Error de autenticación', 'error');
-            return;
-        }
-        await getUserProfile();
-        showMainApp();
-        showLoading(true);
-        await loadDatabase();
-        showLoading(false);
-    };
-    TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
-}
-
-async function getUserProfile() {
-    try {
-        const response = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
-            headers: { 'Authorization': `Bearer ${gapi.client.getToken().access_token}` }
-        });
-        const profile = await response.json();
-        USER_EMAIL = profile.email;
-        USER_GOOGLE_NAME = profile.name || profile.email.split('@')[0];
-
-        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-        CURRENT_USER = savedAlias || USER_GOOGLE_NAME;
-
-        localStorage.setItem('wms_current_user', CURRENT_USER);
-        localStorage.setItem('wms_user_email', USER_EMAIL);
-        localStorage.setItem('wms_google_name', USER_GOOGLE_NAME);
-
-        updateUserFooter();
-    } catch (error) {
-        console.error('Error getting profile:', error);
-        CURRENT_USER = 'Usuario';
-    }
+    AuthManager.login();
 }
 
 function showMainApp() {
@@ -232,16 +180,10 @@ function showLoginScreen() {
 }
 
 function toggleGoogleConnection() {
-    if (gapi.client.getToken()) {
-        google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
-        gapi.client.setToken(null);
-        localStorage.removeItem('wms_current_user');
-        localStorage.removeItem('wms_user_email');
-        localStorage.removeItem('wms_google_name');
-        CURRENT_USER = '';
-        USER_EMAIL = '';
+    if (AuthManager.isAuthenticated()) {
+        AuthManager.logout();
         showLoginScreen();
-        showNotification('👋 Sesión cerrada', 'info');
+        showNotification('� Desconectado de Google', 'info');
     } else {
         handleLogin();
     }

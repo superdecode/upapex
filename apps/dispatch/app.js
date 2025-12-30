@@ -97,32 +97,42 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupConnectionMonitoring();
     initSyncManager();
-    initAvatarSystem();
+    initSidebarComponent();
+    
+    // Debug mode: bypass Google auth
+    if (DebugMode.autoInit('Dispatch', (userData) => {
+        CURRENT_USER = userData.user;
+        USER_EMAIL = userData.email;
+        USER_GOOGLE_NAME = userData.name;
+        updateUserFooter();
+        showNotification('🔧 DEBUG MODE: Sesión simulada', 'info');
+        // Cargar datos mock o reales según necesites
+        loadAllData();
+    })) {
+        return; // Si debug está activo, no cargar Google API
+    }
+    
+    // Modo normal: cargar Google API
     gapi.load('client', initGAPI);
 });
 
-function initAvatarSystem() {
-    // Inicializar sistema de avatar si existe
-    if (typeof AvatarSystem !== 'undefined') {
-        AvatarSystem.init();
-    }
-    // Setup click en avatar para editar nombre
-    const avatar = document.getElementById('user-avatar');
-    const userName = document.getElementById('user-name-display');
-    if (avatar) {
-        avatar.onclick = () => {
-            if (typeof AvatarSystem !== 'undefined') {
-                AvatarSystem.showNamePopup();
-            }
-        };
-    }
-    if (userName) {
-        userName.onclick = () => {
-            if (typeof AvatarSystem !== 'undefined') {
-                AvatarSystem.showNamePopup();
-            }
-        };
-    }
+function initSidebarComponent() {
+    // Inicializar SidebarComponent con configuración de dispatch
+    window.sidebarComponent = new SidebarComponent({
+        ...SidebarComponent.presets.dispatch,
+        containerId: 'sidebar',
+        syncManager: window.syncManager,
+        onReloadBD: reloadData,
+        onLogout: handleLogout,
+        onToggleConnection: toggleConnection,
+        buttons: [
+            { label: '➕ Nuevo Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
+            { label: '📅 Filtrar por Fecha', onClick: 'showDateFilter()', class: 'sidebar-btn-secondary' },
+            { label: '📥 Exportar CSV', onClick: 'exportData()', class: 'sidebar-btn-secondary' }
+        ]
+    });
+    
+    window.sidebarComponent.render();
 }
 
 function setupEventListeners() {
@@ -202,6 +212,12 @@ async function initGAPI() {
 async function handleAuthCallback(response) {
     if (response?.access_token) {
         gapi.client.setToken(response);
+        
+        // Guardar token en el sistema de avatar
+        if (window.sidebarComponent) {
+            window.sidebarComponent.saveGoogleConnection(response.access_token, response.expires_in || 3600);
+        }
+        
         showPreloader('Cargando base de datos...', 'Obteniendo información del sistema');
         await getUserProfile();
         await loadAllData();
@@ -247,6 +263,22 @@ async function getUserProfile() {
 function showApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
+    
+    // Agregar tabs de validación después del resumen
+    const summarySection = document.getElementById('global-summary-section');
+    if (summarySection && !document.querySelector('.validation-tabs')) {
+        const tabsHTML = `
+            <div class="validation-tabs">
+                <button class="validation-tab active" id="tab-pending" onclick="switchValidationTab('pending')">
+                    ⏳ Pendientes <span class="tab-badge" id="pending-badge">0</span>
+                </button>
+                <button class="validation-tab" id="tab-validated" onclick="switchValidationTab('validated')">
+                    ✅ Validadas <span class="tab-badge" id="validated-badge">0</span>
+                </button>
+            </div>
+        `;
+        summarySection.insertAdjacentHTML('afterend', tabsHTML);
+    }
 }
 
 function handleLogout() {
@@ -258,27 +290,18 @@ function handleLogout() {
 }
 
 function updateUserFooter() {
-    const avatar = document.getElementById('user-avatar');
-    const nameDisplay = document.getElementById('user-name-display');
-
-    if (avatar) {
-        avatar.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
-        avatar.onclick = changeUserAlias;
-    }
-    if (nameDisplay) {
-        nameDisplay.textContent = CURRENT_USER || 'No conectado';
-        nameDisplay.onclick = changeUserAlias;
-    }
-}
-
-function changeUserAlias() {
-    const newAlias = prompt('Ingresa tu nombre:', CURRENT_USER);
-    if (newAlias && newAlias.trim()) {
-        CURRENT_USER = newAlias.trim();
-        localStorage.setItem(`dispatch_alias_${USER_EMAIL}`, CURRENT_USER);
-        updateUserFooter();
+    if (window.sidebarComponent) {
+        // Usar el sistema de avatar del sidebar component
+        if (CURRENT_USER) {
+            window.sidebarComponent.setUserName(CURRENT_USER);
+        }
+        if (USER_EMAIL) {
+            window.sidebarComponent.setUserEmail(USER_EMAIL);
+        }
+        window.sidebarComponent.updateAvatarDisplay();
     }
 }
+
 
 // ==================== DATA LOADING ====================
 async function loadAllData() {
@@ -518,11 +541,21 @@ async function reloadData() {
 }
 
 function updateBdInfo() {
-    const bdCount = document.getElementById('bd-count');
-    const bdUpdateTime = document.getElementById('bd-update-time');
+    if (window.sidebarComponent) {
+        window.sidebarComponent.updateBDInfo(STATE.obcData.size);
+    }
+}
 
-    if (bdCount) bdCount.textContent = STATE.obcData.size;
-    if (bdUpdateTime) bdUpdateTime.textContent = new Date().toLocaleTimeString();
+function toggleConnection() {
+    if (gapi?.client?.getToken()) {
+        // Ya está conectado, preguntar si desea desconectar
+        if (confirm('¿Desconectar de Google? Deberás volver a iniciar sesión.')) {
+            handleLogout();
+        }
+    } else {
+        // No está conectado, iniciar login
+        handleLogin();
+    }
 }
 
 // ==================== UI FUNCTIONS ====================
@@ -579,9 +612,14 @@ function updateSummary() {
         totalToday++;
     }
 
-    document.getElementById('summary-total').textContent = totalToday;
-    document.getElementById('summary-validated').textContent = validatedToday;
-    document.getElementById('summary-pending-count').textContent = pendingToday;
+    // Actualizar usando sidebarComponent
+    if (window.sidebarComponent) {
+        window.sidebarComponent.updateSummary({
+            summaryTotal: totalToday,
+            validated: validatedToday,
+            pending: pendingToday
+        });
+    }
 
     // Update tab badges as well
     updateTabBadges();

@@ -14,10 +14,10 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
+    <script src="../../shared/js/debug-mode.js"></script>
     <script src="../../shared/js/wms-utils.js"></script>
     <script src="../../shared/js/sync-manager.js"></script>
     <script src="../../shared/js/sidebar-component.js"></script>
-    <script src="../../shared/js/avatar-system.js"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -47,82 +47,7 @@
     <div id="main-app" class="hidden">
         <div class="main-container">
             <!-- SIDEBAR -->
-            <div class="sidebar">
-                <div class="sidebar-header">
-                    <h2>🚚 Despacho</h2>
-                    <p>Gestión de despachos WMS</p>
-                </div>
-
-                <div id="sync-status" class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
-                    ✅ Sincronizado
-                </div>
-
-                <!-- Resumen del Día - Diseño moderno (número arriba, texto abajo) -->
-                <div class="global-summary-section" id="global-summary-section">
-                    <div class="summary-title">📊 Resumen del Día</div>
-                    <div class="summary-grid-modern">
-                        <div class="summary-card total">
-                            <span class="summary-number" id="summary-total">0</span>
-                            <span class="summary-text">Total Órdenes</span>
-                        </div>
-                        <div class="summary-card validated">
-                            <span class="summary-number" id="summary-validated">0</span>
-                            <span class="summary-text">Despachadas</span>
-                        </div>
-                        <div class="summary-card pending">
-                            <span class="summary-number" id="summary-pending-count">0</span>
-                            <span class="summary-text">Pendientes</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tabs de Avance de Validación -->
-                <div class="validation-tabs">
-                    <button class="validation-tab active" id="tab-pending" onclick="switchValidationTab('pending')">
-                        ⏳ Pendientes <span class="tab-badge" id="pending-badge">0</span>
-                    </button>
-                    <button class="validation-tab" id="tab-validated" onclick="switchValidationTab('validated')">
-                        ✅ Validadas <span class="tab-badge" id="validated-badge">0</span>
-                    </button>
-                </div>
-
-                <div class="sidebar-section">
-                    <button class="sidebar-btn sidebar-btn-primary" onclick="showSearchPanel()">
-                        ➕ Nuevo Despacho
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showDateFilter()">
-                        📅 Filtrar por Fecha
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
-                        📥 Exportar CSV
-                    </button>
-                </div>
-
-                <hr>
-
-                <!-- User Footer -->
-                <div class="user-footer" id="user-footer">
-                    <div class="user-info">
-                        <div class="user-avatar" id="user-avatar">?</div>
-                        <div class="user-details">
-                            <div class="user-name" id="user-name-display">No conectado</div>
-                            <div class="connection-indicator">
-                                <div class="connection-dot" id="connection-dot"></div>
-                                <span id="connection-text">Offline</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="user-footer-actions">
-                        <button class="btn btn-secondary btn-small" onclick="reloadData()" title="Actualizar BD">🔄 BD</button>
-                        <button class="btn btn-secondary btn-small" onclick="toggleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗</button>
-                        <button class="btn btn-secondary btn-small" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
-                    </div>
-                    <div class="bd-info">
-                        <div><span id="bd-count">0</span> órdenes cargadas</div>
-                        <div id="bd-update-time">Sin actualizar</div>
-                    </div>
-                </div>
-            </div>
+            <div class="sidebar" id="sidebar"></div>
 
             <!-- MAIN CONTENT -->
             <div class="main-content">

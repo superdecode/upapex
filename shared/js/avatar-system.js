@@ -201,7 +201,7 @@ function showNameEditPopup() {
                        autocomplete="off" 
                        style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 1em; margin-bottom: 8px;">
                 <p style="color: #999; font-size: 0.8em; margin-bottom: 15px;">
-                    💡 Ejemplo: Juan Pérez → Se guardará como "Juan Pérez"
+                    💡 Ejemplo: JUAN PEREZ → Se guardará como "Juan Pérez"
                 </p>
                 <div id="avatar-name-error" style="color: var(--error); font-size: 0.85em; margin-bottom: 10px; display: none;"></div>
                 <div style="display: flex; gap: 10px;">
