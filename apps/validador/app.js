@@ -181,6 +181,13 @@ function checkSavedSession() {
     }
 }
 
+function showLoading(show) {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.classList.toggle('show', show);
+    }
+}
+
 // ==================== AUTENTICACIÓN ====================
 function handleLogin() {
     TOKEN_CLIENT.callback = async (resp) => {
@@ -191,7 +198,9 @@ function handleLogin() {
         }
         await getUserProfile();
         showMainApp();
+        showLoading(true);
         await loadDatabase();
+        showLoading(false);
     };
     TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
 }
@@ -223,6 +232,14 @@ function showMainApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
     renderValidation();
+    
+    // Trigger animation for empty state
+    setTimeout(() => {
+        const emptyState = document.getElementById('empty-state');
+        if (emptyState && !emptyState.classList.contains('module-visible')) {
+            emptyState.classList.add('module-visible');
+        }
+    }, 100);
 }
 
 function showLoginScreen() {
@@ -293,7 +310,7 @@ async function loadDatabase() {
     }
 
     try {
-        showNotification('📥 Cargando base de datos...', 'info');
+        showLoading(true);
 
         // Cargar resumen
         const resRes = await gapi.client.sheets.spreadsheets.values.get({
@@ -373,9 +390,11 @@ async function loadDatabase() {
         LAST_BD_UPDATE = Date.now();
         await saveBD();
         updateBdInfo();
+        showLoading(false);
         showNotification(`✅ ${BD_CODES.size} códigos cargados`, 'success');
     } catch (error) {
         console.error('Error loading database:', error);
+        showLoading(false);
         showNotification('❌ Error cargando BD', 'error');
     }
 }

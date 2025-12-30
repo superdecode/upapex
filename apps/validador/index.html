@@ -17,116 +17,16 @@
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
-
-    <div id="dashboard">
-        <div class="dash-header">
-            <h1>🎯 Sistema de Validación WMS</h1>
-            <p style="color: #666;">Valida códigos y ubicaciones en tiempo real</p>
-        </div>
-
-        <div class="dash-grid">
-            <div class="dash-card no-hover">
-                <div class="dash-card-icon">📊</div>
-                <h3>Total Validaciones</h3>
-                <div class="dash-card-value" id="total-validations">0</div>
-            </div>
-
-            <div class="dash-card no-hover">
-                <div class="dash-card-icon">✅</div>
-                <h3>Códigos Válidos</h3>
-                <div class="dash-card-value" id="valid-codes">0</div>
-            </div>
-
-            <div class="dash-card no-hover">
-                <div class="dash-card-icon">❌</div>
-                <h3>Códigos Inválidos</h3>
-                <div class="dash-card-value" id="invalid-codes">0</div>
-            </div>
-
-            <div class="dash-card no-hover">
-                <div class="dash-card-icon">📍</div>
-                <h3>Base de Datos</h3>
-                <div class="dash-card-value" id="db-count">0</div>
-            </div>
-        </div>
-
-        <div class="status-grid">
-            <div class="status-row">
-                <div style="display: flex; align-items: center;">
-                    <div class="status-indicator status-ok"></div>
-                    <span>Conexión a Google Sheets</span>
-                </div>
-                <span id="connection-status">Conectado</span>
-            </div>
-            <div class="status-row">
-                <div style="display: flex; align-items: center;">
-                    <div class="status-indicator status-ok"></div>
-                    <span>Base de datos</span>
-                </div>
-                <span id="db-status">Cargada</span>
-            </div>
-        </div>
-
-        <button class="btn btn-success" onclick="startValidation()">
-            🎯 Iniciar Validación
-        </button>
-
-        <button class="btn btn-secondary" onclick="refreshDatabase()" style="margin-top: 10px;">
-            🔄 Actualizar Base de Datos
-        </button>
-
-        <button class="btn btn-exit" onclick="goToHome()">
-            🏠 Volver al Inicio
-        </button>
-    </div>
-
-    <div id="validation-screen" class="validation-screen hidden">
-        <div class="validation-header">
-            <h2>🎯 Validación de Códigos</h2>
-            <p style="color: #666;">Escanea o ingresa códigos para validar</p>
-        </div>
-
-        <div class="validation-input-container">
-            <div style="margin-bottom: 20px;">
-                <label for="location-input" style="display: block; margin-bottom: 8px; font-weight: 600; color: #666;">
-                    📍 Código de Ubicación:
-                </label>
-                <input type="text" id="location-input" 
-                       placeholder="Ej: A26-06-01-02 o A26'06'01'02" 
-                       style="width: 100%; padding: 12px; font-size: 1.1em; border: 2px solid #ddd; border-radius: 8px; text-transform: uppercase; font-weight: 600;"
-                       autocomplete="off">
-                <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
-                    💡 Formato: Letra(s)-Número(s)-Número(s)-Número(s) (las comillas ' se convierten automáticamente a -)
-                </div>
-            </div>
-            
-            <input type="text" class="validation-input" id="validation-input" 
-                   placeholder="Escanea código..." autocomplete="off">
-            
-            <div class="validation-result" id="validation-result"></div>
-        </div>
-
-        <div class="validation-stats">
-            <div class="validation-stat">
-                <div class="validation-stat-value" id="session-total">0</div>
-                <div class="validation-stat-label">Total</div>
-            </div>
-            <div class="validation-stat">
-                <div class="validation-stat-value" id="session-valid" style="color: var(--success);">0</div>
-                <div class="validation-stat-label">Válidos</div>
-            </div>
-            <div class="validation-stat">
-                <div class="validation-stat-value" id="session-invalid" style="color: var(--error);">0</div>
-                <div class="validation-stat-label">Inválidos</div>
-            </div>
-        </div>
-
-        <button class="btn btn-secondary" onclick="endValidation()" style="margin-top: 20px; width: 100%;">
-            ⬅️ Volver al Dashboard
-        </button>
-    </div>
-
     <div class="notification-container" id="notifications"></div>
+
+    <div class="preloader-overlay" id="loading-overlay">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text" style="color: #333;">🎯 Cargando Validador...</div>
+            <div class="preloader-subtext" style="color: #666;">Descargando base de datos desde Google Sheets</div>
+        </div>
+    </div>
+
     <div class="popup-overlay-dark" id="user-stats-overlay" onclick="closeUserStats()"></div>
 
     <!-- User Stats Popup -->
@@ -141,9 +41,9 @@
         <div class="login-card">
             <div class="login-icon">🎯</div>
             <h1 class="login-title">Sistema de Validación WMS</h1>
-            <p class="login-subtitle">Warehouse Management System</p>
-            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
-                🔐 Iniciar Sesión con Google
+            <p class="login-subtitle">Validación de códigos en tiempo real</p>
+            <button class="btn btn-google" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em; width: 100%;">
+                🔐 Iniciar sesión con Google
             </button>
         </div>
     </div>
@@ -198,13 +98,15 @@
                 </div>
 
                 <div id="content-area">
-                    <div id="empty-state" class="empty-state">
-                        <div class="empty-state-icon">🎯</div>
-                        <div class="empty-state-text">¡Bienvenido al Sistema de Validación!</div>
-                        <p style="color: #999; margin-bottom: 30px;">Comienza agregando una nueva orden para validar</p>
-                        <button class="btn btn-success" onclick="addOBC()" style="width: auto; padding: 18px 50px; font-size: 1.2em; font-weight: 700;">
-                            🚀 Iniciar Validación
-                        </button>
+                    <div id="empty-state" class="empty-state module-visible">
+                        <div class="empty-state-content">
+                            <div class="empty-state-icon">🎯</div>
+                            <h2 class="empty-state-title">Sistema de Validación</h2>
+                            <p class="empty-state-subtitle">Comienza agregando una nueva orden para validar</p>
+                            <button class="btn btn-success btn-start" onclick="addOBC()">
+                                🚀 Iniciar Validación
+                            </button>
+                        </div>
                     </div>
 
                     <div id="validation-content" style="display: none;">
