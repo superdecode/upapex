@@ -1681,6 +1681,23 @@
         </div>
     </div>
 
+    <div id="popup-invalid-location" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('invalid-location')">×</button>
+            <div class="popup-header" style="color: var(--error);">⚠️ CÓDIGO DE UBICACIÓN INVÁLIDO</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <p style="margin-bottom: 15px; color: #e65100;"><strong>Formato incorrecto:</strong></p>
+                <strong>Código ingresado:</strong> <span id="invalid-location-code" style="color: var(--error);"></span><br><br>
+                <strong>Formato esperado:</strong> <code>Letra-Números-Números-Números</code><br>
+                <p style="margin-top: 10px; color: #666; font-size: 0.9em;">Ejemplos válidos: <code>A26-06-01-02</code>, <code>B11-11-02-01</code>, <code>A1-11-02-01</code>, <code>C9-11-02-01</code></p>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('invalid-location')">Corregir</button>
+                <button class="btn btn-primary" onclick="forceInvalidLocation()">Insertar Forzado</button>
+            </div>
+        </div>
+    </div>
+
     <div id="popup-reload-order" class="popup-overlay">
         <div class="popup-content">
             <div class="popup-header" style="color: var(--primary);">📦 ORDEN PARCIALMENTE VALIDADA</div>
@@ -4122,7 +4139,23 @@
         function updateState() {
             if (!STATE.activeOBC) return;
             const tab = STATE.tabs[STATE.activeOBC];
-            tab.location = document.getElementById('location-input').value.toUpperCase().trim();
+            const locationInput = document.getElementById('location-input');
+            const locationValue = locationInput.value.trim();
+
+            // Validar el código de ubicación
+            const validation = validateLocationCode(locationValue);
+
+            if (!validation.valid && locationValue !== '') {
+                // Si no es válido, mostrar popup y guardar los datos para el forzado
+                invalidLocationData = { code: locationValue };
+                showPopup('invalid-location', locationValue, null);
+                // No guardar aún, esperar decisión del usuario
+                return;
+            }
+
+            // Si es válido o está vacío, normalizar y guardar
+            tab.location = validation.normalized;
+            locationInput.value = validation.normalized; // Actualizar input con valor normalizado
             saveState();
         }
 
@@ -4277,6 +4310,9 @@
                 document.getElementById('dup-when').textContent = `${data.date} ${data.timestamp}`;
                 document.getElementById('dup-user').textContent = data.user;
                 document.getElementById('popup-dup').style.display = 'flex';
+            } else if (type === 'invalid-location') {
+                document.getElementById('invalid-location-code').textContent = code;
+                document.getElementById('popup-invalid-location').style.display = 'flex';
             }
             document.getElementById('scanner').blur();
         }
@@ -4320,6 +4356,45 @@
                 handleValidationOK(lastScanned.raw, lastScanned.code, lastScanned.obc, lastScanned.location, finalNote, false);
             }
             closePopup('dup');
+        }
+
+        let invalidLocationData = null;
+
+        function normalizeLocationCode(code) {
+            // Convierte comillas simples a guiones
+            return code.replace(/'/g, '-');
+        }
+
+        function validateLocationCode(code) {
+            if (!code || code.trim() === '') {
+                return { valid: true, normalized: '' }; // Permitir ubicación vacía
+            }
+
+            // Normalizar primero (convertir comillas a guiones)
+            const normalized = normalizeLocationCode(code.toUpperCase().trim());
+
+            // Formato esperado: Letra(s)-Numero(s)-Numero(s)-Numero(s)
+            // Ejemplos: A26-06-01-02, B11-11-02-01, A1-11-02-01, C9-11-02-01
+            const locationPattern = /^[A-Z]+\d+-\d+-\d+-\d+$/;
+
+            const isValid = locationPattern.test(normalized);
+
+            return { valid: isValid, normalized: normalized };
+        }
+
+        function forceInvalidLocation() {
+            const note = prompt('Justificación para usar ubicación inválida:') || 'Sin justificación';
+            if (invalidLocationData) {
+                const tab = STATE.tabs[STATE.activeOBC];
+                if (tab) {
+                    // Guardar la ubicación inválida con nota de forzado
+                    tab.location = `${invalidLocationData.code} (FORZADO: ${note})`;
+                    saveState();
+                    showNotification('⚠️ Ubicación inválida guardada con justificación', 'warning');
+                }
+            }
+            invalidLocationData = null;
+            closePopup('invalid-location');
         }
 
         function toggleManualOtherNote() {
