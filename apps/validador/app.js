@@ -20,7 +20,14 @@ let IS_ONLINE = navigator.onLine;
 let STATE = {
     activeOBC: null,
     tabs: {},
-    closedTabs: {}
+    closedTabs: {},
+    sessionStats: {
+        total: 0,
+        valid: 0,
+        invalid: 0
+    },
+    currentLocation: '',
+    pendingLocationValidation: null
 };
 let TOKEN_CLIENT, audioCtx;
 let lastScanned = null;
@@ -40,13 +47,90 @@ const SyncManager = {
         this.setupExitProtection();
         this.updateUI(PENDING_SYNC.length === 0);
     },
-    sessionStats: {
-        total: 0,
-        valid: 0,
-        invalid: 0
+
+    startAutoSync() {
+        this.intervalId = setInterval(() => this.sync(), this.AUTO_SYNC_INTERVAL);
     },
-    currentLocation: '',
-    pendingLocationValidation: null
+
+    setupExitProtection() {
+        window.addEventListener('beforeunload', (e) => {
+            if (PENDING_SYNC.length > 0) {
+                e.preventDefault();
+                e.returnValue = `Tienes ${PENDING_SYNC.length} cambios sin sincronizar. ¿Seguro que deseas salir?`;
+                return e.returnValue;
+            }
+        });
+    },
+
+    async sync(isManual = false) {
+        if (this.inProgress || PENDING_SYNC.length === 0) return;
+        if (!IS_ONLINE || !gapi?.client?.getToken()) {
+            if (isManual) showNotification('⚠️ Sin conexión o no autenticado', 'warning');
+            return;
+        }
+
+        this.inProgress = true;
+        updateConnectionIndicator(true);
+
+        try {
+            const itemsToSync = [...PENDING_SYNC];
+            for (let i = 0; i < itemsToSync.length; i += this.BATCH_SIZE) {
+                const batch = itemsToSync.slice(i, i + this.BATCH_SIZE);
+                for (const item of batch) {
+                    await this._syncItem(item);
+                }
+            }
+            PENDING_SYNC = [];
+            await this.save();
+            this.updateUI(true);
+            if (isManual) showNotification('✅ Sincronización completada', 'success');
+        } catch (error) {
+            console.error('Sync error:', error);
+            this.updateUI(false);
+            if (isManual) showNotification('❌ Error en sincronización', 'error');
+        } finally {
+            this.inProgress = false;
+            updateConnectionIndicator(false);
+        }
+    },
+
+    async _syncItem(item) {
+        const { sheet, log } = item;
+        const values = [[
+            log.date, log.timestamp, log.user, log.obc,
+            log.raw || '', log.code || '', log.reason || '',
+            log.location || '', log.note || ''
+        ]];
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_WRITE,
+            range: `${sheet}!A:I`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values }
+        });
+    },
+
+    load() {
+        const saved = localStorage.getItem('wms_pending_sync');
+        if (saved) {
+            try {
+                PENDING_SYNC = JSON.parse(saved);
+            } catch (e) {
+                PENDING_SYNC = [];
+            }
+        }
+    },
+
+    async save() {
+        localStorage.setItem('wms_pending_sync', JSON.stringify(PENDING_SYNC));
+    },
+
+    updateUI(synced) {
+        const badge = document.getElementById('sync-badge');
+        if (badge) {
+            badge.textContent = PENDING_SYNC.length;
+            badge.style.display = PENDING_SYNC.length > 0 ? 'block' : 'none';
+        }
+    }
 };
 
 // ==================== INICIALIZACIÓN ====================

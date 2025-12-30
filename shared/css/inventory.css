@@ -1982,27 +1982,56 @@
     gap: 8px;
 }
 
-/* ==================== EXPAND BUTTON (ICONO ⬜) ==================== */
+/* ==================== EXPAND BUTTON (ICONO PROFESIONAL) ==================== */
 .expand-btn {
-    width: 28px;
-    height: 28px;
-    border: 2px solid #ddd;
-    background: white;
-    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9em;
     transition: all 0.2s;
-    color: #666;
+    position: relative;
+    padding: 4px;
+}
+
+.expand-btn::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #666;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.expand-btn::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-top: 2px solid #666;
+    border-right: 2px solid #666;
+    top: 6px;
+    right: 6px;
+    transition: all 0.2s;
+}
+
+.expand-btn:hover::before {
+    border-color: var(--primary);
+    transform: scale(1.1);
+}
+
+.expand-btn:hover::after {
+    border-color: var(--primary);
+    transform: scale(1.1);
 }
 
 .expand-btn:hover {
-    border-color: var(--primary);
-    background: #fff5ed;
-    color: var(--primary);
-    transform: scale(1.1);
+    background: rgba(249, 115, 22, 0.1);
+    border-radius: 4px;
 }
 
 /* ==================== VERIFICATION BADGES ==================== */

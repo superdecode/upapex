@@ -1110,22 +1110,29 @@ async function sendPallet(category) {
     // Validar ubicación usando función de wms-utils
     const validation = validateAndNormalizeLocation(location);
     
-    if (!validation.valid) {
-        showNotification(`❌ Ubicación inválida: ${validation.message || 'Formato incorrecto'}`, 'error');
-        document.getElementById(`location-${category}`).focus();
-        return;
-    }
+    let finalLocation = location.toUpperCase();
     
-    // Si necesita corrección, mostrar confirmación
-    if (validation.needsCorrection) {
-        if (!confirm(`La ubicación será corregida a: ${validation.normalized}\n\n¿Continuar?`)) {
+    if (!validation.valid) {
+        // Permitir ubicación inválida con confirmación
+        const forceInsert = confirm(`⚠️ Ubicación con formato inválido: ${location}\n\n${validation.message || 'Formato incorrecto'}\n\n¿Deseas insertar de todas formas?`);
+        if (!forceInsert) {
             document.getElementById(`location-${category}`).focus();
             return;
         }
+        // Usar la ubicación tal como está
+        finalLocation = location.toUpperCase();
+        showNotification('⚠️ Ubicación insertada sin validar', 'warning');
+    } else {
+        // Si necesita corrección, mostrar confirmación
+        if (validation.needsCorrection) {
+            if (!confirm(`La ubicación será corregida a: ${validation.normalized}\n\n¿Continuar?`)) {
+                document.getElementById(`location-${category}`).focus();
+                return;
+            }
+        }
+        finalLocation = validation.normalized;
+        document.getElementById(`location-${category}`).value = finalLocation;
     }
-
-    const finalLocation = validation.normalized;
-    document.getElementById(`location-${category}`).value = finalLocation;
 
     // Mostrar modal de validación de cantidad
     showCountValidationModal(category, pallet.boxes.length, finalLocation, originLocation);
