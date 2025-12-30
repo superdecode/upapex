@@ -74,8 +74,8 @@
 .global-summary-section {
     background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
     border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 15px;
+    padding: 8px;
+    margin-bottom: 10px;
     border: 1px solid #444;
 }
 
@@ -125,7 +125,7 @@
 .summary-item {
     background: rgba(255,255,255,0.05);
     border-radius: 8px;
-    padding: 10px 8px;
+    padding: 7px 6px;
     text-align: center;
     transition: all 0.2s;
 }
@@ -136,20 +136,20 @@
 }
 
 .summary-icon {
-    font-size: 1.1em;
+    font-size: 0.9em;
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .summary-value {
-    font-size: 1.4em;
+    font-size: 1.1em;
     font-weight: 700;
     display: block;
-    line-height: 1.2;
+    line-height: 1.1;
 }
 
 .summary-label {
-    font-size: 0.65em;
+    font-size: 0.55em;
     color: #999;
     text-transform: uppercase;
     letter-spacing: 0.3px;

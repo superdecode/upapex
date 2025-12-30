@@ -78,7 +78,7 @@
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-validated">0</span>
                                 </button>
                             </div>
-                            <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                            <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
                         </div>
                     </div>
                     <div class="card">
@@ -129,7 +129,7 @@
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-header">0</span>
                                 </button>
                             </div>
-                            <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                            <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
                         </div>
                     </div>
 
@@ -343,6 +343,30 @@
                 </button>
                 <button class="btn btn-secondary" onclick="closeConfirmDispatch()">
                     ← Regresar y Editar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXIT CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="exit-confirm-modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>⚠️ Confirmar Salida</h2>
+                <button class="modal-close" onclick="closeExitConfirm()">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 1.1em; color: #666; text-align: center; padding: 20px;">
+                    ¿Estás seguro de salir?<br>
+                    <strong style="color: #f97316;">Se perderán los cambios no guardados en el proceso de validación.</strong>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-error" onclick="executeExit()">
+                    Salir sin Guardar
+                </button>
+                <button class="btn btn-secondary" onclick="closeExitConfirm()">
+                    Cancelar
                 </button>
             </div>
         </div>

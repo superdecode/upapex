@@ -671,6 +671,34 @@ function backToStart() {
     document.getElementById('tab-validated')?.classList.remove('active');
 }
 
+/**
+ * Show exit confirmation modal
+ */
+function confirmExit() {
+    const modal = document.getElementById('exit-confirm-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Close exit confirmation modal
+ */
+function closeExitConfirm() {
+    const modal = document.getElementById('exit-confirm-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Execute exit after confirmation
+ */
+function executeExit() {
+    closeExitConfirm();
+    backToStart();
+}
+
 function updateSummary() {
     const today = new Date().toISOString().slice(0, 10);
     let totalToday = 0;
@@ -766,7 +794,8 @@ function renderOrdersTable() {
     tableBody.innerHTML = ordersArray.map(([orden, data]) => {
         const validaciones = STATE.validacionData.get(orden) || [];
         const rastreoData = STATE.mneData.get(orden) || [];
-        const totalCajas = rastreoData.length || validaciones.length || 0;
+        // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES), not from validation/rastreo
+        const totalCajas = data.totalCajas || 0;
         const cajasValidadas = validaciones.length;
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
 
@@ -1023,7 +1052,8 @@ function renderValidatedTable() {
         const orderData = STATE.obcData.get(record.orden) || {};
         const validaciones = STATE.validacionData.get(record.orden) || [];
         const rastreoData = STATE.mneData.get(record.orden) || [];
-        const totalCajas = record.totalCajas || rastreoData.length || validaciones.length || 0;
+        // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES) as primary source
+        const totalCajas = orderData.totalCajas || record.totalCajas || 0;
         const cajasValidadas = validaciones.length;
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
         const tieneRastreo = rastreoData.length > 0;
@@ -1291,15 +1321,22 @@ function closeMultipleMatchesModal() {
 }
 
 // ==================== ESTATUS DE ORDEN ====================
+/**
+ * Calcula el estatus de despacho comparando cantidad despachada vs cantidad original OC
+ * @param {number} totalCajas - Cantidad original de cajas (de OBC)
+ * @param {number} cantidadDespachar - Cantidad despachada
+ * @returns {object} - { status: string, color: string }
+ * - Igual → Completado (green)
+ * - Despachada < Original → Parcial (orange)
+ * - Despachada > Original → Anormalidad (red)
+ */
 function calculateOrderStatus(totalCajas, cantidadDespachar) {
     if (!totalCajas || totalCajas === 0) return { status: 'Sin Información', color: '#999' };
 
-    const porcentaje = (cantidadDespachar / totalCajas) * 100;
-
-    if (porcentaje < 100) {
+    if (cantidadDespachar < totalCajas) {
         return { status: 'Parcial', color: '#f59e0b' };
-    } else if (porcentaje === 100) {
-        return { status: 'Completa', color: '#10b981' };
+    } else if (cantidadDespachar === totalCajas) {
+        return { status: 'Completado', color: '#10b981' };
     } else {
         return { status: 'Anormalidad', color: '#ef4444' };
     }
@@ -1381,14 +1418,57 @@ function showOrderInfo(orden) {
 
     STATE.currentOrder = orden;
 
-    // Update modal title
-    document.getElementById('modal-title-text').textContent = `Orden ${orden}`;
+    // Check if order is validated and calculate status badge
+    const validationCheck = isOrderValidated(orden);
+    let statusBadgeHTML = '';
+
+    if (validationCheck.validated && validationCheck.data) {
+        const totalCajas = orderData.totalCajas || 0;
+        const cantidadDespachar = validationCheck.data.cantidadDespachar || 0;
+        const statusInfo = calculateOrderStatus(totalCajas, cantidadDespachar);
+
+        statusBadgeHTML = ` <span class="status-badge-modal" style="background-color: ${statusInfo.color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.75em; font-weight: 600; margin-left: 10px;">${statusInfo.status}</span>`;
+    }
+
+    // Update modal title with status badge for validated orders
+    document.getElementById('modal-title-text').innerHTML = `Orden ${orden}${statusBadgeHTML}`;
 
     // Render KPI Cards
     renderKPICards(orderData);
 
     // Render Modal Body with sections
     renderModalBody(orden, orderData);
+
+    // Populate modal footer with saved data if order is validated
+    if (validationCheck.validated && validationCheck.data) {
+        const savedData = validationCheck.data;
+
+        // Populate operator/driver dropdown
+        const operadorSelect = document.getElementById('modal-operador');
+        if (operadorSelect && savedData.operador) {
+            operadorSelect.value = savedData.operador;
+        }
+
+        // Populate unit/vehicle dropdown
+        const unidadSelect = document.getElementById('modal-unidad');
+        if (unidadSelect && savedData.unidad) {
+            unidadSelect.value = savedData.unidad;
+        }
+
+        // Change button text to "Guardar cambios" for validated orders
+        const confirmBtn = document.getElementById('confirm-dispatch-btn');
+        if (confirmBtn) {
+            confirmBtn.innerHTML = '💾 Guardar Cambios';
+            confirmBtn.onclick = function() { saveValidatedOrderChanges(orden); };
+        }
+    } else {
+        // Reset button for non-validated orders
+        const confirmBtn = document.getElementById('confirm-dispatch-btn');
+        if (confirmBtn) {
+            confirmBtn.innerHTML = '✅ Confirmar Despacho';
+            confirmBtn.onclick = function() { confirmDispatch(); };
+        }
+    }
 
     // Show modal
     document.getElementById('info-modal').classList.add('show');
@@ -1399,7 +1479,8 @@ function renderKPICards(orderData) {
     const validaciones = STATE.validacionData.get(orderData.orden) || [];
     const cajasValidadas = validaciones.length;
     const rastreoData = STATE.mneData.get(orderData.orden) || [];
-    const totalCajas = rastreoData.length || cajasValidadas;
+    // FIXED: Use totalCajas from OBC database
+    const totalCajas = orderData.totalCajas || 0;
 
     // Búsqueda cruzada TRS usando códigos de cajas
     const boxCodes = new Set();
@@ -1889,6 +1970,89 @@ function closeInfoModal() {
 }
 
 // ==================== DISPATCH CONFIRMATION ====================
+/**
+ * Save changes to a validated order
+ * Allows editing validated orders after confirmation
+ */
+async function saveValidatedOrderChanges(orden) {
+    const operador = document.getElementById('modal-operador')?.value || '';
+    const unidad = document.getElementById('modal-unidad')?.value || '';
+    const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
+    const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
+
+    // Validación de campos requeridos
+    if (!operador || !unidad) {
+        showNotification('⚠️ Debes seleccionar conductor y unidad', 'warning');
+        return;
+    }
+
+    if (!cantidadDespachar || cantidadDespachar <= 0) {
+        showNotification('⚠️ Debes ingresar la cantidad a despachar', 'warning');
+        return;
+    }
+
+    // Find the validated record
+    const recordIndex = STATE.localValidated.findIndex(r => r.orden === orden);
+    if (recordIndex === -1) {
+        showNotification('❌ No se encontró el registro validado', 'error');
+        return;
+    }
+
+    const orderData = STATE.obcData.get(orden);
+    if (!orderData) {
+        showNotification('❌ Error al obtener datos de la orden', 'error');
+        return;
+    }
+
+    // Validación de discrepancia en cantidad
+    const totalCajas = orderData.totalCajas || 0;
+    const cantidadDespacharNum = parseInt(cantidadDespachar);
+
+    if (totalCajas > 0 && cantidadDespacharNum !== totalCajas) {
+        if (!notaDespacho) {
+            const mensaje = cantidadDespacharNum < totalCajas
+                ? `⚠️ DESPACHO PARCIAL DETECTADO\n\nCajas totales: ${totalCajas}\nCantidad a despachar: ${cantidadDespacharNum}\n\nDebe ingresar una NOTA explicando el motivo del despacho parcial.`
+                : `⚠️ DISCREPANCIA DETECTADA\n\nCajas totales: ${totalCajas}\nCantidad a despachar: ${cantidadDespacharNum}\n\nDebe ingresar una NOTA explicando esta diferencia.`;
+
+            alert(mensaje);
+            document.getElementById('nota-despacho').focus();
+            return;
+        }
+    }
+
+    // Update the record
+    const updatedRecord = {
+        ...STATE.localValidated[recordIndex],
+        operador: operador,
+        unidad: unidad,
+        cantidadDespachar: cantidadDespacharNum,
+        notaDespacho: notaDespacho,
+        lastModified: new Date().toISOString()
+    };
+
+    STATE.localValidated[recordIndex] = updatedRecord;
+
+    // Save to localStorage
+    try {
+        localStorage.setItem('localValidated', JSON.stringify(STATE.localValidated));
+        showNotification('✅ Cambios guardados exitosamente', 'success');
+
+        // Trigger sync if available
+        if (window.syncManager && typeof window.syncManager.syncData === 'function') {
+            await window.syncManager.syncData();
+        }
+
+        // Update validated table
+        renderValidatedTable();
+
+        // Close modal
+        closeInfoModal();
+    } catch (error) {
+        console.error('Error saving changes:', error);
+        showNotification('❌ Error al guardar cambios: ' + error.message, 'error');
+    }
+}
+
 async function confirmDispatch() {
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
