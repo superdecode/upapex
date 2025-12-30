@@ -35,113 +35,76 @@ let pendingReloadOBC = null;
 let RECONTEO_STATE = { obc: null, scans: [], stats: { ok: 0, dup: 0, missing: 0, extra: 0 } };
 
 // ==================== SYNC MANAGER ====================
-const SyncManager = {
-    AUTO_SYNC_INTERVAL: 3600000,
-    BATCH_SIZE: 5,
-    intervalId: null,
-    inProgress: false,
+// Usar el módulo compartido SyncManager
+let syncManager = null;
 
-    init() {
-        this.load();
-        this.startAutoSync();
-        this.setupExitProtection();
-        this.updateUI(PENDING_SYNC.length === 0);
-    },
+function initSyncManager() {
+    syncManager = new SyncManager({
+        spreadsheetId: SPREADSHEET_WRITE,
+        sheetName: 'Val3',
+        autoSyncInterval: 3600000,
+        storageKey: 'wms_validador_pending_sync',
+        appName: 'Validador',
+        appIcon: '🎯',
+        formatRecord: (record) => {
+            const log = record.log || record;
+            return [
+                log.date || '',
+                log.timestamp || '',
+                log.user || '',
+                log.obc || '',
+                log.raw || '',
+                log.code || '',
+                log.reason || '',
+                log.location || '',
+                log.note || ''
+            ];
+        },
+        onSyncStart: () => updateConnectionIndicator(true),
+        onSyncEnd: () => updateConnectionIndicator(false),
+        onStatusChange: (stats) => updateSummaryStats(stats)
+    });
+    window.syncManager = syncManager;
+    syncManager.init();
+}
 
-    startAutoSync() {
-        this.intervalId = setInterval(() => this.sync(), this.AUTO_SYNC_INTERVAL);
-    },
-
-    setupExitProtection() {
-        window.addEventListener('beforeunload', (e) => {
-            if (PENDING_SYNC.length > 0) {
-                e.preventDefault();
-                e.returnValue = `Tienes ${PENDING_SYNC.length} cambios sin sincronizar. ¿Seguro que deseas salir?`;
-                return e.returnValue;
-            }
-        });
-    },
-
-    async sync(isManual = false) {
-        if (this.inProgress || PENDING_SYNC.length === 0) return;
-        if (!IS_ONLINE || !gapi?.client?.getToken()) {
-            if (isManual) showNotification('⚠️ Sin conexión o no autenticado', 'warning');
-            return;
-        }
-
-        this.inProgress = true;
-        updateConnectionIndicator(true);
-
-        try {
-            const itemsToSync = [...PENDING_SYNC];
-            for (let i = 0; i < itemsToSync.length; i += this.BATCH_SIZE) {
-                const batch = itemsToSync.slice(i, i + this.BATCH_SIZE);
-                for (const item of batch) {
-                    await this._syncItem(item);
-                }
-            }
-            PENDING_SYNC = [];
-            await this.save();
-            this.updateUI(true);
-            if (isManual) showNotification('✅ Sincronización completada', 'success');
-        } catch (error) {
-            console.error('Sync error:', error);
-            this.updateUI(false);
-            if (isManual) showNotification('❌ Error en sincronización', 'error');
-        } finally {
-            this.inProgress = false;
-            updateConnectionIndicator(false);
-        }
-    },
-
-    async _syncItem(item) {
-        const { sheet, log } = item;
-        const values = [[
-            log.date, log.timestamp, log.user, log.obc,
-            log.raw || '', log.code || '', log.reason || '',
-            log.location || '', log.note || ''
-        ]];
-        await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: SPREADSHEET_WRITE,
-            range: `${sheet}!A:I`,
-            valueInputOption: 'USER_ENTERED',
-            resource: { values }
-        });
-    },
-
-    load() {
-        const saved = localStorage.getItem('wms_pending_sync');
-        if (saved) {
-            try {
-                PENDING_SYNC = JSON.parse(saved);
-            } catch (e) {
-                PENDING_SYNC = [];
-            }
-        }
-    },
-
-    async save() {
-        localStorage.setItem('wms_pending_sync', JSON.stringify(PENDING_SYNC));
-    },
-
-    updateUI(synced) {
-        const badge = document.getElementById('sync-badge');
-        if (badge) {
-            badge.textContent = PENDING_SYNC.length;
-            badge.style.display = PENDING_SYNC.length > 0 ? 'block' : 'none';
-        }
+// Actualizar estadísticas del resumen
+function updateSummaryStats(stats) {
+    // Actualizar el contador de pendientes si existe
+    const badge = document.getElementById('pending-badge');
+    if (badge) {
+        badge.textContent = stats?.pendingSync || 0;
+        badge.style.display = (stats?.pendingSync > 0) ? 'inline-block' : 'none';
     }
-};
+}
+
+// Helper para agregar a la cola de sync (compatibilidad)
+function addToPendingSync(sheet, log) {
+    if (syncManager) {
+        syncManager.addToQueue({ sheet, log }, sheet);
+    }
+}
+
+// Helper para guardar pending sync (compatibilidad)
+async function savePendingSync() {
+    if (syncManager) {
+        syncManager.save();
+    }
+}
+
+// Helper para cargar pending sync (compatibilidad)
+async function loadPendingSync() {
+    // El syncManager carga automáticamente al init
+}
 
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', async () => {
     initAudio();
     await loadFromStorage();
-    await loadPendingSync();
     await loadPrerecData();
     setupListeners();
     setupConnectionMonitor();
-    SyncManager.init();
+    initSyncManager();
     renderValidation();
     gapi.load('client', initGAPI);
 });
@@ -587,8 +550,7 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
     STATE.tabs[obc].validations.push(log);
     HISTORY.set(code + obc.toLowerCase(), { date: log.date, timestamp: log.timestamp, user: log.user, obc });
 
-    PENDING_SYNC.push({ sheet: 'Validaciones', log });
-    await SyncManager.save();
+    addToPendingSync('Validaciones', log);
     await saveState();
     await saveHistory();
 
@@ -604,7 +566,7 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
         showOrderCompleted(obc);
     }
 
-    SyncManager.sync();
+    if (syncManager) syncManager.sync(false);
 }
 
 async function handleRejection(reason, raw, code, obc) {
@@ -620,9 +582,8 @@ async function handleRejection(reason, raw, code, obc) {
     };
 
     STATE.tabs[obc].rejections.push(log);
-    PENDING_SYNC.push({ sheet: 'Rechazos', log });
+    addToPendingSync('Rechazos', log);
 
-    await SyncManager.save();
     await saveState();
 
     showPopup('error', code, reason);
@@ -630,7 +591,7 @@ async function handleRejection(reason, raw, code, obc) {
     flashInput('error');
     renderValidation();
 
-    SyncManager.sync();
+    if (syncManager) syncManager.sync(false);
 }
 
 function normalizeCode(code) {
@@ -752,7 +713,8 @@ function updateSidebar() {
         obcList.appendChild(div);
     });
 
-    SyncManager.updateBadge();
+    // Actualizar UI de sincronización
+    if (syncManager) syncManager.updateUI(syncManager.getPendingCount() === 0);
 }
 
 // ==================== OBC MANAGEMENT ====================
