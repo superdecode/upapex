@@ -44,6 +44,13 @@ const GlobalTabs = {
     },
 
     createTab(type = null) {
+        // Límite máximo de 4 pestañas
+        if (this.tabs.length >= 4) {
+            showNotification('⚠️ Máximo 4 sesiones permitidas', 'warning');
+            playSound('warning');
+            return;
+        }
+
         if (!type) {
             this.showWorkTypePopup();
             return;
@@ -224,10 +231,11 @@ const GlobalTabs = {
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay show';
         overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 500px;">
-                <div class="popup-header">
-                    <span>📋 Seleccionar Tipo de Trabajo</span>
-                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+            <div class="popup-content work-type-popup">
+                <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
+                <div class="popup-header-centered">
+                    <span class="popup-header-icon">📋</span>
+                    <h2>Seleccionar Tipo de Trabajo</h2>
                 </div>
                 <div class="work-type-options">
                     <div class="work-type-option" onclick="GlobalTabs.selectWorkType('classic', this)">
@@ -1015,7 +1023,7 @@ function updateSendButtons() {
     });
 }
 
-// ==================== ENVÍO DE PALLETS (SIN VALIDACIÓN CIEGA) ====================
+// ==================== ENVÍO DE PALLETS CON VALIDACIÓN DE CANTIDAD ====================
 async function sendPallet(category) {
     const pallet = STATE.pallets[category];
     const location = document.getElementById(`location-${category}`).value.trim();
@@ -1042,10 +1050,98 @@ async function sendPallet(category) {
     const finalLocation = locationCheck.formatted;
     document.getElementById(`location-${category}`).value = finalLocation;
 
-    // Confirmación directa sin validación ciega
-    if (!confirm(`¿Enviar ${pallet.boxes.length} cajas a ${finalLocation}?`)) {
+    // Mostrar modal de validación de cantidad
+    showCountValidationModal(category, pallet.boxes.length, finalLocation, originLocation);
+}
+
+function showCountValidationModal(category, actualCount, finalLocation, originLocation) {
+    const categoryNames = { ok: 'OK ✅', blocked: 'Bloqueado ⚠️', nowms: 'No WMS ❌' };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay show';
+    overlay.id = 'count-validation-modal';
+    overlay.innerHTML = `
+        <div class="popup-content count-validation-popup">
+            <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
+            <div class="popup-header-centered">
+                <span class="popup-header-icon">📦</span>
+                <h2>Validación de Cantidad</h2>
+            </div>
+            <div class="validation-info">
+                <p>Tarima <strong>${categoryNames[category]}</strong></p>
+                <p>Destino: <strong>${finalLocation}</strong></p>
+            </div>
+            <div class="validation-input-group">
+                <label>¿Cuántas cajas hay en la tarima?</label>
+                <input type="number" id="count-validation-input" class="count-input"
+                       placeholder="Ingresa cantidad" min="1" autocomplete="off">
+                <div class="count-blur-display" id="count-blur-display">
+                    <span class="blur-number">???</span>
+                    <span class="blur-label">cajas registradas</span>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary btn-full" onclick="validateAndSendPallet('${category}', ${actualCount}, '${finalLocation}', '${originLocation}')">
+                    ✅ Validar y Enviar
+                </button>
+                <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove()">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+        const input = document.getElementById('count-validation-input');
+        if (input) {
+            input.focus();
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    validateAndSendPallet(category, actualCount, finalLocation, originLocation);
+                }
+            });
+        }
+    }, 100);
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+}
+
+async function validateAndSendPallet(category, actualCount, finalLocation, originLocation) {
+    const input = document.getElementById('count-validation-input');
+    const enteredCount = parseInt(input?.value) || 0;
+
+    if (enteredCount <= 0) {
+        showNotification('⚠️ Ingresa una cantidad válida', 'warning');
+        input?.focus();
         return;
     }
+
+    // Cerrar modal de validación
+    document.getElementById('count-validation-modal')?.remove();
+
+    // Verificar si coincide
+    if (enteredCount !== actualCount) {
+        const diff = actualCount - enteredCount;
+        const message = diff > 0
+            ? `⚠️ Diferencia detectada: Faltan ${diff} cajas según el sistema`
+            : `⚠️ Diferencia detectada: Hay ${Math.abs(diff)} cajas de más según el sistema`;
+
+        if (!confirm(`${message}\n\nRegistradas: ${actualCount}\nIngresadas: ${enteredCount}\n\n¿Enviar de todos modos?`)) {
+            showNotification('❌ Envío cancelado - Verificar conteo', 'warning');
+            return;
+        }
+    }
+
+    // Proceder con el envío
+    await executeSendPallet(category, finalLocation, originLocation);
+}
+
+async function executeSendPallet(category, finalLocation, originLocation) {
+    const pallet = STATE.pallets[category];
 
     showLoading(true);
     try {
@@ -1387,23 +1483,22 @@ function showPalletDetailModal(category) {
     overlay.className = 'popup-overlay show';
     overlay.id = 'pallet-detail-modal';
     overlay.innerHTML = `
-        <div class="popup-content pallet-detail-modal" style="max-width: 800px;">
-            <div class="popup-header" style="border-bottom: 3px solid ${categoryColors[category]};">
-                <div>
-                    <span style="font-size: 1.2em; font-weight: 700; color: ${categoryColors[category]};">
-                        ${categoryNames[category]} - ${pallet.id}
+        <div class="popup-content pallet-detail-modal-large">
+            <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
+            <div class="pallet-detail-header" style="border-bottom: 3px solid ${categoryColors[category]};">
+                <div class="pallet-detail-title">
+                    <span class="pallet-category-name" style="color: ${categoryColors[category]};">
+                        ${categoryNames[category]}
                     </span>
-                    <span style="font-size: 0.9em; color: #666; margin-left: 10px;">${pallet.boxes.length} cajas</span>
+                    <span class="pallet-id">${pallet.id}</span>
+                    <span class="pallet-count">${pallet.boxes.length} cajas</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    ${category === 'ok' ? `
-                        <div class="pallet-detail-counters">
-                            <span class="counter-badge ok">✓ ${verifiedCount}</span>
-                            <span class="counter-badge pending">○ ${pendingCount}</span>
-                        </div>
-                    ` : ''}
-                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
-                </div>
+                ${category === 'ok' ? `
+                    <div class="pallet-detail-counters">
+                        <span class="counter-badge ok">✓ ${verifiedCount}</span>
+                        <span class="counter-badge pending">○ ${pendingCount}</span>
+                    </div>
+                ` : ''}
             </div>
             <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
                 <input type="text" class="scan-input" style="flex: 1; min-width: 150px; font-size: 0.9em; padding: 8px;"
@@ -1575,6 +1670,70 @@ function updateVerificationBadges() {
     }
 }
 
+// ==================== CONEXIÓN/DESCONEXIÓN GOOGLE ====================
+function toggleGoogleConnection() {
+    const token = gapi?.client?.getToken();
+    const connectBtn = document.getElementById('btn-google-connect');
+    const connectText = document.getElementById('google-connect-text');
+
+    if (token) {
+        // Desconectar
+        if (confirm('¿Desconectar de Google?\n\nLos datos no sincronizados se guardarán localmente.')) {
+            google.accounts.oauth2.revoke(token.access_token);
+            gapi.client.setToken('');
+
+            if (syncManager) {
+                syncManager.stopAutoSync();
+            }
+
+            if (connectBtn) connectBtn.classList.add('disconnected');
+            if (connectText) connectText.textContent = 'Desconectado';
+
+            updateConnectionStatus(false);
+            showNotification('🔗 Desconectado de Google', 'info');
+        }
+    } else {
+        // Reconectar
+        tokenClient.callback = async (resp) => {
+            if (resp.error !== undefined) {
+                console.error('Auth error:', resp);
+                showNotification('❌ Error al reconectar', 'error');
+                return;
+            }
+
+            gapi.client.setToken(resp);
+
+            if (syncManager) {
+                syncManager.startAutoSync();
+                await syncManager.sync();
+            }
+
+            if (connectBtn) connectBtn.classList.remove('disconnected');
+            if (connectText) connectText.textContent = 'Conectado';
+
+            updateConnectionStatus(true);
+            showNotification('✅ Reconectado a Google', 'success');
+            playSound('success');
+        };
+
+        tokenClient.requestAccessToken({prompt: ''});
+    }
+}
+
+function updateGoogleConnectButton() {
+    const token = gapi?.client?.getToken();
+    const connectBtn = document.getElementById('btn-google-connect');
+    const connectText = document.getElementById('google-connect-text');
+
+    if (token) {
+        if (connectBtn) connectBtn.classList.remove('disconnected');
+        if (connectText) connectText.textContent = 'Conectado';
+    } else {
+        if (connectBtn) connectBtn.classList.add('disconnected');
+        if (connectText) connectText.textContent = 'Desconectado';
+    }
+}
+
 // ==================== INICIALIZACIÓN AL CARGAR ====================
 window.addEventListener('load', initializeApp);
 
@@ -1600,3 +1759,7 @@ window.handleLogout = handleLogout;
 window.refreshInventory = refreshInventory;
 window.exportData = exportData;
 window.saveUserAlias = saveUserAlias;
+window.toggleGoogleConnection = toggleGoogleConnection;
+window.showCountValidationModal = showCountValidationModal;
+window.validateAndSendPallet = validateAndSendPallet;
+window.executeSendPallet = executeSendPallet;

@@ -1666,13 +1666,56 @@
     gap: 8px;
 }
 
-/* ==================== PALLET DETAIL MODAL ==================== */
+/* ==================== PALLET DETAIL MODAL (GRANDE) ==================== */
 .pallet-detail-modal {
     max-width: 800px;
     max-height: 90vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+}
+
+.pallet-detail-modal-large {
+    max-width: 1200px;
+    width: 95vw;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding-top: 45px;
+}
+
+.pallet-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+.pallet-detail-title {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.pallet-category-name {
+    font-size: 1.4em;
+    font-weight: 700;
+}
+
+.pallet-id {
+    font-family: monospace;
+    font-size: 1.1em;
+    background: #f5f5f5;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.pallet-count {
+    font-size: 0.95em;
+    color: #666;
 }
 
 /* ==================== CANCELADO MODE ITEM ==================== */
@@ -1759,3 +1802,319 @@
 .box-action-btn.delete { color: var(--error); }
 .box-action-btn.copy { color: #666; }
 .box-action-btn.check { color: var(--success); }
+
+/* ==================== POPUP CLOSE CORNER (X EN ESQUINA) ==================== */
+.popup-close-corner {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #f5f5f5;
+    border-radius: 50%;
+    font-size: 1.4em;
+    color: #666;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.popup-close-corner:hover {
+    background: var(--error);
+    color: white;
+    transform: scale(1.1);
+}
+
+/* ==================== POPUP HEADER CENTERED ==================== */
+.popup-header-centered {
+    text-align: center;
+    margin-bottom: 25px;
+    padding-top: 10px;
+}
+
+.popup-header-centered h2 {
+    font-size: 1.3em;
+    font-weight: 700;
+    color: var(--text);
+    margin: 10px 0 0;
+}
+
+.popup-header-icon {
+    font-size: 2.5em;
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* ==================== WORK TYPE POPUP ==================== */
+.work-type-popup {
+    max-width: 550px;
+    position: relative;
+    padding: 30px 25px 25px;
+}
+
+.work-type-popup .popup-header-centered {
+    margin-bottom: 20px;
+}
+
+/* ==================== TABS - COLORES NARANJA ACTIVA, BLANCA INACTIVA ==================== */
+.tab {
+    background: white;
+    border: 2px solid #ddd;
+    color: #666;
+}
+
+.tab:hover {
+    border-color: var(--primary);
+    background: #fff5ed;
+    color: var(--primary);
+}
+
+.tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.tab.active .tab-close {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.tab.active .tab-close:hover {
+    color: white;
+}
+
+.tab.active::after {
+    background: var(--primary);
+}
+
+.tab.active .tab-badge {
+    background: rgba(255, 255, 255, 0.3);
+    color: white;
+}
+
+/* ==================== TABS HEADER ==================== */
+.tabs-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background: #f5f5f5;
+    border-radius: 8px;
+}
+
+.tabs-actions {
+    margin-left: auto;
+}
+
+/* ==================== TAB ADD BUTTON CENTRADO ==================== */
+.tab-add-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 2px dashed var(--primary);
+    background: transparent;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 1.5em;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.tab-add-btn:hover {
+    background: var(--primary);
+    color: white;
+    border-style: solid;
+    transform: scale(1.05);
+}
+
+/* ==================== BOTÓN CONEXIÓN GOOGLE ==================== */
+.btn-google-connect {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 12px;
+    margin: 8px 0;
+    background: rgba(66, 133, 244, 0.15);
+    border: 2px solid #4285F4;
+    border-radius: 6px;
+    color: #4285F4;
+    font-weight: 600;
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-google-connect:hover {
+    background: #4285F4;
+    color: white;
+}
+
+.btn-google-connect.disconnected {
+    background: rgba(158, 158, 158, 0.15);
+    border-color: #9e9e9e;
+    color: #9e9e9e;
+}
+
+.btn-google-connect.disconnected:hover {
+    background: #9e9e9e;
+    color: white;
+}
+
+.link-icon {
+    font-size: 1.1em;
+}
+
+/* ==================== COLUMN HEADER RIGHT ==================== */
+.column-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ==================== EXPAND BUTTON (ICONO ⬜) ==================== */
+.expand-btn {
+    width: 28px;
+    height: 28px;
+    border: 2px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9em;
+    transition: all 0.2s;
+    color: #666;
+}
+
+.expand-btn:hover {
+    border-color: var(--primary);
+    background: #fff5ed;
+    color: var(--primary);
+    transform: scale(1.1);
+}
+
+/* ==================== VERIFICATION BADGES ==================== */
+.verification-badges {
+    display: flex;
+    gap: 4px;
+}
+
+.v-badge {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.7em;
+    font-weight: 600;
+}
+
+.v-badge.ok {
+    background: rgba(76, 175, 80, 0.15);
+    color: var(--success);
+}
+
+.v-badge.pending {
+    background: rgba(158, 158, 158, 0.15);
+    color: #888;
+}
+
+/* ==================== COUNT VALIDATION POPUP ==================== */
+.count-validation-popup {
+    max-width: 380px;
+    position: relative;
+    padding: 30px 25px 25px;
+}
+
+.validation-info {
+    background: #f5f5f5;
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.validation-info p {
+    margin: 5px 0;
+    font-size: 0.95em;
+}
+
+.validation-input-group {
+    margin-bottom: 20px;
+}
+
+.validation-input-group label {
+    display: block;
+    text-align: center;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: #333;
+}
+
+.count-input {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.8em;
+    font-weight: 700;
+    text-align: center;
+    border: 3px solid var(--primary);
+    border-radius: 10px;
+    background: #fff5ed;
+    color: var(--primary);
+    transition: all 0.2s;
+}
+
+.count-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2);
+}
+
+.count-input::placeholder {
+    color: #ccc;
+    font-weight: 400;
+    font-size: 0.5em;
+}
+
+.count-blur-display {
+    margin-top: 15px;
+    text-align: center;
+    padding: 10px;
+    background: #f0f0f0;
+    border-radius: 6px;
+}
+
+.blur-number {
+    display: block;
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #999;
+    filter: blur(6px);
+    user-select: none;
+}
+
+.blur-label {
+    font-size: 0.8em;
+    color: #888;
+}
+
+/* ==================== POPUP CONTENT IMPROVEMENTS ==================== */
+.popup-content {
+    box-shadow: 0 15px 50px rgba(0,0,0,0.35);
+    border-radius: 16px;
+}
+
+.popup-overlay {
+    backdrop-filter: blur(3px);
+}
