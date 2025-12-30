@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Despacho WMS</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚚</text></svg>">
+    <link rel="stylesheet" href="../../shared/css/variables.css">
+    <link rel="stylesheet" href="../../shared/css/base.css">
+    <link rel="stylesheet" href="../../shared/css/layout.css">
+    <link rel="stylesheet" href="../../shared/css/components.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+</head>
+<body>
+    <div class="connection-banner" id="connection-banner"></div>
+    <div class="notification-container" id="notifications"></div>
+
+    <div class="preloader-overlay" id="loading-overlay">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text" style="color: #333;">🚚 Cargando Despacho...</div>
+            <div class="preloader-subtext" style="color: #666;">Descargando base de datos desde Google Sheets</div>
+        </div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🚚</div>
+            <h1 class="login-title">Sistema de Despacho WMS</h1>
+            <p class="login-subtitle">Gestión y validación de despachos logísticos</p>
+            <button class="btn btn-google" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em; width: 100%;">
+                🔐 Iniciar sesión con Google
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="main-app" class="hidden">
+        <div class="container">
+            <!-- SIDEBAR -->
+            <div class="sidebar">
+                <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">🚚 Despacho</h2>
+
+                <div id="sync-status-sidebar" class="sync-status sync-ok" style="cursor: pointer;" onclick="showSyncPanel()">
+                    ✅ Sincronizado
+                </div>
+
+                <!-- Resumen del Día -->
+                <div class="sidebar-summary">
+                    <div class="summary-title">📊 Resumen del Día</div>
+                    <div class="summary-grid">
+                        <div class="summary-item total">
+                            <span class="summary-icon">📦</span>
+                            <span class="summary-value" id="summary-total">0</span>
+                            <span class="summary-label">Total</span>
+                        </div>
+                        <div class="summary-item validated">
+                            <span class="summary-icon">✅</span>
+                            <span class="summary-value" id="summary-validated">0</span>
+                            <span class="summary-label">Validadas</span>
+                        </div>
+                        <div class="summary-item pending">
+                            <span class="summary-icon">⏳</span>
+                            <span class="summary-value" id="summary-pending">0</span>
+                            <span class="summary-label">Pendientes</span>
+                        </div>
+                    </div>
+                </div>
+
+                <hr style="border-color: #555; margin: 15px 0;">
+
+                <!-- Acciones Rápidas -->
+                <div class="sidebar-section">
+                    <button class="btn btn-secondary btn-small" onclick="showDateFilter()" style="margin-bottom: 10px; width: 100%;">
+                        📅 Filtrar por Fecha
+                    </button>
+                    <button class="btn btn-secondary btn-small" onclick="exportData()" style="margin-bottom: 10px; width: 100%;">
+                        📥 Exportar CSV
+                    </button>
+                </div>
+
+                <!-- User Footer -->
+                <div class="user-footer" id="user-footer">
+                    <div class="user-info">
+                        <div class="user-avatar" id="user-avatar">?</div>
+                        <div class="user-details">
+                            <div class="user-name" id="user-name-display">No conectado</div>
+                            <div class="connection-indicator">
+                                <div class="connection-dot" id="connection-dot"></div>
+                                <span id="connection-text">Offline</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-footer-actions">
+                        <button class="btn btn-secondary btn-small" onclick="reloadData()" title="Actualizar BD">🔄 BD</button>
+                        <button class="btn btn-secondary btn-small" onclick="handleLogout()" id="sidebar-auth-btn" title="Cerrar Sesión">🚪 Salir</button>
+                    </div>
+                    <div class="bd-info">
+                        <div id="bd-count-footer"><span id="bd-count">0</span> órdenes cargadas</div>
+                        <div id="bd-update-time">Sin actualizar</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div class="main-content">
+                <!-- EMPTY STATE -->
+                <div id="empty-state" class="empty-state module-visible">
+                    <div class="empty-state-content">
+                        <div class="empty-state-icon">🚚</div>
+                        <h2 class="empty-state-title">Sistema de Despacho</h2>
+                        <p class="empty-state-subtitle">Comienza buscando una orden para despachar</p>
+                        <button class="btn btn-success btn-start" onclick="showSearchPanel()">
+                            🚀 Iniciar Despacho
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SEARCH PANEL -->
+                <div id="search-panel" style="display: none;">
+                    <div class="header">
+                        <h1>🔍 Búsqueda de Órdenes</h1>
+                        <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                    </div>
+
+                    <div class="card">
+                        <div class="input-group">
+                            <label style="font-size: 1.1em; color: var(--primary);">📦 Buscar por OBC o Código de Caja:</label>
+                            <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
+                        </div>
+                        <button class="btn btn-primary" onclick="executeSearch()" style="margin-top: 15px;">
+                            🔍 Buscar
+                        </button>
+                    </div>
+
+                    <!-- Órdenes del Día -->
+                    <div class="card" style="margin-top: 15px;">
+                        <div class="section-header-inline">
+                            <h3>📋 Órdenes del Día</h3>
+                            <div class="filter-controls">
+                                <input type="text" id="filter-orders" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterOrdersList()">
+                                <select id="filter-status" class="filter-select" onchange="filterOrdersList()">
+                                    <option value="all">Todas</option>
+                                    <option value="validated">Validadas</option>
+                                    <option value="pending">Pendientes</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="orders-list" class="orders-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE INFORMACIÓN (estilo track.html) -->
+    <div class="modal-overlay" id="info-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📦</span>
+                    <span id="modal-title-text">Información de Orden</span>
+                </div>
+                <button class="modal-close" onclick="closeInfoModal()">×</button>
+            </div>
+
+            <!-- KPI Cards Header -->
+            <div class="modal-kpi-header">
+                <div class="kpi-cards" id="kpi-cards"></div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body" id="modal-body"></div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <div class="modal-footer-selectors">
+                    <select id="modal-operador">
+                        <option value="">👤 Seleccionar Conductor...</option>
+                    </select>
+                    <select id="modal-unidad">
+                        <option value="">🚛 Seleccionar Unidad/Placas...</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn btn-success" onclick="confirmDispatch()" id="confirm-dispatch-btn">
+                        ✅ Confirmar Despacho
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeInfoModal()">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE FILTRO DE FECHAS -->
+    <div class="modal-overlay" id="date-filter-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📅</span>
+                    <span>Filtrar por Rango de Fechas</span>
+                </div>
+                <button class="modal-close" onclick="closeDateFilter()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>Fecha Inicio:</label>
+                    <input type="date" id="date-start" class="date-input">
+                </div>
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Fecha Fin:</label>
+                    <input type="date" id="date-end" class="date-input">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="applyDateFilter()">Aplicar Filtro</button>
+                <button class="btn btn-secondary" onclick="clearDateFilter()">Limpiar Filtro</button>
+                <button class="btn btn-secondary" onclick="closeDateFilter()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
