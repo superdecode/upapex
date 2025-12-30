@@ -204,39 +204,75 @@ function changeUserAlias() {
 async function loadAllData() {
     showNotification('🔄 Cargando datos...', 'info');
 
+    let errors = [];
+    let loaded = 0;
+
+    // Load OBC_BD
     try {
-        // Load OBC_BD
         const obcResponse = await fetch(CONFIG.SOURCES.OBC_BD);
         const obcCsv = await obcResponse.text();
         parseOBCData(obcCsv);
+        loaded++;
+    } catch (e) {
+        console.error('Error loading OBC_BD:', e);
+        errors.push('OBC');
+    }
 
-        // Load LISTAS (Operadores y Unidades)
+    // Load LISTAS (Operadores y Unidades)
+    try {
         const listasResponse = await fetch(CONFIG.SOURCES.LISTAS);
         const listasCsv = await listasResponse.text();
         parseListasData(listasCsv);
+        loaded++;
+    } catch (e) {
+        console.error('Error loading LISTAS:', e);
+        errors.push('LISTAS');
+    }
 
-        // Load TRS
+    // Load TRS
+    try {
         const trsResponse = await fetch(CONFIG.SOURCES.TRS);
         const trsCsv = await trsResponse.text();
         parseTRSData(trsCsv);
+        loaded++;
+    } catch (e) {
+        console.error('Error loading TRS:', e);
+        errors.push('TRS');
+    }
 
-        // Load VALIDACION (Val3)
+    // Load VALIDACION (Val3)
+    try {
         const validacionResponse = await fetch(CONFIG.SOURCES.VALIDACION);
         const validacionCsv = await validacionResponse.text();
         parseValidacionData(validacionCsv);
+        loaded++;
+    } catch (e) {
+        console.error('Error loading VALIDACION:', e);
+        errors.push('VALIDACION');
+    }
 
-        // Load MNE (Rastreo)
+    // Load MNE (Rastreo)
+    try {
         const mneResponse = await fetch(CONFIG.SOURCES.MNE);
         const mneCsv = await mneResponse.text();
         parseMNEData(mneCsv);
-
-        showNotification(`✅ ${STATE.obcData.size} órdenes cargadas`, 'success');
-        updateBdInfo();
-        updateSummary();
+        loaded++;
     } catch (e) {
-        console.error('Error loading data:', e);
-        showNotification('❌ Error cargando datos', 'error');
+        console.error('Error loading MNE:', e);
+        errors.push('MNE');
     }
+
+    // Show appropriate notification
+    if (errors.length > 0 && loaded === 0) {
+        showNotification('❌ Error cargando todas las bases de datos', 'error');
+    } else if (errors.length > 0) {
+        showNotification(`⚠️ ${STATE.obcData.size} órdenes cargadas (advertencia: algunas fuentes fallaron)`, 'warning');
+    } else {
+        showNotification(`✅ ${STATE.obcData.size} órdenes cargadas exitosamente`, 'success');
+    }
+
+    updateBdInfo();
+    updateSummary();
 }
 
 function parseOBCData(csv) {
@@ -573,32 +609,54 @@ function executeSearch() {
         return;
     }
 
-    // Buscar por OBC
+    // Buscar por OBC exacto
     if (STATE.obcData.has(query)) {
         showOrderInfo(query);
         searchInput.value = '';
         return;
     }
 
+    // Buscar por OBC parcial
+    for (const orden of STATE.obcData.keys()) {
+        if (orden.includes(query)) {
+            showOrderInfo(orden);
+            searchInput.value = '';
+            return;
+        }
+    }
+
     // Buscar por código de caja en customBarcode
     for (const [orden, data] of STATE.obcData.entries()) {
         if (data.customBarcode && data.customBarcode.toUpperCase().includes(query)) {
+            showNotification(`📦 Código encontrado en orden: ${orden}`, 'success');
             showOrderInfo(orden);
             searchInput.value = '';
             return;
         }
     }
 
-    // Buscar en validaciones
+    // Buscar en validaciones (códigos de caja escaneados)
     for (const [orden, validaciones] of STATE.validacionData.entries()) {
-        if (validaciones.some(v => v.codigo.toUpperCase().includes(query))) {
+        if (validaciones.some(v => v.codigo && v.codigo.toUpperCase().includes(query))) {
+            showNotification(`📦 Código de caja encontrado en: ${orden}`, 'success');
             showOrderInfo(orden);
             searchInput.value = '';
             return;
         }
     }
 
-    showNotification('❌ No se encontró la orden o código', 'error');
+    // Buscar en rastreo MNE (códigos de tracking)
+    for (const [orden, rastreoItems] of STATE.mneData.entries()) {
+        if (rastreoItems.some(r => (r.codigo && r.codigo.toUpperCase().includes(query)) ||
+                                    (r.ib && r.ib.toUpperCase().includes(query)))) {
+            showNotification(`📍 Código de rastreo encontrado en: ${orden}`, 'success');
+            showOrderInfo(orden);
+            searchInput.value = '';
+            return;
+        }
+    }
+
+    showNotification('❌ No se encontró la orden o código en la base de datos', 'error');
 }
 
 // ==================== ORDER INFO MODAL ====================
@@ -961,57 +1019,89 @@ function renderModalBody(orden, orderData) {
                     </span>
                 </div>
                 <div class="section-content" id="section-qc-body">
-                    <div class="qc-horizontal-layout">
-                        <!-- PASO 1: Selección de Tipos -->
-                        <div class="qc-step qc-step-left">
-                            <div class="qc-step-title">Paso 1: Selecciona los tipos de tarea</div>
-                            <div class="qc-task-options">
-                                <div class="qc-task-option" onclick="selectQCTask('cambio-etiqueta', this)">
-                                    <input type="checkbox" class="qc-task-checkbox" id="task-cambio-etiqueta" onchange="selectQCTask('cambio-etiqueta', this.parentElement)">
-                                    <div class="qc-task-content">
-                                        <label class="qc-task-label" for="task-cambio-etiqueta">Cambio Etiqueta Exterior</label>
-                                        <div class="qc-task-description">Reemplazo de etiqueta</div>
-                                    </div>
-                                </div>
-                                <div class="qc-task-option" onclick="selectQCTask('cambio-sku', this)">
-                                    <input type="checkbox" class="qc-task-checkbox" id="task-cambio-sku" onchange="selectQCTask('cambio-sku', this.parentElement)">
-                                    <div class="qc-task-content">
-                                        <label class="qc-task-label" for="task-cambio-sku">Cambio SKU</label>
-                                        <div class="qc-task-description">Modificación de código</div>
-                                    </div>
-                                </div>
-                                <div class="qc-task-option" onclick="selectQCTask('reparacion', this)">
-                                    <input type="checkbox" class="qc-task-checkbox" id="task-reparacion" onchange="selectQCTask('reparacion', this.parentElement)">
-                                    <div class="qc-task-content">
-                                        <label class="qc-task-label" for="task-reparacion">Reparación</label>
-                                        <div class="qc-task-description">Arreglo del producto</div>
-                                    </div>
-                                </div>
-                                <div class="qc-task-option" onclick="selectQCTask('cambio-caja', this)">
-                                    <input type="checkbox" class="qc-task-checkbox" id="task-cambio-caja" onchange="selectQCTask('cambio-caja', this.parentElement)">
-                                    <div class="qc-task-content">
-                                        <label class="qc-task-label" for="task-cambio-caja">Cambio de Caja</label>
-                                        <div class="qc-task-description">Cambio de empaque</div>
-                                    </div>
-                                </div>
-                                <div class="qc-task-option" onclick="selectQCTask('otros', this)">
-                                    <input type="checkbox" class="qc-task-checkbox" id="task-otros" onchange="selectQCTask('otros', this.parentElement)">
-                                    <div class="qc-task-content">
-                                        <label class="qc-task-label" for="task-otros">Otros</label>
-                                        <div class="qc-task-description">Otra tarea específica</div>
-                                    </div>
-                                </div>
+                    <div class="qc-tasks-grid">
+                        <!-- Tarea: Cambio Etiqueta -->
+                        <div class="qc-task-row">
+                            <div class="qc-task-checkbox-wrapper">
+                                <input type="checkbox" class="qc-checkbox" id="qc-cambio-etiqueta" onchange="toggleQCTaskStatus('cambio-etiqueta', this.checked)">
+                                <label for="qc-cambio-etiqueta" class="qc-task-name">Cambio Etiqueta Exterior</label>
                             </div>
+                            <select class="qc-status-select" id="qc-status-cambio-etiqueta" disabled>
+                                <option value="">Seleccionar estatus...</option>
+                                <option value="pendiente">○ Pendiente</option>
+                                <option value="parcial">◑ Parcial</option>
+                                <option value="completado">✓ Completado</option>
+                            </select>
                         </div>
 
-                        <!-- PASO 2: Asignar Estatus -->
-                        <div class="qc-step qc-step-right">
-                            <div class="qc-step-title">Paso 2: Define el estatus</div>
-                            <div class="qc-task-cards" id="qc-task-cards">
-                                <div style="text-align: center; padding: 30px; color: #999; font-size: 0.95em;">
-                                    Selecciona al menos una tarea para asignar estatus
-                                </div>
+                        <!-- Tarea: Cambio SKU -->
+                        <div class="qc-task-row">
+                            <div class="qc-task-checkbox-wrapper">
+                                <input type="checkbox" class="qc-checkbox" id="qc-cambio-sku" onchange="toggleQCTaskStatus('cambio-sku', this.checked)">
+                                <label for="qc-cambio-sku" class="qc-task-name">Cambio SKU</label>
                             </div>
+                            <select class="qc-status-select" id="qc-status-cambio-sku" disabled>
+                                <option value="">Seleccionar estatus...</option>
+                                <option value="pendiente">○ Pendiente</option>
+                                <option value="parcial">◑ Parcial</option>
+                                <option value="completado">✓ Completado</option>
+                            </select>
+                        </div>
+
+                        <!-- Tarea: Reparación -->
+                        <div class="qc-task-row">
+                            <div class="qc-task-checkbox-wrapper">
+                                <input type="checkbox" class="qc-checkbox" id="qc-reparacion" onchange="toggleQCTaskStatus('reparacion', this.checked)">
+                                <label for="qc-reparacion" class="qc-task-name">Reparación</label>
+                            </div>
+                            <select class="qc-status-select" id="qc-status-reparacion" disabled>
+                                <option value="">Seleccionar estatus...</option>
+                                <option value="pendiente">○ Pendiente</option>
+                                <option value="parcial">◑ Parcial</option>
+                                <option value="completado">✓ Completado</option>
+                            </select>
+                        </div>
+
+                        <!-- Tarea: Cambio de Caja -->
+                        <div class="qc-task-row">
+                            <div class="qc-task-checkbox-wrapper">
+                                <input type="checkbox" class="qc-checkbox" id="qc-cambio-caja" onchange="toggleQCTaskStatus('cambio-caja', this.checked)">
+                                <label for="qc-cambio-caja" class="qc-task-name">Cambio de Caja</label>
+                            </div>
+                            <select class="qc-status-select" id="qc-status-cambio-caja" disabled>
+                                <option value="">Seleccionar estatus...</option>
+                                <option value="pendiente">○ Pendiente</option>
+                                <option value="parcial">◑ Parcial</option>
+                                <option value="completado">✓ Completado</option>
+                            </select>
+                        </div>
+
+                        <!-- Tarea: Otros -->
+                        <div class="qc-task-row">
+                            <div class="qc-task-checkbox-wrapper">
+                                <input type="checkbox" class="qc-checkbox" id="qc-otros" onchange="toggleQCTaskStatus('otros', this.checked)">
+                                <label for="qc-otros" class="qc-task-name">Otros</label>
+                            </div>
+                            <select class="qc-status-select" id="qc-status-otros" disabled>
+                                <option value="">Seleccionar estatus...</option>
+                                <option value="pendiente">○ Pendiente</option>
+                                <option value="parcial">◑ Parcial</option>
+                                <option value="completado">✓ Completado</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo de nota para "Otros" -->
+                        <div id="qc-otros-note-container" style="display: none; grid-column: 1 / -1; margin-top: 10px;">
+                            <label style="display: block; font-size: 0.9em; color: var(--primary); margin-bottom: 6px; font-weight: 600;">
+                                Especifica la tarea:
+                            </label>
+                            <textarea
+                                id="qc-otros-note"
+                                class="general-info-textarea"
+                                placeholder="Describe la tarea específica a realizar..."
+                                rows="2"
+                                style="width: 100%;"
+                            ></textarea>
                         </div>
                     </div>
                 </div>
@@ -1044,10 +1134,10 @@ function closeInfoModal() {
 
 // ==================== DISPATCH CONFIRMATION ====================
 async function confirmDispatch() {
-    const operador = document.getElementById('modal-operador').value;
-    const unidad = document.getElementById('modal-unidad').value;
-    const cantidadDespachar = document.getElementById('cantidad-despachar').value;
-    const notaDespacho = document.getElementById('nota-despacho').value.trim();
+    const operador = document.getElementById('modal-operador')?.value || '';
+    const unidad = document.getElementById('modal-unidad')?.value || '';
+    const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
+    const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
     // Validación de campos requeridos
     if (!operador || !unidad) {
@@ -1325,103 +1415,39 @@ const QC_TASKS = {
 let selectedQCTasks = new Set();
 let qcTaskStatuses = {};
 
-function selectQCTask(taskId, element) {
-    const checkbox = document.getElementById(`task-${taskId}`);
-    const isChecked = checkbox.checked;
+// Nueva función para el diseño con dropdowns
+function toggleQCTaskStatus(taskId, isChecked) {
+    const statusSelect = document.getElementById(`qc-status-${taskId}`);
+    const otrosNoteContainer = document.getElementById('qc-otros-note-container');
 
-    // Toggle checkbox if clicking on the element
-    if (!element.contains(checkbox)) {
-        checkbox.checked = !isChecked;
-    }
-
-    // Toggle selection
-    if (checkbox.checked) {
+    if (isChecked) {
         selectedQCTasks.add(taskId);
-        element.classList.add('selected');
+        statusSelect.disabled = false;
+        statusSelect.style.opacity = '1';
+
+        // Mostrar nota para "Otros"
+        if (taskId === 'otros' && otrosNoteContainer) {
+            otrosNoteContainer.style.display = 'block';
+        }
     } else {
         selectedQCTasks.delete(taskId);
-        element.classList.remove('selected');
         delete qcTaskStatuses[taskId];
+        statusSelect.disabled = true;
+        statusSelect.value = '';
+        statusSelect.style.opacity = '0.5';
+
+        // Ocultar nota para "Otros"
+        if (taskId === 'otros' && otrosNoteContainer) {
+            otrosNoteContainer.style.display = 'none';
+            const otrosNote = document.getElementById('qc-otros-note');
+            if (otrosNote) otrosNote.value = '';
+        }
     }
 
-    renderQCTaskCards();
-}
-
-function renderQCTaskCards() {
-    const container = document.getElementById('qc-task-cards');
-    if (!container) return;
-
-    if (selectedQCTasks.size === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; padding: 30px; color: #999;">
-                Selecciona al menos una tarea arriba para asignar estatus
-            </div>
-        `;
-        return;
-    }
-
-    const html = Array.from(selectedQCTasks).map(taskId => {
-        const taskName = QC_TASKS[taskId];
-        const currentStatus = qcTaskStatuses[taskId] || '';
-
-        return `
-            <div class="qc-task-card ${taskId}">
-                <div class="qc-task-card-header">${taskName}</div>
-                <div class="qc-status-options">
-                    <div class="qc-status-option pendiente ${currentStatus === 'pendiente' ? 'selected' : ''}"
-                         onclick="setQCStatus('${taskId}', 'pendiente', this)">
-                        <input type="radio" name="status-${taskId}" class="qc-status-radio" ${currentStatus === 'pendiente' ? 'checked' : ''}>
-                        <label class="qc-status-label">Pendiente</label>
-                        <span class="qc-status-icon">○</span>
-                    </div>
-                    <div class="qc-status-option parcial ${currentStatus === 'parcial' ? 'selected' : ''}"
-                         onclick="setQCStatus('${taskId}', 'parcial', this)">
-                        <input type="radio" name="status-${taskId}" class="qc-status-radio" ${currentStatus === 'parcial' ? 'checked' : ''}>
-                        <label class="qc-status-label">Parcial</label>
-                        <span class="qc-status-icon">◑</span>
-                    </div>
-                    <div class="qc-status-option completado ${currentStatus === 'completado' ? 'selected' : ''}"
-                         onclick="setQCStatus('${taskId}', 'completado', this)">
-                        <input type="radio" name="status-${taskId}" class="qc-status-radio" ${currentStatus === 'completado' ? 'checked' : ''}>
-                        <label class="qc-status-label">Completado</label>
-                        <span class="qc-status-icon">✓</span>
-                    </div>
-                </div>
-                ${taskId === 'otros' ? `
-                    <div class="qc-otros-note" style="margin-top: 12px;">
-                        <label style="display: block; font-size: 0.9em; color: var(--primary); margin-bottom: 6px; font-weight: 600;">
-                            Especifica la tarea:
-                        </label>
-                        <textarea
-                            id="qc-otros-note"
-                            class="general-info-textarea"
-                            placeholder="Describe la tarea específica a realizar..."
-                            rows="3"
-                            style="width: 100%; resize: vertical;"
-                        ></textarea>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    }).join('');
-
-    container.innerHTML = html;
-}
-
-function setQCStatus(taskId, status, element) {
-    // Update status
-    qcTaskStatuses[taskId] = status;
-
-    // Update UI - remove selected from siblings
-    const siblings = element.parentElement.querySelectorAll('.qc-status-option');
-    siblings.forEach(s => s.classList.remove('selected'));
-    element.classList.add('selected');
-
-    // Update radio
-    const radio = element.querySelector('.qc-status-radio');
-    if (radio) radio.checked = true;
-
-    console.log('QC Status updated:', taskId, status);
+    // Actualizar estatus cuando cambia el select
+    statusSelect.onchange = () => {
+        qcTaskStatuses[taskId] = statusSelect.value;
+    };
 }
 
 function initializeQCFromTRS(trsRelacionados) {
