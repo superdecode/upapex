@@ -269,22 +269,9 @@ async function getUserProfile() {
 function showApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
-    
-    // Agregar tabs de validación después del resumen
-    const summarySection = document.getElementById('global-summary-section');
-    if (summarySection && !document.querySelector('.validation-tabs')) {
-        const tabsHTML = `
-            <div class="validation-tabs">
-                <button class="validation-tab active" id="tab-pending" onclick="switchValidationTab('pending')">
-                    ⏳ Pendientes <span class="tab-badge" id="pending-badge">0</span>
-                </button>
-                <button class="validation-tab" id="tab-validated" onclick="switchValidationTab('validated')">
-                    ✅ Validadas <span class="tab-badge" id="validated-badge">0</span>
-                </button>
-            </div>
-        `;
-        summarySection.insertAdjacentHTML('afterend', tabsHTML);
-    }
+
+    // REMOVED: Sidebar validation tabs eliminated per user request
+    // Toggle buttons now only appear in header, not in sidebar
 }
 
 function handleLogout() {
@@ -403,6 +390,8 @@ function parseOBCData(csv) {
     // Esto asegura que en caso de duplicados, prevalezca el registro más reciente
     const ordersArray = [];
 
+    console.log('🔍 Parsing OBC Data - Total lines:', lines.length);
+
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length >= 6) {
@@ -411,6 +400,11 @@ function parseOBCData(csv) {
                 // Columna F (índice 5): Cantidad de cajas en la pestaña Resumen
                 const totalCajasRaw = cols[5]?.trim() || '0';
                 const totalCajas = parseInt(totalCajasRaw) || 0;
+
+                // Debug: Log first 3 orders to verify parsing
+                if (i <= 3) {
+                    console.log(`📦 Order ${orden}: totalCajasRaw="${totalCajasRaw}" → totalCajas=${totalCajas}, cols[5]="${cols[5]}"`);
+                }
 
                 ordersArray.push({
                     orden,
@@ -439,6 +433,8 @@ function parseOBCData(csv) {
             STATE.obcData.set(orderData.orden, orderData);
         }
     });
+
+    console.log('✅ OBC Data parsed:', STATE.obcData.size, 'orders');
 }
 
 function parseBDCajasData(csv) {
@@ -1045,9 +1041,6 @@ function renderValidatedTable() {
     });
 
     tableBody.innerHTML = sortedValidated.map((record, index) => {
-        const syncStatus = syncManager?.isRecordSynced?.(record) ? 'synced' : 'local';
-        const syncBadge = syncStatus === 'synced' ? '☁️ Sincronizado' : '💾 Local';
-
         // Obtener datos originales de la orden si existen
         const orderData = STATE.obcData.get(record.orden) || {};
         const validaciones = STATE.validacionData.get(record.orden) || [];
@@ -1057,6 +1050,12 @@ function renderValidatedTable() {
         const cajasValidadas = validaciones.length;
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
         const tieneRastreo = rastreoData.length > 0;
+
+        // FIXED: Calculate dispatch status instead of sync status
+        const cantidadDespachar = record.cantidadDespachar || 0;
+        const dispatchStatus = calculateOrderStatus(totalCajas, cantidadDespachar);
+        const statusBadge = dispatchStatus.status;
+        const statusColor = dispatchStatus.color;
 
         // Buscar TRS relacionados
         const boxCodes = new Set();
@@ -1107,7 +1106,7 @@ function renderValidatedTable() {
                 <td style="text-align: center;">${trsCount > 0 ? `<span class="order-code">${trsCount} TRS</span>` : '<span class="empty-cell">N/A</span>'}</td>
                 <td style="text-align: center;"><strong>${record.cantidadDespachar || 0}</strong></td>
                 <td>
-                    <span class="status-badge ${syncStatus}">${syncBadge}</span>
+                    <span class="status-badge" style="background-color: ${statusColor}; color: white;">${statusBadge}</span>
                 </td>
                 <td>${estatusCalidad}</td>
                 <td>${record.operador || '<span class="empty-cell">N/A</span>'}</td>
@@ -1427,6 +1426,8 @@ function showOrderInfo(orden) {
         const cantidadDespachar = validationCheck.data.cantidadDespachar || 0;
         const statusInfo = calculateOrderStatus(totalCajas, cantidadDespachar);
 
+        console.log(`📊 Status Badge - Order ${orden}: totalCajas=${totalCajas}, cantidadDespachar=${cantidadDespachar}, status=${statusInfo.status}`);
+
         statusBadgeHTML = ` <span class="status-badge-modal" style="background-color: ${statusInfo.color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.75em; font-weight: 600; margin-left: 10px;">${statusInfo.status}</span>`;
     }
 
@@ -1453,6 +1454,18 @@ function showOrderInfo(orden) {
         const unidadSelect = document.getElementById('modal-unidad');
         if (unidadSelect && savedData.unidad) {
             unidadSelect.value = savedData.unidad;
+        }
+
+        // FIXED: Populate cantidad despachar field
+        const cantidadDespacharInput = document.getElementById('cantidad-despachar');
+        if (cantidadDespacharInput && savedData.cantidadDespachar) {
+            cantidadDespacharInput.value = savedData.cantidadDespachar;
+        }
+
+        // Populate nota despacho field
+        const notaDespachoInput = document.getElementById('nota-despacho');
+        if (notaDespachoInput && savedData.notaDespacho) {
+            notaDespachoInput.value = savedData.notaDespacho;
         }
 
         // Change button text to "Guardar cambios" for validated orders
