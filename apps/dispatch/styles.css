@@ -11,6 +11,153 @@
     }
 }
 
+/* ==================== WELCOME STATE (igual a Inventario) ==================== */
+.welcome-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+}
+
+.welcome-content {
+    max-width: 400px;
+    padding: 40px;
+}
+
+.welcome-icon {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-15px); }
+}
+
+.welcome-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.welcome-subtitle {
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+.btn-start {
+    padding: 15px 40px;
+    font-size: 1.2em;
+}
+
+/* ==================== SUMMARY CARDS MODERNAS ==================== */
+.summary-grid-modern {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.summary-card {
+    background: rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 12px 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.summary-card:hover {
+    background: rgba(255,255,255,0.12);
+    transform: translateY(-2px);
+}
+
+.summary-number {
+    font-size: 1.8em;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.summary-text {
+    font-size: 0.7em;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-card.total .summary-number { color: var(--primary); }
+.summary-card.validated .summary-number { color: var(--success); }
+.summary-card.pending .summary-number { color: var(--warning); }
+
+/* ==================== VALIDATION TABS ==================== */
+.validation-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 4px;
+}
+
+.validation-tab {
+    flex: 1;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #888;
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.validation-tab:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+.validation-tab.active {
+    background: var(--primary);
+    color: white;
+}
+
+.tab-badge {
+    background: rgba(255,255,255,0.2);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.9em;
+    min-width: 20px;
+    text-align: center;
+}
+
+.validation-tab.active .tab-badge {
+    background: rgba(255,255,255,0.3);
+}
+
+/* ==================== TAB CONTENT ==================== */
+.tab-content {
+    animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* Sidebar Summary */
 .sidebar-summary {
     background: rgba(249, 115, 22, 0.1);
