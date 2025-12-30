@@ -429,14 +429,12 @@ class SyncManager {
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay show sync-panel-overlay';
         overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 500px;">
-                <button class="popup-close-x" onclick="this.closest('.popup-overlay').remove()">×</button>
-                <div class="popup-header" style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 1.5em;">${this.config.appIcon}</span>
-                    <span>Estado de Sincronización</span>
+            <div class="popup-content" style="max-width: 450px;">
+                <div class="popup-header">
+                    <span>${this.config.appIcon} Estado de Sincronización</span>
+                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
                 </div>
-
-                <div style="margin: 20px 0;">
+                <div style="padding: 20px;">
                     <div style="padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 12px; text-align: center; margin-bottom: 15px;">
                         <div style="font-size: 0.85em; color: #666; margin-bottom: 5px;">Pendientes de sincronizar</div>
                         <div style="font-size: 2.5em; font-weight: 700; color: ${statusColor};">
@@ -455,36 +453,36 @@ class SyncManager {
                         </div>
                     </div>
 
-                    <div style="font-size: 0.9em; padding: 12px; background: #f5f5f5; border-radius: 8px;">
+                    <div style="font-size: 0.9em; padding: 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
                         📄 Hoja destino: <strong>${this.config.sheetName}</strong><br>
                         ${stats.lastSyncTime ? `🕐 Última sync: ${stats.lastSyncTime.toLocaleTimeString()}` : '🕐 Sin sincronizar aún'}
                     </div>
 
                     ${stats.pendingSync > 0 ? `
-                        <div style="margin-top: 15px; padding: 12px; background: #fff3e0; border-radius: 8px; border-left: 4px solid var(--warning);">
+                        <div style="padding: 12px; background: #fff3e0; border-radius: 8px; border-left: 4px solid var(--warning); margin-bottom: 15px;">
                             <strong>⚠️ ${stats.pendingSync} registros pendientes</strong><br>
                             <span style="font-size: 0.85em;">Se recomienda sincronizar antes de cerrar.</span>
                         </div>
                     ` : ''}
-                </div>
 
-                <div class="popup-buttons" style="flex-direction: column; gap: 10px;">
-                    ${stats.pendingSync > 0 && stats.isOnline && stats.hasToken ? `
-                        <button class="btn btn-primary" style="width: 100%;" onclick="window.syncManager.sync(); this.closest('.popup-overlay').remove();">
-                            🔄 Sincronizar Ahora
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${stats.pendingSync > 0 && stats.isOnline && stats.hasToken ? `
+                            <button class="btn btn-primary" onclick="window.syncManager.sync(); this.closest('.popup-overlay').remove();">
+                                🔄 Sincronizar Ahora
+                            </button>
+                            <button class="btn btn-success" onclick="window.syncManager.syncSlow(); this.closest('.popup-overlay').remove();">
+                                ⏱️ Sync Lenta (más segura)
+                            </button>
+                        ` : ''}
+                        ${stats.pendingSync > 0 ? `
+                            <button class="btn btn-warning" onclick="window.syncManager.exportPending(); this.closest('.popup-overlay').remove();">
+                                📥 Exportar Pendientes (CSV)
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove();">
+                            Cerrar
                         </button>
-                        <button class="btn btn-success" style="width: 100%;" onclick="window.syncManager.syncSlow(); this.closest('.popup-overlay').remove();">
-                            ⏱️ Sync Lenta (más segura)
-                        </button>
-                    ` : ''}
-                    ${stats.pendingSync > 0 ? `
-                        <button class="btn btn-warning" style="width: 100%;" onclick="window.syncManager.exportPending(); this.closest('.popup-overlay').remove();">
-                            📥 Exportar Pendientes (CSV)
-                        </button>
-                    ` : ''}
-                    <button class="btn btn-secondary" style="width: 100%;" onclick="this.closest('.popup-overlay').remove();">
-                        Cerrar
-                    </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -508,12 +506,11 @@ class SyncManager {
         overlay.className = 'popup-overlay show exit-dialog-overlay';
         overlay.innerHTML = `
             <div class="popup-content" style="max-width: 450px;">
-                <button class="popup-close-x" onclick="this.closest('.popup-overlay').remove()">×</button>
-                <div class="popup-header" style="color: var(--warning);">
-                    ⚠️ Salida Segura
+                <div class="popup-header">
+                    <span>⚠️ Salida Segura</span>
+                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
                 </div>
-
-                <div style="margin: 20px 0;">
+                <div style="padding: 20px;">
                     <div style="padding: 15px; background: #f9f9f9; border-radius: 8px; margin-bottom: 15px;">
                         ⏳ <strong>${stats.pendingSync}</strong> pendientes de sync<br>
                         ${stats.isOnline ? '🟢' : '🔴'} Internet ${stats.isOnline ? 'conectado' : 'desconectado'}<br>
@@ -521,27 +518,27 @@ class SyncManager {
                     </div>
 
                     ${stats.pendingSync > 0 ? `
-                        <div style="padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid var(--warning);">
+                        <div style="padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid var(--warning); margin-bottom: 15px;">
                             <strong>⚠️ ${stats.pendingSync} sin sincronizar</strong><br>
                             <span style="font-size: 0.85em;">${canSync ? 'Se recomienda sincronizar antes de salir.' : 'Se sincronizarán automáticamente.'}</span>
                         </div>
                     ` : `
-                        <div style="padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid var(--success);">
+                        <div style="padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid var(--success); margin-bottom: 15px;">
                             <strong>✅ Todo sincronizado</strong><br>
                             <span style="font-size: 0.85em;">Puedes salir de forma segura.</span>
                         </div>
                     `}
-                </div>
 
-                <div class="popup-buttons" style="flex-direction: column; gap: 10px;">
-                    ${canSync ? `
-                        <button id="sync-exit-btn" class="btn btn-success" style="width: 100%;">
-                            🔄 Sincronizar y Salir
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${canSync ? `
+                            <button id="sync-exit-btn" class="btn btn-success">
+                                🔄 Sincronizar y Salir
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove();">
+                            Cancelar
                         </button>
-                    ` : ''}
-                    <button class="btn btn-secondary" style="width: 100%;" onclick="this.closest('.popup-overlay').remove();">
-                        Cancelar
-                    </button>
+                    </div>
                 </div>
             </div>
         `;
