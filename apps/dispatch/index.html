@@ -136,11 +136,13 @@
                     <div class="card">
                         <div class="input-group">
                             <label style="font-size: 1.1em; color: var(--primary);">📦 Buscar por OBC o Código de Caja:</label>
-                            <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
+                            <div class="search-input-row">
+                                <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
+                                <button class="btn btn-primary" onclick="executeSearch()">
+                                    🔍 Buscar
+                                </button>
+                            </div>
                         </div>
-                        <button class="btn btn-primary" onclick="executeSearch()" style="margin-top: 15px;">
-                            🔍 Buscar
-                        </button>
                     </div>
 
                     <!-- Órdenes del Día -->

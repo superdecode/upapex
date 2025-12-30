@@ -1866,3 +1866,20 @@ textarea:focus {
     height: auto;
     max-height: none;
 }
+
+/* ==================== SEARCH INPUT ROW ==================== */
+.search-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.search-input-row input {
+    flex: 1;
+    margin: 0;
+}
+
+.search-input-row button {
+    flex-shrink: 0;
+    margin: 0;
+}
