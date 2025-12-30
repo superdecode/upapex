@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📦 Sistema Inventario</title>
+    <title>Sistema Inventario</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
     <link rel="stylesheet" href="../../shared/css/variables.css">
     <link rel="stylesheet" href="../../shared/css/base.css">
     <link rel="stylesheet" href="../../shared/css/layout.css">
@@ -39,6 +40,7 @@
 
     <div id="main-app" class="hidden">
         <div class="main-container">
+            <!-- SIDEBAR SIMPLIFICADO -->
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h2>📦 Inventario</h2>
@@ -77,20 +79,8 @@
                 </div>
 
                 <div class="sidebar-section">
-                    <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
-                        📊 Resumen
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="GlobalTabs.createTab()">
-                        ➕ Nueva Sesión
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="newSession()">
-                        🔄 Reiniciar Sesión
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="window.syncManager?.showPanel()">
-                        ☁️ Sincronización
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
-                        📥 Exportar
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="GlobalTabs.createTab()">
+                        ➕ Nuevo
                     </button>
                 </div>
 
@@ -117,14 +107,12 @@
             </div>
 
             <div class="main-content">
-                <!-- Unified Tabs Container -->
-                <div class="unified-tabs-container" id="unified-tabs-container">
-                    <div class="global-tabs-container" id="global-tabs-container">
-                        <!-- Tabs will be dynamically added here -->
+                <!-- Tab Bar homogéneo con validador -->
+                <div class="header" id="tabs-header" style="display: none;">
+                    <div class="tab-bar" id="tab-bar"></div>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary btn-small" onclick="exportData()">📥 CSV</button>
                     </div>
-                    <button class="add-tab-btn" onclick="GlobalTabs.createTab()" title="Nueva sesión">
-                        ➕
-                    </button>
                 </div>
 
                 <!-- Welcome State (visible when no sessions) -->
@@ -132,17 +120,10 @@
                     <div class="welcome-content">
                         <div class="welcome-icon">📦</div>
                         <h2 class="welcome-title">Sistema de Inventario</h2>
-                        <p class="welcome-subtitle">Selecciona el tipo de trabajo para comenzar</p>
-                        <div class="welcome-actions">
-                            <button class="btn btn-primary btn-large" onclick="GlobalTabs.createTab('classic')">
-                                📋 Clasificado
-                                <span class="btn-description">Separar por OK, Bloqueado y No WMS</span>
-                            </button>
-                            <button class="btn btn-secondary btn-large" onclick="GlobalTabs.createTab('unified')">
-                                📦 Unificado
-                                <span class="btn-description">Registro directo sin clasificación</span>
-                            </button>
-                        </div>
+                        <p class="welcome-subtitle">Comienza agregando una nueva sesión de trabajo</p>
+                        <button class="btn btn-success btn-start" onclick="GlobalTabs.createTab()" style="padding: 18px 50px; font-size: 1.2em; font-weight: 700;">
+                            🚀 Nuevo
+                        </button>
                     </div>
                 </div>
 
@@ -161,28 +142,29 @@
                     </div>
 
                     <div class="scan-section">
-                        <input type="text" class="scan-input" id="scan-input"
-                               placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
-
-                        <div class="result-box" id="result-box">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <span id="result-icon">📦</span>
-                                <span id="result-title">Estado</span>
-                                <span id="result-details" style="color: #666; font-size: 0.85em;"></span>
+                        <div class="scan-row">
+                            <div class="scan-input-group" style="flex: 2;">
+                                <input type="text" class="scan-input" id="scan-input"
+                                       placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
                             </div>
+                            <div class="scan-input-group code2-inline" id="code2-inline" style="flex: 1; display: none;">
+                                <input type="text" class="scan-input" id="code2-input"
+                                       placeholder="Código 2..." autocomplete="off" style="background: #fff5ed;">
+                            </div>
+                            <button class="btn btn-warning btn-insertar" id="btn-insertar" onclick="forceInsert()" style="display: none;">
+                                ⚡ Insertar
+                            </button>
                         </div>
 
-                        <!-- Code2 Container (hidden by default) -->
-                        <div id="code2-container" style="display: none; margin-top: 10px; padding: 10px; background: #fff3e0; border-radius: 6px; border: 2px solid var(--warning);">
-                            <div style="font-size: 0.9em; margin-bottom: 8px; font-weight: 600; color: #666;">
-                                ⚠️ Código no encontrado - Ingresa Código 2 alternativo:
-                            </div>
-                            <input type="text" class="scan-input" id="code2-input"
-                                   placeholder="🔍 Código 2..." autocomplete="off" style="background: white;">
-                            <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                <button class="btn btn-warning btn-small" onclick="forceInsert()" style="flex: 1;">
-                                    ⚡ INSERTADO (Sin Code2)
-                                </button>
+                        <div class="result-box" id="result-box">
+                            <div class="result-compact">
+                                <div class="result-status">
+                                    <span class="icon" id="result-icon">📦</span>
+                                    <span id="result-title">Estado</span>
+                                </div>
+                                <div class="result-info">
+                                    <span id="result-details" style="color: #666; font-size: 0.85em;"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -191,17 +173,20 @@
                         <div class="column ok">
                             <div class="column-header" onclick="showPalletDetailModal('ok')" style="cursor: pointer;" title="Ver detalles">
                                 <span class="column-title">✅ OK</span>
-                                <span class="column-count" id="ok-count">0</span>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span class="verification-badge" id="ok-verified-badge" style="display: none;">
+                                        <span class="badge-icon">✓</span><span id="ok-verified-count">0</span>
+                                    </span>
+                                    <span class="verification-badge pending" id="ok-pending-badge" style="display: none;">
+                                        <span class="badge-icon">○</span><span id="ok-pending-count">0</span>
+                                    </span>
+                                    <span class="column-count" id="ok-count">0</span>
+                                </div>
                             </div>
                             <div class="column-pallet-info">
                                 <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
                                 <input type="text" class="column-location-input" id="location-ok"
                                        placeholder="📍 Ubicación destino...">
-                                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                                    <button class="btn btn-small btn-secondary" onclick="toggleBlindCount('ok')" title="Activar/Desactivar validación ciega" style="flex: 1;">
-                                        🔒 Ciega
-                                    </button>
-                                </div>
                                 <button class="column-send-btn" onclick="sendPallet('ok')" id="send-ok-btn" disabled>
                                     📤 Enviar Tarima OK
                                 </button>
@@ -223,11 +208,6 @@
                                 <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
                                 <input type="text" class="column-location-input" id="location-blocked"
                                        placeholder="📍 Ubicación destino...">
-                                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                                    <button class="btn btn-small btn-secondary" onclick="toggleBlindCount('blocked')" title="Activar/Desactivar validación ciega" style="flex: 1;">
-                                        🔒 Ciega
-                                    </button>
-                                </div>
                                 <button class="column-send-btn" onclick="sendPallet('blocked')" id="send-blocked-btn" disabled>
                                     📤 Enviar Tarima Bloqueado
                                 </button>
@@ -249,11 +229,6 @@
                                 <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
                                 <input type="text" class="column-location-input" id="location-nowms"
                                        placeholder="📍 Ubicación destino...">
-                                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                                    <button class="btn btn-small btn-secondary" onclick="toggleBlindCount('nowms')" title="Activar/Desactivar validación ciega" style="flex: 1;">
-                                        🔒 Ciega
-                                    </button>
-                                </div>
                                 <button class="column-send-btn" onclick="sendPallet('nowms')" id="send-nowms-btn" disabled>
                                     📤 Enviar Tarima No WMS
                                 </button>
@@ -292,10 +267,14 @@
                                placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
 
                         <div class="result-box" id="unified-result-box">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <span id="unified-result-icon">📦</span>
-                                <span id="unified-result-title">Listo para escanear</span>
-                                <span id="unified-result-details" style="color: #666; font-size: 0.85em;"></span>
+                            <div class="result-compact">
+                                <div class="result-status">
+                                    <span class="icon" id="unified-result-icon">📦</span>
+                                    <span id="unified-result-title">Listo para escanear</span>
+                                </div>
+                                <div class="result-info">
+                                    <span id="unified-result-details" style="color: #666; font-size: 0.85em;"></span>
+                                </div>
                             </div>
                         </div>
                     </div>

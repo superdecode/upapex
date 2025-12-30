@@ -912,11 +912,207 @@
 .counter-badge.ok { background: rgba(76, 175, 80, 0.15); color: var(--success); }
 .counter-badge.pending { background: rgba(244, 67, 54, 0.15); color: var(--error); }
 
+/* ==================== TAB BAR (HOMOGÉNEO CON VALIDADOR) ==================== */
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.tab-bar::-webkit-scrollbar {
+    height: 4px;
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 2px;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-size: 0.85em;
+    font-weight: 500;
+    position: relative;
+}
+
+.tab:hover {
+    border-color: var(--primary);
+    background: #fff5ed;
+}
+
+.tab.active {
+    border-color: var(--primary);
+    border-bottom-color: white;
+    background: white;
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: white;
+}
+
+.tab.classic {
+    border-left: 3px solid var(--success);
+}
+
+.tab.unified {
+    border-left: 3px solid var(--info);
+}
+
+.tab-icon {
+    font-size: 1em;
+}
+
+.tab-name {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tab-badge {
+    background: var(--primary);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+}
+
+.tab-close {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 1.1em;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.tab-close:hover {
+    opacity: 1;
+    color: var(--error);
+}
+
+.tab-add {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 2px dashed #ccc;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    font-size: 1.2em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.tab-add:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: #fff5ed;
+}
+
+/* ==================== SCAN ROW INLINE ==================== */
+.scan-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.scan-input-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.code2-inline {
+    transition: all 0.3s ease;
+}
+
+.btn-insertar {
+    white-space: nowrap;
+    padding: 10px 15px;
+    font-weight: 700;
+    height: auto;
+    align-self: stretch;
+}
+
+/* ==================== VERIFICATION BADGES ==================== */
+.verification-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    font-weight: 600;
+    background: rgba(76, 175, 80, 0.15);
+    color: var(--success);
+}
+
+.verification-badge.pending {
+    background: rgba(158, 158, 158, 0.15);
+    color: #666;
+}
+
+.badge-icon {
+    font-size: 0.9em;
+}
+
+/* ==================== BOX ITEM VERIFIED ==================== */
+.box-item.verified {
+    background: rgba(76, 175, 80, 0.1);
+    border-left-color: var(--success);
+}
+
+.box-item.verified .box-code {
+    color: var(--success);
+}
+
+/* ==================== WELCOME STATE IMPROVEMENTS ==================== */
+.btn-start {
+    animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 15px rgba(76, 175, 80, 0);
+    }
+}
+
 /* ==================== RESPONSIVE ==================== */
 @media (max-width: 1024px) {
     .sidebar { width: 180px; }
     .columns-container { grid-template-columns: 1fr; }
     .resumen-stats { grid-template-columns: repeat(2, 1fr); }
+    .scan-row { flex-wrap: wrap; }
 }
 
 @media (max-width: 768px) {
@@ -924,6 +1120,7 @@
     .sidebar { width: 100%; max-height: 200px; }
     .scan-header-bar { flex-direction: column; }
     .global-counter { margin-left: 0; margin-top: 10px; }
+    .tab-bar { overflow-x: auto; }
 }
 
 /* ==================== GLOBAL SUMMARY SECTION ==================== */

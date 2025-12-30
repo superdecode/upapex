@@ -89,11 +89,14 @@ const GlobalTabs = {
         // Load new tab data
         if (tab.type === 'classic') {
             STATE.pallets = JSON.parse(JSON.stringify(tab.data.pallets));
-            document.getElementById('origin-location').value = tab.data.originLocation || '';
+            const originInput = document.getElementById('origin-location');
+            if (originInput) originInput.value = tab.data.originLocation || '';
         } else {
             UnifiedModule.items = tab.data.items || [];
-            document.getElementById('unified-origin-location').value = tab.data.originLocation || '';
-            document.getElementById('unified-dest-location').value = tab.data.destLocation || '';
+            const originInput = document.getElementById('unified-origin-location');
+            const destInput = document.getElementById('unified-dest-location');
+            if (originInput) originInput.value = tab.data.originLocation || '';
+            if (destInput) destInput.value = tab.data.destLocation || '';
         }
 
         this.updateVisibility();
@@ -161,7 +164,7 @@ const GlobalTabs = {
         const welcomeState = document.getElementById('welcome-state');
         const classicModule = document.getElementById('classic-module');
         const unifiedModule = document.getElementById('unified-module');
-        const tabsContainer = document.getElementById('unified-tabs-container');
+        const tabsHeader = document.getElementById('tabs-header');
 
         if (this.tabs.length === 0) {
             welcomeState?.classList.remove('module-hidden');
@@ -170,11 +173,11 @@ const GlobalTabs = {
             classicModule?.classList.add('module-hidden');
             unifiedModule?.classList.remove('module-visible');
             unifiedModule?.classList.add('module-hidden');
-            if (tabsContainer) tabsContainer.style.display = 'none';
+            if (tabsHeader) tabsHeader.style.display = 'none';
         } else {
             welcomeState?.classList.remove('module-visible');
             welcomeState?.classList.add('module-hidden');
-            if (tabsContainer) tabsContainer.style.display = 'flex';
+            if (tabsHeader) tabsHeader.style.display = 'flex';
 
             const activeTab = this.tabs.find(t => t.id === this.activeTabId);
             if (activeTab?.type === 'classic') {
@@ -192,27 +195,29 @@ const GlobalTabs = {
     },
 
     render() {
-        const container = document.getElementById('global-tabs-container');
-        if (!container) return;
+        const tabBar = document.getElementById('tab-bar');
+        if (!tabBar) return;
 
-        container.innerHTML = this.tabs.map(tab => {
+        tabBar.innerHTML = this.tabs.map(tab => {
             const itemCount = tab.type === 'classic'
                 ? (tab.data.pallets.ok.boxes.length + tab.data.pallets.blocked.boxes.length + tab.data.pallets.nowms.boxes.length)
                 : tab.data.items.length;
 
             const icon = tab.type === 'classic' ? '📋' : '📦';
             const isActive = tab.id === this.activeTabId;
+            const typeClass = tab.type === 'classic' ? 'classic' : 'unified';
 
             return `
-                <div class="global-tab ${tab.type} ${isActive ? 'active' : ''}"
-                     onclick="GlobalTabs.setActiveTab('${tab.id}')">
+                <div class="tab ${typeClass} ${isActive ? 'active' : ''}" onclick="GlobalTabs.setActiveTab('${tab.id}')">
                     <span class="tab-icon">${icon}</span>
                     <span class="tab-name">${tab.name}</span>
-                    <span class="tab-count">${itemCount}</span>
+                    ${itemCount > 0 ? `<span class="tab-badge">${itemCount}</span>` : ''}
                     <button class="tab-close" onclick="GlobalTabs.closeTab('${tab.id}', event)">×</button>
                 </div>
             `;
-        }).join('');
+        }).join('') + `
+            <button class="tab-add" onclick="GlobalTabs.createTab()" title="Nueva pestaña">+</button>
+        `;
     },
 
     showWorkTypePopup() {
@@ -298,6 +303,7 @@ const GlobalTabs = {
 // ==================== UNIFIED MODULE ====================
 const UnifiedModule = {
     items: [],
+    canceladosMode: false,
 
     init() {
         this.setupEventListeners();
@@ -425,6 +431,26 @@ const UnifiedModule = {
         }
     },
 
+    toggleCancelados(isChecked) {
+        this.canceladosMode = isChecked;
+        const toggleLabel = document.getElementById('cancelados-toggle-label');
+        if (toggleLabel) {
+            if (isChecked) {
+                toggleLabel.classList.add('active');
+                showNotification('🚫 Modo CANCELADOS activado', 'warning');
+            } else {
+                toggleLabel.classList.remove('active');
+                showNotification('✅ Modo normal activado', 'success');
+            }
+        }
+        this.updateUI();
+        GlobalTabs.saveToStorage();
+    },
+
+    isCancelados() {
+        return this.canceladosMode || false;
+    },
+
     async sendAll() {
         const originLocation = document.getElementById('unified-origin-location')?.value.trim().toUpperCase() || '';
         const destLocation = document.getElementById('unified-dest-location')?.value.trim().toUpperCase() || '';
@@ -441,31 +467,38 @@ const UnifiedModule = {
             return;
         }
 
-        if (!confirm(`¿Enviar ${this.items.length} registros a ${locationCheck.formatted}?`)) {
+        const isCancelados = this.isCancelados();
+        const modeText = isCancelados ? ' como CANCELADOS' : '';
+
+        if (!confirm(`¿Enviar ${this.items.length} registros a ${locationCheck.formatted}${modeText}?`)) {
             return;
         }
 
         showLoading(true);
         try {
-            const now = new Date();
             const dateStr = getCurrentDate();
             const timeStr = getCurrentTime();
             const palletId = generatePalletId('UNI');
 
             const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
 
-            const records = this.items.map(item => ({
-                date: dateStr,
-                time: timeStr,
-                user: STATE.userAlias || STATE.userName || 'Usuario',
-                scan1: item.code,
-                scan2: '',
-                location: locationCheck.formatted,
-                status: statusMap[item.status],
-                note: 'UNIFICADO',
-                pallet: palletId,
-                originLocation: originLocation
-            }));
+            const records = this.items.map(item => {
+                const finalStatus = isCancelados ? 'CANCELADO' : statusMap[item.status];
+                const note = isCancelados ? `Original: ${statusMap[item.status]}` : 'UNIFICADO';
+
+                return {
+                    date: dateStr,
+                    time: timeStr,
+                    user: STATE.userAlias || STATE.userName || 'Usuario',
+                    scan1: item.code,
+                    scan2: '',
+                    location: locationCheck.formatted,
+                    status: finalStatus,
+                    note: note,
+                    pallet: palletId,
+                    originLocation: originLocation
+                };
+            });
 
             STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
@@ -476,12 +509,13 @@ const UnifiedModule = {
                 }
             }
 
+            const count = this.items.length;
             this.items = [];
             this.updateUI();
             GlobalTabs.saveToStorage();
             updateGlobalSummaryFromTabs();
 
-            showNotification(`✅ ${records.length} registros enviados`, 'success');
+            showNotification(`✅ ${count} registros enviados${modeText}`, 'success');
             playSound('success');
         } catch (error) {
             console.error('Error sending unified:', error);
@@ -704,15 +738,15 @@ function processScan(rawCode) {
 
     if (!item) {
         STATE.pendingCode1 = { raw: rawCode, code };
-        showResultBox('error', code, 'NO ENCONTRADO', 'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.');
-        document.getElementById('code2-container').style.display = 'block';
+        showResultBox('error', code, 'NO ENCONTRADO', 'Código no encontrado en WMS. Ingresa Código 2 o usa Insertar.');
+        showCode2Inline(true);
         flashInput('error');
         playSound('error');
-        setTimeout(() => document.getElementById('code2-input').focus(), 100);
+        setTimeout(() => document.getElementById('code2-input')?.focus(), 100);
         return;
     }
 
-    document.getElementById('code2-container').style.display = 'none';
+    hideCode2Inline();
     STATE.pendingCode1 = null;
 
     if (item.isBlocked) {
@@ -732,6 +766,19 @@ function processScan(rawCode) {
     flashInput('success');
 }
 
+function showCode2Inline(show) {
+    const code2Inline = document.getElementById('code2-inline');
+    const btnInsertar = document.getElementById('btn-insertar');
+    if (code2Inline) code2Inline.style.display = show ? 'block' : 'none';
+    if (btnInsertar) btnInsertar.style.display = show ? 'block' : 'none';
+}
+
+function hideCode2Inline() {
+    showCode2Inline(false);
+    const code2Input = document.getElementById('code2-input');
+    if (code2Input) code2Input.value = '';
+}
+
 function processCode2(rawCode2) {
     if (!STATE.pendingCode1) return;
 
@@ -739,7 +786,7 @@ function processCode2(rawCode2) {
     const code2 = result.code;
     const item = result.item;
 
-    document.getElementById('code2-container').style.display = 'none';
+    hideCode2Inline();
 
     if (!item) {
         addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
@@ -758,7 +805,7 @@ function processCode2(rawCode2) {
 
     STATE.pendingCode1 = null;
     flashInput('success');
-    document.getElementById('scan-input').focus();
+    document.getElementById('scan-input')?.focus();
 }
 
 function forceInsert() {
@@ -767,7 +814,7 @@ function forceInsert() {
         return;
     }
 
-    const code2Value = document.getElementById('code2-input').value.trim();
+    const code2Value = document.getElementById('code2-input')?.value.trim() || '';
 
     addBox('nowms', createBoxData(
         STATE.pendingCode1.raw,
@@ -782,13 +829,12 @@ function forceInsert() {
 
     showResultBox('error', STATE.pendingCode1.code, 'INSERTADO (No WMS)', msg);
 
-    document.getElementById('code2-container').style.display = 'none';
-    document.getElementById('code2-input').value = '';
+    hideCode2Inline();
     STATE.pendingCode1 = null;
 
     playSound('warning');
     flashInput('warning');
-    document.getElementById('scan-input').focus();
+    document.getElementById('scan-input')?.focus();
     showNotification('⚡ Registro insertado forzosamente', 'warning');
 }
 
@@ -871,7 +917,7 @@ function forceInsertDuplicate(code, rawCode) {
     }
 
     playSound('warning');
-    document.getElementById('scan-input').focus();
+    document.getElementById('scan-input')?.focus();
 }
 
 function createBoxData(raw, code, scan2, item) {
@@ -885,7 +931,8 @@ function createBoxData(raw, code, scan2, item) {
         location: item?.cellNo || '-',
         sku: item?.sku || '-',
         product: item?.productName || '-',
-        timestamp: getTimestamp()
+        timestamp: getTimestamp(),
+        verified: false
     };
 }
 
@@ -914,19 +961,24 @@ function updateUI() {
             if (boxes.length === 0) {
                 list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>Sin cajas</div></div>';
             } else {
-                list.innerHTML = boxes.map((box, i) => `
-                    <div class="box-item ${cat}">
+                list.innerHTML = boxes.map((box, i) => {
+                    const verifiedClass = box.verified ? 'verified' : '';
+                    const checkIcon = cat === 'ok' ? (box.verified ? '✓' : '○') : '';
+
+                    return `
+                    <div class="box-item ${cat} ${verifiedClass}">
                         <div class="box-info">
                             <div class="box-code">${box.code}${box.scan2 ? ' / ' + box.scan2 : ''}</div>
                             <div class="box-meta">${box.timestamp} • ${box.location}</div>
                         </div>
                         <div class="box-actions">
+                            ${cat === 'ok' ? `<button class="box-action-btn check" onclick="toggleBoxVerified('ok', ${i})" title="Marcar verificado">${checkIcon}</button>` : ''}
                             <button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')" title="Copiar">⧉</button>
                             <button class="box-action-btn move" onclick="showMoveBoxPopup('${cat}', ${i})" title="Mover">⇄</button>
                             <button class="box-action-btn delete" onclick="deleteBox('${cat}', ${i})" title="Eliminar">×</button>
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
             }
         }
     });
@@ -963,11 +1015,11 @@ function updateSendButtons() {
     });
 }
 
-// ==================== ENVÍO DE PALLETS ====================
+// ==================== ENVÍO DE PALLETS (SIN VALIDACIÓN CIEGA) ====================
 async function sendPallet(category) {
     const pallet = STATE.pallets[category];
     const location = document.getElementById(`location-${category}`).value.trim();
-    const originLocation = document.getElementById('origin-location').value.trim().toUpperCase();
+    const originLocation = document.getElementById('origin-location')?.value.trim().toUpperCase() || '';
 
     if (pallet.boxes.length === 0) {
         showNotification('⚠️ No hay cajas en esta tarima', 'warning');
@@ -976,30 +1028,23 @@ async function sendPallet(category) {
 
     if (!location) {
         showNotification('⚠️ Ingresa la ubicación destino', 'warning');
-        document.getElementById(`location-${category}`).focus();
+        document.getElementById(`location-${category}`)?.focus();
         return;
     }
 
     const locationCheck = confirmInvalidLocation(location);
     if (!locationCheck.confirmed) {
         showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-        document.getElementById(`location-${category}`).focus();
+        document.getElementById(`location-${category}`)?.focus();
         return;
     }
 
     const finalLocation = locationCheck.formatted;
     document.getElementById(`location-${category}`).value = finalLocation;
 
-    if (pallet.blindCount) {
-        const blindConfirmed = await confirmBlindCount(category, finalLocation);
-        if (!blindConfirmed) {
-            showNotification('❌ Envío cancelado', 'warning');
-            return;
-        }
-    } else {
-        if (!confirm(`¿Enviar ${pallet.boxes.length} cajas a ${finalLocation}?`)) {
-            return;
-        }
+    // Confirmación directa sin validación ciega
+    if (!confirm(`¿Enviar ${pallet.boxes.length} cajas a ${finalLocation}?`)) {
+        return;
     }
 
     showLoading(true);
@@ -1039,6 +1084,7 @@ async function sendPallet(category) {
         GlobalTabs.saveToStorage();
         updateGlobalSummaryFromTabs();
         playSound('success');
+        showNotification(`✅ Tarima ${statusMap[category]} enviada correctamente`, 'success');
 
     } catch (error) {
         console.error('Error sending pallet:', error);
@@ -1184,94 +1230,6 @@ function refreshInventory() {
     loadInventory();
 }
 
-function startNewSession() {
-    GlobalTabs.createTab();
-}
-
-function showResumen() {
-    let totalOk = 0, totalBlocked = 0, totalNowms = 0;
-
-    GlobalTabs.tabs.forEach(tab => {
-        if (tab.type === 'classic') {
-            totalOk += tab.data.pallets.ok.boxes.length;
-            totalBlocked += tab.data.pallets.blocked.boxes.length;
-            totalNowms += tab.data.pallets.nowms.boxes.length;
-        } else {
-            tab.data.items.forEach(item => {
-                if (item.status === 'ok') totalOk++;
-                else if (item.status === 'blocked') totalBlocked++;
-                else totalNowms++;
-            });
-        }
-    });
-
-    const currentTotal = totalOk + totalBlocked + totalNowms;
-    const pending = syncManager ? syncManager.getPendingCount() : 0;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'popup-overlay show';
-    overlay.innerHTML = `
-        <div class="popup-content" style="max-width: 500px;">
-            <div class="popup-header">
-                <span>📊 Resumen General</span>
-                <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
-            </div>
-            <div style="margin-bottom: 20px;">
-                <div class="resumen-stats">
-                    <div class="resumen-stat ok">
-                        <div class="resumen-stat-number">${totalOk}</div>
-                        <div class="resumen-stat-label">✅ OK</div>
-                    </div>
-                    <div class="resumen-stat blocked">
-                        <div class="resumen-stat-number">${totalBlocked}</div>
-                        <div class="resumen-stat-label">⚠️ Bloqueado</div>
-                    </div>
-                    <div class="resumen-stat nowms">
-                        <div class="resumen-stat-number">${totalNowms}</div>
-                        <div class="resumen-stat-label">❌ No WMS</div>
-                    </div>
-                    <div class="resumen-stat pending">
-                        <div class="resumen-stat-number">${pending}</div>
-                        <div class="resumen-stat-label">⏳ Pendientes</div>
-                    </div>
-                </div>
-
-                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>📦 Total registros:</span>
-                        <strong>${currentTotal}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>📋 Sesiones activas:</span>
-                        <strong>${GlobalTabs.tabs.length}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>📜 Historial:</span>
-                        <strong>${STATE.history.length}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>💾 BD Códigos:</span>
-                        <strong>${STATE.inventory.size.toLocaleString()}</strong>
-                    </div>
-                </div>
-
-                <div style="margin-top: 15px; font-size: 0.85em; color: #666; text-align: center;">
-                    👤 ${STATE.userAlias || STATE.userName} • 📅 ${STATE.inventoryLastUpdate || 'Sin actualizar'}
-                </div>
-            </div>
-            <div class="popup-buttons">
-                <button class="btn btn-primary btn-full" onclick="this.closest('.popup-overlay').remove()">
-                    Cerrar
-                </button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-}
-
 function exportData() {
     if (STATE.history.length === 0) {
         showNotification('No hay datos para exportar', 'warning');
@@ -1356,114 +1314,6 @@ function saveUserAlias() {
 
     showNotification(`✅ Nombre actualizado: ${alias}`, 'success');
     playSound('success');
-}
-
-// ==================== VALIDACIÓN CIEGA ====================
-function toggleBlindCount(category) {
-    const pallet = STATE.pallets[category];
-    pallet.blindCount = !pallet.blindCount;
-
-    const btn = document.getElementById(`send-${category}-btn`);
-    if (btn) {
-        if (pallet.blindCount) {
-            btn.textContent = `🔒 Enviar Tarima ${category.toUpperCase()} (Ciega)`;
-            btn.style.background = 'var(--warning)';
-            showNotification(`⚠️ Modo ciego activado`, 'warning');
-        } else {
-            const labels = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
-            btn.textContent = `📤 Enviar Tarima ${labels[category]}`;
-            btn.style.background = '';
-            showNotification(`✅ Modo normal activado`, 'success');
-        }
-    }
-}
-
-function confirmBlindCount(category, location) {
-    return new Promise((resolve) => {
-        const pallet = STATE.pallets[category];
-        const boxCount = pallet.boxes.length;
-
-        const overlay = document.createElement('div');
-        overlay.className = 'popup-overlay show';
-        overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 450px;">
-                <div class="popup-header" style="background: var(--warning); color: white;">
-                    <span>🔒 Validación Ciega</span>
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <p style="font-weight: 600; margin-bottom: 15px; color: var(--warning);">
-                        ⚠️ MODO CIEGO ACTIVADO
-                    </p>
-                    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                        <div style="font-size: 0.9em; color: #666; margin-bottom: 8px;">Ubicación destino:</div>
-                        <div style="font-size: 1.2em; font-weight: 700; margin-bottom: 15px;">${location}</div>
-                        <div style="font-size: 0.9em; color: #666; margin-bottom: 8px;">Cajas en sistema:</div>
-                        <div style="font-size: 2em; font-weight: 700; color: var(--primary);">${boxCount}</div>
-                    </div>
-                    <label style="display: block; margin-bottom: 10px; font-weight: 600;">
-                        Ingresa el conteo físico:
-                    </label>
-                    <input type="number" id="blind-count-input" class="scan-input"
-                           placeholder="Número de cajas..."
-                           min="0" style="width: 100%; font-size: 1.5em; text-align: center;">
-                </div>
-                <div class="popup-buttons">
-                    <button class="btn btn-primary btn-full" onclick="validateBlindCount(${boxCount})">
-                        ✅ Confirmar
-                    </button>
-                    <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove(); window.blindCountResolve(false);">
-                        Cancelar
-                    </button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-
-        window.blindCountResolve = resolve;
-
-        setTimeout(() => {
-            const input = document.getElementById('blind-count-input');
-            if (input) {
-                input.focus();
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        validateBlindCount(boxCount);
-                    }
-                });
-            }
-        }, 100);
-    });
-}
-
-function validateBlindCount(expectedCount) {
-    const input = document.getElementById('blind-count-input');
-    const physicalCount = parseInt(input.value);
-
-    if (isNaN(physicalCount) || physicalCount < 0) {
-        showNotification('⚠️ Ingresa un número válido', 'warning');
-        input.focus();
-        return;
-    }
-
-    const difference = Math.abs(physicalCount - expectedCount);
-
-    if (physicalCount === expectedCount) {
-        document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
-        showNotification('✅ Conteo correcto', 'success');
-        playSound('success');
-        window.blindCountResolve(true);
-    } else {
-        if (confirm(`⚠️ DISCREPANCIA: Sistema ${expectedCount}, Físico ${physicalCount}\nDiferencia: ${difference}\n\n¿Continuar?`)) {
-            document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
-            showNotification(`⚠️ Enviado con discrepancia: ${difference}`, 'warning');
-            playSound('warning');
-            window.blindCountResolve(true);
-        } else {
-            input.focus();
-            input.select();
-        }
-    }
 }
 
 // ==================== TRANSFERENCIA ENTRE TARIMAS ====================
@@ -1684,6 +1534,7 @@ function toggleBoxVerified(category, index) {
     box.verified = !box.verified;
     saveToStorage();
     updateUI();
+    GlobalTabs.saveToStorage();
 }
 
 function toggleBoxVerifiedModal(category, index) {
@@ -1724,152 +1575,6 @@ function updateVerificationBadges() {
     }
 }
 
-// ==================== NUEVA SESIÓN ====================
-function newSession() {
-    const total = STATE.pallets.ok.boxes.length +
-                  STATE.pallets.blocked.boxes.length +
-                  STATE.pallets.nowms.boxes.length;
-
-    if (total > 0) {
-        if (!confirm(`Hay ${total} cajas en las tarimas. ¿Iniciar nueva sesión sin enviar?`)) {
-            return;
-        }
-    }
-
-    STATE.pallets = {
-        ok: { id: generatePalletId('OK'), boxes: [], location: '' },
-        blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
-        nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
-    };
-    STATE.pendingCode1 = null;
-
-    const resultBox = document.getElementById('result-box');
-    if (resultBox) resultBox.classList.remove('show');
-
-    const code2Container = document.getElementById('code2-container');
-    if (code2Container) code2Container.style.display = 'none';
-
-    ['ok', 'blocked', 'nowms'].forEach(cat => {
-        const locInput = document.getElementById(`location-${cat}`);
-        if (locInput) locInput.value = '';
-    });
-
-    const originInput = document.getElementById('origin-location');
-    if (originInput) originInput.value = '';
-
-    saveToStorage();
-    updateUI();
-    GlobalTabs.saveToStorage();
-    updateGlobalSummaryFromTabs();
-
-    showNotification('✅ Nueva sesión iniciada', 'success');
-    playSound('success');
-
-    if (originInput) originInput.focus();
-}
-
-// ==================== MODO CANCELADOS (UnifiedModule) ====================
-// Extender UnifiedModule con funcionalidad de cancelados
-UnifiedModule.canceladosMode = false;
-
-UnifiedModule.toggleCancelados = function(isChecked) {
-    this.canceladosMode = isChecked;
-
-    const toggleLabel = document.getElementById('cancelados-toggle-label');
-    if (toggleLabel) {
-        if (isChecked) {
-            toggleLabel.classList.add('active');
-            showNotification('🚫 Modo CANCELADOS activado', 'warning');
-        } else {
-            toggleLabel.classList.remove('active');
-            showNotification('✅ Modo normal activado', 'success');
-        }
-    }
-
-    this.updateUI();
-    GlobalTabs.saveToStorage();
-};
-
-UnifiedModule.isCancelados = function() {
-    return this.canceladosMode || false;
-};
-
-// Override sendAll para manejar cancelados
-const originalSendAll = UnifiedModule.sendAll;
-UnifiedModule.sendAll = async function() {
-    const originLocation = document.getElementById('unified-origin-location')?.value.trim().toUpperCase() || '';
-    const destLocation = document.getElementById('unified-dest-location')?.value.trim().toUpperCase() || '';
-
-    if (!destLocation) {
-        showNotification('⚠️ Ingresa la ubicación destino', 'warning');
-        document.getElementById('unified-dest-location')?.focus();
-        return;
-    }
-
-    const locationCheck = confirmInvalidLocation(destLocation);
-    if (!locationCheck.confirmed) {
-        showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-        return;
-    }
-
-    const isCancelados = this.isCancelados();
-    const modeText = isCancelados ? ' como CANCELADOS' : '';
-
-    if (!confirm(`¿Enviar ${this.items.length} registros a ${locationCheck.formatted}${modeText}?`)) {
-        return;
-    }
-
-    showLoading(true);
-    try {
-        const dateStr = getCurrentDate();
-        const timeStr = getCurrentTime();
-        const palletId = generatePalletId('UNI');
-
-        const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-
-        const records = this.items.map(item => {
-            const finalStatus = isCancelados ? 'CANCELADO' : statusMap[item.status];
-            const note = isCancelados ? `Original: ${statusMap[item.status]}` : 'UNIFICADO';
-
-            return {
-                date: dateStr,
-                time: timeStr,
-                user: STATE.userAlias || STATE.userName || 'Usuario',
-                scan1: item.code,
-                scan2: '',
-                location: locationCheck.formatted,
-                status: finalStatus,
-                note: note,
-                pallet: palletId,
-                originLocation: originLocation
-            };
-        });
-
-        STATE.history = [...records, ...STATE.history].slice(0, 1000);
-
-        if (syncManager) {
-            syncManager.addToQueue(records);
-            if (checkOnlineStatus() && gapi?.client?.getToken()) {
-                await syncManager.sync();
-            }
-        }
-
-        const count = this.items.length;
-        this.items = [];
-        this.updateUI();
-        GlobalTabs.saveToStorage();
-        updateGlobalSummaryFromTabs();
-
-        showNotification(`✅ ${count} registros enviados${modeText}`, 'success');
-        playSound('success');
-    } catch (error) {
-        console.error('Error sending unified:', error);
-        showNotification('❌ Error al enviar', 'error');
-    } finally {
-        showLoading(false);
-    }
-};
-
 // ==================== INICIALIZACIÓN AL CARGAR ====================
 window.addEventListener('load', initializeApp);
 
@@ -1886,4 +1591,12 @@ window.clearDetailFilters = clearDetailFilters;
 window.deleteBoxModal = deleteBoxModal;
 window.toggleBoxVerified = toggleBoxVerified;
 window.toggleBoxVerifiedModal = toggleBoxVerifiedModal;
-window.newSession = newSession;
+window.forceInsert = forceInsert;
+window.forceInsertDuplicate = forceInsertDuplicate;
+window.deleteBox = deleteBox;
+window.sendPallet = sendPallet;
+window.handleLogin = handleLogin;
+window.handleLogout = handleLogout;
+window.refreshInventory = refreshInventory;
+window.exportData = exportData;
+window.saveUserAlias = saveUserAlias;
