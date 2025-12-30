@@ -66,19 +66,71 @@
                 <!-- VALIDATED TAB CONTENT -->
                 <div id="validated-content" class="tab-content" style="display: none;">
                     <div class="header">
-                        <h1>✅ Despachos Validados</h1>
-                        <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                        <div class="header-left">
+                            <h1>✅ Despachos Validados</h1>
+                        </div>
+                        <div class="header-right">
+                            <div class="status-toggle-container">
+                                <button class="status-toggle-btn" id="toggle-pending-validated" onclick="switchValidationTab('pending')">
+                                    ⏳ Pendientes <span class="toggle-badge" id="pending-badge-validated">0</span>
+                                </button>
+                                <button class="status-toggle-btn active" id="toggle-validated-validated" onclick="switchValidationTab('validated')">
+                                    ✅ Validadas <span class="toggle-badge" id="validated-badge-validated">0</span>
+                                </button>
+                            </div>
+                            <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                        </div>
                     </div>
                     <div class="card">
-                        <div id="validated-list" class="orders-list"></div>
+                        <div class="section-header-inline">
+                            <h3>📋 Órdenes Validadas</h3>
+                            <div class="filter-controls">
+                                <input type="text" id="filter-validated" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterValidatedTable()">
+                            </div>
+                        </div>
+                        <div class="orders-table-container">
+                            <table class="orders-table" id="validated-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortValidatedTable(0)">N° Orden <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(1)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(2)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(3)">Código <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(4)">Track <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(6)">% Validación <span class="sort-indicator">⇅</span></th>
+                                        <th>Rastreo</th>
+                                        <th onclick="sortValidatedTable(8)">Orden Trabajo (TRS) <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(9)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(10)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(11)">Estatus Calidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(12)">Conductor <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(13)">Folio <span class="sort-indicator">⇅</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="validated-table-body"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
                 <!-- SEARCH PANEL -->
                 <div id="search-panel" style="display: none;">
                     <div class="header">
-                        <h1>🔍 Búsqueda de Órdenes</h1>
-                        <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                        <div class="header-left">
+                            <h1>🔍 Búsqueda de Órdenes</h1>
+                        </div>
+                        <div class="header-right">
+                            <div class="status-toggle-container">
+                                <button class="status-toggle-btn" id="toggle-pending" onclick="switchValidationTab('pending')">
+                                    ⏳ Pendientes <span class="toggle-badge" id="pending-badge-header">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-validated" onclick="switchValidationTab('validated')">
+                                    ✅ Validadas <span class="toggle-badge" id="validated-badge-header">0</span>
+                                </button>
+                            </div>
+                            <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                        </div>
                     </div>
 
                     <div class="card">
@@ -94,17 +146,30 @@
                     <!-- Órdenes del Día -->
                     <div class="card" style="margin-top: 15px;">
                         <div class="section-header-inline">
-                            <h3>📋 Órdenes del Día</h3>
+                            <h3>📋 Órdenes Pendientes</h3>
                             <div class="filter-controls">
-                                <input type="text" id="filter-orders" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterOrdersList()">
-                                <select id="filter-status" class="filter-select" onchange="filterOrdersList()">
-                                    <option value="all">Todas</option>
-                                    <option value="validated">Validadas</option>
-                                    <option value="pending">Pendientes</option>
-                                </select>
+                                <input type="text" id="filter-orders" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterOrdersTable()">
                             </div>
                         </div>
-                        <div id="orders-list" class="orders-list"></div>
+                        <div class="orders-table-container">
+                            <table class="orders-table" id="orders-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortTable(0)">N° Orden <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(1)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(2)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(3)">Código <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(4)">Track <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(6)">% Validación <span class="sort-indicator">⇅</span></th>
+                                        <th>Rastreo</th>
+                                        <th onclick="sortTable(8)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orders-table-body"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -176,6 +241,109 @@
                 <button class="btn btn-primary" onclick="applyDateFilter()">Aplicar Filtro</button>
                 <button class="btn btn-secondary" onclick="clearDateFilter()">Limpiar Filtro</button>
                 <button class="btn btn-secondary" onclick="closeDateFilter()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE EXCEPCIÓN DE FECHA -->
+    <div class="modal-overlay" id="date-exception-modal">
+        <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>⚠️</span>
+                    <span>Orden Fuera del Rango de Fechas</span>
+                </div>
+                <button class="modal-close" onclick="closeDateExceptionModal()">×</button>
+            </div>
+            <div class="modal-body" id="date-exception-body">
+                <!-- Contenido dinámico -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="confirmDateException()">✅ Abrir como Excepción</button>
+                <button class="btn btn-secondary" onclick="closeDateExceptionModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE MÚLTIPLES COINCIDENCIAS -->
+    <div class="modal-overlay" id="multiple-matches-modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>🔍</span>
+                    <span>Múltiples Coincidencias Encontradas</span>
+                </div>
+                <button class="modal-close" onclick="closeMultipleMatchesModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #666;">
+                    Se encontraron <strong id="matches-count">0</strong> órdenes que coinciden con tu búsqueda.
+                    Selecciona la orden correcta:
+                </p>
+                <div id="matches-list"></div>
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button class="btn btn-secondary" onclick="closeMultipleMatchesModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIRMACIÓN DE DESPACHO -->
+    <div class="modal-overlay" id="confirm-dispatch-modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>⚠️</span>
+                    <span>Confirmar Despacho</span>
+                </div>
+                <button class="modal-close" onclick="closeConfirmDispatch()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="confirm-warning">
+                    <strong>⚠️ Por favor verifica la información antes de confirmar:</strong>
+                </div>
+                <div class="confirm-summary">
+                    <div class="confirm-row">
+                        <span class="confirm-label">📦 Número de Orden:</span>
+                        <span class="confirm-value" id="confirm-orden">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">🏢 Destino:</span>
+                        <span class="confirm-value" id="confirm-destino">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">📅 Horario:</span>
+                        <span class="confirm-value" id="confirm-horario">-</span>
+                    </div>
+                    <div class="confirm-row highlight">
+                        <span class="confirm-label">📦 Cantidad a Despachar:</span>
+                        <span class="confirm-value" id="confirm-cantidad">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">🔧 Estatus de Calidad:</span>
+                        <span class="confirm-value" id="confirm-calidad">-</span>
+                    </div>
+                    <div class="confirm-row highlight">
+                        <span class="confirm-label">👤 Conductor:</span>
+                        <span class="confirm-value" id="confirm-conductor">-</span>
+                    </div>
+                    <div class="confirm-row highlight">
+                        <span class="confirm-label">🚛 Unidad:</span>
+                        <span class="confirm-value" id="confirm-unidad">-</span>
+                    </div>
+                    <div class="confirm-row" id="confirm-nota-row" style="display: none;">
+                        <span class="confirm-label">📝 Observaciones:</span>
+                        <span class="confirm-value" id="confirm-nota">-</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-success" onclick="executeConfirmDispatch()">
+                    ✅ Confirmar Despacho
+                </button>
+                <button class="btn btn-secondary" onclick="closeConfirmDispatch()">
+                    ← Regresar y Editar
+                </button>
             </div>
         </div>
     </div>
