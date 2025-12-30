@@ -40,6 +40,12 @@ function initializeApp() {
     setupConnectionMonitor(updateConnectionStatus);
     loadFromStorage();
     updateUI();
+    
+    // Inicializar sistema de avatar
+    if (window.AvatarSystem) {
+        window.AvatarSystem.init();
+        window.AvatarSystem.createActions();
+    }
 }
 
 function gapiLoaded() {
@@ -111,15 +117,38 @@ async function getUserProfile() {
         STATE.userEmail = profile.email;
         STATE.userName = profile.name || profile.email.split('@')[0];
         
-        // Cargar alias guardado
-        const savedAlias = localStorage.getItem('wms_user_alias');
-        STATE.userAlias = savedAlias || STATE.userName;
+        // Integrar con sistema de avatar
+        if (window.AvatarSystem) {
+            const savedName = window.AvatarSystem.getUserName();
+            STATE.userAlias = savedName || STATE.userName;
+            
+            if (!savedName) {
+                window.AvatarSystem.setUserName(STATE.userName);
+            }
+            window.AvatarSystem.setUserEmail(STATE.userEmail);
+            
+            // Guardar conexión de Google
+            const token = gapi.client.getToken();
+            if (token && token.access_token) {
+                window.AvatarSystem.saveGoogleConnection(token.access_token, token.expires_in || 3600);
+            }
+        } else {
+            // Fallback si no está disponible el sistema de avatar
+            const savedAlias = localStorage.getItem('wms_user_alias');
+            STATE.userAlias = savedAlias || STATE.userName;
+        }
         
         updateUserDisplay();
         
         // Mostrar popup de alias si es primera vez
-        if (!savedAlias) {
-            setTimeout(() => showAliasPopup(), 1000);
+        if (!STATE.userAlias || STATE.userAlias === 'Usuario') {
+            setTimeout(() => {
+                if (window.AvatarSystem) {
+                    window.AvatarSystem.showNamePopup();
+                } else {
+                    showAliasPopup();
+                }
+            }, 1000);
         }
     } catch (e) {
         console.error('Error getting profile:', e);
@@ -342,7 +371,8 @@ function findDuplicate(code) {
     
     for (const cat of categories) {
         const boxes = STATE.pallets[cat].boxes;
-        const index = boxes.findIndex(b => b.code === code);
+        // Buscar en código principal (code)
+        let index = boxes.findIndex(b => b.code === code);
         if (index !== -1) {
             const box = boxes[index];
             return {
@@ -351,7 +381,24 @@ function findDuplicate(code) {
                 index,
                 box,
                 timestamp: box.timestamp,
-                user: STATE.userName
+                user: STATE.userName,
+                matchType: 'code'
+            };
+        }
+        
+        // VALIDACIÓN CRUZADA: Buscar en scan2 también
+        index = boxes.findIndex(b => b.scan2 && b.scan2 === code);
+        if (index !== -1) {
+            const box = boxes[index];
+            return {
+                category: cat,
+                categoryName: categoryNames[cat],
+                index,
+                box,
+                timestamp: box.timestamp,
+                user: STATE.userName,
+                matchType: 'scan2',
+                message: `Este código ya fue usado como Código 2 en otro registro (Código 1: ${box.code})`
             };
         }
     }
@@ -359,6 +406,13 @@ function findDuplicate(code) {
 }
 
 function showDuplicatePopup(code, duplicateInfo, rawCode) {
+    const matchTypeMsg = duplicateInfo.matchType === 'scan2' 
+        ? `<div style="background: #fff3e0; padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid var(--warning);">
+               <strong>⚠️ Validación Cruzada:</strong><br>
+               ${duplicateInfo.message}
+           </div>`
+        : '';
+    
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
     overlay.innerHTML = `
@@ -367,34 +421,39 @@ function showDuplicatePopup(code, duplicateInfo, rawCode) {
                 <span>⚠️ Código Duplicado</span>
                 <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
             </div>
-            <div class="duplicate-info">
-                <div class="duplicate-info-row">
-                    <span class="duplicate-info-label">Código:</span>
-                    <span class="duplicate-info-value"><code>${code}</code></span>
+            <div style="padding: 20px;">
+                ${matchTypeMsg}
+                <div class="duplicate-info" style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <div style="display: grid; gap: 10px;">
+                        <div>
+                            <span style="color: #666; font-size: 0.85em;">Código:</span><br>
+                            <code style="font-size: 1.1em; font-weight: 600;">${code}</code>
+                        </div>
+                        <div>
+                            <span style="color: #666; font-size: 0.85em;">Ya registrado en:</span><br>
+                            <strong>${duplicateInfo.categoryName}</strong>
+                        </div>
+                        <div>
+                            <span style="color: #666; font-size: 0.85em;">Hora de registro:</span><br>
+                            <strong>${duplicateInfo.timestamp}</strong>
+                        </div>
+                        <div>
+                            <span style="color: #666; font-size: 0.85em;">Registrado por:</span><br>
+                            <strong>${duplicateInfo.user || 'Usuario'}</strong>
+                        </div>
+                    </div>
                 </div>
-                <div class="duplicate-info-row">
-                    <span class="duplicate-info-label">Ya registrado en:</span>
-                    <span class="duplicate-info-value">${duplicateInfo.categoryName}</span>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
+                    Este código ya fue escaneado anteriormente. ¿Deseas forzar un nuevo registro?
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-warning" onclick="forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();" style="width: 100%;">
+                        ⚡ Ingreso Forzado (Duplicado)
+                    </button>
+                    <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove();" style="width: 100%;">
+                        Cancelar
+                    </button>
                 </div>
-                <div class="duplicate-info-row">
-                    <span class="duplicate-info-label">Hora de registro:</span>
-                    <span class="duplicate-info-value">${duplicateInfo.timestamp}</span>
-                </div>
-                <div class="duplicate-info-row">
-                    <span class="duplicate-info-label">Registrado por:</span>
-                    <span class="duplicate-info-value">${duplicateInfo.user || 'Usuario'}</span>
-                </div>
-            </div>
-            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
-                Este código ya fue escaneado anteriormente. ¿Deseas forzar un nuevo registro?
-            </p>
-            <div class="popup-buttons">
-                <button class="btn btn-warning btn-full" onclick="forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();">
-                    ⚡ Ingreso Forzado (Duplicado)
-                </button>
-                <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
-                    Cancelar
-                </button>
             </div>
         </div>
     `;
@@ -518,15 +577,24 @@ async function sendPallet(category) {
         return;
     }
 
-    // Validar ubicación con doble confirmación
-    const locationCheck = confirmInvalidLocation(location);
-    if (!locationCheck.confirmed) {
-        showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
+    // Validar ubicación usando función de wms-utils
+    const validation = validateAndNormalizeLocation(location);
+    
+    if (!validation.valid) {
+        showNotification(`❌ Ubicación inválida: ${validation.message || 'Formato incorrecto'}`, 'error');
         document.getElementById(`location-${category}`).focus();
         return;
     }
+    
+    // Si necesita corrección, mostrar confirmación
+    if (validation.needsCorrection) {
+        if (!confirm(`La ubicación será corregida a: ${validation.normalized}\n\n¿Continuar?`)) {
+            document.getElementById(`location-${category}`).focus();
+            return;
+        }
+    }
 
-    const finalLocation = locationCheck.formatted;
+    const finalLocation = validation.normalized;
     document.getElementById(`location-${category}`).value = finalLocation;
 
     // Validación ciega si está activada
@@ -653,6 +721,13 @@ function updateConnectionStatus(isOnline) {
 }
 
 function updateUserDisplay() {
+    // Usar sistema de avatar si está disponible
+    if (window.AvatarSystem) {
+        window.AvatarSystem.updateDisplay();
+        return;
+    }
+    
+    // Fallback
     const avatar = document.getElementById('user-avatar');
     const userName = document.getElementById('user-name-display');
     

@@ -1,3 +1,13 @@
+#dashboard {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 30px 20px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
 .dash-header {
     text-align: center;
     margin-bottom: 40px;
@@ -79,9 +89,13 @@
 .status-warning { background: var(--warning); }
 
 .validation-screen {
-    max-width: 600px;
+    max-width: 700px;
     margin: 0 auto;
     padding: 30px 20px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 .validation-header {
@@ -204,4 +218,181 @@
 
 .btn-exit:hover:not(:disabled) {
     background: linear-gradient(135deg, #5a6268, #495057);
+}
+
+/* Location Validation Popup */
+.location-validation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.location-validation-popup {
+    background: white;
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 550px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    animation: slideUp 0.3s ease-out;
+}
+
+.location-validation-header {
+    text-align: center;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.location-validation-header h3 {
+    color: var(--warning);
+    font-size: 1.5em;
+    margin-top: 10px;
+}
+
+.location-validation-body {
+    margin-bottom: 25px;
+}
+
+.location-error-box {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    border-left: 4px solid var(--error);
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.location-error-code {
+    font-size: 1.3em;
+    font-weight: 700;
+    color: var(--error);
+    font-family: 'Monaco', 'Consolas', monospace;
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 6px;
+}
+
+.location-format-info {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.location-format-pattern {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: var(--primary);
+    font-family: 'Monaco', 'Consolas', monospace;
+    margin: 10px 0 15px 0;
+    padding: 10px;
+    background: white;
+    border-radius: 6px;
+    border: 2px solid var(--primary);
+}
+
+.location-examples {
+    margin: 15px 0;
+}
+
+.location-examples ul {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0 0;
+}
+
+.location-examples li {
+    padding: 8px 12px;
+    margin: 5px 0;
+    background: white;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Consolas', monospace;
+    font-weight: 600;
+    color: var(--success);
+    border-left: 3px solid var(--success);
+}
+
+.location-tip {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 15px;
+    border-left: 3px solid #2196F3;
+    font-size: 0.9em;
+}
+
+.location-validation-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.location-validation-buttons button {
+    flex: 1;
+    padding: 14px 20px;
+    font-size: 1em;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.location-validation-buttons .btn-warning {
+    background: linear-gradient(135deg, var(--warning), #F57C00);
+    color: white;
+}
+
+.location-validation-buttons .btn-warning:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #dashboard {
+        padding: 20px 15px;
+    }
+    
+    .dash-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+    }
+    
+    .dash-header h1 {
+        font-size: 1.8em;
+    }
+    
+    .validation-screen {
+        padding: 20px 15px;
+    }
+    
+    .validation-input {
+        font-size: 1.2em;
+    }
 }

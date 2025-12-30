@@ -1,0 +1,146 @@
+/**
+ * AVATAR-SYSTEM.CSS
+ * Estilos para el sistema global de avatar
+ */
+
+.avatar-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.avatar-action-btn {
+    position: relative;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+}
+
+.avatar-action-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.avatar-action-btn .action-icon {
+    font-size: 1.2em;
+    display: block;
+}
+
+.avatar-action-btn .action-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.75em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    margin-bottom: 5px;
+    z-index: 1000;
+}
+
+.avatar-action-btn:hover .action-tooltip {
+    opacity: 1;
+}
+
+.avatar-action-btn[data-action="refresh"] .action-icon {
+    animation: none;
+}
+
+.avatar-action-btn[data-action="refresh"]:active .action-icon {
+    animation: spin 0.5s linear;
+}
+
+.avatar-action-btn[data-action="google"].connected {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: rgba(76, 175, 80, 0.4);
+}
+
+.avatar-action-btn[data-action="google"].connected:hover {
+    background: rgba(76, 175, 80, 0.3);
+}
+
+.avatar-action-btn[data-action="logout"]:hover {
+    background: rgba(244, 67, 54, 0.2);
+    border-color: rgba(244, 67, 54, 0.4);
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.popup-overlay.show {
+    display: flex;
+}
+
+.popup-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    max-width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.popup-header {
+    padding: 20px 25px;
+    border-bottom: 2px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px 12px 0 0;
+    font-size: 1.2em;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.popup-close {
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: #999;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.popup-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #333;
+}

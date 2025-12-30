@@ -1024,16 +1024,22 @@
 
         .box-action-btn.copy { color: var(--primary); border: 1px solid var(--primary); background: rgba(249, 115, 22, 0.08); }
         .box-action-btn.move { color: var(--warning); border: 1px solid var(--warning); background: rgba(255, 193, 7, 0.08); }
-        .box-action-btn.check { color: var(--success); border: 1px solid var(--success); background: rgba(76, 175, 80, 0.08); }
+        .box-action-btn.check { color: #228B22; border: 1px solid #228B22; background: rgba(34, 139, 34, 0.1); }
+        .box-action-btn.check.verified { color: white; background: #228B22; border-color: #228B22; }
         .box-action-btn.delete { color: var(--error); border: 1px solid var(--error); background: rgba(244, 67, 54, 0.08); }
         .box-action-btn:hover { transform: scale(1.1); filter: brightness(1.1); }
 
         .box-item.verified {
-            background: rgba(76, 175, 80, 0.12);
+            background: rgba(34, 139, 34, 0.15);
+            border-left-color: #228B22 !important;
         }
 
         .box-item.verified .box-check-icon {
-            color: var(--success);
+            color: #228B22;
+        }
+        
+        .box-item.verified::before {
+            color: #228B22 !important;
         }
 
         /* Scan Section Compacta */
@@ -1132,8 +1138,8 @@
             gap: 4px;
         }
 
-        .counter-badge.ok { background: rgba(76, 175, 80, 0.15); color: var(--success); }
-        .counter-badge.pending { background: rgba(244, 67, 54, 0.15); color: var(--error); }
+        .counter-badge.ok { background: rgba(34, 139, 34, 0.2); color: #228B22; border: 1px solid #228B22; }
+        .counter-badge.pending { background: rgba(220, 38, 38, 0.2); color: #DC2626; border: 1px solid #DC2626; }
 
         .pallet-detail-filters {
             display: flex;
@@ -2304,7 +2310,7 @@
                                 <span class="counter-badge ok" id="ok-verified-badge" style="display: none;">✓ <span id="ok-verified-count">0</span></span>
                                 <span class="counter-badge pending" id="ok-pending-badge" style="display: none;">○ <span id="ok-pending-count">0</span></span>
                                 <span class="column-count" id="ok-count">0</span>
-                                <button class="box-action-btn" onclick="showPalletDetailModal('ok')" title="Ver detalle" style="opacity: 0.7;">⛶</button>
+                                <button class="box-action-btn" onclick="showPalletDetailModal('ok')" title="Ver detalle" style="opacity: 0.8; font-size: 1em; border: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.03);">[ ]</button>
                             </div>
                         </div>
                         <div class="column-pallet-info">
@@ -2328,7 +2334,7 @@
                             <span class="column-title">⚠️ Bloqueado</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span class="column-count" id="blocked-count">0</span>
-                                <button class="box-action-btn" onclick="showPalletDetailModal('blocked')" title="Ver detalle" style="opacity: 0.7;">⛶</button>
+                                <button class="box-action-btn" onclick="showPalletDetailModal('blocked')" title="Ver detalle" style="opacity: 0.8; font-size: 1em; border: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.03);">[ ]</button>
                             </div>
                         </div>
                         <div class="column-pallet-info">
@@ -2352,7 +2358,7 @@
                             <span class="column-title">❌ No WMS</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span class="column-count" id="nowms-count">0</span>
-                                <button class="box-action-btn" onclick="showPalletDetailModal('nowms')" title="Ver detalle" style="opacity: 0.7;">⛶</button>
+                                <button class="box-action-btn" onclick="showPalletDetailModal('nowms')" title="Ver detalle" style="opacity: 0.8; font-size: 1em; border: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.03);">[ ]</button>
                             </div>
                         </div>
                         <div class="column-pallet-info">
@@ -3690,7 +3696,7 @@
 
                 // Solo mostrar check en columna OK
                 const checkBtn = category === 'ok'
-                    ? `<button class="box-action-btn check" onclick="toggleBoxVerified('${category}', ${index})" title="Marcar verificado">
+                    ? `<button class="box-action-btn check ${isVerified ? 'verified' : ''}" onclick="toggleBoxVerified('${category}', ${index})" title="Marcar verificado">
                          ${isVerified ? '✓' : '○'}
                        </button>`
                     : '';
@@ -3876,7 +3882,7 @@
             tbody.innerHTML = filtered.map((box, i) => {
                 const verified = box.verified || false;
                 const style = verified ? 'background: rgba(76, 175, 80, 0.1);' : '';
-                const checkBtn = category === 'ok' ? `<button class="box-action-btn check" onclick="toggleBoxVerifiedModal('${category}', ${box.originalIndex})">${verified ? '✓' : '○'}</button>` : '';
+                const checkBtn = category === 'ok' ? `<button class="box-action-btn check ${verified ? 'verified' : ''}" onclick="toggleBoxVerifiedModal('${category}', ${box.originalIndex})">${verified ? '✓' : '○'}</button>` : '';
                 return `<tr style="${style}"><td>${i + 1}</td><td><code>${box.code}</code></td><td><code>${box.scan2 || '-'}</code></td><td>${box.location}</td><td>${box.timestamp}</td><td><button class="box-action-btn copy" onclick="copyToClipboard('${box.code}')">⧉</button><button class="box-action-btn copy" onclick="copyToClipboard('${box.location}')">◎</button>${checkBtn}<button class="box-action-btn move" onclick="showMoveBoxPopup('${category}', ${box.originalIndex}); document.getElementById('pallet-detail-modal')?.remove();">⇄</button><button class="box-action-btn delete" onclick="deleteBoxModal('${category}', ${box.originalIndex})">✕</button></td></tr>`;
             }).join('');
         }

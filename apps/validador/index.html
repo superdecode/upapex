@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="../../shared/css/validador.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
+    <script src="../../shared/js/wms-utils.js"></script>
+    <script src="../../shared/js/location-validator-ui.js"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -85,6 +87,19 @@
         </div>
 
         <div class="validation-input-container">
+            <div style="margin-bottom: 20px;">
+                <label for="location-input" style="display: block; margin-bottom: 8px; font-weight: 600; color: #666;">
+                    📍 Código de Ubicación:
+                </label>
+                <input type="text" id="location-input" 
+                       placeholder="Ej: A26-06-01-02 o A26'06'01'02" 
+                       style="width: 100%; padding: 12px; font-size: 1.1em; border: 2px solid #ddd; border-radius: 8px; text-transform: uppercase; font-weight: 600;"
+                       autocomplete="off">
+                <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
+                    💡 Formato: Letra(s)-Número(s)-Número(s)-Número(s) (las comillas ' se convierten automáticamente a -)
+                </div>
+            </div>
+            
             <input type="text" class="validation-input" id="validation-input" 
                    placeholder="Escanea código..." autocomplete="off">
             

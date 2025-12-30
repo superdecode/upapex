@@ -16,7 +16,9 @@ const STATE = {
         total: 0,
         valid: 0,
         invalid: 0
-    }
+    },
+    currentLocation: '',
+    pendingLocationValidation: null
 };
 
 let tokenClient;
@@ -128,10 +130,16 @@ function startValidation() {
     document.getElementById('validation-screen').classList.remove('hidden');
     
     STATE.sessionStats = { total: 0, valid: 0, invalid: 0 };
+    STATE.currentLocation = '';
     updateSessionStats();
     
     setTimeout(() => {
-        document.getElementById('validation-input').focus();
+        const locationInput = document.getElementById('location-input');
+        if (locationInput) {
+            locationInput.focus();
+        } else {
+            document.getElementById('validation-input').focus();
+        }
     }, 100);
 
     setupValidationListeners();
@@ -139,6 +147,8 @@ function startValidation() {
 
 function setupValidationListeners() {
     const input = document.getElementById('validation-input');
+    const locationInput = document.getElementById('location-input');
+    
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && input.value.trim()) {
             e.preventDefault();
@@ -146,6 +156,52 @@ function setupValidationListeners() {
             input.value = '';
         }
     });
+    
+    if (locationInput) {
+        locationInput.addEventListener('blur', () => {
+            const location = locationInput.value.trim();
+            if (location) {
+                validateLocationInput(location);
+            }
+        });
+        
+        locationInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const location = locationInput.value.trim();
+                if (location) {
+                    validateLocationInput(location);
+                }
+            }
+        });
+        
+        locationInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+    }
+}
+
+function validateLocationInput(location) {
+    // Usar el módulo compartido LocationValidatorUI
+    LocationValidatorUI.validate(
+        location,
+        (normalizedLocation) => {
+            const locationInput = document.getElementById('location-input');
+            if (locationInput) {
+                locationInput.value = normalizedLocation;
+                STATE.currentLocation = normalizedLocation;
+            }
+            showNotification(`✅ Ubicación válida: ${normalizedLocation}`, 'success');
+        },
+        (forcedLocation) => {
+            const locationInput = document.getElementById('location-input');
+            if (locationInput) {
+                locationInput.value = forcedLocation;
+                STATE.currentLocation = forcedLocation;
+            }
+            showNotification(`⚠️ Ubicación insertada forzadamente: ${forcedLocation}`, 'warning');
+        }
+    );
 }
 
 function validateCode(rawCode) {
@@ -191,6 +247,10 @@ function validateCode(rawCode) {
     updateSessionStats();
     saveStats();
 }
+
+// LocationValidator ahora usa el módulo compartido LocationValidatorUI
+// que está definido en shared/js/location-validator-ui.js
+// Las funciones de validación están en shared/js/wms-utils.js
 
 function endValidation() {
     document.getElementById('validation-screen').classList.add('hidden');
@@ -251,6 +311,27 @@ function showNotification(message, type = 'info') {
 
 function showLoading(show) {
     document.getElementById('loading-overlay').classList.toggle('show', show);
+}
+
+function testLocationValidator() {
+    console.log('🧪 Testing Location Validator (usando wms-utils.js)...');
+    
+    const testCases = [
+        'A26-06-01-02',
+        "A26'06'01'02",
+        'B11-11-02-01',
+        'A1-11-02-01',
+        'A1-1-1-1',      // Debe normalizarse a A1-01-01-01
+        'C9-11-02-01',
+        'INVALID',
+        'A26 06 01 02',
+        'Z123-45-67-89'
+    ];
+    
+    testCases.forEach(test => {
+        const result = validateLocation(test);  // Función de wms-utils.js
+        console.log(`Input: "${test}" => Valid: ${result.valid}, Normalized: "${result.normalized}"`);
+    });
 }
 
 window.addEventListener('load', initializeApp);

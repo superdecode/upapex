@@ -110,120 +110,141 @@ function findCodeInInventory(rawCode, inventory) {
 // ==================== VALIDACIÓN DE UBICACIONES ====================
 
 /**
+ * Normaliza una ubicación aplicando las reglas del sistema
+ * Reglas:
+ * - Convierte comillas simples a guiones: A26'06'01'02 → A26-06-01-02
+ * - Zona (primer número): NO requiere cero a la izquierda si < 10
+ * - Resto de números: SÍ requieren cero a la izquierda (01-99)
+ * - Ejemplo: A1-1-1-1 → A1-01-01-01
+ * 
+ * @param {string} location - Ubicación sin normalizar
+ * @returns {string} - Ubicación normalizada
+ */
+function normalizeLocation(location) {
+    if (!location || typeof location !== 'string') return '';
+    
+    return location
+        .trim()
+        .toUpperCase()
+        .replace(/['´`']/g, '-')  // Comillas a guiones
+        .replace(/\s+/g, '');      // Eliminar espacios
+}
+
+/**
  * Valida el formato de una ubicación de almacén
- * Formato: [LETRA][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
- * Ejemplo: A21-06-05-01
+ * Formato: [LETRA(S)][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
+ * Ejemplos: A26-06-01-02, B11-11-02-01, A1-11-02-01, C9-11-02-01
+ * 
+ * Reglas de normalización:
+ * - Zona (primer número después de letra): puede ser 1-999, NO requiere padding
+ * - Pasillo, Rack, Nivel: deben ser 01-99, SÍ requieren padding con cero
  * 
  * @param {string} location - Ubicación a validar
- * @returns {Object} - {valid: boolean, parsed: object|null, message: string, details: string}
+ * @returns {Object} - {valid: boolean, normalized: string, parsed: object|null, message: string, original: string}
  */
 function validateLocation(location) {
     if (!location || typeof location !== 'string') {
         return {
             valid: false,
+            normalized: '',
             parsed: null,
             message: 'Ubicación vacía o inválida',
-            details: 'Debes ingresar una ubicación'
+            original: location
         };
     }
     
-    const loc = location.trim().toUpperCase();
+    const normalized = normalizeLocation(location);
     
-    // Patrón: LETRA + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS
-    const pattern = /^([A-Z])(\d{1,3})-(\d{1,2})-(\d{1,2})-(\d{1,2})$/;
-    const match = loc.match(pattern);
+    // Patrón: LETRA(S) + NÚMEROS (zona) + GUION + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS
+    const pattern = /^([A-Z]+)(\d+)-(\d+)-(\d+)-(\d+)$/;
+    const match = normalized.match(pattern);
     
     if (!match) {
-        // Analizar qué parte falla
-        let details = '';
-        
-        if (!/^[A-Z]/.test(loc)) {
-            details = 'Debe comenzar con una letra (área del almacén)';
-        } else if (!loc.includes('-')) {
-            details = 'Debe incluir guiones separadores (-)';
-        } else {
-            const parts = loc.split('-');
-            if (parts.length !== 4) {
-                details = `Debe tener exactamente 4 partes separadas por guiones (tiene ${parts.length})`;
-            } else {
-                details = 'Verifica que cada parte tenga el formato correcto';
-            }
-        }
-        
         return {
             valid: false,
+            normalized: normalized,
             parsed: null,
             message: 'Formato de ubicación incorrecto',
-            details: details
+            original: location
         };
     }
     
     // Extraer componentes
-    const [, area, aisle, rack, level, pallet] = match;
+    const [, area, zone, aisle, rack, level] = match;
     
-    // Formatear con padding
-    const formatted = `${area}${aisle.padStart(2, '0')}-${rack.padStart(2, '0')}-${level.padStart(2, '0')}-${pallet.padStart(2, '0')}`;
+    // Validar rangos
+    const zoneNum = parseInt(zone, 10);
+    const aisleNum = parseInt(aisle, 10);
+    const rackNum = parseInt(rack, 10);
+    const levelNum = parseInt(level, 10);
+    
+    if (zoneNum < 1 || zoneNum > 999) {
+        return {
+            valid: false,
+            normalized: normalized,
+            parsed: null,
+            message: 'Zona debe estar entre 1 y 999',
+            original: location
+        };
+    }
+    
+    if (aisleNum < 1 || aisleNum > 99 || rackNum < 1 || rackNum > 99 || levelNum < 1 || levelNum > 99) {
+        return {
+            valid: false,
+            normalized: normalized,
+            parsed: null,
+            message: 'Pasillo, Rack y Nivel deben estar entre 01 y 99',
+            original: location
+        };
+    }
+    
+    // Formatear: zona SIN padding, resto CON padding
+    const formatted = `${area}${zone}-${aisle.padStart(2, '0')}-${rack.padStart(2, '0')}-${level.padStart(2, '0')}`;
     
     return {
         valid: true,
+        normalized: formatted,
         parsed: {
-            area,
-            aisle: aisle.padStart(2, '0'),
-            rack: rack.padStart(2, '0'),
-            level: level.padStart(2, '0'),
-            pallet: pallet.padStart(2, '0'),
+            area,           // Letra(s): A, B, C, etc.
+            zone,           // Zona: 1, 2, 26, etc. (sin padding)
+            aisle: aisle.padStart(2, '0'),   // Pasillo: 01-99
+            rack: rack.padStart(2, '0'),     // Rack: 01-99
+            level: level.padStart(2, '0'),   // Nivel: 01-99
             formatted
         },
         message: 'Ubicación válida',
-        details: `Área: ${area}, Pasillo: ${aisle}, Rack: ${rack}, Nivel: ${level}, Palet: ${pallet}`
+        original: location
     };
 }
 
 /**
- * Muestra diálogo de confirmación para ubicación inválida (doble confirmación)
- * @param {string} location - Ubicación a confirmar
- * @returns {Object} - {confirmed: boolean, formatted: string|null}
+ * Valida y normaliza una ubicación con auto-corrección
+ * Si la ubicación es válida pero mal formateada, retorna la versión normalizada
+ * @param {string} location - Ubicación a validar
+ * @returns {Object} - {valid: boolean, normalized: string, needsCorrection: boolean, original: string}
  */
-function confirmInvalidLocation(location) {
+function validateAndNormalizeLocation(location) {
     const validation = validateLocation(location);
     
     if (validation.valid) {
-        return { confirmed: true, formatted: validation.parsed.formatted };
+        const needsCorrection = validation.normalized !== validation.original.toUpperCase();
+        return {
+            valid: true,
+            normalized: validation.normalized,
+            needsCorrection,
+            original: location,
+            parsed: validation.parsed
+        };
     }
     
-    // Primera confirmación
-    const firstConfirm = confirm(
-        `⚠️ UBICACIÓN CON FORMATO INCORRECTO ⚠️\n\n` +
-        `Ubicación ingresada: "${location}"\n\n` +
-        `${validation.message}\n` +
-        `${validation.details}\n\n` +
-        `Formato correcto:\n` +
-        `• Área (letra): A, B, C, etc.\n` +
-        `• Pasillo (números): 01-99\n` +
-        `• Rack (números): 01-99\n` +
-        `• Nivel (números): 01-99\n` +
-        `• Palet (números): 01-99\n\n` +
-        `Ejemplos válidos:\n` +
-        `• A21-06-05-01\n` +
-        `• B27-01-04-01\n` +
-        `• C15-03-02-05\n\n` +
-        `¿Estás seguro que deseas usar "${location}"?`
-    );
-    
-    if (!firstConfirm) {
-        return { confirmed: false, formatted: null };
-    }
-    
-    // Segunda confirmación (doble check)
-    const secondConfirm = confirm(
-        `⚠️ SEGUNDA CONFIRMACIÓN REQUERIDA ⚠️\n\n` +
-        `Confirma nuevamente que deseas registrar esta ubicación:\n\n` +
-        `"${location}"\n\n` +
-        `Esta ubicación NO cumple con el formato estándar del almacén.\n\n` +
-        `¿CONFIRMAS el uso de esta ubicación?`
-    );
-    
-    return { confirmed: secondConfirm, formatted: secondConfirm ? location.toUpperCase() : null };
+    return {
+        valid: false,
+        normalized: validation.normalized,
+        needsCorrection: false,
+        original: location,
+        parsed: null,
+        message: validation.message
+    };
 }
 
 // ==================== AUDIO FEEDBACK ====================
@@ -248,7 +269,7 @@ function initAudio() {
 
 /**
  * Reproduce un sonido según el tipo de evento
- * @param {string} type - Tipo de sonido: 'success', 'error', 'warning'
+ * @param {string} type - Tipo de sonido: 'success', 'error', 'warning', 'ok'
  */
 function playSound(type) {
     if (!audioContext) return;
@@ -260,7 +281,7 @@ function playSound(type) {
         gain.connect(audioContext.destination);
         gain.gain.setValueAtTime(0.3, audioContext.currentTime);
         
-        if (type === 'success') {
+        if (type === 'success' || type === 'ok') {
             osc.frequency.setValueAtTime(880, audioContext.currentTime);
             osc.start();
             osc.stop(audioContext.currentTime + 0.15);
@@ -474,8 +495,9 @@ if (typeof module !== 'undefined' && module.exports) {
         extractBaseCode,
         generateCodeVariations,
         findCodeInInventory,
+        normalizeLocation,
         validateLocation,
-        confirmInvalidLocation,
+        validateAndNormalizeLocation,
         initAudio,
         playSound,
         showNotification,
