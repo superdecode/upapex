@@ -234,8 +234,8 @@
 .modal-content {
     background: white;
     border-radius: 12px;
-    max-width: 1000px;
-    width: 100%;
+    max-width: 1300px; /* Aumentado 30% desde 1000px */
+    width: 95%;
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
@@ -671,9 +671,29 @@
     transform: translateX(24px);
 }
 
-/* QC Task Selection */
+/* QC Task Selection - Layout Horizontal */
+.qc-horizontal-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 20px;
+    align-items: start;
+}
+
+@media (max-width: 1200px) {
+    .qc-horizontal-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 .qc-step {
-    margin-bottom: 25px;
+    margin-bottom: 0;
+}
+
+.qc-step-left,
+.qc-step-right {
+    background: rgba(249, 115, 22, 0.03);
+    border-radius: 8px;
+    padding: 15px;
 }
 
 .qc-step-title {
@@ -688,6 +708,24 @@
 .qc-task-options {
     display: grid;
     gap: 12px;
+}
+
+/* Contenedor de tarea individual con status a la derecha */
+.qc-task-with-status {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 15px;
+    align-items: start;
+    padding: 15px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.qc-task-with-status.active {
+    border-color: var(--primary);
+    background: rgba(249, 115, 22, 0.02);
 }
 
 .qc-task-option {
@@ -865,10 +903,30 @@
     box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
 }
 
+/* Información General - 2 Filas específicas */
 .general-info-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(5, 1fr); /* 5 columnas fijas para fila 1 */
+    gap: 15px;
+}
+
+/* Fila 2 con distribución mixta */
+.general-info-grid .row-2 {
+    grid-column: 1 / -1; /* Ocupar todo el ancho */
+    display: grid;
+    grid-template-columns: 1fr 1fr 3fr; /* Cant.Cajas | Cant.Despachar | Nota (3x) */
+    gap: 15px;
+}
+
+/* Responsive para pantallas pequeñas */
+@media (max-width: 1024px) {
+    .general-info-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .general-info-grid .row-2 {
+        grid-template-columns: 1fr;
+    }
 }
 
 .general-info-field {
@@ -923,4 +981,100 @@
     margin-left: 8px;
     background: rgba(249, 115, 22, 0.15);
     color: var(--primary);
+}
+
+/* ==================== AESTHETIC IMPROVEMENTS ==================== */
+
+/* Modern Sans-Serif Typography */
+body, input, select, textarea, button {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Code elements styling */
+code {
+    font-family: 'Monaco', 'Courier New', monospace;
+    background: rgba(249, 115, 22, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+code.highlight {
+    background: rgba(34, 197, 94, 0.15);
+    color: #16a34a;
+    font-weight: 600;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* Improved selectors */
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px;
+    padding-right: 35px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+select:hover {
+    border-color: var(--primary);
+    background-color: rgba(249, 115, 22, 0.02);
+}
+
+select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+/* Copy icon improvements */
+.copy-icon {
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    font-size: 0.9em;
+    cursor: pointer;
+    margin-left: 6px;
+}
+
+.copy-icon:hover {
+    opacity: 1;
+    transform: scale(1.15);
+}
+
+.copyable {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Enhanced input focus states */
+input[type="text"],
+input[type="number"],
+textarea {
+    transition: all 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+/* Improved table styling */
+.data-table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8em;
+    letter-spacing: 0.5px;
+}
+
+.data-table td code {
+    font-size: 0.85em;
 }
