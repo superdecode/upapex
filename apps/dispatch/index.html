@@ -57,31 +57,33 @@
                     ✅ Sincronizado
                 </div>
 
-                <!-- Resumen del Día -->
+                <!-- Resumen del Día - Diseño moderno (número arriba, texto abajo) -->
                 <div class="global-summary-section" id="global-summary-section">
                     <div class="summary-title">📊 Resumen del Día</div>
-                    <div class="summary-grid vertical">
-                        <div class="summary-item total">
-                            <span class="summary-icon">📦</span>
-                            <span class="summary-value" id="summary-total">0</span>
-                            <span class="summary-label">Total</span>
+                    <div class="summary-grid-modern">
+                        <div class="summary-card total">
+                            <span class="summary-number" id="summary-total">0</span>
+                            <span class="summary-text">Total Órdenes</span>
                         </div>
-                        <div class="summary-item validated">
-                            <span class="summary-icon">✅</span>
-                            <span class="summary-value" id="summary-validated">0</span>
-                            <span class="summary-label">Despachadas</span>
+                        <div class="summary-card validated">
+                            <span class="summary-number" id="summary-validated">0</span>
+                            <span class="summary-text">Despachadas</span>
                         </div>
-                        <div class="summary-item pending">
-                            <span class="summary-icon">⏳</span>
-                            <span class="summary-value" id="summary-pending">0</span>
-                            <span class="summary-label">Pendientes</span>
-                        </div>
-                        <div class="summary-item nowms">
-                            <span class="summary-icon">🚛</span>
-                            <span class="summary-value" id="summary-in-transit">0</span>
-                            <span class="summary-label">En Tránsito</span>
+                        <div class="summary-card pending">
+                            <span class="summary-number" id="summary-pending-count">0</span>
+                            <span class="summary-text">Pendientes</span>
                         </div>
                     </div>
+                </div>
+
+                <!-- Tabs de Avance de Validación -->
+                <div class="validation-tabs">
+                    <button class="validation-tab active" id="tab-pending" onclick="switchValidationTab('pending')">
+                        ⏳ Pendientes <span class="tab-badge" id="pending-badge">0</span>
+                    </button>
+                    <button class="validation-tab" id="tab-validated" onclick="switchValidationTab('validated')">
+                        ✅ Validadas <span class="tab-badge" id="validated-badge">0</span>
+                    </button>
                 </div>
 
                 <div class="sidebar-section">
@@ -124,15 +126,26 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
-                <!-- EMPTY STATE -->
-                <div id="empty-state" class="empty-state module-visible">
-                    <div class="empty-state-content">
-                        <div class="empty-state-icon">🚚</div>
-                        <h2 class="empty-state-title">Sistema de Despacho</h2>
-                        <p class="empty-state-subtitle">Comienza buscando una orden para despachar</p>
+                <!-- WELCOME STATE (igual a Inventario) -->
+                <div class="welcome-state module-visible" id="welcome-state">
+                    <div class="welcome-content">
+                        <div class="welcome-icon">🚚</div>
+                        <h2 class="welcome-title">Sistema de Despacho</h2>
+                        <p class="welcome-subtitle">Gestión y validación de despachos logísticos</p>
                         <button class="btn btn-success btn-start" onclick="showSearchPanel()">
                             🚀 Iniciar Despacho
                         </button>
+                    </div>
+                </div>
+
+                <!-- VALIDATED TAB CONTENT -->
+                <div id="validated-content" class="tab-content" style="display: none;">
+                    <div class="header">
+                        <h1>✅ Despachos Validados</h1>
+                        <button class="btn btn-secondary btn-small" onclick="backToStart()">← Inicio</button>
+                    </div>
+                    <div class="card">
+                        <div id="validated-list" class="orders-list"></div>
                     </div>
                 </div>
 

@@ -2,7 +2,7 @@
 const CONFIG = {
     CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
-    SPREADSHEET_WRITE: '1T_yXd4MFyp-Ks2iTTr0KAd12QhXjW2eUMVqnAx8XSJM',
+    SPREADSHEET_WRITE: '1_dkq4puGs3g9DvOGv96FqsoNGYV7bHXNMX680PU-X_o',
     SOURCES: {
         BD_STOCK: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
         OBC_BD: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv',
@@ -28,8 +28,62 @@ let STATE = {
         endDate: null,
         active: false
     },
-    pendingSync: []
+    pendingSync: [],
+    // Tabs de validación
+    localValidated: [],    // Despachos validados localmente
+    localPending: [],      // Despachos pendientes
+    activeTab: 'pending',  // Tab activa: 'pending' o 'validated'
+    folioCounter: 0        // Contador de folios
 };
+
+// Cargar estado local al inicio
+function loadLocalState() {
+    try {
+        const saved = localStorage.getItem('dispatch_local_state');
+        if (saved) {
+            const data = JSON.parse(saved);
+            STATE.localValidated = data.localValidated || [];
+            STATE.localPending = data.localPending || [];
+            STATE.folioCounter = data.folioCounter || 0;
+        }
+    } catch (e) {
+        console.error('Error loading local state:', e);
+    }
+}
+
+function saveLocalState() {
+    try {
+        localStorage.setItem('dispatch_local_state', JSON.stringify({
+            localValidated: STATE.localValidated,
+            localPending: STATE.localPending,
+            folioCounter: STATE.folioCounter
+        }));
+    } catch (e) {
+        console.error('Error saving local state:', e);
+    }
+}
+
+function generateFolio() {
+    STATE.folioCounter++;
+    saveLocalState();
+    const date = new Date();
+    const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+    return `DSP-${dateStr}-${String(STATE.folioCounter).padStart(4, '0')}`;
+}
+
+// Verificar si una orden ya fue validada
+function isOrderValidated(orden) {
+    // Buscar en validados locales
+    const localMatch = STATE.localValidated.find(v => v.orden === orden);
+    if (localMatch) return { validated: true, source: 'local', data: localMatch };
+
+    // Buscar en datos de validación de BD
+    if (STATE.validacionData.has(orden)) {
+        return { validated: true, source: 'bd', data: STATE.validacionData.get(orden) };
+    }
+
+    return { validated: false };
+}
 
 let CURRENT_USER = '';
 let USER_EMAIL = '';
@@ -39,11 +93,37 @@ let TOKEN_CLIENT = null;
 
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', () => {
+    loadLocalState();
     setupEventListeners();
     setupConnectionMonitoring();
     initSyncManager();
+    initAvatarSystem();
     gapi.load('client', initGAPI);
 });
+
+function initAvatarSystem() {
+    // Inicializar sistema de avatar si existe
+    if (typeof AvatarSystem !== 'undefined') {
+        AvatarSystem.init();
+    }
+    // Setup click en avatar para editar nombre
+    const avatar = document.getElementById('user-avatar');
+    const userName = document.getElementById('user-name-display');
+    if (avatar) {
+        avatar.onclick = () => {
+            if (typeof AvatarSystem !== 'undefined') {
+                AvatarSystem.showNamePopup();
+            }
+        };
+    }
+    if (userName) {
+        userName.onclick = () => {
+            if (typeof AvatarSystem !== 'undefined') {
+                AvatarSystem.showNamePopup();
+            }
+        };
+    }
+}
 
 function setupEventListeners() {
     const searchInput = document.getElementById('search-input');
@@ -447,7 +527,8 @@ function updateBdInfo() {
 
 // ==================== UI FUNCTIONS ====================
 function showSearchPanel() {
-    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('welcome-state').style.display = 'none';
+    document.getElementById('validated-content').style.display = 'none';
     document.getElementById('search-panel').style.display = 'block';
 
     // Set default date range to today + 7 days
@@ -470,9 +551,14 @@ function showSearchPanel() {
 
 function backToStart() {
     document.getElementById('search-panel').style.display = 'none';
-    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('welcome-state').style.display = 'flex';
     STATE.dateFilter.active = false;
     STATE.obcDataFiltered.clear();
+    // Reset tabs to pending
+    STATE.activeTab = 'pending';
+    document.getElementById('tab-pending')?.classList.add('active');
+    document.getElementById('tab-validated')?.classList.remove('active');
 }
 
 function updateSummary() {
@@ -495,7 +581,10 @@ function updateSummary() {
 
     document.getElementById('summary-total').textContent = totalToday;
     document.getElementById('summary-validated').textContent = validatedToday;
-    document.getElementById('summary-pending').textContent = pendingToday;
+    document.getElementById('summary-pending-count').textContent = pendingToday;
+
+    // Update tab badges as well
+    updateTabBadges();
 }
 
 function filterOrdersByDateRange() {
@@ -597,6 +686,107 @@ function filterOrdersList() {
 
         item.style.display = matchesText && matchesStatus ? 'flex' : 'none';
     });
+}
+
+// ==================== VALIDATION TABS ====================
+function switchValidationTab(tab) {
+    STATE.activeTab = tab;
+
+    // Update tab styles
+    const tabPending = document.getElementById('tab-pending');
+    const tabValidated = document.getElementById('tab-validated');
+
+    if (tab === 'pending') {
+        tabPending?.classList.add('active');
+        tabValidated?.classList.remove('active');
+        // Show search panel / orders
+        document.getElementById('welcome-state').style.display = 'none';
+        document.getElementById('validated-content').style.display = 'none';
+        document.getElementById('search-panel').style.display = 'block';
+    } else {
+        tabPending?.classList.remove('active');
+        tabValidated?.classList.add('active');
+        // Show validated content
+        document.getElementById('welcome-state').style.display = 'none';
+        document.getElementById('search-panel').style.display = 'none';
+        document.getElementById('validated-content').style.display = 'block';
+        renderValidatedList();
+    }
+}
+
+function renderValidatedList() {
+    const validatedList = document.getElementById('validated-list');
+    if (!validatedList) return;
+
+    if (STATE.localValidated.length === 0) {
+        validatedList.innerHTML = `
+            <div class="orders-list-empty">
+                <div class="orders-list-empty-icon">📋</div>
+                <div class="orders-list-empty-text">No hay despachos validados</div>
+                <div class="orders-list-empty-subtext">Los despachos confirmados aparecerán aquí</div>
+            </div>
+        `;
+        return;
+    }
+
+    // Sort by timestamp descending (most recent first)
+    const sortedValidated = [...STATE.localValidated].sort((a, b) => {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+
+    validatedList.innerHTML = sortedValidated.map((record, index) => {
+        const syncStatus = syncManager?.isRecordSynced?.(record) ? 'synced' : 'pending';
+        const syncBadge = syncStatus === 'synced'
+            ? '<span class="order-item-badge validated">☁️ Sincronizado</span>'
+            : '<span class="order-item-badge pending">💾 Local</span>';
+
+        return `
+            <div class="order-item validated" onclick="showValidatedDetails(${index})">
+                <div class="order-item-info">
+                    <div class="order-item-obc">${record.orden}</div>
+                    <div class="order-item-meta">
+                        <span>📋 ${record.folio}</span>
+                        <span>🏢 ${record.destino || 'N/A'}</span>
+                        <span>👤 ${record.operador || 'N/A'}</span>
+                        <span>🚛 ${record.unidad || 'N/A'}</span>
+                    </div>
+                    <div class="order-item-meta" style="margin-top: 4px;">
+                        <span>📅 ${record.fecha}</span>
+                        <span>⏰ ${record.hora}</span>
+                        <span>📦 ${record.cantidadDespachar || 0} cajas</span>
+                    </div>
+                </div>
+                <div class="order-item-actions">
+                    ${syncBadge}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function showValidatedDetails(index) {
+    const record = STATE.localValidated[index];
+    if (!record) return;
+
+    // Try to show the order info modal with existing data
+    if (STATE.obcData.has(record.orden)) {
+        showOrderInfo(record.orden);
+    } else {
+        // Show a simple notification with details
+        const details = `
+Folio: ${record.folio}
+Orden: ${record.orden}
+Destino: ${record.destino || 'N/A'}
+Fecha: ${record.fecha}
+Hora: ${record.hora}
+Operador: ${record.operador}
+Unidad: ${record.unidad}
+Cajas: ${record.cantidadDespachar || 0}
+Observaciones: ${record.observaciones || 'Ninguna'}
+        `.trim();
+
+        alert(details);
+    }
 }
 
 // ==================== SEARCH ====================
@@ -1155,6 +1345,14 @@ async function confirmDispatch() {
         return;
     }
 
+    // Verificar si ya fue validada (duplicados)
+    const validationCheck = isOrderValidated(STATE.currentOrder);
+    if (validationCheck.validated) {
+        const source = validationCheck.source === 'local' ? 'localmente' : 'en la base de datos';
+        showNotification(`⚠️ Esta orden ya fue procesada ${source}`, 'warning');
+        return;
+    }
+
     const orderData = STATE.obcData.get(STATE.currentOrder);
     if (!orderData) {
         showNotification('❌ Error al obtener datos de la orden', 'error');
@@ -1169,7 +1367,6 @@ async function confirmDispatch() {
 
     if (totalCajas > 0 && cantidadDespacharNum !== totalCajas) {
         if (!notaDespacho) {
-            const tipoDiscrepancia = cantidadDespacharNum < totalCajas ? 'parcial' : 'excedente';
             const mensaje = cantidadDespacharNum < totalCajas
                 ? `⚠️ DESPACHO PARCIAL DETECTADO\n\nCajas totales: ${totalCajas}\nCantidad a despachar: ${cantidadDespacharNum}\n\nDebe ingresar una NOTA explicando el motivo del despacho parcial.`
                 : `⚠️ DISCREPANCIA DETECTADA\n\nCajas totales: ${totalCajas}\nCantidad a despachar: ${cantidadDespacharNum}\n\nDebe ingresar una NOTA explicando esta diferencia.`;
@@ -1193,22 +1390,36 @@ async function confirmDispatch() {
     }
 
     const timestamp = new Date();
+    const folio = generateFolio();
+
+    // Estructura para Google Sheets: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Incidencias, Operador, Unidad, Observaciones
     const dispatchRecord = {
+        folio: folio,
         timestamp: timestamp.toISOString(),
         fecha: timestamp.toLocaleDateString('es-ES'),
         hora: timestamp.toLocaleTimeString('es-ES'),
         usuario: CURRENT_USER,
         orden: STATE.currentOrder,
-        destino: orderData.recipient,
+        destino: orderData.recipient || '',
+        horario: orderData.expectedArrival || '',
+        codigo: orderData.trackingCode || '',
+        codigo2: orderData.referenceNo || '',
+        estatus: 'Procesado',
+        tarea: 'Despacho',
+        estatus2: 'Completado',
+        incidencias: totalCajas !== cantidadDespacharNum ? `Parcial: ${cantidadDespacharNum}/${totalCajas}` : '',
         operador: operador,
         unidad: unidad,
-        trackingCode: orderData.trackingCode,
-        referenceNo: orderData.referenceNo,
+        observaciones: notaDespacho,
+        // Datos adicionales para UI
         cantidadDespachar: cantidadDespacharNum,
         totalCajas: totalCajas,
-        nota: notaDespacho,
         qc: Object.keys(qcData).length > 0 ? qcData : null
     };
+
+    // Guardar en validados locales primero
+    STATE.localValidated.push(dispatchRecord);
+    saveLocalState();
 
     // Agregar a la cola de sync usando el módulo compartido
     addToDispatchSync(dispatchRecord);
@@ -1222,7 +1433,12 @@ async function confirmDispatch() {
     }
 
     closeInfoModal();
-    showNotification(`✅ Despacho confirmado: ${STATE.currentOrder}`, 'success');
+    showNotification(`✅ Despacho confirmado: ${STATE.currentOrder} (${folio})`, 'success');
+
+    // Actualizar UI
+    updateTabBadges();
+    renderOrdersList();
+    updateSummary();
 
     // Clear selections
     document.getElementById('modal-operador').value = '';
@@ -1236,28 +1452,67 @@ let syncManager = null;
 function initSyncManager() {
     syncManager = new SyncManager({
         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-        sheetName: 'Despachos',
+        sheetName: 'Hoja1',
         autoSyncInterval: 30000,
         storageKey: 'dispatch_pending_sync',
         appName: 'Despacho',
         appIcon: '🚚',
+        // Estructura: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Incidencias, Operador, Unidad, Observaciones
         formatRecord: (record) => {
             return [
+                record.folio || '',
                 record.fecha || '',
                 record.hora || '',
                 record.usuario || '',
                 record.orden || '',
                 record.destino || '',
+                record.horario || '',
+                record.codigo || record.trackingCode || '',
+                record.codigo2 || record.referenceNo || '',
+                record.estatus || 'Procesado',
+                record.tarea || 'Despacho',
+                record.estatus2 || 'Completado',
+                record.incidencias || '',
                 record.operador || '',
                 record.unidad || '',
-                record.trackingCode || '',
-                record.referenceNo || ''
+                record.observaciones || record.nota || ''
             ];
         },
-        onStatusChange: () => updateSummary()
+        onStatusChange: () => {
+            updateSummary();
+            updateTabBadges();
+        }
     });
     window.syncManager = syncManager;
     syncManager.init();
+}
+
+function updateTabBadges() {
+    const validatedBadge = document.getElementById('validated-badge');
+    const pendingBadge = document.getElementById('pending-badge');
+
+    // Validated badge shows local validated count
+    if (validatedBadge) {
+        validatedBadge.textContent = STATE.localValidated.length;
+    }
+
+    // Pending badge shows orders that need to be dispatched (from summary)
+    if (pendingBadge) {
+        const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
+        let pendingCount = 0;
+
+        for (const [orden, data] of dataToUse.entries()) {
+            // Check if not in local validated and not in BD validated
+            const inLocalValidated = STATE.localValidated.some(v => v.orden === orden);
+            const inBDValidated = STATE.validacionData.has(orden) && STATE.validacionData.get(orden).length > 0;
+
+            if (!inLocalValidated && !inBDValidated) {
+                pendingCount++;
+            }
+        }
+
+        pendingBadge.textContent = pendingCount;
+    }
 }
 
 // Funciones de compatibilidad
