@@ -9,9 +9,13 @@
     <link rel="stylesheet" href="../../shared/css/base.css">
     <link rel="stylesheet" href="../../shared/css/layout.css">
     <link rel="stylesheet" href="../../shared/css/components.css">
+    <link rel="stylesheet" href="../../shared/css/sidebar.css">
     <link rel="stylesheet" href="styles.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
+    <script src="../../shared/js/wms-utils.js"></script>
+    <script src="../../shared/js/sync-manager.js"></script>
+    <script src="../../shared/js/sidebar-component.js"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -42,14 +46,17 @@
         <div class="main-container">
             <!-- SIDEBAR -->
             <div class="sidebar">
-                <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">🚚 Despacho</h2>
+                <div class="sidebar-header">
+                    <h2>🚚 Despacho</h2>
+                    <p>Gestión de despachos WMS</p>
+                </div>
 
-                <div id="sync-status-sidebar" class="sync-status sync-ok" style="cursor: pointer;" onclick="showSyncPanel()">
+                <div id="sync-status" class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
                     ✅ Sincronizado
                 </div>
 
                 <!-- Resumen del Día -->
-                <div class="sidebar-summary">
+                <div class="global-summary-section" id="global-summary-section">
                     <div class="summary-title">📊 Resumen del Día</div>
                     <div class="summary-grid">
                         <div class="summary-item total">
@@ -60,27 +67,34 @@
                         <div class="summary-item validated">
                             <span class="summary-icon">✅</span>
                             <span class="summary-value" id="summary-validated">0</span>
-                            <span class="summary-label">Validadas</span>
+                            <span class="summary-label">Despachadas</span>
                         </div>
                         <div class="summary-item pending">
                             <span class="summary-icon">⏳</span>
                             <span class="summary-value" id="summary-pending">0</span>
                             <span class="summary-label">Pendientes</span>
                         </div>
+                        <div class="summary-item nowms">
+                            <span class="summary-icon">🚛</span>
+                            <span class="summary-value" id="summary-in-transit">0</span>
+                            <span class="summary-label">En Tránsito</span>
+                        </div>
                     </div>
                 </div>
 
-                <hr style="border-color: #555; margin: 15px 0;">
-
-                <!-- Acciones Rápidas -->
                 <div class="sidebar-section">
-                    <button class="btn btn-secondary btn-small" onclick="showDateFilter()" style="margin-bottom: 10px; width: 100%;">
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="showSearchPanel()">
+                        ➕ Nuevo Despacho
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showDateFilter()">
                         📅 Filtrar por Fecha
                     </button>
-                    <button class="btn btn-secondary btn-small" onclick="exportData()" style="margin-bottom: 10px; width: 100%;">
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
                         📥 Exportar CSV
                     </button>
                 </div>
+
+                <hr>
 
                 <!-- User Footer -->
                 <div class="user-footer" id="user-footer">
@@ -100,7 +114,7 @@
                         <button class="btn btn-secondary btn-small" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
                     </div>
                     <div class="bd-info">
-                        <div id="bd-count-footer"><span id="bd-count">0</span> órdenes cargadas</div>
+                        <div><span id="bd-count">0</span> órdenes cargadas</div>
                         <div id="bd-update-time">Sin actualizar</div>
                     </div>
                 </div>

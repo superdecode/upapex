@@ -9,11 +9,14 @@
     <link rel="stylesheet" href="../../shared/css/base.css">
     <link rel="stylesheet" href="../../shared/css/layout.css">
     <link rel="stylesheet" href="../../shared/css/components.css">
+    <link rel="stylesheet" href="../../shared/css/sidebar.css">
     <link rel="stylesheet" href="../../shared/css/validador.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="../../shared/js/auth-manager.js"></script>
     <script src="../../shared/js/wms-utils.js"></script>
+    <script src="../../shared/js/sync-manager.js"></script>
+    <script src="../../shared/js/sidebar-component.js"></script>
     <script src="../../shared/js/location-validator-ui.js"></script>
 </head>
 <body>
@@ -56,17 +59,61 @@
     <div id="validation" style="display: block;">
         <div class="container">
             <div class="sidebar">
-                <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 1.3em;">🎯 WMS</h2>
-                <button class="btn btn-secondary btn-small" onclick="showResumen()" style="margin-bottom: 10px; width: 100%;">
-                    📋 Resumen <span id="pending-badge"></span>
-                </button>
-                <button class="btn btn-secondary btn-small" onclick="showFaltantes()" style="margin-bottom: 10px; width: 100%;">🔍 Faltantes</button>
-                <button class="btn btn-small" onclick="showPrerecepcion()" style="margin-bottom: 10px; width: 100%; background: #6c757d; color: white;">📋 Prerecepción</button>
-                <button class="btn btn-small btn-consulta" onclick="showConsulta()" style="margin-bottom: 10px; width: 100%;">🔎 Consulta</button>
-                <hr style="border-color: #555; margin: 15px 0;">
-                <div id="sync-status-sidebar" class="sync-status sync-ok" style="display: none; cursor: pointer;" onclick="SyncManager.showPanel()">
+                <div class="sidebar-header">
+                    <h2>🎯 Validador</h2>
+                    <p>Validación de cajas WMS</p>
+                </div>
+
+                <div id="sync-status" class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
                     ✅ Sincronizado
                 </div>
+
+                <!-- Resumen Global -->
+                <div class="global-summary-section" id="global-summary-section">
+                    <div class="summary-title">📊 Resumen de Sesión</div>
+                    <div class="summary-grid">
+                        <div class="summary-item validated">
+                            <span class="summary-icon">✅</span>
+                            <span class="summary-value" id="summary-validated">0</span>
+                            <span class="summary-label">Validadas</span>
+                        </div>
+                        <div class="summary-item pending">
+                            <span class="summary-icon">⏳</span>
+                            <span class="summary-value" id="summary-pending">0</span>
+                            <span class="summary-label">Pendientes</span>
+                        </div>
+                        <div class="summary-item nowms">
+                            <span class="summary-icon">❌</span>
+                            <span class="summary-value" id="summary-rejected">0</span>
+                            <span class="summary-label">Rechazadas</span>
+                        </div>
+                        <div class="summary-item total">
+                            <span class="summary-icon">📦</span>
+                            <span class="summary-value" id="summary-total">0</span>
+                            <span class="summary-label">Total</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="addOBC()">
+                        ➕ Nueva Orden
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showResumen()">
+                        📋 Resumen <span id="pending-badge" class="pending-badge"></span>
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showFaltantes()">
+                        🔍 Faltantes
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showPrerecepcion()">
+                        📋 Prerecepción
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showConsulta()">
+                        🔎 Consulta
+                    </button>
+                </div>
+
+                <hr>
                 <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
 
                 <!-- User Footer -->
@@ -83,10 +130,11 @@
                     </div>
                     <div class="user-footer-actions">
                         <button class="btn btn-secondary btn-small" onclick="reloadBD()" title="Actualizar BD">🔄 BD</button>
-                        <button class="btn btn-secondary btn-small" onclick="toggleGoogleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗 Conectar</button>
+                        <button class="btn btn-secondary btn-small" onclick="toggleGoogleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗</button>
+                        <button class="btn btn-secondary btn-small" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
                     </div>
                     <div class="bd-info">
-                        <div id="bd-count-footer"><span id="bd-count-sidebar">0</span> códigos cargados</div>
+                        <div><span id="bd-count">0</span> códigos cargados</div>
                         <div id="bd-update-time">Sin actualizar</div>
                     </div>
                 </div>

@@ -41,7 +41,7 @@ let TOKEN_CLIENT = null;
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupConnectionMonitoring();
-    loadPendingSync();
+    initSyncManager();
     gapi.load('client', initGAPI);
 });
 
@@ -1210,11 +1210,10 @@ async function confirmDispatch() {
         qc: Object.keys(qcData).length > 0 ? qcData : null
     };
 
-    // Save to pending sync
-    STATE.pendingSync.push(dispatchRecord);
-    savePendingSync();
+    // Agregar a la cola de sync usando el módulo compartido
+    addToDispatchSync(dispatchRecord);
 
-    // Try to sync if online
+    // Intentar sincronizar si hay conexión
     if (IS_ONLINE && gapi?.client?.getToken()) {
         await syncPendingData();
     } else {
@@ -1231,87 +1230,69 @@ async function confirmDispatch() {
 }
 
 // ==================== SYNC MANAGEMENT ====================
+// Usar el módulo compartido SyncManager
+let syncManager = null;
+
+function initSyncManager() {
+    syncManager = new SyncManager({
+        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+        sheetName: 'Despachos',
+        autoSyncInterval: 30000,
+        storageKey: 'dispatch_pending_sync',
+        appName: 'Despacho',
+        appIcon: '🚚',
+        formatRecord: (record) => {
+            return [
+                record.fecha || '',
+                record.hora || '',
+                record.usuario || '',
+                record.orden || '',
+                record.destino || '',
+                record.operador || '',
+                record.unidad || '',
+                record.trackingCode || '',
+                record.referenceNo || ''
+            ];
+        },
+        onStatusChange: () => updateSummary()
+    });
+    window.syncManager = syncManager;
+    syncManager.init();
+}
+
+// Funciones de compatibilidad
 function loadPendingSync() {
-    try {
-        const saved = localStorage.getItem('dispatch_pending_sync');
-        if (saved) {
-            STATE.pendingSync = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error('Error loading pending sync:', e);
-    }
+    // El syncManager carga automáticamente al init
 }
 
 function savePendingSync() {
-    try {
-        localStorage.setItem('dispatch_pending_sync', JSON.stringify(STATE.pendingSync));
-    } catch (e) {
-        console.error('Error saving pending sync:', e);
-    }
+    if (syncManager) syncManager.save();
 }
 
 async function syncPendingData() {
-    if (!gapi?.client?.getToken() || !IS_ONLINE || STATE.pendingSync.length === 0) {
-        return;
-    }
-
-    showNotification('🔄 Sincronizando despachos...', 'info');
-
-    try {
-        const values = STATE.pendingSync.map(record => [
-            record.fecha,
-            record.hora,
-            record.usuario,
-            record.orden,
-            record.destino,
-            record.operador,
-            record.unidad,
-            record.trackingCode,
-            record.referenceNo
-        ]);
-
-        await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-            range: 'Despachos!A:I',
-            valueInputOption: 'USER_ENTERED',
-            resource: { values }
-        });
-
-        STATE.pendingSync = [];
-        savePendingSync();
-        updateSyncStatus();
-        showNotification(`✅ ${values.length} despachos sincronizados`, 'success');
-    } catch (error) {
-        console.error('Sync error:', error);
-        showNotification('❌ Error sincronizando datos', 'error');
+    if (syncManager) {
+        await syncManager.sync(true);
     }
 }
 
 function updateSyncStatus() {
-    const syncStatus = document.getElementById('sync-status-sidebar');
-    if (!syncStatus) return;
-
-    if (STATE.pendingSync.length > 0) {
-        syncStatus.className = 'sync-status sync-warning';
-        syncStatus.textContent = `⚠️ ${STATE.pendingSync.length} pendientes`;
-    } else if (IS_ONLINE && gapi?.client?.getToken()) {
-        syncStatus.className = 'sync-status sync-ok';
-        syncStatus.textContent = '✅ Sincronizado';
-    } else {
-        syncStatus.className = 'sync-status sync-error';
-        syncStatus.textContent = '❌ Sin conexión';
+    if (syncManager) {
+        syncManager.updateUI(syncManager.getPendingCount() === 0);
     }
 }
 
 function showSyncPanel() {
-    if (STATE.pendingSync.length === 0) {
-        showNotification('✅ No hay registros pendientes', 'success');
-        return;
+    if (syncManager) {
+        syncManager.showPanel();
     }
+}
 
-    const message = `Hay ${STATE.pendingSync.length} despachos pendientes de sincronizar.\n\n¿Deseas sincronizar ahora?`;
-    if (confirm(message)) {
-        syncPendingData();
+// Helper para agregar a la cola de sync
+function addToDispatchSync(record) {
+    if (syncManager) {
+        syncManager.addToQueue(record);
+    } else {
+        STATE.pendingSync.push(record);
     }
 }
 
