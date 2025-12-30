@@ -1,4 +1,7 @@
-// ==================== CONFIGURACIÓN ====================
+// ==================== TRACK APP - JAVASCRIPT COMPLETO ====================
+// Réplica exacta de la funcionalidad del archivo original track.html
+
+// ==================== CONFIGURATION ====================
 const CONFIG = {
     SOURCES: {
         BD_STOCK: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
@@ -9,762 +12,1301 @@ const CONFIG = {
         TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv',
         CANCELADO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGSl9NnEjrP_3P4iRDSCaE776r2vjzwKthMyavQ4C5DOnmzDuY90YjZjfkLPGouxhyca140srhKaFO/pub?output=csv'
     },
-    CACHE_DURATION: 30 * 60 * 1000,
-    MAX_RESULTS: 20,
-    SIMILARITY_THRESHOLD: 75
+    CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
+    MAX_RESULTS: 20
 };
 
-// ==================== ESTADO GLOBAL ====================
-const STATE = {
-    dataCache: {
-        bdstock: [],
-        obcbd: [],
-        validacion: [],
-        inventario: [],
-        mne: [],
-        trs: [],
-        cancelado: []
-    },
-    lastUpdate: null,
-    currentResult: null,
-    currentSearch: '',
-    isOnline: navigator.onLine,
-    statistics: {
-        totalSearches: 0,
-        successfulSearches: 0,
-        failedSearches: 0,
-        lastSearchDate: null,
-        sourcesUsed: {}
-    }
+// ==================== STATE ====================
+let DATA_CACHE = {
+    bdStock: [],
+    obcBd: [],
+    validacion: [],
+    inventario: [],
+    mne: [],
+    trs: [],
+    cancelado: [],
+    lastUpdate: null
 };
 
-// ==================== INICIALIZACIÓN ====================
-function initializeApp() {
-    initAudio();
+let CURRENT_SEARCH = null;
+let GLOBAL_SEARCH_MODE = 'exact'; // 'exact' or 'flexible'
+let SECTION_MODES = {
+    bdStock: 'exact',
+    obcBd: 'exact',
+    validacion: 'exact',
+    inventario: 'exact',
+    mne: 'exact',
+    trs: 'exact',
+    cancelado: 'exact'
+};
+
+// ==================== INITIALIZATION ====================
+document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
-    setupOfflineMode();
-    loadStatistics();
-    loadDatabase();
+    loadAllData();
+    checkCacheExpiration();
+});
+
+function setupEventListeners() {
+    const input = document.getElementById('search-input');
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+
+    // Check cache every 5 minutes
+    setInterval(checkCacheExpiration, 5 * 60 * 1000);
 }
 
-// ==================== CARGA DE BASE DE DATOS ====================
-async function loadDatabase() {
+function checkCacheExpiration() {
+    if (DATA_CACHE.lastUpdate) {
+        const elapsed = Date.now() - DATA_CACHE.lastUpdate;
+        if (elapsed > CONFIG.CACHE_DURATION) {
+            document.getElementById('reload-banner').classList.add('show');
+        }
+    }
+}
+
+function forceReloadData() {
+    document.getElementById('reload-banner').classList.remove('show');
+    loadAllData();
+}
+
+// ==================== DATA LOADING ====================
+async function loadAllData() {
     showLoading(true);
-    updateDbStatus('Cargando base de datos...');
-    
+    const sources = Object.entries(CONFIG.SOURCES);
+    let completed = 0;
+
+    updateLoadingProgress(0, sources.length);
+
     try {
-        const promises = Object.entries(CONFIG.SOURCES).map(async ([key, url]) => {
-            try {
-                const response = await fetch(url);
-                const csvText = await response.text();
-                const rows = csvText.split('\n')
-                    .filter(line => line.trim())
-                    .map(row => parseCSVLine(row));
-                return { key: key.toLowerCase().replace('_', ''), rows };
-            } catch (e) {
-                console.warn(`Error loading ${key}:`, e);
-                return { key: key.toLowerCase().replace('_', ''), rows: [] };
+        const results = await Promise.allSettled(
+            sources.map(async ([key, url]) => {
+                const data = await fetchCSV(url);
+                completed++;
+                updateLoadingProgress(completed, sources.length);
+                return { key, data };
+            })
+        );
+
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                const { key, data } = result.value;
+                const mappedKey = {
+                    BD_STOCK: 'bdStock',
+                    OBC_BD: 'obcBd',
+                    VALIDACION: 'validacion',
+                    INVENTARIO: 'inventario',
+                    MNE: 'mne',
+                    TRS: 'trs',
+                    CANCELADO: 'cancelado'
+                }[key];
+                DATA_CACHE[mappedKey] = data;
             }
         });
 
-        const results = await Promise.all(promises);
-        
-        results.forEach(({ key, rows }) => {
-            STATE.dataCache[key] = rows;
-        });
-
-        STATE.lastUpdate = new Date();
-        const totalRows = Object.values(STATE.dataCache).reduce((sum, rows) => sum + rows.length, 0);
-        
-        // Guardar en localStorage para modo offline
-        saveToLocalStorage();
-        
-        updateDbStatus(`✅ ${totalRows.toLocaleString()} registros | 🔄 ${STATE.lastUpdate.toLocaleTimeString()}`);
-        showNotification(`✅ BD cargada: ${totalRows.toLocaleString()} registros desde ${Object.keys(CONFIG.SOURCES).length} fuentes`, 'success');
-    } catch (error) {
-        console.error('Error loading database:', error);
-        
-        // Intentar cargar desde localStorage si falla
-        const loaded = loadFromLocalStorage();
-        if (loaded) {
-            updateDbStatus('⚠️ Usando datos en caché (offline)');
-            showNotification('⚠️ Usando datos guardados (modo offline)', 'warning');
-        } else {
-            updateDbStatus('❌ Error al cargar base de datos');
-            showNotification('❌ Error al cargar base de datos', 'error');
-        }
+        DATA_CACHE.lastUpdate = Date.now();
+        saveToCache();
+        showNotification('✅ Bases de datos cargadas correctamente', 'success');
+    } catch (e) {
+        console.error('Error loading data:', e);
+        showNotification('❌ Error al cargar algunas bases de datos', 'error');
+        loadFromCache();
     } finally {
         showLoading(false);
     }
 }
 
-function setupEventListeners() {
-    const searchInput = document.getElementById('search-input');
-    searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            searchBox();
-        }
-    });
+function updateLoadingProgress(completed, total) {
+    const percent = (completed / total) * 100;
+    document.getElementById('progress-fill').style.width = `${percent}%`;
+    document.getElementById('loading-progress').textContent = `${completed}/${total} completadas`;
 }
 
-// ==================== BÚSQUEDA AVANZADA ====================
-function searchBox() {
-    const searchInput = document.getElementById('search-input');
-    const rawCode = searchInput.value.trim();
-
-    if (!rawCode) {
-        showNotification('⚠️ Ingresa un código para buscar', 'warning');
-        return;
-    }
-
-    showLoading(true);
-    
-    // Normalizar código usando función compartida
-    const normalizedCode = normalizeCode(rawCode);
-    STATE.currentSearch = normalizedCode;
-    
-    // Actualizar estadísticas
-    STATE.statistics.totalSearches++;
-    STATE.statistics.lastSearchDate = new Date().toISOString();
-    
-    // Generar variantes para búsqueda inteligente
-    const variations = generateCodeVariations(normalizedCode);
-    const baseCode = extractBaseCode(normalizedCode);
-    
-    // Buscar en todas las fuentes con algoritmo avanzado
-    const results = searchAllSourcesAdvanced(normalizedCode, variations, baseCode);
-    
-    showLoading(false);
-    
-    if (!results.hasResults) {
-        STATE.statistics.failedSearches++;
-        saveStatistics();
-        showNotification('❌ Código no encontrado en ninguna fuente', 'error');
-        hideResults();
-        playSound('error');
-        return;
-    }
-
-    // Actualizar estadísticas de éxito
-    STATE.statistics.successfulSearches++;
-    Object.keys(results.exact).forEach(source => {
-        if (results.exact[source].length > 0) {
-            STATE.statistics.sourcesUsed[source] = (STATE.statistics.sourcesUsed[source] || 0) + 1;
-        }
+async function fetchCSV(url) {
+    const response = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-cache'
     });
-    saveStatistics();
 
-    STATE.currentResult = results;
-    displayResults(results, normalizedCode);
-    showNotification(`✅ Encontrado en ${results.sourceCount} fuente(s)`, 'success');
-    playSound('success');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const csv = await response.text();
+    return parseCSV(csv);
 }
 
-function searchAllSourcesAdvanced(query, variations, baseCode) {
-    const results = {
-        exact: {},
-        partial: {},
-        query: query,
-        variations: variations,
-        baseCode: baseCode,
-        hasResults: false,
-        sourceCount: 0,
-        totalMatches: 0
-    };
-    
-    Object.entries(STATE.dataCache).forEach(([source, rows]) => {
-        if (!rows || rows.length === 0) return;
-        
-        results.exact[source] = [];
-        results.partial[source] = [];
-        
-        // Búsqueda especializada por fuente
-        if (source === 'mne') {
-            searchMNE(rows, results, source);
-        } else if (source === 'cancelado') {
-            searchCANCELADO(rows, results, source);
+function parseCSV(csv) {
+    const lines = csv.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return [];
+
+    const headers = parseCSVLine(lines[0]);
+    const data = [];
+
+    for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.length > 0) {
+            const row = {};
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+            // Store raw values array for index-based access
+            row._values = values;
+            data.push(row);
+        }
+    }
+
+    return data;
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
         } else {
-            searchGeneric(rows, results, source);
+            current += char;
         }
-        
-        // Contar resultados
-        const exactCount = results.exact[source].length;
-        const partialCount = results.partial[source].length;
-        
-        if (exactCount > 0 || partialCount > 0) {
-            results.sourceCount++;
-            results.totalMatches += exactCount + partialCount;
-            results.hasResults = true;
-        }
-    });
-    
-    return results;
+    }
+    result.push(current.trim());
+    return result;
 }
 
-// Búsqueda genérica con fuzzy matching
-function searchGeneric(rows, results, sourceName) {
-    const query = results.query;
-    const variations = results.variations;
-    const baseCode = results.baseCode;
-    
-    rows.forEach((row, index) => {
-        if (index === 0) return; // Skip header
-        
-        let matchType = null;
-        let similarity = 0;
-        
-        // Buscar en todas las celdas
-        for (let i = 0; i < row.length; i++) {
-            const cell = row[i];
-            if (!cell) continue;
-            
-            const cellUpper = cell.toString().toUpperCase();
-            const cellNormalized = normalizeCode(cell);
-            
-            // Coincidencia exacta
-            if (cellNormalized === query || variations.includes(cellNormalized)) {
-                matchType = 'exact';
-                similarity = 100;
-                break;
+function saveToCache() {
+    try {
+        localStorage.setItem('box_query_cache', JSON.stringify(DATA_CACHE));
+    } catch (e) {
+        console.error('Error saving to cache:', e);
+    }
+}
+
+function loadFromCache() {
+    try {
+        const cached = localStorage.getItem('box_query_cache');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.lastUpdate && Date.now() - parsed.lastUpdate < CONFIG.CACHE_DURATION) {
+                DATA_CACHE = parsed;
+                showNotification('ℹ️ Usando datos en caché', 'info');
+                return true;
             }
-            
-            // Coincidencia de código base
-            if (baseCode && cellNormalized.includes(baseCode)) {
-                matchType = 'exact';
-                similarity = 90;
-                break;
+        }
+    } catch (e) {
+        console.error('Error loading from cache:', e);
+    }
+    return false;
+}
+
+// ==================== SEARCH ====================
+function performSearch() {
+    const input = document.getElementById('search-input');
+    const query = normalizeCode(input.value.trim());
+
+    if (!query) {
+        showNotification('⚠️ Ingresa un código o número de orden', 'warning');
+        return;
+    }
+
+    // Show preloader and hide other elements
+    showSearchPreloader(true);
+
+    // Use setTimeout to allow the browser to render the preloader
+    setTimeout(() => {
+        try {
+            CURRENT_SEARCH = query;
+            const results = searchAllSources(query);
+            displayResults(results, query);
+
+            // Clear input after successful search
+            input.value = '';
+
+            // Show success notification
+            const totalResults = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
+            if (totalResults > 0) {
+                showNotification(`✅ Búsqueda completada: ${totalResults} coincidencia${totalResults > 1 ? 's' : ''} encontrada${totalResults > 1 ? 's' : ''}`, 'success');
+            } else {
+                showNotification('ℹ️ No se encontraron resultados', 'info');
             }
-            
-            // Coincidencia parcial
-            if (cellUpper.includes(query)) {
-                if (!matchType) {
-                    matchType = 'partial';
-                    similarity = calculateSimilarity(query, cellUpper);
+        } catch (error) {
+            console.error('Error during search:', error);
+            showNotification('❌ Error al realizar la búsqueda', 'error');
+        } finally {
+            showSearchPreloader(false);
+        }
+    }, 100);
+}
+
+function showSearchPreloader(show) {
+    const preloader = document.getElementById('search-preloader');
+    const resultsContainer = document.getElementById('results-container');
+    const emptyState = document.getElementById('empty-state');
+    const searchBtn = document.getElementById('search-btn');
+
+    if (show) {
+        preloader.classList.add('show');
+        resultsContainer.classList.remove('show');
+        emptyState.style.display = 'none';
+        searchBtn.disabled = true;
+        searchBtn.style.opacity = '0.6';
+    } else {
+        preloader.classList.remove('show');
+        searchBtn.disabled = false;
+        searchBtn.style.opacity = '1';
+    }
+}
+
+function toggleGlobalSearchMode() {
+    const toggle = document.getElementById('global-mode-toggle');
+    const statusEl = document.getElementById('global-mode-status');
+
+    GLOBAL_SEARCH_MODE = toggle.checked ? 'flexible' : 'exact';
+
+    if (GLOBAL_SEARCH_MODE === 'flexible') {
+        statusEl.textContent = 'Exactas + Flexibles';
+        statusEl.className = 'toggle-status flexible';
+    } else {
+        statusEl.textContent = 'Solo Exactas';
+        statusEl.className = 'toggle-status exact';
+    }
+
+    // Reset all section modes to match global
+    Object.keys(SECTION_MODES).forEach(key => {
+        SECTION_MODES[key] = GLOBAL_SEARCH_MODE;
+    });
+
+    // Re-render if search is active
+    if (CURRENT_SEARCH) {
+        const results = searchAllSources(CURRENT_SEARCH);
+        displayResults(results, CURRENT_SEARCH);
+    }
+}
+
+function toggleSectionMode(sectionKey) {
+    SECTION_MODES[sectionKey] = SECTION_MODES[sectionKey] === 'exact' ? 'flexible' : 'exact';
+
+    if (CURRENT_SEARCH) {
+        const results = searchAllSources(CURRENT_SEARCH);
+        displayResults(results, CURRENT_SEARCH);
+    }
+}
+
+function normalizeCode(raw) {
+    let code = String(raw).replace(/\s+/g, '').trim().toUpperCase();
+
+    // Extract from JSON patterns
+    const patterns = [
+        /\[id\[.*?\[([^\[]+)\[/i,
+        /¨id¨.*?¨([^¨]+)¨/i,
+        /"id"\s*:\s*"([^"]+)"/i
+    ];
+
+    for (const pattern of patterns) {
+        const match = code.match(pattern);
+        if (match) return match[1].replace(/\s+/g, '');
+    }
+
+    // Normalize different types of dashes/separators
+    code = code.replace(/[—–‐‑‒―]+/g, '-');
+    code = code.replace(/[-]{2,}/g, '-');
+
+    return code.replace(/[^a-zA-Z0-9\-\/\']/g, '');
+}
+
+function generateCodeVariations(code) {
+    const variations = new Set([code]);
+
+    const separators = ['/', '-', '\''];
+
+    separators.forEach(sep => {
+        if (code.includes(sep)) {
+            separators.forEach(newSep => {
+                if (sep !== newSep) {
+                    variations.add(code.replace(new RegExp('\\' + sep, 'g'), newSep));
                 }
-            }
-        }
-        
-        if (matchType === 'exact') {
-            results.exact[sourceName].push({ row, similarity, index });
-        } else if (matchType === 'partial' && similarity >= CONFIG.SIMILARITY_THRESHOLD) {
-            if (results.partial[sourceName].length < CONFIG.MAX_RESULTS) {
-                results.partial[sourceName].push({ row, similarity, index });
-            }
+            });
         }
     });
-    
-    // Ordenar por similitud
-    results.partial[sourceName].sort((a, b) => b.similarity - a.similarity);
+
+    return Array.from(variations);
 }
 
-// Búsqueda especializada para MNE (columnas 3 y 5)
-function searchMNE(rows, results, sourceName) {
-    const query = results.query;
-    const baseCode = results.baseCode;
-    const searchIndices = [3, 5]; // OBC 出库单, Código 货号
-    
-    rows.forEach((row, index) => {
-        if (index === 0 || !row || row.length < 6) return;
-        
-        let isMatch = false;
-        
-        for (const idx of searchIndices) {
-            const cell = row[idx];
-            if (!cell) continue;
-            
-            const cellUpper = cell.toString().toUpperCase();
-            const cellNormalized = normalizeCode(cell);
-            
-            if (cellNormalized === query || cellUpper.includes(query)) {
-                isMatch = true;
-                break;
-            }
-            
-            if (baseCode && cellNormalized.includes(baseCode)) {
-                isMatch = true;
-                break;
-            }
+function getTruncatedCode(code) {
+    if (/U\d{3,4}$/i.test(code)) {
+        return code.replace(/U\d{3,4}$/i, '');
+    }
+
+    const separators = ['/', '-', '\''];
+    for (const sep of separators) {
+        const lastIndex = code.lastIndexOf(sep);
+        if (lastIndex > 0) {
+            return code.substring(0, lastIndex);
         }
-        
-        if (isMatch) {
-            results.exact[sourceName].push({ row, similarity: 100, index });
-        }
-    });
+    }
+
+    return code;
 }
 
-// Búsqueda especializada para CANCELADO (columnas 1 y 2)
-function searchCANCELADO(rows, results, sourceName) {
-    const query = results.query;
-    const baseCode = results.baseCode;
-    const searchIndices = [1, 2]; // CODIGO 1, ORDEN
-    
-    rows.forEach((row, index) => {
-        if (index === 0 || !row || row.length < 3) return;
-        
-        let isMatch = false;
-        
-        for (const idx of searchIndices) {
-            const cell = row[idx];
-            if (!cell) continue;
-            
-            const cellUpper = cell.toString().toUpperCase();
-            const cellNormalized = normalizeCode(cell);
-            
-            if (cellNormalized === query || cellUpper.includes(query)) {
-                isMatch = true;
-                break;
-            }
-            
-            if (baseCode && cellNormalized.includes(baseCode)) {
-                isMatch = true;
-                break;
-            }
+function extractBaseCode(code) {
+    if (/U\d{3,4}$/i.test(code)) {
+        return code.replace(/U\d{3,4}$/i, '');
+    }
+
+    const separators = ['/', '-', '\''];
+    for (const sep of separators) {
+        const lastIndex = code.lastIndexOf(sep);
+        if (lastIndex > 0) {
+            return code.substring(0, lastIndex);
         }
-        
-        if (isMatch) {
-            results.exact[sourceName].push({ row, similarity: 100, index });
-        }
-    });
+    }
+
+    return code;
 }
 
-// Calcular similitud entre dos strings
 function calculateSimilarity(str1, str2) {
     const longer = str1.length > str2.length ? str1 : str2;
     const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 100;
-    
-    const editDistance = levenshteinDistance(shorter, longer);
-    return ((longer.length - editDistance) / longer.length) * 100;
-}
 
-// Distancia de Levenshtein para fuzzy matching
-function levenshteinDistance(str1, str2) {
-    const matrix = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-        matrix[i] = [i];
+    if (longer.length === 0) return 100;
+
+    if (longer.includes(shorter)) {
+        return (shorter.length / longer.length) * 100;
     }
-    
-    for (let j = 0; j <= str1.length; j++) {
-        matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-        for (let j = 1; j <= str1.length; j++) {
-            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-                matrix[i][j] = matrix[i - 1][j - 1];
-            } else {
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j] + 1
-                );
+
+    // Levenshtein distance
+    const costs = [];
+    for (let i = 0; i <= longer.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= shorter.length; j++) {
+            if (i === 0) {
+                costs[j] = j;
+            } else if (j > 0) {
+                let newValue = costs[j - 1];
+                if (longer.charAt(i - 1) !== shorter.charAt(j - 1)) {
+                    newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                }
+                costs[j - 1] = lastValue;
+                lastValue = newValue;
             }
         }
+        if (i > 0) costs[shorter.length] = lastValue;
     }
-    
-    return matrix[str2.length][str1.length];
+
+    return ((longer.length - costs[shorter.length]) / longer.length) * 100;
 }
 
-// ==================== VISUALIZACIÓN DE RESULTADOS ====================
-function displayResults(results, searchCode) {
+function searchAllSources(query) {
+    const results = {
+        exact: {
+            bdStock: [],
+            obcBd: [],
+            validacion: [],
+            inventario: [],
+            mne: [],
+            trs: [],
+            cancelado: []
+        },
+        partial: {
+            bdStock: [],
+            obcBd: [],
+            validacion: [],
+            inventario: [],
+            mne: [],
+            trs: [],
+            cancelado: []
+        },
+        query,
+        baseCode: extractBaseCode(query),
+        variations: generateCodeVariations(query),
+        truncatedCode: getTruncatedCode(query)
+    };
+
+    // Search with similarity tracking
+    searchInSourceWithSimilarity(DATA_CACHE.bdStock, results, 'bdStock', [
+        'Customize Barcode/自定义箱条码',
+        'Box type No./箱类型号'
+    ]);
+
+    searchInSourceWithSimilarity(DATA_CACHE.obcBd, results, 'obcBd', [
+        'Custom box barcode_自定义箱条码',
+        'Outbound_出库单号',
+        'Reference order No._参考单号'
+    ]);
+
+    searchInSourceWithSimilarity(DATA_CACHE.validacion, results, 'validacion', [
+        'Codigo',
+        'Orden'
+    ]);
+
+    searchInSourceWithSimilarity(DATA_CACHE.inventario, results, 'inventario', [
+        'SCAN 1',
+        'SCAN 2',
+        'PALLET'
+    ]);
+
+    // Search MNE - reverse for recent records first
+    searchMNE(DATA_CACHE.mne.slice().reverse(), results, 'mne');
+
+    // Special search for TRS using column indices
+    searchTRS(DATA_CACHE.trs, results, 'trs');
+
+    // Search CANCELADO
+    searchCANCELADO(DATA_CACHE.cancelado, results, 'cancelado');
+
+    return results;
+}
+
+function searchTRS(data, results, sourceName) {
+    const query = results.query;
+    const baseCode = results.baseCode;
+    const searchIndices = [6, 13, 14];
+
+    const exactMatches = [];
+    const baseCodeMatches = [];
+
+    data.forEach(row => {
+        if (!row._values || !row._values[0] || !row._values[0].toString().startsWith('TRS')) {
+            return;
+        }
+
+        let matchType = null;
+
+        for (const idx of searchIndices) {
+            const cellValue = row._values[idx] || '';
+            if (!cellValue) continue;
+
+            const cellUpper = cellValue.toString().toUpperCase();
+            const queryUpper = query.toUpperCase();
+
+            if (cellUpper === queryUpper || cellUpper.includes(queryUpper)) {
+                matchType = 'exact';
+                break;
+            }
+
+            const normalizedCell = normalizeCode(cellValue);
+            if (normalizedCell === query || normalizedCell.includes(query)) {
+                matchType = 'exact';
+                break;
+            }
+        }
+
+        if (!matchType && baseCode && baseCode !== query) {
+            for (const idx of searchIndices) {
+                const cellValue = row._values[idx] || '';
+                if (!cellValue) continue;
+
+                const normalizedCell = normalizeCode(cellValue);
+                const cellBaseCode = extractBaseCode(cellValue);
+
+                if (cellBaseCode === baseCode || normalizedCell.includes(baseCode)) {
+                    matchType = 'baseCode';
+                    break;
+                }
+            }
+        }
+
+        if (matchType === 'exact') {
+            exactMatches.push({ ...row, _matchType: 'exact', _similarity: 100 });
+        } else if (matchType === 'baseCode') {
+            baseCodeMatches.push({ ...row, _matchType: 'baseCode', _similarity: 90 });
+        }
+    });
+
+    if (exactMatches.length > 0) {
+        results.exact[sourceName].push(...exactMatches);
+    } else if (baseCodeMatches.length > 0) {
+        results.exact[sourceName].push(...baseCodeMatches);
+    }
+}
+
+function searchMNE(data, results, sourceName) {
+    const query = results.query;
+    const baseCode = results.baseCode;
+    const searchIndices = [3, 5];
+
+    data.forEach(row => {
+        if (!row._values || row._values.length < 6) return;
+
+        const firstVal = row._values[0]?.toString() || '';
+        if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+
+        let isMatch = false;
+
+        for (const idx of searchIndices) {
+            const cellValue = row._values[idx] || '';
+            if (!cellValue) continue;
+
+            const cellUpper = cellValue.toString().toUpperCase();
+            const queryUpper = query.toUpperCase();
+
+            if (cellUpper === queryUpper) {
+                isMatch = true;
+                break;
+            }
+
+            if (cellUpper.includes(queryUpper)) {
+                isMatch = true;
+                break;
+            }
+
+            if (baseCode) {
+                const normalizedCell = normalizeCode(cellValue);
+                if (normalizedCell.includes(baseCode)) {
+                    isMatch = true;
+                    break;
+                }
+            }
+        }
+
+        if (isMatch) {
+            const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+            results.exact[sourceName].push(enrichedRow);
+        }
+    });
+}
+
+function searchCANCELADO(data, results, sourceName) {
+    const query = results.query;
+    const baseCode = results.baseCode;
+    const searchIndices = [1, 2];
+
+    data.forEach(row => {
+        if (!row._values || row._values.length < 3) return;
+
+        const firstVal = row._values[0]?.toString() || '';
+        if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+
+        let isMatch = false;
+
+        for (const idx of searchIndices) {
+            const cellValue = row._values[idx] || '';
+            if (!cellValue) continue;
+
+            const cellUpper = cellValue.toString().toUpperCase();
+            const queryUpper = query.toUpperCase();
+
+            if (cellUpper === queryUpper) {
+                isMatch = true;
+                break;
+            }
+
+            if (cellUpper.includes(queryUpper)) {
+                isMatch = true;
+                break;
+            }
+
+            if (baseCode) {
+                const normalizedCell = normalizeCode(cellValue);
+                if (normalizedCell.includes(baseCode)) {
+                    isMatch = true;
+                    break;
+                }
+            }
+        }
+
+        if (isMatch) {
+            const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+            results.exact[sourceName].push(enrichedRow);
+        }
+    });
+}
+
+function searchInSourceWithSimilarity(data, results, sourceName, fields) {
+    const query = results.query;
+    const variations = results.variations;
+    const baseCode = results.baseCode;
+    const SIMILARITY_THRESHOLD = 75;
+
+    data.forEach(row => {
+        let bestMatch = { type: null, similarity: 0, field: null };
+
+        fields.forEach(field => {
+            const matchResult = checkFieldMatch(row[field], query, variations, baseCode);
+            if (matchResult && matchResult.similarity > bestMatch.similarity) {
+                bestMatch = matchResult;
+            }
+        });
+
+        if (sourceName === 'trs' && bestMatch.type !== 'exact') {
+            Object.values(row).forEach(cellValue => {
+                if (typeof cellValue === 'string' && cellValue.trim()) {
+                    const matchResult = checkFieldMatch(cellValue, query, variations, baseCode);
+                    if (matchResult && matchResult.similarity > bestMatch.similarity) {
+                        bestMatch = matchResult;
+                    }
+                }
+            });
+        }
+
+        if (bestMatch.type === 'exact') {
+            const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+            results.exact[sourceName].push(enrichedRow);
+        } else if (bestMatch.type === 'fuzzy' && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
+            if (results.partial[sourceName].length < CONFIG.MAX_RESULTS) {
+                const enrichedRow = { ...row, _matchType: 'fuzzy', _similarity: Math.round(bestMatch.similarity) };
+                results.partial[sourceName].push(enrichedRow);
+            }
+        }
+    });
+
+    results.partial[sourceName].sort((a, b) => (b._similarity || 0) - (a._similarity || 0));
+}
+
+function checkFieldMatch(rawValue, query, variations, baseCode) {
+    if (!rawValue || !String(rawValue).trim()) return null;
+
+    const rawUpper = String(rawValue).trim().toUpperCase();
+    const value = normalizeCode(rawValue);
+    if (!value) return null;
+
+    // === EXACT MATCH CHECKS ===
+    if (value === query || variations.includes(value)) {
+        return { type: 'exact', similarity: 100 };
+    }
+
+    const valueBaseCode = extractBaseCode(value);
+    if (valueBaseCode === query || variations.includes(valueBaseCode)) {
+        return { type: 'exact', similarity: 100 };
+    }
+
+    if (value.startsWith(query) && value.length > query.length) {
+        const suffix = value.substring(query.length);
+        if (/^[U\-\/\'\d]/.test(suffix)) {
+            return { type: 'exact', similarity: 100 };
+        }
+    }
+
+    if (query.startsWith(value) && query.length > value.length) {
+        const suffix = query.substring(value.length);
+        if (/^[U\-\/\'\d]/.test(suffix)) {
+            return { type: 'exact', similarity: 100 };
+        }
+    }
+
+    if (value.includes(query) && query.length >= 8) {
+        const idx = value.indexOf(query);
+        const charBefore = idx > 0 ? value[idx - 1] : '';
+        const charAfter = idx + query.length < value.length ? value[idx + query.length] : '';
+        const isAtBoundary = (idx === 0 || !/[A-Z0-9]/.test(charBefore)) &&
+                            (idx + query.length === value.length || !/[A-Z]/.test(charAfter));
+        if (isAtBoundary) {
+            return { type: 'exact', similarity: 100 };
+        }
+    }
+
+    if (rawUpper.includes(query) && query.length >= 8) {
+        return { type: 'exact', similarity: 100 };
+    }
+
+    // === FLEXIBLE/FUZZY MATCH CHECKS ===
+    let bestFuzzy = { type: null, similarity: 0 };
+
+    if (baseCode && baseCode !== query && valueBaseCode === baseCode) {
+        bestFuzzy = { type: 'fuzzy', similarity: 95 };
+    }
+
+    if (value.includes(query) || query.includes(value)) {
+        const overlapRatio = Math.min(query.length, value.length) / Math.max(query.length, value.length) * 100;
+        if (overlapRatio > bestFuzzy.similarity) {
+            bestFuzzy = { type: 'fuzzy', similarity: overlapRatio };
+        }
+    }
+
+    const similarity = calculateSimilarity(query, value);
+    if (similarity >= 75 && similarity > bestFuzzy.similarity) {
+        bestFuzzy = { type: 'fuzzy', similarity };
+    }
+
+    return bestFuzzy.type ? bestFuzzy : null;
+}
+
+// ==================== DISPLAY RESULTS ====================
+function displayResults(results, query) {
     document.getElementById('empty-state').style.display = 'none';
     document.getElementById('results-container').classList.add('show');
 
-    // KPI Cards
-    const kpiCards = document.getElementById('kpi-cards');
-    kpiCards.innerHTML = `
-        <div class="kpi-card orden" onclick="copyToClipboard('${searchCode}')" style="cursor: pointer;" title="Click para copiar">
-            <div class="kpi-card-label">🔍 Código Buscado</div>
-            <div class="kpi-card-value">${searchCode}</div>
+    displaySummary(results);
+    displaySections(results);
+}
+
+function displaySummary(results) {
+    const card = document.getElementById('summary-card');
+    const isExactMode = GLOBAL_SEARCH_MODE === 'exact';
+
+    const getInfo = (exactArr, partialArr) => {
+        if (isExactMode) {
+            return exactArr[0] || null;
+        }
+        return exactArr[0] || partialArr[0] || null;
+    };
+
+    const stockInfo = getInfo(results.exact.bdStock, results.partial.bdStock);
+    const obcInfo = getInfo(results.exact.obcBd, results.partial.obcBd);
+    const mneInfo = getInfo(results.exact.mne, results.partial.mne);
+    const validacionInfo = getInfo(results.exact.validacion, results.partial.validacion);
+    const inventarioInfo = getInfo(results.exact.inventario, results.partial.inventario);
+    const trsInfo = getInfo(results.exact.trs, results.partial.trs);
+    const canceladoInfo = getInfo(results.exact.cancelado, results.partial.cancelado);
+
+    const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
+    const totalPartial = Object.values(results.partial).reduce((sum, arr) => sum + arr.length, 0);
+
+    const flexibleCounts = {
+        bdStock: results.partial.bdStock.length,
+        obcBd: results.partial.obcBd.length,
+        validacion: results.partial.validacion.length,
+        inventario: results.partial.inventario.length,
+        mne: results.partial.mne.length,
+        trs: results.partial.trs.length,
+        cancelado: results.partial.cancelado.length
+    };
+
+    const flexIndicator = (source) => {
+        if (isExactMode && results.exact[source].length === 0 && flexibleCounts[source] > 0) {
+            return `<span class="badge warning" style="font-size: 0.6em; margin-left: 4px;" title="Hay ${flexibleCounts[source]} coincidencias flexibles disponibles">~${flexibleCounts[source]}</span>`;
+        }
+        return '';
+    };
+
+    const obcExact = results.exact.obcBd.length > 0;
+    const obcMultiple = isExactMode ? results.exact.obcBd.length : results.exact.obcBd.length + results.partial.obcBd.length;
+
+    let obcOrden = '-';
+    let obcBoxCount = 0;
+    let obcInTrackingCount = 0;
+    let obcValidatedCount = 0;
+    let obcValidationPercent = 0;
+
+    if (obcExact && obcInfo) {
+        obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'];
+
+        const obcCode = obcInfo['Outbound_出库单号'];
+        if (obcCode) {
+            obcBoxCount = DATA_CACHE.obcBd.filter(r => r['Outbound_出库单号'] === obcCode).length;
+            obcInTrackingCount = DATA_CACHE.mne.filter(r =>
+                normalizeCode(r['Orden OBC'] || '').includes(obcCode)
+            ).length;
+
+            obcValidatedCount = DATA_CACHE.validacion.filter(r =>
+                normalizeCode(r['Orden'] || '').includes(obcCode)
+            ).length;
+
+            if (obcBoxCount > 0) {
+                obcValidationPercent = Math.min(100, Math.round((obcValidatedCount / obcBoxCount) * 100));
+            }
+        }
+    } else if (!isExactMode && obcMultiple > 1) {
+        obcOrden = `${obcMultiple} coincidencias`;
+    } else if (!isExactMode && obcInfo) {
+        obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'] || '-';
+    }
+
+    const trsExact = results.exact.trs.length > 0;
+    const trsMultipleExact = results.exact.trs.length;
+    const trsMultipleFlex = results.partial.trs.length;
+    const getTrsNumber = (info) => info?._values?.[0] || null;
+
+    let trsOrden = 'NO';
+    if (isExactMode) {
+        if (trsExact && trsInfo) {
+            trsOrden = trsMultipleExact > 1 ? `${trsMultipleExact} TRS` : getTrsNumber(trsInfo);
+        }
+    } else {
+        const trsTotal = trsMultipleExact + trsMultipleFlex;
+        if (trsInfo) {
+            trsOrden = trsTotal > 1 ? `${trsTotal} TRS` : getTrsNumber(trsInfo) || 'NO';
+        }
+    }
+
+    const stockLocations = new Set();
+    const stockSource = isExactMode ? results.exact.bdStock : [...results.exact.bdStock, ...results.partial.bdStock];
+    stockSource.forEach(r => {
+        if (r['cellNo']) stockLocations.add(r['cellNo']);
+    });
+
+    card.innerHTML = `
+        <div class="summary-header">
+            <div class="summary-title">
+                📦 ${makeCopyable(results.query)}
+                ${totalExact > 0 ? '<span class="badge success">Exacta</span>' : isExactMode ? '<span class="badge gray">Sin Exactas</span>' : '<span class="badge warning">Flexible</span>'}
+                ${isExactMode && totalExact === 0 && totalPartial > 0 ? `<span class="badge warning" style="margin-left: 4px;">~${totalPartial} flexibles</span>` : ''}
+            </div>
+            <div class="summary-actions">
+                <button class="btn btn-success" onclick="exportResults()">📥 Exportar</button>
+                <button class="btn btn-secondary" onclick="printResults()">🖨️ Imprimir</button>
+            </div>
         </div>
-        <div class="kpi-card destino">
-            <div class="kpi-card-label">📊 Fuentes</div>
-            <div class="kpi-card-value">${results.sourceCount}</div>
+
+        <div class="summary-grid">
+            <div class="summary-item primary" onclick="jumpToSection('obcBd')">
+                ${obcMultiple > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('obcBd')">${obcMultiple}</span>` : ''}
+                <div class="summary-label">
+                    📋 Número de Orden ${flexIndicator('obcBd')}
+                </div>
+                <div class="summary-value">${makeCopyable(obcOrden)}</div>
+                ${obcBoxCount > 0 ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📦 ${obcBoxCount} cajas</div>` : ''}
+            </div>
+
+            <div class="summary-item info" onclick="jumpToSection('obcBd')">
+                <div class="summary-label">👤 Destino/Cliente ${flexIndicator('obcBd')}</div>
+                <div class="summary-value">${obcInfo?.['Recipient_收件人'] || '-'}</div>
+                ${obcInfo?.['Expected Arrival Time _ 期望到仓时间'] ? `<div style="font-size: 0.75em; color: #666; margin-top: 4px;">📅 ${obcInfo['Expected Arrival Time _ 期望到仓时间']}</div>` : ''}
+            </div>
+
+            <div class="summary-item success" onclick="jumpToSection('bdStock')">
+                ${stockLocations.size > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('bdStock')">${stockLocations.size}</span>` : ''}
+                <div class="summary-label">📍 Ubicación Actual WMS ${flexIndicator('bdStock')}</div>
+                <div class="summary-value">${makeCopyable(stockInfo?.['cellNo'] || (isExactMode ? '-' : inventarioInfo?.['UBICACION']) || '-')}</div>
+            </div>
+
+            <div class="summary-item gray" onclick="jumpToSection('inventario')">
+                <div class="summary-label">🕐 Último Movimiento ${flexIndicator('inventario')}</div>
+                <div class="summary-value">${inventarioInfo ? `${inventarioInfo['FECHA']} ${inventarioInfo['HORA']} - ${inventarioInfo['USUARIO']}` : '-'}</div>
+            </div>
+
+            <div class="summary-item ${mneInfo ? 'error' : 'success'}" onclick="jumpToSection('mne')">
+                ${results.exact.mne.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('mne')">${results.exact.mne.length}</span>` : ''}
+                <div class="summary-label">🔍 Estatus en Rastreo ${flexIndicator('mne')}</div>
+                <div class="summary-value">${mneInfo ? 'REGISTRADA' : 'SIN REGISTRO'}</div>
+            </div>
+
+            <div class="summary-item ${validacionInfo ? 'success' : 'gray'}" onclick="jumpToSection('validacion')">
+                <div class="summary-label">✅ Estatus Validación ${flexIndicator('validacion')}</div>
+                <div class="summary-value">${validacionInfo ? 'VALIDADA' : 'SIN VALIDAR'}</div>
+                ${validacionInfo ? `<div style="font-size:0.75em;color:#666;margin-top:4px;">
+                    <span style="color:${obcValidationPercent >= 100 ? '#4CAF50' : obcValidationPercent >= 50 ? '#FF9800' : '#F44336'};">
+                        ${obcValidationPercent >= 100 ? '✅' : '⌛'} ${obcValidatedCount || 0}/${obcBoxCount || 0} (${obcValidationPercent || 0}%)
+                    </span>
+                    ${obcInTrackingCount > 0 ? ` • 🔍 ${obcInTrackingCount} rastreo` : ''}
+                </div>` : ''}
+            </div>
+
+            <div class="summary-item ${trsExact ? 'primary' : (isExactMode ? 'gray' : trsMultipleFlex > 0 ? 'warning' : 'gray')}" onclick="jumpToSection('trs')">
+                ${(isExactMode ? trsMultipleExact : trsMultipleExact + trsMultipleFlex) > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('trs')">${isExactMode ? trsMultipleExact : trsMultipleExact + trsMultipleFlex}</span>` : ''}
+                <div class="summary-label">
+                    🔧 Orden de Trabajo ${flexIndicator('trs')}
+                </div>
+                <div class="summary-value">${makeCopyable(trsOrden)}</div>
+            </div>
+
+            <div class="summary-item ${canceladoInfo ? 'error' : 'success'}" onclick="jumpToSection('cancelado')">
+                ${results.exact.cancelado.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('cancelado')">${results.exact.cancelado.length}</span>` : ''}
+                <div class="summary-label">🏷️ Otros ${flexIndicator('cancelado')}</div>
+                <div class="summary-value">${canceladoInfo ? 'OTROS' : 'SIN REGISTRO'}</div>
+            </div>
         </div>
-        <div class="kpi-card estatus">
-            <div class="kpi-card-label">✅ Coincidencias</div>
-            <div class="kpi-card-value">${results.totalMatches}</div>
+    `;
+}
+
+// Copy to clipboard functionality
+function copyToClipboard(text, iconElement) {
+    if (!text || text === '-') return;
+
+    navigator.clipboard.writeText(text).then(() => {
+        iconElement.classList.add('copied');
+        iconElement.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+        setTimeout(() => {
+            iconElement.classList.remove('copied');
+            iconElement.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+        }, 1500);
+
+        showNotification('📋 Copiado al portapapeles', 'success');
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+}
+
+function makeCopyable(value) {
+    if (!value || value === '-') return value;
+    return `<span class="copyable">${value}<span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${value.replace(/'/g, "\\'")}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></span>`;
+}
+
+function jumpToSection(sectionKey) {
+    document.querySelectorAll('.section-content').forEach(el => {
+        if (!el.classList.contains('collapsed')) {
+            el.classList.add('collapsed');
+            const toggle = document.getElementById(`${el.id}-toggle`);
+            if (toggle) toggle.classList.add('collapsed');
+        }
+    });
+
+    const targetSection = document.getElementById(`section-${sectionKey}`);
+    if (targetSection) {
+        targetSection.classList.remove('collapsed');
+        const toggle = document.getElementById(`section-${sectionKey}-toggle`);
+        if (toggle) toggle.classList.remove('collapsed');
+        targetSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+function displaySections(results) {
+    const container = document.getElementById('sections-container');
+    container.innerHTML = '';
+
+    const sections = [
+        { key: 'bdStock', title: '📦 BD Stock - Inventario Actual', color: 'success' },
+        { key: 'obcBd', title: '📋 OBC BD - Órdenes de Salida', color: 'primary' },
+        { key: 'validacion', title: '✅ Sistema Validación Surtido', color: 'success' },
+        { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
+        { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
+        { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' },
+        { key: 'cancelado', title: '🏷️ Otros', color: 'error' }
+    ];
+
+    let hasResults = false;
+
+    sections.forEach(section => {
+        const mode = SECTION_MODES[section.key];
+        const exact = results.exact[section.key];
+        const partial = results.partial[section.key];
+
+        const dataToShow = mode === 'exact' ? exact : [...exact, ...partial];
+
+        if (dataToShow.length > 0) {
+            hasResults = true;
+            container.appendChild(createSectionCard(section, exact, partial, mode));
+        }
+    });
+
+    if (!hasResults) {
+        const isExactMode = GLOBAL_SEARCH_MODE === 'exact';
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <div class="empty-text">No se encontraron resultados para "${results.query}"</div>
+                <div class="empty-subtext">
+                    ${isExactMode
+                        ? '💡 Intenta activar <strong>Búsqueda Flexible</strong> para ver coincidencias parciales'
+                        : '🤔 Verifica que el código sea correcto o intenta con otro formato'}
+                </div>
+            </div>
+        `;
+    }
+}
+
+function createSectionCard(section, exactResults, partialResults, mode) {
+    const dataToShow = mode === 'exact' ? exactResults : [...exactResults, ...partialResults];
+    const card = document.createElement('div');
+    card.className = 'section-card';
+
+    const sectionId = `section-${section.key}`;
+
+    card.innerHTML = `
+        <div class="section-header">
+            <div class="section-header-left">
+                <div class="section-title-wrapper" onclick="toggleSection('${sectionId}')">
+                    <div class="section-title">
+                        ${section.title}
+                        <span class="section-count">${dataToShow.length}</span>
+                    </div>
+                </div>
+                <div class="section-mode-toggle" onclick="event.stopPropagation(); toggleSectionMode('${section.key}')">
+                    <span class="mode-label ${mode === 'exact' ? 'active' : ''}">Exacta</span>
+                    <input type="checkbox" ${mode === 'flexible' ? 'checked' : ''} onclick="event.preventDefault();">
+                    <span class="mode-label ${mode === 'flexible' ? 'active' : ''}">Flexible</span>
+                </div>
+            </div>
+            <span class="section-toggle" id="${sectionId}-toggle" onclick="toggleSection('${sectionId}')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </span>
         </div>
-        <div class="kpi-card trs">
-            <div class="kpi-card-label">🎯 Exactas</div>
-            <div class="kpi-card-value">${countExactMatches(results)}</div>
-        </div>
-        <div class="kpi-card rastreo">
-            <div class="kpi-card-label">🔎 Parciales</div>
-            <div class="kpi-card-value">${countPartialMatches(results)}</div>
+        <div class="section-content" id="${sectionId}">
+            ${mode === 'exact' && exactResults.length > 0 ? `
+                <div class="match-info exact">
+                    ✅ <strong>${exactResults.length}</strong> coincidencia${exactResults.length > 1 ? 's' : ''} exacta${exactResults.length > 1 ? 's' : ''}
+                </div>
+                ${renderTable(exactResults, section.key)}
+            ` : mode === 'exact' && exactResults.length === 0 ? `
+                <div class="empty-state" style="padding: 30px;">
+                    <div class="empty-icon" style="font-size: 2em;">🔍</div>
+                    <div class="empty-text" style="font-size: 1em;">Sin coincidencias exactas</div>
+                    <div class="empty-subtext">Activa "Flexible" para ver coincidencias parciales</div>
+                </div>
+            ` : ''}
+
+            ${mode === 'flexible' ? `
+                ${exactResults.length > 0 ? `
+                    <div class="match-info exact">
+                        ✅ <strong>${exactResults.length}</strong> coincidencia${exactResults.length > 1 ? 's' : ''} exacta${exactResults.length > 1 ? 's' : ''}
+                    </div>
+                    ${renderTable(exactResults, section.key)}
+                ` : ''}
+
+                ${partialResults.length > 0 ? `
+                    <div class="match-info">
+                        ⚠️ <strong>${partialResults.length}</strong> coincidencia${partialResults.length > 1 ? 's' : ''} parcial${partialResults.length > 1 ? 'es' : ''}
+                        ${partialResults.length >= CONFIG.MAX_RESULTS ? ` (mostrando primeras ${CONFIG.MAX_RESULTS})` : ''}
+                    </div>
+                    ${renderTable(partialResults, section.key)}
+                ` : ''}
+            ` : ''}
         </div>
     `;
 
-    // Tabla de detalles
-    const detailsBody = document.getElementById('details-body');
-    let html = '';
-    
-    // Mostrar coincidencias exactas primero
-    Object.entries(results.exact).forEach(([source, matches]) => {
-        if (matches.length === 0) return;
-        
-        html += `<tr style="background: #e8f5e9;"><td colspan="2"><strong style="color: var(--success);">✅ ${getSourceDisplayName(source)} (${matches.length} exactas)</strong></td></tr>`;
-        
-        matches.slice(0, 10).forEach((match, idx) => {
-            const rowData = formatRowData(match.row, source);
-            html += `
-                <tr>
-                    <td style="font-weight: 600;">#${idx + 1}</td>
-                    <td>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>${rowData}</span>
-                            <button onclick="copyRowData('${escapeHtml(rowData)}')" class="btn btn-small" style="padding: 4px 8px; font-size: 0.8em;">📋</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        if (matches.length > 10) {
-            html += `<tr><td colspan="2" style="color: #666; font-style: italic;">... y ${matches.length - 10} más</td></tr>`;
+    return card;
+}
+
+function renderTable(data, sourceKey) {
+    if (data.length === 0) return '<div class="empty-state" style="padding: 20px;"><div class="empty-text" style="font-size: 0.9em;">📭 Sin coincidencias</div></div>';
+
+    const fields = getRelevantFields(sourceKey);
+
+    return `
+        <div style="overflow-x: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        ${fields.map(f => `<th>${f.label}</th>`).join('')}
+                        <th style="width: 80px;">Tipo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.map((row, idx) => `
+                        <tr>
+                            <td style="text-align: center; color: #999; font-weight: 600;">${idx + 1}</td>
+                            ${fields.map(f => `<td>${formatValue(getRowValue(row, f.key), f.type)}</td>`).join('')}
+                            <td style="text-align: center;">
+                                ${row._matchType === 'exact'
+                                    ? '<span class="badge success">Exacta</span>'
+                                    : `<span class="badge warning">~${Math.round(row._similarity || 0)}%</span>`
+                                }
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            ${data.length >= CONFIG.MAX_RESULTS ? '<div class="print-notice">⚠️ Mostrando primeros ' + CONFIG.MAX_RESULTS + ' resultados</div>' : ''}
+        </div>
+    `;
+}
+
+function getRowValue(row, keyPattern) {
+    if (typeof keyPattern === 'number') {
+        if (row._values && row._values[keyPattern] !== undefined) {
+            const val = row._values[keyPattern];
+            return val && val.trim() ? val : 'Vacío';
         }
-    });
-    
-    // Mostrar coincidencias parciales
-    Object.entries(results.partial).forEach(([source, matches]) => {
-        if (matches.length === 0) return;
-        
-        html += `<tr style="background: #fff3e0;"><td colspan="2"><strong style="color: var(--warning);">🔎 ${getSourceDisplayName(source)} (${matches.length} parciales)</strong></td></tr>`;
-        
-        matches.slice(0, 5).forEach((match, idx) => {
-            const rowData = formatRowData(match.row, source);
-            html += `
-                <tr>
-                    <td style="font-weight: 600;">#${idx + 1} (${Math.round(match.similarity)}%)</td>
-                    <td>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>${rowData}</span>
-                            <button onclick="copyRowData('${escapeHtml(rowData)}')" class="btn btn-small" style="padding: 4px 8px; font-size: 0.8em;">📋</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        if (matches.length > 5) {
-            html += `<tr><td colspan="2" style="color: #666; font-style: italic;">... y ${matches.length - 5} más</td></tr>`;
-        }
-    });
-    
-    if (html === '') {
-        html = '<tr><td colspan="2" style="text-align: center; color: #999;">No hay resultados para mostrar</td></tr>';
+        return 'Vacío';
     }
-    
-    detailsBody.innerHTML = html;
+
+    if (row[keyPattern] !== undefined && row[keyPattern] !== '') {
+        return row[keyPattern];
+    }
+
+    for (const [colName, value] of Object.entries(row)) {
+        if (colName === '_values' || colName === '_matchType' || colName === '_similarity') continue;
+        if (colName.includes(keyPattern)) {
+            return value && value.trim() ? value : 'Vacío';
+        }
+        if (colName.toLowerCase().includes(keyPattern.toLowerCase())) {
+            return value && value.trim() ? value : 'Vacío';
+        }
+    }
+
+    return 'Vacío';
 }
 
-function countExactMatches(results) {
-    let count = 0;
-    Object.values(results.exact).forEach(matches => count += matches.length);
-    return count;
-}
-
-function countPartialMatches(results) {
-    let count = 0;
-    Object.values(results.partial).forEach(matches => count += matches.length);
-    return count;
-}
-
-function getSourceDisplayName(source) {
-    const names = {
-        bdstock: 'BD Stock',
-        obcbd: 'OBC BD',
-        validacion: 'Validación',
-        inventario: 'Inventario',
-        mne: 'MNE',
-        trs: 'TRS',
-        cancelado: 'Cancelado'
+function getRelevantFields(sourceKey) {
+    const fieldMap = {
+        bdStock: [
+            { key: 'Customize Barcode/自定义箱条码', label: 'Código Caja', type: 'code' },
+            { key: 'cellNo', label: 'Ubicación', type: 'text' },
+            { key: 'Available stock/可用库存', label: 'Stock Disponible', type: 'number' },
+            { key: 'Locked Inventory/锁定库存', label: 'Stock Bloqueado', type: 'number' },
+            { key: 4, label: 'Medida', type: 'text' },
+            { key: 5, label: 'Peso', type: 'text' },
+            { key: 'sku', label: 'SKU', type: 'text' }
+        ],
+        obcBd: [
+            { key: 'Custom box barcode_自定义箱条码', label: 'Código Caja', type: 'code' },
+            { key: 'Outbound_出库单号', label: 'Número Orden', type: 'code' },
+            { key: 'Recipient_收件人', label: 'Destinatario', type: 'text' },
+            { key: 'Expected Arrival Time _ 期望到仓时间', label: 'Fecha Entrega', type: 'datetime' },
+            { key: 'Reference order No._参考单号', label: 'Referencia', type: 'text' },
+            { key: 'Shipping service_物流渠道', label: 'Servicio', type: 'text' }
+        ],
+        validacion: [
+            { key: 'Fecha', label: 'Fecha', type: 'date' },
+            { key: 'Hora', label: 'Hora', type: 'time' },
+            { key: 'Validador', label: 'Validador', type: 'text' },
+            { key: 'Orden', label: 'Orden', type: 'code' },
+            { key: 'Codigo', label: 'Código', type: 'code' },
+            { key: 'Ubicación', label: 'Ubicación', type: 'text' },
+            { key: 'Nota', label: 'Nota', type: 'text' }
+        ],
+        inventario: [
+            { key: 'FECHA', label: 'Fecha', type: 'date' },
+            { key: 'HORA', label: 'Hora', type: 'time' },
+            { key: 'USUARIO', label: 'Usuario', type: 'text' },
+            { key: 'SCAN 1', label: 'Código 1', type: 'code' },
+            { key: 'SCAN 2', label: 'Código 2', type: 'code' },
+            { key: 'UBICACION', label: 'Ubicación', type: 'text' },
+            { key: 'ESTATUS', label: 'Estatus', type: 'status' },
+            { key: 'PALLET', label: 'Pallet', type: 'text' }
+        ],
+        mne: [
+            { key: 0, label: 'Fecha', type: 'date' },
+            { key: 1, label: 'Mes', type: 'text' },
+            { key: 3, label: 'Orden', type: 'code' },
+            { key: 5, label: 'Código', type: 'code' },
+            { key: 12, label: 'Responsable', type: 'text' },
+            { key: 16, label: 'Estatus', type: 'text' }
+        ],
+        trs: [
+            { key: 0, label: 'No. Servicio', type: 'code' },
+            { key: 5, label: 'Fecha Esperada', type: 'datetime' },
+            { key: 6, label: 'Referencia', type: 'code' },
+            { key: 13, label: 'Código Original', type: 'code' },
+            { key: 14, label: 'Código Nuevo', type: 'code' },
+            { key: 16, label: 'Tipo Instrucción', type: 'text' }
+        ],
+        cancelado: [
+            { key: 0, label: 'Fecha', type: 'date' },
+            { key: 1, label: 'Código', type: 'code' },
+            { key: 2, label: 'Orden', type: 'code' },
+            { key: 3, label: 'Ubicación', type: 'text' },
+            { key: 4, label: 'Responsable', type: 'text' },
+            { key: 5, label: 'Nota', type: 'text' }
+        ]
     };
-    return names[source] || source.toUpperCase();
+
+    return fieldMap[sourceKey] || [];
 }
 
-function formatRowData(row, source) {
-    if (!row || row.length === 0) return '-';
-    
-    // Formatear según la fuente
-    const relevantData = row.slice(0, 6).filter(cell => cell && cell.toString().trim());
-    return relevantData.join(' | ');
-}
+function formatValue(value, type) {
+    if (!value || value === '') return '-';
 
-function escapeHtml(text) {
-    return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-}
-
-function copyRowData(data) {
-    const unescaped = data.replace(/\\'/g, "'");
-    copyToClipboard(unescaped);
-}
-
-function hideResults() {
-    document.getElementById('results-container').classList.remove('show');
-    document.getElementById('empty-state').style.display = 'block';
+    switch (type) {
+        case 'code':
+            return `<code>${value}</code>`;
+        case 'status':
+            const statusMap = {
+                'OK': 'success',
+                'BLOQUEADO': 'error',
+                'NO WMS': 'warning',
+                'processing': 'warning',
+                'completed': 'success'
+            };
+            const badgeType = statusMap[value] || 'gray';
+            return `<span class="badge ${badgeType}">${value}</span>`;
+        case 'number':
+            return parseFloat(value).toLocaleString();
+        case 'datetime':
+        case 'date':
+        case 'time':
+            return value;
+        default:
+            return value;
+    }
 }
 
 function toggleSection(sectionId) {
-    const content = document.getElementById(`content-${sectionId}`);
-    const toggle = document.getElementById(`toggle-${sectionId}`);
-    
+    const content = document.getElementById(sectionId);
+    const toggle = document.getElementById(`${sectionId}-toggle`);
+
     content.classList.toggle('collapsed');
-    toggle.textContent = content.classList.contains('collapsed') ? '▶️' : '🔽';
+    toggle.classList.toggle('collapsed');
 }
 
-// ==================== FUNCIONES DE UTILIDAD ====================
-function refreshDatabase() {
-    if (confirm('¿Recargar base de datos? Esto puede tardar unos segundos.')) {
-        loadDatabase();
-    }
-}
-
+// ==================== EXPORT & PRINT ====================
 function exportResults() {
-    if (!STATE.currentResult || !STATE.currentResult.hasResults) {
-        showNotification('⚠️ No hay resultados para exportar', 'warning');
-        return;
-    }
-    
-    const headers = ['FUENTE', 'TIPO', 'SIMILITUD', 'DATOS'];
-    const rows = [];
-    
-    // Exportar coincidencias exactas
-    Object.entries(STATE.currentResult.exact).forEach(([source, matches]) => {
-        matches.forEach(match => {
-            rows.push([
-                getSourceDisplayName(source),
-                'EXACTA',
-                '100%',
-                match.row.join(' | ')
-            ]);
+    if (!CURRENT_SEARCH) return;
+
+    const results = searchAllSources(CURRENT_SEARCH);
+    const data = [];
+
+    data.push(['FUENTE', 'TIPO COINCIDENCIA', 'INFORMACIÓN']);
+
+    Object.keys(results.exact).forEach(key => {
+        results.exact[key].forEach(row => {
+            const info = Object.entries(row)
+                .filter(([k]) => !k.startsWith('_'))
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(' | ');
+            data.push([getSourceName(key), 'EXACTA', info]);
         });
     });
-    
-    // Exportar coincidencias parciales
-    Object.entries(STATE.currentResult.partial).forEach(([source, matches]) => {
-        matches.forEach(match => {
-            rows.push([
-                getSourceDisplayName(source),
-                'PARCIAL',
-                `${Math.round(match.similarity)}%`,
-                match.row.join(' | ')
-            ]);
+
+    Object.keys(results.partial).forEach(key => {
+        results.partial[key].forEach(row => {
+            const info = Object.entries(row)
+                .filter(([k]) => !k.startsWith('_'))
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(' | ');
+            data.push([getSourceName(key), 'PARCIAL', info]);
         });
     });
-    
-    const csvContent = arrayToCSV([headers, ...rows]);
-    downloadCSV(csvContent, `track_${STATE.currentSearch}_${getCurrentDate()}.csv`);
+
+    const csv = '\ufeff' + data.map(row =>
+        row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `consulta_${CURRENT_SEARCH}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+
     showNotification('✅ Resultados exportados', 'success');
 }
 
 function printResults() {
-    if (!STATE.currentResult || !STATE.currentResult.hasResults) {
-        showNotification('⚠️ No hay resultados para imprimir', 'warning');
-        return;
+    const body = document.body;
+    body.classList.remove('print-limit-exact', 'print-limit-flexible');
+
+    if (GLOBAL_SEARCH_MODE === 'exact') {
+        body.classList.add('print-limit-exact');
+    } else {
+        body.classList.add('print-limit-flexible');
     }
-    
+
     window.print();
+}
+
+function getSourceName(key) {
+    const names = {
+        bdStock: 'BD Stock',
+        obcBd: 'OBC BD',
+        validacion: 'Validación Surtido',
+        inventario: 'Inventario Escaneo',
+        mne: 'Rastreo MNE',
+        trs: 'TRS Etiquetado',
+        cancelado: 'Otros'
+    };
+    return names[key] || key;
+}
+
+// ==================== UI UTILITIES ====================
+function clearSearch() {
+    document.getElementById('search-input').value = '';
+    document.getElementById('results-container').classList.remove('show');
+    document.getElementById('empty-state').style.display = 'block';
+    CURRENT_SEARCH = null;
+}
+
+function showLoading(show) {
+    const overlay = document.getElementById('loading-overlay');
+    overlay.classList.toggle('show', show);
 }
 
 function showNotification(message, type = 'info') {
     const container = document.getElementById('notifications');
-    const notif = document.createElement('div');
-    notif.className = `notification ${type}`;
-    notif.textContent = message;
-    container.appendChild(notif);
-    setTimeout(() => notif.remove(), 3000);
-}
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
 
-function showLoading(show) {
-    document.getElementById('loading-overlay').classList.toggle('show', show);
-}
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `<span style="margin-right: 8px;">${icons[type]}</span>${message}`;
 
-// ==================== MODO OFFLINE ====================
-function setupOfflineMode() {
-    // Detectar cambios en conexión
-    window.addEventListener('online', () => {
-        STATE.isOnline = true;
-        updateOfflineIndicator();
-        showNotification('✅ Conexión restaurada', 'success');
-        // Intentar recargar BD automáticamente
-        loadDatabase();
-    });
-    
-    window.addEventListener('offline', () => {
-        STATE.isOnline = false;
-        updateOfflineIndicator();
-        showNotification('⚠️ Sin conexión - Usando datos en caché', 'warning');
-    });
-    
-    updateOfflineIndicator();
+    container.appendChild(notification);
+    setTimeout(() => notification.remove(), 4000);
 }
-
-function updateOfflineIndicator() {
-    const indicator = document.getElementById('offline-indicator');
-    if (indicator) {
-        indicator.style.display = STATE.isOnline ? 'none' : 'inline-block';
-    }
-}
-
-function saveToLocalStorage() {
-    try {
-        const data = {
-            dataCache: STATE.dataCache,
-            lastUpdate: STATE.lastUpdate?.toISOString(),
-            timestamp: Date.now()
-        };
-        localStorage.setItem('wms_track_cache', JSON.stringify(data));
-    } catch (e) {
-        console.error('Error saving to localStorage:', e);
-    }
-}
-
-function loadFromLocalStorage() {
-    try {
-        const saved = localStorage.getItem('wms_track_cache');
-        if (!saved) return false;
-        
-        const data = JSON.parse(saved);
-        
-        // Verificar que no sea muy antiguo (más de 24 horas)
-        const age = Date.now() - data.timestamp;
-        if (age > 24 * 60 * 60 * 1000) {
-            console.warn('Cached data too old');
-            return false;
-        }
-        
-        STATE.dataCache = data.dataCache;
-        STATE.lastUpdate = data.lastUpdate ? new Date(data.lastUpdate) : null;
-        
-        const totalRows = Object.values(STATE.dataCache).reduce((sum, rows) => sum + rows.length, 0);
-        console.log(`Loaded ${totalRows} rows from cache`);
-        
-        return true;
-    } catch (e) {
-        console.error('Error loading from localStorage:', e);
-        return false;
-    }
-}
-
-function updateDbStatus(message) {
-    const statusEl = document.getElementById('db-status');
-    if (statusEl) {
-        statusEl.textContent = message;
-    }
-}
-
-// ==================== ESTADÍSTICAS ====================
-function loadStatistics() {
-    try {
-        const saved = localStorage.getItem('wms_track_statistics');
-        if (saved) {
-            const stats = JSON.parse(saved);
-            STATE.statistics = { ...STATE.statistics, ...stats };
-        }
-    } catch (e) {
-        console.error('Error loading statistics:', e);
-    }
-}
-
-function saveStatistics() {
-    try {
-        localStorage.setItem('wms_track_statistics', JSON.stringify(STATE.statistics));
-    } catch (e) {
-        console.error('Error saving statistics:', e);
-    }
-}
-
-function showStatistics() {
-    const successRate = STATE.statistics.totalSearches > 0 
-        ? ((STATE.statistics.successfulSearches / STATE.statistics.totalSearches) * 100).toFixed(1)
-        : 0;
-    
-    const topSources = Object.entries(STATE.statistics.sourcesUsed)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-    
-    const lastSearch = STATE.statistics.lastSearchDate 
-        ? new Date(STATE.statistics.lastSearchDate).toLocaleString()
-        : 'Nunca';
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'popup-overlay show';
-    overlay.innerHTML = `
-        <div class="popup-content" style="max-width: 500px;">
-            <div class="popup-header">
-                <span>📊 Estadísticas de Uso</span>
-                <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
-            </div>
-            <div style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 15px; color: var(--primary);">Búsquedas Realizadas</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--info);">${STATE.statistics.totalSearches}</div>
-                        <div style="font-size: 0.9em; color: #666;">Total</div>
-                    </div>
-                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--success);">${STATE.statistics.successfulSearches}</div>
-                        <div style="font-size: 0.9em; color: #666;">Exitosas</div>
-                    </div>
-                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--error);">${STATE.statistics.failedSearches}</div>
-                        <div style="font-size: 0.9em; color: #666;">Fallidas</div>
-                    </div>
-                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 2em; font-weight: 700; color: var(--warning);">${successRate}%</div>
-                        <div style="font-size: 0.9em; color: #666;">Tasa de Éxito</div>
-                    </div>
-                </div>
-                
-                <h3 style="margin: 20px 0 15px; color: var(--primary);">Fuentes Más Usadas</h3>
-                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; font-size: 0.9em;">
-                    ${topSources.length > 0 ? topSources.map(([source, count]) => `
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                            <span>${getSourceDisplayName(source)}:</span>
-                            <strong>${count} búsquedas</strong>
-                        </div>
-                    `).join('') : '<div style="color: #999; text-align: center;">No hay datos aún</div>'}
-                </div>
-                
-                <div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-radius: 6px; font-size: 0.85em; color: #666;">
-                    <div>🕐 Última búsqueda: <strong>${lastSearch}</strong></div>
-                    <div>📦 Registros en BD: <strong>${Object.values(STATE.dataCache).reduce((sum, rows) => sum + rows.length, 0).toLocaleString()}</strong></div>
-                    <div>🔄 Última actualización: <strong>${STATE.lastUpdate ? STATE.lastUpdate.toLocaleString() : 'Sin actualizar'}</strong></div>
-                </div>
-            </div>
-            <div class="popup-buttons">
-                <button class="btn btn-secondary btn-full" onclick="resetStatistics(); this.closest('.popup-overlay').remove();">
-                    🔄 Reiniciar Estadísticas
-                </button>
-                <button class="btn btn-primary btn-full" onclick="this.closest('.popup-overlay').remove();">
-                    Cerrar
-                </button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-}
-
-function resetStatistics() {
-    if (confirm('¿Reiniciar todas las estadísticas?')) {
-        STATE.statistics = {
-            totalSearches: 0,
-            successfulSearches: 0,
-            failedSearches: 0,
-            lastSearchDate: null,
-            sourcesUsed: {}
-        };
-        saveStatistics();
-        showNotification('✅ Estadísticas reiniciadas', 'success');
-    }
-}
-
-// ==================== INICIALIZACIÓN ====================
-window.addEventListener('load', initializeApp);

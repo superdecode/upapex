@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📦 Sistema Inventario</title>
+    <title>Sistema Inventario</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
     <link rel="stylesheet" href="../../shared/css/variables.css">
     <link rel="stylesheet" href="../../shared/css/base.css">
     <link rel="stylesheet" href="../../shared/css/layout.css">
@@ -41,28 +42,47 @@
 
     <div id="main-app" class="hidden">
         <div class="main-container">
+            <!-- SIDEBAR -->
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h2>📦 Inventario</h2>
                     <p>Sistema de gestión</p>
                 </div>
 
-                <div id="sync-status" class="sync-status sync-ok">
+                <div id="sync-status" class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
                     ✅ Sincronizado
                 </div>
 
+                <!-- Global Summary Section -->
+                <div class="global-summary-section" id="global-summary-section">
+                    <div class="summary-title">📊 Resumen Global</div>
+                    <div class="summary-grid">
+                        <div class="summary-item ok">
+                            <span class="summary-icon">✅</span>
+                            <span class="summary-value" id="global-ok-count">0</span>
+                            <span class="summary-label">OK</span>
+                        </div>
+                        <div class="summary-item blocked">
+                            <span class="summary-icon">⚠️</span>
+                            <span class="summary-value" id="global-blocked-count">0</span>
+                            <span class="summary-label">Bloqueado</span>
+                        </div>
+                        <div class="summary-item nowms">
+                            <span class="summary-icon">❌</span>
+                            <span class="summary-value" id="global-nowms-count">0</span>
+                            <span class="summary-label">No WMS</span>
+                        </div>
+                        <div class="summary-item total">
+                            <span class="summary-icon">📦</span>
+                            <span class="summary-value" id="global-total-count">0</span>
+                            <span class="summary-label">Total</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="sidebar-section">
-                    <button class="sidebar-btn sidebar-btn-primary" onclick="showResumen()">
-                        📊 Resumen
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="startNewSession()">
-                        ➕ Nueva Sesión
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="window.syncManager?.showPanel()">
-                        🔄 Sincronización
-                    </button>
-                    <button class="sidebar-btn sidebar-btn-secondary" onclick="exportData()">
-                        📥 Exportar
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="GlobalTabs.createTab()">
+                        ➕ Nuevo
                     </button>
                 </div>
 
@@ -85,120 +105,207 @@
             </div>
 
             <div class="main-content">
-                <div class="scan-header-bar">
-                    <div class="origin-location-group">
-                        <label>📍 Origen:</label>
-                        <input type="text" class="origin-location-input" id="origin-location"
-                               placeholder="A21-06-05-01" autocomplete="off">
-                    </div>
-                    <div class="global-counter">
-                        <span class="global-counter-label">Total Cajas:</span>
-                        <span class="global-counter-value" id="global-box-count">0</span>
-                    </div>
-                </div>
-
-                <div class="scan-section">
-                    <input type="text" class="scan-input" id="scan-input" 
-                           placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
-                    
-                    <div class="result-box" id="result-box">
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <span id="result-icon">📦</span>
-                            <span id="result-title">Estado</span>
-                            <span id="result-details" style="color: #666; font-size: 0.85em;"></span>
-                        </div>
-                    </div>
-                    
-                    <!-- Code2 Container (hidden by default) -->
-                    <div id="code2-container" style="display: none; margin-top: 10px; padding: 10px; background: #fff3e0; border-radius: 6px; border: 2px solid var(--warning);">
-                        <div style="font-size: 0.9em; margin-bottom: 8px; font-weight: 600; color: #666;">
-                            ⚠️ Código no encontrado - Ingresa Código 2 alternativo:
-                        </div>
-                        <input type="text" class="scan-input" id="code2-input" 
-                               placeholder="🔍 Código 2..." autocomplete="off" style="background: white;">
-                        <div style="display: flex; gap: 8px; margin-top: 8px;">
-                            <button class="btn btn-warning btn-small" onclick="forceInsert()" style="flex: 1;">
-                                ⚡ INSERTADO (Sin Code2)
-                            </button>
-                        </div>
+                <!-- Tab Bar -->
+                <div class="tabs-header" id="tabs-header" style="display: none;">
+                    <div class="tab-bar" id="tab-bar"></div>
+                    <button class="tab-add-btn" id="tab-add-btn" onclick="GlobalTabs.createTab()" title="Nueva pestaña">
+                        <span>+</span>
+                    </button>
+                    <div class="tabs-actions">
+                        <button class="btn btn-secondary btn-small" onclick="exportData()">📥 CSV</button>
                     </div>
                 </div>
 
-                <div class="columns-container">
-                    <div class="column ok">
-                        <div class="column-header">
-                            <span class="column-title">✅ OK</span>
-                            <span class="column-count" id="ok-count">0</span>
+                <!-- Welcome State -->
+                <div class="welcome-state module-visible" id="welcome-state">
+                    <div class="welcome-content">
+                        <div class="welcome-icon">📦</div>
+                        <h2 class="welcome-title">Sistema de Inventario</h2>
+                        <p class="welcome-subtitle">Comienza agregando una nueva sesión de trabajo</p>
+                        <button class="btn btn-success btn-start" onclick="GlobalTabs.createTab()">
+                            🚀 Nuevo
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Classic Module -->
+                <div class="classic-module module-hidden" id="classic-module">
+                    <div class="scan-header-bar">
+                        <div class="origin-location-group">
+                            <label>📍 Origen:</label>
+                            <input type="text" class="origin-location-input" id="origin-location"
+                                   placeholder="A21-06-05-01" autocomplete="off">
                         </div>
-                        <div class="column-pallet-info">
-                            <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
-                            <input type="text" class="column-location-input" id="location-ok" 
-                                   placeholder="📍 Ubicación destino...">
-                            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                                <button class="btn btn-small btn-secondary" onclick="toggleBlindCount('ok')" title="Activar/Desactivar validación ciega" style="flex: 1;">
-                                    🔒 Ciega
-                                </button>
+                        <div class="global-counter">
+                            <span class="global-counter-label">Total Cajas:</span>
+                            <span class="global-counter-value" id="global-box-count">0</span>
+                        </div>
+                    </div>
+
+                    <div class="scan-section">
+                        <div class="scan-row">
+                            <div class="scan-input-group" style="flex: 2;">
+                                <input type="text" class="scan-input" id="scan-input"
+                                       placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
                             </div>
-                            <button class="column-send-btn" onclick="sendPallet('ok')" id="send-ok-btn" disabled>
-                                📤 Enviar Tarima OK
+                            <div class="scan-input-group code2-inline" id="code2-inline" style="flex: 1; display: none;">
+                                <input type="text" class="scan-input" id="code2-input"
+                                       placeholder="Código 2..." autocomplete="off" style="background: #fff5ed;">
+                            </div>
+                            <button class="btn btn-warning btn-insertar" id="btn-insertar" onclick="forceInsert()" style="display: none;">
+                                ⚡ Insertar
                             </button>
                         </div>
-                        <div class="column-list" id="ok-list">
-                            <div class="empty-state">
-                                <div class="empty-icon">📭</div>
-                                <div>Sin cajas</div>
+
+                        <div class="result-box" id="result-box">
+                            <div class="result-compact">
+                                <div class="result-status">
+                                    <span class="icon" id="result-icon">📦</span>
+                                    <span id="result-title">Estado</span>
+                                </div>
+                                <div class="result-info">
+                                    <span id="result-details"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="column blocked">
-                        <div class="column-header">
-                            <span class="column-title">⚠️ Bloqueado</span>
-                            <span class="column-count" id="blocked-count">0</span>
-                        </div>
-                        <div class="column-pallet-info">
-                            <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
-                            <input type="text" class="column-location-input" id="location-blocked" 
-                                   placeholder="📍 Ubicación destino...">
-                            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                                <button class="btn btn-small btn-secondary" onclick="toggleBlindCount('blocked')" title="Activar/Desactivar validación ciega" style="flex: 1;">
-                                    🔒 Ciega
+                    <div class="columns-container">
+                        <div class="column ok">
+                            <div class="column-header">
+                                <span class="column-title">✅ OK</span>
+                                <div class="column-header-right">
+                                    <div class="verification-badges" id="ok-verification-badges">
+                                        <span class="v-badge ok" id="ok-verified-badge">✓ <span id="ok-verified-count">0</span></span>
+                                        <span class="v-badge pending" id="ok-pending-badge">○ <span id="ok-pending-count">0</span></span>
+                                    </div>
+                                    <span class="column-count" id="ok-count">0</span>
+                                    <button class="expand-btn" onclick="showPalletDetailModal('ok')" title="Ver detalles">⬜</button>
+                                </div>
+                            </div>
+                            <div class="column-pallet-info">
+                                <div>Pallet: <span class="column-pallet-code" id="ok-pallet">-</span></div>
+                                <input type="text" class="column-location-input" id="location-ok"
+                                       placeholder="📍 Ubicación destino...">
+                                <button class="column-send-btn" onclick="sendPallet('ok')" id="send-ok-btn" disabled>
+                                    📤 Enviar Tarima OK
                                 </button>
                             </div>
-                            <button class="column-send-btn" onclick="sendPallet('blocked')" id="send-blocked-btn" disabled>
-                                📤 Enviar Tarima Bloqueado
-                            </button>
+                            <div class="column-list" id="ok-list">
+                                <div class="empty-state">
+                                    <div class="empty-icon">📭</div>
+                                    <div>Sin cajas</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="column-list" id="blocked-list">
-                            <div class="empty-state">
-                                <div class="empty-icon">📭</div>
-                                <div>Sin cajas</div>
+
+                        <div class="column blocked">
+                            <div class="column-header">
+                                <span class="column-title">⚠️ Bloqueado</span>
+                                <div class="column-header-right">
+                                    <span class="column-count" id="blocked-count">0</span>
+                                    <button class="expand-btn" onclick="showPalletDetailModal('blocked')" title="Ver detalles">⬜</button>
+                                </div>
+                            </div>
+                            <div class="column-pallet-info">
+                                <div>Pallet: <span class="column-pallet-code" id="blocked-pallet">-</span></div>
+                                <input type="text" class="column-location-input" id="location-blocked"
+                                       placeholder="📍 Ubicación destino...">
+                                <button class="column-send-btn" onclick="sendPallet('blocked')" id="send-blocked-btn" disabled>
+                                    📤 Enviar Tarima Bloqueado
+                                </button>
+                            </div>
+                            <div class="column-list" id="blocked-list">
+                                <div class="empty-state">
+                                    <div class="empty-icon">📭</div>
+                                    <div>Sin cajas</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="column nowms">
+                            <div class="column-header">
+                                <span class="column-title">❌ No WMS</span>
+                                <div class="column-header-right">
+                                    <span class="column-count" id="nowms-count">0</span>
+                                    <button class="expand-btn" onclick="showPalletDetailModal('nowms')" title="Ver detalles">⬜</button>
+                                </div>
+                            </div>
+                            <div class="column-pallet-info">
+                                <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
+                                <input type="text" class="column-location-input" id="location-nowms"
+                                       placeholder="📍 Ubicación destino...">
+                                <button class="column-send-btn" onclick="sendPallet('nowms')" id="send-nowms-btn" disabled>
+                                    📤 Enviar Tarima No WMS
+                                </button>
+                            </div>
+                            <div class="column-list" id="nowms-list">
+                                <div class="empty-state">
+                                    <div class="empty-icon">📭</div>
+                                    <div>Sin cajas</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Unified Module -->
+                <div class="unified-module module-hidden" id="unified-module">
+                    <div class="scan-header-bar">
+                        <div class="origin-location-group">
+                            <label>📍 Origen:</label>
+                            <input type="text" class="origin-location-input" id="unified-origin-location"
+                                   placeholder="A21-06-05-01" autocomplete="off">
+                        </div>
+                        <div class="origin-location-group">
+                            <label>📍 Destino:</label>
+                            <input type="text" class="origin-location-input" id="unified-dest-location"
+                                   placeholder="B15-03-02-01" autocomplete="off">
+                        </div>
+                        <div class="global-counter">
+                            <span class="global-counter-label">Total:</span>
+                            <span class="global-counter-value" id="unified-box-count">0</span>
+                        </div>
+                    </div>
+
+                    <div class="scan-section">
+                        <input type="text" class="scan-input" id="unified-scan-input"
+                               placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
+
+                        <div class="result-box" id="unified-result-box">
+                            <div class="result-compact">
+                                <div class="result-status">
+                                    <span class="icon" id="unified-result-icon">📦</span>
+                                    <span id="unified-result-title">Listo para escanear</span>
+                                </div>
+                                <div class="result-info">
+                                    <span id="unified-result-details"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="column nowms">
-                        <div class="column-header">
-                            <span class="column-title">❌ No WMS</span>
-                            <span class="column-count" id="nowms-count">0</span>
-                        </div>
-                        <div class="column-pallet-info">
-                            <div>Pallet: <span class="column-pallet-code" id="nowms-pallet">-</span></div>
-                            <input type="text" class="column-location-input" id="location-nowms" 
-                                   placeholder="📍 Ubicación destino...">
-                            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                                <button class="btn btn-small btn-secondary" onclick="toggleBlindCount('nowms')" title="Activar/Desactivar validación ciega" style="flex: 1;">
-                                    🔒 Ciega
+                    <div class="unified-list-container">
+                        <div class="unified-list-header">
+                            <span class="unified-list-title">📋 Registros</span>
+                            <div class="unified-list-actions">
+                                <label class="cancelados-toggle" id="cancelados-toggle-label" title="Modo Cancelados">
+                                    <input type="checkbox" id="unified-cancelados-check" onchange="UnifiedModule.toggleCancelados(this.checked)">
+                                    <span class="cancelados-slider"></span>
+                                    <span class="cancelados-text">🚫</span>
+                                </label>
+                                <button class="btn btn-small btn-secondary" onclick="UnifiedModule.clearList()">
+                                    🗑️ Limpiar
+                                </button>
+                                <button class="btn btn-small btn-primary" onclick="UnifiedModule.sendAll()" id="unified-send-btn" disabled>
+                                    📤 Enviar Todo
                                 </button>
                             </div>
-                            <button class="column-send-btn" onclick="sendPallet('nowms')" id="send-nowms-btn" disabled>
-                                📤 Enviar Tarima No WMS
-                            </button>
                         </div>
-                        <div class="column-list" id="nowms-list">
+                        <div class="unified-list" id="unified-list">
                             <div class="empty-state">
                                 <div class="empty-icon">📭</div>
-                                <div>Sin cajas</div>
+                                <div>Sin registros</div>
                             </div>
                         </div>
                     </div>
