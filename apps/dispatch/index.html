@@ -10,12 +10,14 @@
     <link rel="stylesheet" href="../../shared/css/layout.css">
     <link rel="stylesheet" href="../../shared/css/components.css">
     <link rel="stylesheet" href="../../shared/css/sidebar.css">
+    <link rel="stylesheet" href="../../shared/css/avatar-system.css">
     <link rel="stylesheet" href="styles.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="../../shared/js/wms-utils.js"></script>
     <script src="../../shared/js/sync-manager.js"></script>
     <script src="../../shared/js/sidebar-component.js"></script>
+    <script src="../../shared/js/avatar-system.js"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -58,7 +60,7 @@
                 <!-- Resumen del Día -->
                 <div class="global-summary-section" id="global-summary-section">
                     <div class="summary-title">📊 Resumen del Día</div>
-                    <div class="summary-grid">
+                    <div class="summary-grid vertical">
                         <div class="summary-item total">
                             <span class="summary-icon">📦</span>
                             <span class="summary-value" id="summary-total">0</span>
