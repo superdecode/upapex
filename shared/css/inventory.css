@@ -1982,48 +1982,35 @@
     gap: 8px;
 }
 
-/* ==================== EXPAND BUTTON (ICONO BRACKETS []) ==================== */
+/* ==================== EXPAND BUTTON (SVG MAXIMIZE ICON) ==================== */
 .expand-btn {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     border: none;
     background: transparent;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
     position: relative;
-    padding: 4px;
+    padding: 0;
 }
 
-.expand-btn::before {
-    content: '[';
-    font-size: 1.3em;
-    font-weight: 700;
-    color: #666;
+.expand-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: #666;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
     transition: all 0.2s;
-    margin-right: 2px;
 }
 
-.expand-btn::after {
-    content: ']';
-    font-size: 1.3em;
-    font-weight: 700;
-    color: #666;
-    transition: all 0.2s;
-    margin-left: 2px;
-}
-
-.expand-btn:hover::before,
-.expand-btn:hover::after {
-    color: var(--primary);
-    transform: scale(1.15);
-}
-
-.expand-btn:hover {
-    background: rgba(249, 115, 22, 0.08);
-    border-radius: 4px;
+.expand-btn:hover svg {
+    stroke: var(--primary);
+    transform: scale(1.1);
 }
 
 /* ==================== VERIFICATION BADGES ==================== */
@@ -2054,7 +2041,7 @@
 
 /* ==================== COUNT VALIDATION POPUP ==================== */
 .count-validation-popup {
-    max-width: 320px;
+    max-width: 340px;
     position: relative;
     padding: 20px 18px 18px;
 }
