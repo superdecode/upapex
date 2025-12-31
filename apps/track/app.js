@@ -444,11 +444,8 @@ function searchAllSources(query) {
         'Orden'
     ]);
 
-    searchInSourceWithSimilarity(DATA_CACHE.inventario, results, 'inventario', [
-        'SCAN 1',
-        'SCAN 2',
-        'PALLET'
-    ]);
+    // Search INVENTARIO - using indices like MNE
+    searchInventario(DATA_CACHE.inventario, results, 'inventario');
 
     // Search MNE - reverse for recent records first
     searchMNE(DATA_CACHE.mne.slice().reverse(), results, 'mne');
@@ -532,6 +529,53 @@ function searchMNE(data, results, sourceName) {
 
     data.forEach(row => {
         if (!row._values || row._values.length < 6) return;
+
+        const firstVal = row._values[0]?.toString() || '';
+        if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+
+        let isMatch = false;
+
+        for (const idx of searchIndices) {
+            const cellValue = row._values[idx] || '';
+            if (!cellValue) continue;
+
+            const cellUpper = cellValue.toString().toUpperCase();
+            const queryUpper = query.toUpperCase();
+
+            if (cellUpper === queryUpper) {
+                isMatch = true;
+                break;
+            }
+
+            if (cellUpper.includes(queryUpper)) {
+                isMatch = true;
+                break;
+            }
+
+            if (baseCode) {
+                const normalizedCell = normalizeCode(cellValue);
+                if (normalizedCell.includes(baseCode)) {
+                    isMatch = true;
+                    break;
+                }
+            }
+        }
+
+        if (isMatch) {
+            const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100 };
+            results.exact[sourceName].push(enrichedRow);
+        }
+    });
+}
+
+function searchInventario(data, results, sourceName) {
+    const query = results.query;
+    const baseCode = results.baseCode;
+    // Search in columns: SCAN 1 (index 3), SCAN 2 (index 4), PALLET (index 7)
+    const searchIndices = [3, 4, 7];
+
+    data.forEach(row => {
+        if (!row._values || row._values.length < 5) return;
 
         const firstVal = row._values[0]?.toString() || '';
         if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
@@ -1145,14 +1189,14 @@ function getRelevantFields(sourceKey) {
             { key: 'Nota', label: 'Nota', type: 'text' }
         ],
         inventario: [
-            { key: 'FECHA', label: 'Fecha', type: 'date' },
-            { key: 'HORA', label: 'Hora', type: 'time' },
-            { key: 'USUARIO', label: 'Usuario', type: 'text' },
-            { key: 'SCAN 1', label: 'Código 1', type: 'code' },
-            { key: 'SCAN 2', label: 'Código 2', type: 'code' },
-            { key: 'UBICACION', label: 'Ubicación', type: 'text' },
-            { key: 'ESTATUS', label: 'Estatus', type: 'status' },
-            { key: 'PALLET', label: 'Pallet', type: 'text' }
+            { key: 0, label: 'Fecha', type: 'date' },
+            { key: 1, label: 'Hora', type: 'time' },
+            { key: 2, label: 'Usuario', type: 'text' },
+            { key: 3, label: 'Código 1', type: 'code' },
+            { key: 4, label: 'Código 2', type: 'code' },
+            { key: 5, label: 'Ubicación', type: 'text' },
+            { key: 6, label: 'Estatus', type: 'status' },
+            { key: 7, label: 'Pallet', type: 'text' }
         ],
         mne: [
             { key: 0, label: 'Fecha', type: 'date' },

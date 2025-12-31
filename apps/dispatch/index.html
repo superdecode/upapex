@@ -63,6 +63,50 @@
                     </div>
                 </div>
 
+                <!-- FOLIOS MANAGEMENT CONTENT -->
+                <div id="folios-content" class="tab-content" style="display: none;">
+                    <div class="header">
+                        <div class="header-left">
+                            <h1>📋 Gestión de Folios de Carga</h1>
+                        </div>
+                        <div class="header-right">
+                            <button class="btn btn-secondary date-filter-btn" onclick="showFoliosDateFilter()" id="folios-date-filter-display">
+                                📅 <span id="folios-date-filter-text">Filtrar Fecha</span>
+                            </button>
+                            <button class="btn-close-modern" onclick="confirmExitFolios()" title="Cerrar">×</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="section-header-inline">
+                            <div class="header-with-badges">
+                                <h3>📋 Listado de Folios</h3>
+                                <span class="badge badge-primary" id="folios-count">0 folios</span>
+                            </div>
+                            <div class="filter-controls">
+                                <input type="text" id="filter-folios" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterFoliosTable()">
+                            </div>
+                        </div>
+                        <div class="orders-table-container">
+                            <table class="orders-table" id="folios-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortFoliosTable(0)">Folio <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(1)">Fecha <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(2)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(3)">Cant. Órdenes <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(4)">Horario Inicial <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(5)">Horario Final <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(6)">Conductor <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosTable(7)">Unidad <span class="sort-indicator">⇅</span></th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="folios-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- VALIDATED TAB CONTENT -->
                 <div id="validated-content" class="tab-content" style="display: none;">
                     <div class="header">
@@ -77,13 +121,20 @@
                                 <button class="status-toggle-btn active" id="toggle-validated-validated" onclick="switchValidationTab('validated')">
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-validated">0</span>
                                 </button>
+                                <button class="status-toggle-btn" id="toggle-folios-validated" onclick="showFoliosManagement()">
+                                    📋 Folios
+                                </button>
                             </div>
                             <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
                         </div>
                     </div>
                     <div class="card">
                         <div class="section-header-inline">
-                            <h3>📋 Órdenes Validadas</h3>
+                            <div class="header-with-badges">
+                                <h3>📋 Órdenes Validadas</h3>
+                                <span class="badge badge-primary" id="validated-orders-count">0 órdenes</span>
+                                <span class="badge badge-success" id="validated-boxes-count">0 cajas</span>
+                            </div>
                             <div class="filter-controls">
                                 <input type="text" id="filter-validated" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterValidatedTable()">
                             </div>
@@ -128,6 +179,9 @@
                                 <button class="status-toggle-btn" id="toggle-validated" onclick="switchValidationTab('validated')">
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-header">0</span>
                                 </button>
+                                <button class="status-toggle-btn" id="toggle-folios" onclick="showFoliosManagement()">
+                                    📋 Folios
+                                </button>
                             </div>
                             <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
                         </div>
@@ -140,6 +194,9 @@
                                 <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
                                 <button class="btn btn-primary" onclick="executeSearch()">
                                     🔍 Buscar
+                                </button>
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display">
+                                    📅 <span id="date-filter-text">Filtrar Fecha</span>
                                 </button>
                             </div>
                         </div>
@@ -206,6 +263,14 @@
                     <select id="modal-unidad">
                         <option value="">🚛 Seleccionar Unidad/Placas...</option>
                     </select>
+                    <select id="modal-folio-carga" class="folio-selector">
+                        <option value="">📋 Seleccionar Folio...</option>
+                        <option value="01">01</option>
+                        <option value="02">02</option>
+                        <option value="03">03</option>
+                        <option value="04">04</option>
+                        <option value="05">05</option>
+                    </select>
                 </div>
                 <div class="modal-buttons">
                     <button class="btn btn-success" onclick="confirmDispatch()" id="confirm-dispatch-btn">
@@ -243,6 +308,34 @@
                 <button class="btn btn-primary" onclick="applyDateFilter()">Aplicar Filtro</button>
                 <button class="btn btn-secondary" onclick="clearDateFilter()">Limpiar Filtro</button>
                 <button class="btn btn-secondary" onclick="closeDateFilter()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE FILTRO DE FECHAS PARA FOLIOS -->
+    <div class="modal-overlay" id="folios-date-filter-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📅</span>
+                    <span>Filtrar Folios por Fecha</span>
+                </div>
+                <button class="modal-close" onclick="closeFoliosDateFilter()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>Fecha Inicio:</label>
+                    <input type="date" id="folios-date-start" class="date-input">
+                </div>
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Fecha Fin:</label>
+                    <input type="date" id="folios-date-end" class="date-input">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="applyFoliosDateFilter()">Aplicar Filtro</button>
+                <button class="btn btn-secondary" onclick="clearFoliosDateFilter()">Limpiar Filtro</button>
+                <button class="btn btn-secondary" onclick="closeFoliosDateFilter()">Cancelar</button>
             </div>
         </div>
     </div>
@@ -332,6 +425,10 @@
                     <div class="confirm-row highlight">
                         <span class="confirm-label">🚛 Unidad:</span>
                         <span class="confirm-value" id="confirm-unidad">-</span>
+                    </div>
+                    <div class="confirm-row highlight">
+                        <span class="confirm-label">📋 Folio de Carga:</span>
+                        <span class="confirm-value" id="confirm-folio">-</span>
                     </div>
                     <div class="confirm-row" id="confirm-nota-row" style="display: none;">
                         <span class="confirm-label">📝 Observaciones:</span>

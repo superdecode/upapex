@@ -6,15 +6,15 @@ const CONFIG = {
     // Spreadsheet ID principal para consolidación de órdenes
     SPREADSHEET_ORDENES_ID: '1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck',
     SOURCES: {
-        // Pestaña "Resumen" - Órdenes consolidadas por OBC (Opción B - optimizada)
-        RESUMEN_ORDENES: 'https://docs.google.com/spreadsheets/d/1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck/export?format=csv&gid=409854413',
-        // Pestaña "BD" - Listado caja por caja (respaldo para consolidación manual si es necesario)
-        BD_CAJAS: 'https://docs.google.com/spreadsheets/d/1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck/export?format=csv&gid=0',
-        // Base de datos de validación TRS (OBC BD)
-        OBC_BD: 'https://docs.google.com/spreadsheets/d/1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck/export?format=csv&gid=218802190',
-        // Otras fuentes (mantener las originales para rastreo y listas)
+        // Pestaña "BD" - Base de datos completa de cajas (fuente principal) - IGUAL QUE TRACK OBC_BD
+        BD_CAJAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv',
+        // Sistema de Validación de Surtido - IGUAL QUE TRACK
+        VALIDACION: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTZMZZCDtTFCebvsme1GMEBiZ1S2Cloh37AR8hHFAwhFPNEMD27G04bzX0theCMJE-nlYOyH2ev115q/pub?output=csv',
+        // Rastreo MNE - IGUAL QUE TRACK
         MNE: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?gid=883314398&single=true&output=csv',
+        // TRS Etiquetado - IGUAL QUE TRACK
         TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv',
+        // Conductores y Unidades
         LISTAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTmbzg922y1KMVnV0JqBijR43Ma8e5X_AO2KVzjHBnRtGBx-0aXLZ8UUlKCO_XHOpV1qfggQyNjtqde/pub?gid=799838428&single=true&output=csv'
     }
 };
@@ -41,7 +41,10 @@ let STATE = {
     localValidated: [],    // Despachos validados localmente
     localPending: [],      // Despachos pendientes
     activeTab: 'pending',  // Tab activa: 'pending' o 'validated'
-    folioCounter: 0        // Contador de folios
+    // Sistema de folios de carga
+    // Map: fecha → Map(folio → {conductor, unidad})
+    // Ejemplo: "2025-12-30" → Map("01" → {conductor: "Juan", unidad: "T-001"})
+    foliosDeCargas: new Map()
 };
 
 // Cargar estado local al inicio
@@ -52,7 +55,19 @@ function loadLocalState() {
             const data = JSON.parse(saved);
             STATE.localValidated = data.localValidated || [];
             STATE.localPending = data.localPending || [];
-            STATE.folioCounter = data.folioCounter || 0;
+
+            // Cargar folios de carga (convertir de objeto a Map anidado)
+            // Estructura: fecha → Map(folio → {conductor, unidad})
+            if (data.foliosDeCargas) {
+                STATE.foliosDeCargas = new Map();
+                Object.entries(data.foliosDeCargas).forEach(([fecha, foliosObj]) => {
+                    const foliosMap = new Map();
+                    Object.entries(foliosObj).forEach(([folio, info]) => {
+                        foliosMap.set(folio, info);
+                    });
+                    STATE.foliosDeCargas.set(fecha, foliosMap);
+                });
+            }
         }
     } catch (e) {
         console.error('Error loading local state:', e);
@@ -61,22 +76,31 @@ function loadLocalState() {
 
 function saveLocalState() {
     try {
+        // Convertir Map anidado a objeto para JSON
+        // Estructura: fecha → Map(folio → {conductor, unidad})
+        const foliosObj = {};
+        STATE.foliosDeCargas.forEach((foliosMap, fecha) => {
+            const foliosDelDiaObj = {};
+            foliosMap.forEach((info, folio) => {
+                foliosDelDiaObj[folio] = info;
+            });
+            foliosObj[fecha] = foliosDelDiaObj;
+        });
+
         localStorage.setItem('dispatch_local_state', JSON.stringify({
             localValidated: STATE.localValidated,
             localPending: STATE.localPending,
-            folioCounter: STATE.folioCounter
+            foliosDeCargas: foliosObj
         }));
     } catch (e) {
         console.error('Error saving local state:', e);
     }
 }
 
-function generateFolio() {
-    STATE.folioCounter++;
-    saveLocalState();
+function generateFolio(folioCarga) {
     const date = new Date();
     const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-    return `DSP-${dateStr}-${String(STATE.folioCounter).padStart(4, '0')}`;
+    return `DSP-${dateStr}-${folioCarga}`;
 }
 
 // Verificar si una orden ya fue despachada (no confundir con validación de surtido)
@@ -91,6 +115,191 @@ function isOrderValidated(orden) {
     return { validated: false };
 }
 
+// ==================== SISTEMA DE FOLIOS DE CARGA ====================
+/**
+ * Obtiene la fecha actual en formato YYYY-MM-DD
+ */
+function getCurrentDateKey() {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Obtiene los folios disponibles para un conductor y unidad
+ * - Si es la misma combinación, puede reutilizar el folio existente
+ * - Si es diferente, debe usar un folio no utilizado
+ */
+function getAvailableFolios(conductor, unidad) {
+    const dateKey = getCurrentDateKey();
+    const foliosDelDia = STATE.foliosDeCargas.get(dateKey) || new Map();
+
+    const allFolios = ['01', '02', '03', '04', '05'];
+
+    return allFolios.map(folio => {
+        const folioInfo = foliosDelDia.get(folio);
+
+        // Si el folio no está usado, está disponible
+        if (!folioInfo) {
+            return { value: folio, disabled: false };
+        }
+
+        // Si el folio está usado por la misma combinación conductor+unidad, puede reutilizarse
+        if (folioInfo.conductor === conductor && folioInfo.unidad === unidad) {
+            return { value: folio, disabled: false, reutilizable: true };
+        }
+
+        // Si el folio está usado por otra combinación, está bloqueado
+        return { value: folio, disabled: true, usadoPor: `${folioInfo.conductor}/${folioInfo.unidad}` };
+    });
+}
+
+/**
+ * Marca un folio como utilizado para una combinación conductor-unidad
+ */
+function markFolioAsUsed(conductor, unidad, folio) {
+    const dateKey = getCurrentDateKey();
+
+    if (!STATE.foliosDeCargas.has(dateKey)) {
+        STATE.foliosDeCargas.set(dateKey, new Map());
+    }
+
+    const foliosDelDia = STATE.foliosDeCargas.get(dateKey);
+    foliosDelDia.set(folio, { conductor, unidad });
+
+    console.log(`[Folio de Carga] Marcado como usado: ${folio} para ${conductor}/${unidad} en ${dateKey}`, STATE.foliosDeCargas);
+    saveLocalState();
+}
+
+/**
+ * Libera un folio previamente usado
+ */
+function releaseFolio(folio) {
+    const dateKey = getCurrentDateKey();
+
+    if (STATE.foliosDeCargas.has(dateKey)) {
+        const foliosDelDia = STATE.foliosDeCargas.get(dateKey);
+        foliosDelDia.delete(folio);
+        console.log(`[Folio de Carga] Liberado: ${folio} de ${dateKey}`, STATE.foliosDeCargas);
+        saveLocalState();
+    }
+}
+
+/**
+ * Obtiene el próximo folio disponible (no usado por nadie)
+ */
+function getNextAvailableFolio() {
+    const dateKey = getCurrentDateKey();
+    const foliosDelDia = STATE.foliosDeCargas.get(dateKey) || new Map();
+
+    const allFolios = ['01', '02', '03', '04', '05'];
+    for (const folio of allFolios) {
+        if (!foliosDelDia.has(folio)) {
+            return folio;
+        }
+    }
+
+    return null; // Todos los folios están usados
+}
+
+/**
+ * Verifica si un folio puede ser usado por una combinación conductor-unidad
+ */
+function canUseFolio(conductor, unidad, folio) {
+    const dateKey = getCurrentDateKey();
+    const foliosDelDia = STATE.foliosDeCargas.get(dateKey) || new Map();
+    const folioInfo = foliosDelDia.get(folio);
+
+    // Si no está usado, puede usarse
+    if (!folioInfo) return true;
+
+    // Si está usado por la misma combinación, puede reutilizarse
+    if (folioInfo.conductor === conductor && folioInfo.unidad === unidad) return true;
+
+    // Está usado por otra combinación
+    return false;
+}
+
+/**
+ * Actualiza las opciones del selector de folios basado en conductor y unidad actuales
+ */
+function updateFolioSelector() {
+    const conductorSelect = document.getElementById('modal-operador');
+    const unidadSelect = document.getElementById('modal-unidad');
+    const folioSelect = document.getElementById('modal-folio-carga');
+
+    if (!conductorSelect || !unidadSelect || !folioSelect) return;
+
+    const conductor = conductorSelect.value;
+    const unidad = unidadSelect.value;
+
+    if (!conductor || !unidad) {
+        folioSelect.disabled = true;
+        folioSelect.value = '';
+        return;
+    }
+
+    folioSelect.disabled = false;
+    const availableFolios = getAvailableFolios(conductor, unidad);
+
+    console.log(`[Folio de Carga] Actualizando selector para ${conductor}/${unidad}`, availableFolios);
+
+    // Actualizar opciones del selector
+    folioSelect.innerHTML = '<option value="">📋 Seleccionar Folio...</option>';
+    availableFolios.forEach(({ value, disabled, reutilizable, usadoPor }) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        option.disabled = disabled;
+
+        if (reutilizable) {
+            option.textContent += ' (Tu folio actual)';
+        } else if (disabled) {
+            option.textContent += ` (Usado: ${usadoPor})`;
+        }
+
+        folioSelect.appendChild(option);
+    });
+}
+
+/**
+ * Configura los event listeners para actualizar el selector de folios
+ */
+function setupFolioSelectorListeners() {
+    const conductorSelect = document.getElementById('modal-operador');
+    const unidadSelect = document.getElementById('modal-unidad');
+
+    if (conductorSelect && unidadSelect) {
+        // Remover listeners anteriores si existen
+        const newConductorSelect = conductorSelect.cloneNode(true);
+        const newUnidadSelect = unidadSelect.cloneNode(true);
+        conductorSelect.parentNode.replaceChild(newConductorSelect, conductorSelect);
+        unidadSelect.parentNode.replaceChild(newUnidadSelect, unidadSelect);
+
+        // Agregar nuevos listeners
+        newConductorSelect.addEventListener('change', updateFolioSelector);
+        newUnidadSelect.addEventListener('change', updateFolioSelector);
+    }
+}
+
+/**
+ * Limpia los folios de días anteriores (mantiene solo del día actual)
+ */
+function cleanOldFolios() {
+    const todayStr = getCurrentDateKey();
+
+    const keysToDelete = [];
+    STATE.foliosDeCargas.forEach((_value, key) => {
+        if (key !== todayStr) {
+            keysToDelete.push(key);
+        }
+    });
+
+    keysToDelete.forEach(key => STATE.foliosDeCargas.delete(key));
+    if (keysToDelete.length > 0) {
+        saveLocalState();
+    }
+}
+
 let CURRENT_USER = '';
 let USER_EMAIL = '';
 let USER_GOOGLE_NAME = '';
@@ -100,6 +309,7 @@ let TOKEN_CLIENT = null;
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', () => {
     loadLocalState();
+    cleanOldFolios();  // Limpiar folios de días anteriores
     setupEventListeners();
     setupConnectionMonitoring();
     initSyncManager();
@@ -132,12 +342,12 @@ function initSidebarComponent() {
         onLogout: handleLogout,
         onToggleConnection: toggleConnection,
         buttons: [
-            { label: '➕ Nuevo Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
-            { label: '📅 Filtrar por Fecha', onClick: 'showDateFilter()', class: 'sidebar-btn-secondary' },
+            { label: '🚀 Iniciar Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
+            { label: '📋 Gestión de Folios', onClick: 'showFoliosManagement()', class: 'sidebar-btn-primary' },
             { label: '📥 Exportar CSV', onClick: 'exportData()', class: 'sidebar-btn-secondary' }
         ]
     });
-    
+
     window.sidebarComponent.render();
 }
 
@@ -303,18 +513,8 @@ async function loadAllData() {
     let errors = [];
     let loaded = 0;
 
-    // Load RESUMEN_ORDENES (Opción B - consolidado por OBC desde pestaña Resumen)
-    try {
-        const resumenResponse = await fetch(CONFIG.SOURCES.RESUMEN_ORDENES);
-        const resumenCsv = await resumenResponse.text();
-        parseOBCData(resumenCsv);
-        loaded++;
-    } catch (e) {
-        console.error('Error loading RESUMEN_ORDENES:', e);
-        errors.push('RESUMEN_ORDENES');
-    }
-
-    // Load BD_CAJAS (Listado caja por caja - CRÍTICO para búsqueda de códigos)
+    // Load BD_CAJAS PRIMERO (Pestaña BD - gid=0 - FUENTE PRINCIPAL)
+    // Esta es la base de datos completa con todas las cajas individuales
     try {
         const bdCajasResponse = await fetch(CONFIG.SOURCES.BD_CAJAS);
         const bdCajasCsv = await bdCajasResponse.text();
@@ -325,15 +525,26 @@ async function loadAllData() {
         errors.push('BD_CAJAS');
     }
 
-    // Load LISTAS (Operadores y Unidades)
+    // Load VALIDACION (Sistema de Validación de Surtido)
     try {
-        const listasResponse = await fetch(CONFIG.SOURCES.LISTAS);
-        const listasCsv = await listasResponse.text();
-        parseListasData(listasCsv);
+        const validacionResponse = await fetch(CONFIG.SOURCES.VALIDACION);
+        const validacionCsv = await validacionResponse.text();
+        parseValidacionData(validacionCsv);
         loaded++;
     } catch (e) {
-        console.error('Error loading LISTAS:', e);
-        errors.push('LISTAS');
+        console.error('Error loading VALIDACION:', e);
+        errors.push('VALIDACION');
+    }
+
+    // Load MNE (Rastreo)
+    try {
+        const mneResponse = await fetch(CONFIG.SOURCES.MNE);
+        const mneCsv = await mneResponse.text();
+        parseMNEData(mneCsv);
+        loaded++;
+    } catch (e) {
+        console.error('Error loading MNE:', e);
+        errors.push('MNE');
     }
 
     // Load TRS
@@ -347,26 +558,15 @@ async function loadAllData() {
         errors.push('TRS');
     }
 
-    // Load OBC_BD (Base de validación - gid=218802190)
+    // Load LISTAS (Operadores y Unidades)
     try {
-        const validacionResponse = await fetch(CONFIG.SOURCES.OBC_BD);
-        const validacionCsv = await validacionResponse.text();
-        parseValidacionData(validacionCsv);
+        const listasResponse = await fetch(CONFIG.SOURCES.LISTAS);
+        const listasCsv = await listasResponse.text();
+        parseListasData(listasCsv);
         loaded++;
     } catch (e) {
-        console.error('Error loading OBC_BD (validación):', e);
-        errors.push('OBC_BD');
-    }
-
-    // Load MNE (Rastreo)
-    try {
-        const mneResponse = await fetch(CONFIG.SOURCES.MNE);
-        const mneCsv = await mneResponse.text();
-        parseMNEData(mneCsv);
-        loaded++;
-    } catch (e) {
-        console.error('Error loading MNE:', e);
-        errors.push('MNE');
+        console.error('Error loading LISTAS:', e);
+        errors.push('LISTAS');
     }
 
     // Show appropriate notification
@@ -439,52 +639,115 @@ function parseOBCData(csv) {
 
 function parseBDCajasData(csv) {
     const lines = csv.split('\n').filter(l => l.trim());
-    STATE.bdCajasData.clear();
 
-    // Map para contar cajas por OBC
-    const cajasCountMap = new Map();
+    // Limpiar datos previos
+    STATE.bdCajasData.clear();
+    STATE.obcData.clear();
+
+    // Maps temporales para consolidación
+    const cajasCountMap = new Map();      // OBC → cantidad de cajas
+    const obcConsolidated = new Map();    // OBC → datos consolidados
+    const allBoxCodes = new Map();        // Código → [cajas]
+
+    console.log('🔍 Parsing BD Completa (gid=0) - Total lines:', lines.length);
+
+    // Debug: Mostrar las primeras 3 líneas para verificar estructura
+    if (lines.length > 0) {
+        console.log('📄 Header (línea 0):', lines[0].substring(0, 200));
+    }
+    if (lines.length > 1) {
+        console.log('📄 Primera fila de datos (línea 1):', lines[1].substring(0, 200));
+    }
+
+    // PASO 1: Procesar todas las filas y consolidar por OBC
+    let processedCount = 0;
+    let skippedCount = 0;
 
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
+
+        // Debug para las primeras 3 filas
+        if (i <= 3) {
+            console.log(`📊 Línea ${i}: ${cols.length} columnas - OBC: "${cols[0]}", Código: "${cols[8]}"`);
+        }
+
         if (cols.length >= 9) {
             const obc = cols[0]?.trim();
             const codigo = cols[8]?.trim();
 
-            if (obc && codigo) {
-                const codigoUpper = codigo.toUpperCase();
+            if (obc) {
+                processedCount++;
 
-                // Indexar por código de caja para búsqueda rápida
-                if (!STATE.bdCajasData.has(codigoUpper)) {
-                    STATE.bdCajasData.set(codigoUpper, []);
+                // Consolidar datos de la orden (tomando el primer registro encontrado)
+                if (!obcConsolidated.has(obc)) {
+                    obcConsolidated.set(obc, {
+                        orden: obc,
+                        referenceNo: cols[1]?.trim() || '',
+                        shippingService: cols[2]?.trim() || '',
+                        trackingCode: cols[3]?.trim() || '',
+                        expectedArrival: cols[4]?.trim() || '',
+                        remark: cols[5]?.trim() || '',
+                        recipient: cols[6]?.trim() || '',
+                        boxType: cols[7]?.trim() || '',
+                        customBarcode: codigo || '',
+                        totalCajas: 0,  // Se calculará después
+                        totalCajasCalculado: true
+                    });
                 }
-                STATE.bdCajasData.get(codigoUpper).push({
-                    obc: obc,
-                    referenceNo: cols[1]?.trim() || '',
-                    shippingService: cols[2]?.trim() || '',
-                    trackingCode: cols[3]?.trim() || '',
-                    expectedArrival: cols[4]?.trim() || '',
-                    remark: cols[5]?.trim() || '',
-                    recipient: cols[6]?.trim() || '',
-                    boxType: cols[7]?.trim() || '',
-                    codigoCaja: codigo
-                });
 
                 // Contar cajas por OBC (cada fila = 1 caja)
                 cajasCountMap.set(obc, (cajasCountMap.get(obc) || 0) + 1);
+
+                // Indexar por código de caja para búsqueda rápida
+                if (codigo) {
+                    const codigoUpper = codigo.toUpperCase();
+                    if (!allBoxCodes.has(codigoUpper)) {
+                        allBoxCodes.set(codigoUpper, []);
+                    }
+                    allBoxCodes.get(codigoUpper).push({
+                        obc: obc,
+                        referenceNo: cols[1]?.trim() || '',
+                        shippingService: cols[2]?.trim() || '',
+                        trackingCode: cols[3]?.trim() || '',
+                        expectedArrival: cols[4]?.trim() || '',
+                        remark: cols[5]?.trim() || '',
+                        recipient: cols[6]?.trim() || '',
+                        boxType: cols[7]?.trim() || '',
+                        codigoCaja: codigo
+                    });
+                }
+            } else {
+                skippedCount++;
             }
+        } else {
+            skippedCount++;
         }
     }
 
-    // Actualizar totalCajas en obcData basado en el conteo real de la pestaña BD
+    console.log(`📊 Procesadas: ${processedCount} filas, Omitidas: ${skippedCount} filas`);
+
+    // PASO 2: Asignar cantidad de cajas a cada orden consolidada
     cajasCountMap.forEach((count, obc) => {
-        if (STATE.obcData.has(obc)) {
-            const orderData = STATE.obcData.get(obc);
-            orderData.totalCajas = count; // Sobrescribir con el conteo real
-            orderData.totalCajasCalculado = true; // Marcar como calculado dinámicamente
+        if (obcConsolidated.has(obc)) {
+            obcConsolidated.get(obc).totalCajas = count;
         }
     });
 
-    console.log(`✅ BD Cajas parsed: ${STATE.bdCajasData.size} códigos únicos, ${cajasCountMap.size} órdenes con conteo actualizado`);
+    // PASO 3: Transferir datos consolidados a STATE
+    STATE.obcData = obcConsolidated;
+    STATE.bdCajasData = allBoxCodes;
+
+    console.log(`✅ BD Completa cargada: ${STATE.obcData.size} órdenes consolidadas, ${STATE.bdCajasData.size} códigos de caja únicos`);
+    console.log(`📊 Total de registros procesados: ${lines.length - 1} filas`);
+
+    // Debug: Mostrar primeras 3 órdenes
+    let debugCount = 0;
+    for (const [obc, data] of STATE.obcData.entries()) {
+        if (debugCount < 3) {
+            console.log(`📦 Orden ${obc}: ${data.totalCajas} cajas, Destino: ${data.recipient}, Fecha: ${data.expectedArrival}`);
+            debugCount++;
+        }
+    }
 }
 
 function parseListasData(csv) {
@@ -756,34 +1019,99 @@ function filterOrdersByDateRange() {
     const endDate = new Date(STATE.dateFilter.endDate);
     endDate.setHours(23, 59, 59, 999);
 
+    console.log(`🔍 Filtrando órdenes por rango: ${startDate.toLocaleDateString('es-ES')} - ${endDate.toLocaleDateString('es-ES')}`);
+
+    let matchCount = 0;
+    let sampleDates = [];
+
     for (const [orden, data] of STATE.obcData.entries()) {
         if (data.expectedArrival) {
             const orderDate = parseOrderDate(data.expectedArrival);
+
+            // Recoger muestras de fechas para debugging
+            if (sampleDates.length < 5) {
+                sampleDates.push(`${data.expectedArrival} → ${orderDate ? orderDate.toLocaleDateString('es-ES') : 'INVALID'}`);
+            }
+
             if (orderDate && orderDate >= startDate && orderDate <= endDate) {
                 STATE.obcDataFiltered.set(orden, data);
+                matchCount++;
             }
         }
     }
+
+    console.log(`📊 Resultados del filtro: ${matchCount} órdenes coinciden de ${STATE.obcData.size} totales`);
+    console.log(`📅 Muestra de fechas procesadas:`, sampleDates);
 }
 
 function parseOrderDate(dateStr) {
     if (!dateStr) return null;
 
-    let date = new Date(dateStr);
+    // Remover espacios extras
+    const cleanStr = dateStr.trim();
+
+    // Intentar parse directo (formato ISO: YYYY-MM-DD)
+    let date = new Date(cleanStr);
     if (!isNaN(date.getTime())) return date;
 
-    const parts = dateStr.split(/[/-]/);
+    // Intentar formato dd/mm/yyyy o dd-mm-yyyy
+    const parts = cleanStr.split(/[/-]/);
     if (parts.length === 3) {
-        const d = parseInt(parts[0]);
-        const m = parseInt(parts[1]);
-        const y = parseInt(parts[2]);
+        let d, m, y;
+
+        // Detectar el formato según la longitud del primer segmento
+        if (parts[0].length === 4) {
+            // Formato YYYY-MM-DD o YYYY/MM/DD
+            y = parseInt(parts[0]);
+            m = parseInt(parts[1]);
+            d = parseInt(parts[2]);
+        } else {
+            // Formato DD-MM-YYYY o DD/MM/YYYY
+            d = parseInt(parts[0]);
+            m = parseInt(parts[1]);
+            y = parseInt(parts[2]);
+        }
+
         const year = y < 100 ? 2000 + y : y;
 
         date = new Date(year, m - 1, d);
         if (!isNaN(date.getTime())) return date;
     }
 
+    // Intentar formato DD/MM/YYYY HH:MM:SS (con hora)
+    const partsWithTime = cleanStr.split(' ');
+    if (partsWithTime.length >= 1) {
+        const datePart = partsWithTime[0];
+        const datePartsOnly = datePart.split(/[/-]/);
+        if (datePartsOnly.length === 3) {
+            const d = parseInt(datePartsOnly[0]);
+            const m = parseInt(datePartsOnly[1]);
+            const y = parseInt(datePartsOnly[2]);
+            const year = y < 100 ? 2000 + y : y;
+
+            date = new Date(year, m - 1, d);
+            if (!isNaN(date.getTime())) return date;
+        }
+    }
+
     return null;
+}
+
+function formatDateDDMMYYYY(date) {
+    if (!date) return '';
+
+    // Si es string, intentar convertir a Date
+    if (typeof date === 'string') {
+        date = parseOrderDate(date) || new Date(date);
+    }
+
+    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+
+    return `${day}-${month}-${year}`;
 }
 
 function renderOrdersTable() {
@@ -835,13 +1163,20 @@ function renderOrdersTable() {
                     <span class="progress-text">${porcentajeValidacion}%</span>
                 </td>
                 <td style="text-align: center;">
-                    <span class="rastreo-icon">${tieneRastreo ? '✅' : '❌'}</span>
+                    <span class="rastreo-icon">${tieneRastreo ? 'SI' : 'NO'}</span>
                 </td>
                 <td>
                     <span class="status-badge ${statusClass}">${statusText}</span>
                 </td>
                 <td onclick="event.stopPropagation(); showOrderInfo('${orden}')">
-                    <button class="btn-action">📦 Despachar</button>
+                    <button class="btn-action dispatch">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 7h-9"></path>
+                            <path d="M14 17H5"></path>
+                            <circle cx="17" cy="17" r="3"></circle>
+                            <circle cx="7" cy="7" r="3"></circle>
+                        </svg>
+                    </button>
                 </td>
             </tr>
         `;
@@ -992,6 +1327,17 @@ function switchValidationTab(tab) {
     const toggleValidatedValidated = document.getElementById('toggle-validated-validated');
 
     if (tab === 'pending') {
+        // Limpiar flag de "viene desde folios" si estaba activo
+        STATE.fromFolios = false;
+
+        // Re-habilitar el botón Pendientes si estaba deshabilitado
+        if (togglePendingValidated) {
+            togglePendingValidated.disabled = false;
+            togglePendingValidated.style.opacity = '1';
+            togglePendingValidated.style.cursor = 'pointer';
+            togglePendingValidated.title = '';
+        }
+
         // Actualizar tabs del sidebar (si existen)
         tabPending?.classList.add('active');
         tabValidated?.classList.remove('active');
@@ -1012,6 +1358,14 @@ function switchValidationTab(tab) {
         // Render pending orders table
         renderOrdersTable();
     } else {
+        // Si NO venimos desde folios, habilitar el botón normalmente
+        if (!STATE.fromFolios && togglePendingValidated) {
+            togglePendingValidated.disabled = false;
+            togglePendingValidated.style.opacity = '1';
+            togglePendingValidated.style.cursor = 'pointer';
+            togglePendingValidated.title = '';
+        }
+
         // Actualizar tabs del sidebar (si existen)
         tabPending?.classList.remove('active');
         tabValidated?.classList.add('active');
@@ -1051,6 +1405,7 @@ function renderValidatedTable() {
                 </td>
             </tr>
         `;
+        updateValidatedBadges();
         return;
     }
 
@@ -1120,7 +1475,7 @@ function renderValidatedTable() {
                     <span class="progress-text">${porcentajeValidacion}%</span>
                 </td>
                 <td style="text-align: center;">
-                    <span class="rastreo-icon">${tieneRastreo ? '✅' : '❌'}</span>
+                    <span class="rastreo-icon">${tieneRastreo ? '✅' : ''}</span>
                 </td>
                 <td style="text-align: center;">${trsCount > 0 ? `<span class="order-code">${trsCount} TRS</span>` : '<span class="empty-cell">N/A</span>'}</td>
                 <td style="text-align: center;"><strong>${record.cantidadDespachar || 0}</strong></td>
@@ -1133,6 +1488,29 @@ function renderValidatedTable() {
             </tr>
         `;
     }).join('');
+
+    // Actualizar badges de contadores
+    updateValidatedBadges();
+}
+
+// Actualizar badges de contadores en Órdenes Validadas
+function updateValidatedBadges() {
+    const totalOrders = STATE.localValidated.length;
+    let totalBoxes = 0;
+
+    STATE.localValidated.forEach(record => {
+        totalBoxes += parseInt(record.cantidadDespachar) || 0;
+    });
+
+    const ordersCountEl = document.getElementById('validated-orders-count');
+    const boxesCountEl = document.getElementById('validated-boxes-count');
+
+    if (ordersCountEl) {
+        ordersCountEl.textContent = `${totalOrders} ${totalOrders === 1 ? 'orden' : 'órdenes'}`;
+    }
+    if (boxesCountEl) {
+        boxesCountEl.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'caja' : 'cajas'}`;
+    }
 }
 
 // Mantener compatibilidad con código existente
@@ -1166,14 +1544,28 @@ Observaciones: ${record.observaciones || 'Ninguna'}
 }
 
 // ==================== SEARCH ====================
+function normalizeCode(code) {
+    if (!code) return '';
+
+    return String(code)
+        .replace(/&/g, '/')
+        .replace(/-/g, '/')
+        .toLowerCase()
+        .trim();
+}
+
 function executeSearch() {
     const searchInput = document.getElementById('search-input');
-    const query = searchInput?.value.trim().toUpperCase();
+    const rawQuery = searchInput?.value.trim() || '';
 
-    if (!query) {
+    if (!rawQuery) {
         showNotification('⚠️ Ingresa un código para buscar', 'warning');
         return;
     }
+
+    // Normalizar el query
+    const queryNormalized = normalizeCode(rawQuery);
+    const query = rawQuery.toUpperCase();
 
     let foundOrders = [];
     const isOBC = query.startsWith('OBC');
@@ -1194,7 +1586,7 @@ function executeSearch() {
         const codeBaseMatch = query.match(/^([A-Z0-9]+?)(?:[U]\d{3})?$/);
         const codeBase = codeBaseMatch ? codeBaseMatch[1] : query;
 
-        // PRIORIDAD 1: Código COMPLETO en BD Cajas
+        // PRIORIDAD 1: Código COMPLETO en BD Cajas (exacto)
         if (STATE.bdCajasData.has(query)) {
             const cajas = STATE.bdCajasData.get(query);
             cajas.forEach(caja => {
@@ -1207,10 +1599,29 @@ function executeSearch() {
             });
         }
 
+        // PRIORIDAD 1B: Búsqueda con código normalizado
+        if (foundOrders.length === 0) {
+            for (const [codigo, cajas] of STATE.bdCajasData.entries()) {
+                const codigoNormalized = normalizeCode(codigo);
+                if (codigoNormalized === queryNormalized) {
+                    cajas.forEach(caja => {
+                        foundOrders.push({
+                            orden: caja.obc,
+                            source: `Código Normalizado: ${rawQuery}`,
+                            confidence: 100,
+                            matchedCode: codigo
+                        });
+                    });
+                    break;
+                }
+            }
+        }
+
         // PRIORIDAD 2: Código BASE en BD Cajas
         if (foundOrders.length === 0 && codeBase !== query) {
             for (const [codigo, cajas] of STATE.bdCajasData.entries()) {
-                if (codigo.includes(codeBase)) {
+                const codigoNormalized = normalizeCode(codigo);
+                if (codigo.includes(codeBase) || codigoNormalized.includes(queryNormalized)) {
                     cajas.forEach(caja => {
                         if (!foundOrders.some(f => f.orden === caja.obc)) {
                             foundOrders.push({
@@ -1494,8 +1905,8 @@ function showOrderInfo(orden) {
 
         // Populate nota despacho field
         const notaDespachoInput = document.getElementById('nota-despacho');
-        if (notaDespachoInput && savedData.notaDespacho) {
-            notaDespachoInput.value = savedData.notaDespacho;
+        if (notaDespachoInput && (savedData.observaciones || savedData.notaDespacho)) {
+            notaDespachoInput.value = savedData.observaciones || savedData.notaDespacho;
         }
 
         // Change button text to "Guardar cambios" for validated orders
@@ -1503,6 +1914,14 @@ function showOrderInfo(orden) {
         if (confirmBtn) {
             confirmBtn.innerHTML = '💾 Guardar Cambios';
             confirmBtn.onclick = function() { saveValidatedOrderChanges(orden); };
+        }
+
+        // Populate folio de carga si existe
+        const folioSelect = document.getElementById('modal-folio-carga');
+        if (folioSelect && savedData.folio) {
+            const folioCarga = savedData.folio.split('-').pop();
+            updateFolioSelector();
+            folioSelect.value = folioCarga;
         }
     } else {
         // Reset button for non-validated orders
@@ -1512,6 +1931,9 @@ function showOrderInfo(orden) {
             confirmBtn.onclick = function() { confirmDispatch(); };
         }
     }
+
+    // Setup event listeners for folio selector
+    setupFolioSelectorListeners();
 
     // Show modal
     document.getElementById('info-modal').classList.add('show');
@@ -1949,7 +2371,7 @@ function renderModalBody(orden, orderData) {
             <div class="section-card" id="section-detalle-obc">
                 <div class="section-header" onclick="toggleSection('section-detalle-obc-content')">
                     <div class="section-header-left">
-                        <div class="section-title">📦 Detalle Completo de Cajas OBC <span class="section-badge">${allBoxes.length} cajas</span></div>
+                        <div class="section-title">📦 Orden Detallada <span class="section-badge">${allBoxes.length} cajas</span></div>
                     </div>
                     <span class="section-toggle collapsed" id="section-detalle-obc-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -2020,12 +2442,18 @@ function closeInfoModal() {
 async function saveValidatedOrderChanges(orden) {
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
+    const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
     // Validación de campos requeridos
     if (!operador || !unidad) {
         showNotification('⚠️ Debes seleccionar conductor y unidad', 'warning');
+        return;
+    }
+
+    if (!folioCarga) {
+        showNotification('⚠️ Debes seleccionar un Folio de Carga', 'warning');
         return;
     }
 
@@ -2063,13 +2491,42 @@ async function saveValidatedOrderChanges(orden) {
         }
     }
 
+    const oldRecord = STATE.localValidated[recordIndex];
+
+    // Verificar si cambió el conductor o la unidad
+    const conductorChanged = oldRecord.operador !== operador;
+    const unidadChanged = oldRecord.unidad !== unidad;
+
+    let newFolio = oldRecord.folio;
+
+    if (conductorChanged || unidadChanged) {
+        // Extraer el folio de carga del folio actual (últimos 2 dígitos)
+        const folioCarga = oldRecord.folio.split('-').pop();
+
+        // Verificar si el folio puede ser usado por la nueva combinación
+        if (!canUseFolio(operador, unidad, folioCarga)) {
+            showNotification(`⚠️ El folio de carga ${folioCarga} no está disponible para ${operador}/${unidad}. Está siendo usado por otra combinación. Debes usar un conductor/unidad diferente.`, 'warning');
+            return;
+        }
+
+        // Liberar el folio de la combinación anterior
+        releaseFolio(folioCarga);
+
+        // Marcar el folio como usado para la nueva combinación
+        markFolioAsUsed(operador, unidad, folioCarga);
+
+        // Regenerar el folio completo (la fecha sigue siendo la misma)
+        newFolio = generateFolio(folioCarga);
+    }
+
     // Update the record
     const updatedRecord = {
-        ...STATE.localValidated[recordIndex],
+        ...oldRecord,
         operador: operador,
         unidad: unidad,
         cantidadDespachar: cantidadDespacharNum,
         notaDespacho: notaDespacho,
+        folio: newFolio,
         lastModified: new Date().toISOString()
     };
 
@@ -2099,12 +2556,18 @@ async function saveValidatedOrderChanges(orden) {
 async function confirmDispatch() {
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
+    const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
     // Validación de campos requeridos
     if (!operador || !unidad) {
         showNotification('⚠️ Debes seleccionar conductor y unidad', 'warning');
+        return;
+    }
+
+    if (!folioCarga) {
+        showNotification('⚠️ Debes seleccionar un Folio de Carga', 'warning');
         return;
     }
 
@@ -2132,10 +2595,8 @@ async function confirmDispatch() {
         return;
     }
 
-    // Validación de discrepancia en cantidad
-    const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
-    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
-    const totalCajas = rastreoData.length || validaciones.length;
+    // Validación de discrepancia en cantidad - usar totalCajas de OBC database
+    const totalCajas = orderData.totalCajas || 0;
     const cantidadDespacharNum = parseInt(cantidadDespachar);
 
     if (totalCajas > 0 && cantidadDespacharNum !== totalCajas) {
@@ -2157,6 +2618,7 @@ async function confirmDispatch() {
 function showConfirmDispatchModal() {
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
+    const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
@@ -2185,6 +2647,7 @@ function showConfirmDispatchModal() {
     document.getElementById('confirm-calidad').textContent = estatusCalidad;
     document.getElementById('confirm-conductor').textContent = operador;
     document.getElementById('confirm-unidad').textContent = unidad;
+    document.getElementById('confirm-folio').textContent = folioCarga;
 
     // Mostrar nota si existe
     const notaRow = document.getElementById('confirm-nota-row');
@@ -2204,18 +2667,18 @@ function closeConfirmDispatch() {
 }
 
 async function executeConfirmDispatch() {
-    // Cerrar modal de confirmación
-    closeConfirmDispatch();
-
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
+    const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
+    // Cerrar modal de confirmación
+    closeConfirmDispatch();
+
     const orderData = STATE.obcData.get(STATE.currentOrder);
-    const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
-    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
-    const totalCajas = rastreoData.length || validaciones.length;
+    // Usar totalCajas de OBC database (fuente correcta)
+    const totalCajas = orderData.totalCajas || 0;
     const cantidadDespacharNum = parseInt(cantidadDespachar);
 
     // Recopilar datos de QC si están activos
@@ -2231,7 +2694,12 @@ async function executeConfirmDispatch() {
     }
 
     const timestamp = new Date();
-    const folio = generateFolio();
+
+    // Marcar el folio de carga como utilizado
+    markFolioAsUsed(operador, unidad, folioCarga);
+
+    // Generar folio con el folio de carga seleccionado
+    const folio = generateFolio(folioCarga);
 
     // Estructura para Google Sheets: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Incidencias, Operador, Unidad, Observaciones
     const dispatchRecord = {
@@ -2258,8 +2726,8 @@ async function executeConfirmDispatch() {
         qc: Object.keys(qcData).length > 0 ? qcData : null
     };
 
-    // Guardar en validados locales primero
-    STATE.localValidated.push(dispatchRecord);
+    // Guardar en validados locales primero (al inicio para mostrar las más recientes primero)
+    STATE.localValidated.unshift(dispatchRecord);
     saveLocalState();
 
     // Agregar a la cola de sync usando el módulo compartido
@@ -2481,8 +2949,15 @@ function applyDateFilter() {
         closeDateFilter();
     }
 
-    const start = new Date(startDate).toLocaleDateString('es-ES');
-    const end = new Date(endDate).toLocaleDateString('es-ES');
+    const start = formatDateDDMMYYYY(new Date(startDate));
+    const end = formatDateDDMMYYYY(new Date(endDate));
+
+    // Actualizar botón de filtro
+    const dateFilterText = document.getElementById('date-filter-text');
+    if (dateFilterText) {
+        dateFilterText.textContent = `${start} → ${end}`;
+    }
+
     showNotification(`📅 Filtro aplicado: ${start} - ${end} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
 }
 
@@ -2491,6 +2966,12 @@ function clearDateFilter() {
     STATE.dateFilter.endDate = null;
     STATE.dateFilter.active = false;
     STATE.obcDataFiltered.clear();
+
+    // Restaurar texto del botón
+    const dateFilterText = document.getElementById('date-filter-text');
+    if (dateFilterText) {
+        dateFilterText.textContent = 'Filtrar Fecha';
+    }
 
     renderOrdersList();
     updateSummary();
@@ -2501,26 +2982,26 @@ function clearDateFilter() {
 
 // ==================== EXPORT ====================
 function exportData() {
-    const dataToExport = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
-
-    if (dataToExport.size === 0) {
-        showNotification('⚠️ No hay datos para exportar', 'warning');
+    // Solo exportar órdenes validadas (en STATE.localValidated)
+    if (STATE.localValidated.length === 0) {
+        showNotification('⚠️ No hay órdenes validadas para exportar', 'warning');
         return;
     }
 
-    let csv = 'Orden,Referencia,Servicio,Tracking,Llegada Esperada,Destino,Tipo Caja,Observaciones\n';
+    let csv = 'Folio,Fecha,Hora,Usuario,Orden,Destino,Horario,Tracking,Código2,Estatus,Tarea,Estatus2,Incidencias,Operador,Unidad,Observaciones,Cant.Despachar,Total Cajas\n';
 
-    for (const [orden, data] of dataToExport.entries()) {
-        csv += `"${data.orden}","${data.referenceNo}","${data.shippingService}","${data.trackingCode}","${data.expectedArrival}","${data.recipient}","${data.boxType}","${data.remark}"\n`;
-    }
+    STATE.localValidated.forEach(record => {
+        csv += `"${record.folio}","${record.fecha}","${record.hora}","${record.usuario}","${record.orden}","${record.destino}","${record.horario}","${record.codigo}","${record.codigo2 || ''}","${record.estatus}","${record.tarea}","${record.estatus2}","${record.incidencias || ''}","${record.operador}","${record.unidad}","${record.observaciones || ''}","${record.cantidadDespachar}","${record.totalCajas}"\n`;
+    });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `despacho_${new Date().toISOString().slice(0, 10)}.csv`;
+    const timestamp = formatDateDDMMYYYY(new Date());
+    link.download = `despacho_validadas_${timestamp}.csv`;
     link.click();
 
-    showNotification('✅ Datos exportados', 'success');
+    showNotification(`✅ ${STATE.localValidated.length} órdenes validadas exportadas`, 'success');
 }
 
 // ==================== QUALITY CONTROL ====================
@@ -2651,4 +3132,725 @@ function copyToClipboard(text, iconElement) {
 function makeCopyable(value) {
     if (!value || value === '-' || value === 'N/A') return value;
     return `<span class="copyable">${value}<span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${String(value).replace(/'/g, "\\'")}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></span>`;
+}
+
+// ==================== GESTIÓN DE FOLIOS DE CARGA ====================
+
+// Estado para el filtro de folios
+let FOLIOS_DATE_FILTER = {
+    startDate: null,
+    endDate: null,
+    active: false
+};
+
+// Variables para ordenamiento de tabla de folios
+let foliosSortColumn = 1; // Por defecto ordenar por fecha
+let foliosSortDirection = 'desc';
+
+/**
+ * Muestra el panel de gestión de folios
+ */
+function showFoliosManagement() {
+    // Limpiar el flag de "viene desde folios"
+    STATE.fromFolios = false;
+
+    // Re-habilitar el botón Pendientes si estaba deshabilitado
+    const togglePendingValidated = document.getElementById('toggle-pending-validated');
+    if (togglePendingValidated) {
+        togglePendingValidated.disabled = false;
+        togglePendingValidated.style.opacity = '1';
+        togglePendingValidated.style.cursor = 'pointer';
+        togglePendingValidated.title = '';
+    }
+
+    // Ocultar todos los demás paneles
+    document.getElementById('welcome-state').style.display = 'none';
+    document.getElementById('search-panel').style.display = 'none';
+    document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folios-content').style.display = 'block';
+
+    // Renderizar la tabla de folios
+    renderFoliosTable();
+}
+
+/**
+ * Obtiene todos los folios de carga consolidados desde STATE.localValidated
+ */
+function getAllFolios() {
+    const foliosMap = new Map(); // folio completo → datos
+
+    STATE.localValidated.forEach(record => {
+        const folioCompleto = record.folio; // Ej: "DSP-20251230-01"
+        const folioParts = folioCompleto.split('-');
+
+        if (folioParts.length !== 3) return; // Formato inválido
+
+        const fechaStr = folioParts[1]; // "20251230"
+        const folioNum = folioParts[2]; // "01"
+
+        // Convertir fecha a formato legible YYYY-MM-DD
+        const fecha = `${fechaStr.substring(0, 4)}-${fechaStr.substring(4, 6)}-${fechaStr.substring(6, 8)}`;
+
+        if (!foliosMap.has(folioCompleto)) {
+            foliosMap.set(folioCompleto, {
+                folio: folioCompleto,
+                folioNum: folioNum,
+                fecha: fecha,
+                fechaStr: fechaStr,
+                conductor: record.operador || record.conductor, // Usar operador (nombre correcto del campo)
+                unidad: record.unidad,
+                ordenes: [],
+                totalCajas: 0,
+                horarios: []
+            });
+        }
+
+        const folioData = foliosMap.get(folioCompleto);
+        folioData.ordenes.push(record.orden);
+        folioData.totalCajas += parseInt(record.cantidadDespachar) || 0;
+
+        // Agregar horario si existe
+        if (record.horario) {
+            folioData.horarios.push(record.horario);
+        }
+    });
+
+    return Array.from(foliosMap.values());
+}
+
+/**
+ * Renderiza la tabla de folios
+ */
+function renderFoliosTable() {
+    const tableBody = document.getElementById('folios-table-body');
+    if (!tableBody) return;
+
+    let folios = getAllFolios();
+
+    // Aplicar filtro de fecha si está activo
+    if (FOLIOS_DATE_FILTER.active && FOLIOS_DATE_FILTER.startDate && FOLIOS_DATE_FILTER.endDate) {
+        const startDate = new Date(FOLIOS_DATE_FILTER.startDate);
+        const endDate = new Date(FOLIOS_DATE_FILTER.endDate);
+
+        folios = folios.filter(folio => {
+            const folioDate = new Date(folio.fecha);
+            return folioDate >= startDate && folioDate <= endDate;
+        });
+    }
+
+    // Ordenar folios
+    folios.sort((a, b) => {
+        let valA, valB;
+
+        switch(foliosSortColumn) {
+            case 0: // Folio
+                valA = a.folio;
+                valB = b.folio;
+                break;
+            case 1: // Fecha
+                valA = a.fecha;
+                valB = b.fecha;
+                break;
+            case 2: // Cant. Cajas
+                valA = a.totalCajas;
+                valB = b.totalCajas;
+                break;
+            case 3: // Cant. Órdenes
+                valA = a.ordenes.length;
+                valB = b.ordenes.length;
+                break;
+            case 4: // Horario Inicial
+                valA = a.horarios.length > 0 ? Math.min(...a.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                valB = b.horarios.length > 0 ? Math.min(...b.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                break;
+            case 5: // Horario Final
+                valA = a.horarios.length > 0 ? Math.max(...a.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                valB = b.horarios.length > 0 ? Math.max(...b.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                break;
+            case 6: // Conductor
+                valA = a.conductor || '';
+                valB = b.conductor || '';
+                break;
+            case 7: // Unidad
+                valA = a.unidad || '';
+                valB = b.unidad || '';
+                break;
+            default:
+                valA = a.fecha;
+                valB = b.fecha;
+        }
+
+        if (foliosSortDirection === 'asc') {
+            return valA > valB ? 1 : -1;
+        } else {
+            return valA < valB ? 1 : -1;
+        }
+    });
+
+    // Actualizar contador
+    const foliosCount = document.getElementById('folios-count');
+    if (foliosCount) {
+        foliosCount.textContent = `${folios.length} ${folios.length === 1 ? 'folio' : 'folios'}`;
+    }
+
+    if (folios.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="table-empty-state">
+                    <div class="table-empty-icon">📋</div>
+                    <div class="table-empty-text">No hay folios de carga</div>
+                    <div class="table-empty-subtext">Los folios generados aparecerán aquí</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tableBody.innerHTML = folios.map(folio => {
+        const horarioInicial = folio.horarios.length > 0
+            ? folio.horarios.reduce((min, h) => h < min ? h : min, folio.horarios[0])
+            : 'N/A';
+        const horarioFinal = folio.horarios.length > 0
+            ? folio.horarios.reduce((max, h) => h > max ? h : max, folio.horarios[0])
+            : 'N/A';
+
+        return `
+            <tr>
+                <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
+                <td>${folio.fecha}</td>
+                <td style="text-align: center;">${folio.totalCajas}</td>
+                <td style="text-align: center;">${folio.ordenes.length}</td>
+                <td>${horarioInicial}</td>
+                <td>${horarioFinal}</td>
+                <td>${folio.conductor || '<span class="empty-cell">N/A</span>'}</td>
+                <td>${folio.unidad || '<span class="empty-cell">N/A</span>'}</td>
+                <td>
+                    <div style="display: flex; gap: 8px; justify-content: center;">
+                        <button class="btn-action print" onclick="printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                                <rect x="6" y="14" width="12" height="8"></rect>
+                            </svg>
+                        </button>
+                        <button class="btn-action view" onclick="viewFolioOrders('${folio.folio}')" title="Ver Órdenes">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Actualizar indicadores de ordenamiento
+    updateFoliosSortIndicators();
+}
+
+/**
+ * Ordena la tabla de folios por columna
+ */
+function sortFoliosTable(columnIndex) {
+    if (foliosSortColumn === columnIndex) {
+        foliosSortDirection = foliosSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        foliosSortColumn = columnIndex;
+        foliosSortDirection = 'asc';
+    }
+
+    renderFoliosTable();
+}
+
+/**
+ * Actualiza los indicadores de ordenamiento en la tabla de folios
+ */
+function updateFoliosSortIndicators() {
+    const table = document.getElementById('folios-table');
+    if (!table) return;
+
+    // Limpiar todos los indicadores
+    table.querySelectorAll('th').forEach(th => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+    });
+
+    // Agregar clase a la columna ordenada
+    const ths = table.querySelectorAll('th');
+    if (ths[foliosSortColumn]) {
+        ths[foliosSortColumn].classList.add(foliosSortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
+    }
+}
+
+/**
+ * Filtra la tabla de folios
+ */
+function filterFoliosTable() {
+    const filterInput = document.getElementById('filter-folios');
+    if (!filterInput) return;
+
+    const filterValue = filterInput.value.toLowerCase();
+    const tableBody = document.getElementById('folios-table-body');
+    if (!tableBody) return;
+
+    const rows = tableBody.querySelectorAll('tr');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filterValue) ? '' : 'none';
+    });
+}
+
+/**
+ * Muestra el modal de filtro de fechas para folios
+ */
+function showFoliosDateFilter() {
+    const modal = document.getElementById('folios-date-filter-modal');
+    if (modal) {
+        modal.classList.add('show');
+
+        // Establecer valores actuales si existen
+        if (FOLIOS_DATE_FILTER.startDate) {
+            document.getElementById('folios-date-start').value = FOLIOS_DATE_FILTER.startDate;
+        }
+        if (FOLIOS_DATE_FILTER.endDate) {
+            document.getElementById('folios-date-end').value = FOLIOS_DATE_FILTER.endDate;
+        }
+    }
+}
+
+/**
+ * Cierra el modal de filtro de fechas para folios
+ */
+function closeFoliosDateFilter() {
+    const modal = document.getElementById('folios-date-filter-modal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+/**
+ * Aplica el filtro de fechas para folios
+ */
+function applyFoliosDateFilter() {
+    const startDate = document.getElementById('folios-date-start').value;
+    const endDate = document.getElementById('folios-date-end').value;
+
+    if (!startDate || !endDate) {
+        showNotification('⚠️ Selecciona ambas fechas', 'warning');
+        return;
+    }
+
+    FOLIOS_DATE_FILTER.startDate = startDate;
+    FOLIOS_DATE_FILTER.endDate = endDate;
+    FOLIOS_DATE_FILTER.active = true;
+
+    // Actualizar texto del botón
+    const filterText = document.getElementById('folios-date-filter-text');
+    if (filterText) {
+        filterText.textContent = `${startDate} → ${endDate}`;
+    }
+
+    closeFoliosDateFilter();
+    renderFoliosTable();
+    showNotification('✅ Filtro aplicado', 'success');
+}
+
+/**
+ * Limpia el filtro de fechas para folios
+ */
+function clearFoliosDateFilter() {
+    FOLIOS_DATE_FILTER.startDate = null;
+    FOLIOS_DATE_FILTER.endDate = null;
+    FOLIOS_DATE_FILTER.active = false;
+
+    document.getElementById('folios-date-start').value = '';
+    document.getElementById('folios-date-end').value = '';
+
+    // Restaurar texto del botón
+    const filterText = document.getElementById('folios-date-filter-text');
+    if (filterText) {
+        filterText.textContent = 'Filtrar Fecha';
+    }
+
+    closeFoliosDateFilter();
+    renderFoliosTable();
+    showNotification('✅ Filtro eliminado', 'success');
+}
+
+/**
+ * Confirma la salida del panel de folios
+ */
+function confirmExitFolios() {
+    // Limpiar el flag de "viene desde folios"
+    STATE.fromFolios = false;
+
+    // Re-habilitar el botón Pendientes si estaba deshabilitado
+    const togglePendingValidated = document.getElementById('toggle-pending-validated');
+    if (togglePendingValidated) {
+        togglePendingValidated.disabled = false;
+        togglePendingValidated.style.opacity = '1';
+        togglePendingValidated.style.cursor = 'pointer';
+        togglePendingValidated.title = '';
+    }
+
+    document.getElementById('folios-content').style.display = 'none';
+    document.getElementById('welcome-state').style.display = 'flex';
+}
+
+/**
+ * Filtra las órdenes validadas por folio de carga
+ */
+function viewFolioOrders(folioCompleto) {
+    // Primero cerrar el panel de folios
+    document.getElementById('folios-content').style.display = 'none';
+
+    // Marcar que venimos desde folios para deshabilitar botón Pendientes
+    STATE.fromFolios = true;
+
+    // Cambiar a la vista de órdenes validadas
+    switchValidationTab('validated');
+
+    // Deshabilitar botón Pendientes cuando venimos desde folios
+    const togglePendingValidated = document.getElementById('toggle-pending-validated');
+    if (togglePendingValidated) {
+        togglePendingValidated.disabled = true;
+        togglePendingValidated.style.opacity = '0.5';
+        togglePendingValidated.style.cursor = 'not-allowed';
+        togglePendingValidated.title = 'No disponible cuando se visualiza desde folios';
+    }
+
+    // Aplicar filtro por folio en la tabla de validadas
+    const filterInput = document.getElementById('filter-validated');
+    if (filterInput) {
+        filterInput.value = folioCompleto;
+
+        // Disparar el evento de input manualmente para activar el filtro
+        const event = new Event('input', { bubbles: true });
+        filterInput.dispatchEvent(event);
+
+        // También llamar directamente a la función de filtrado
+        filterValidatedTable();
+    }
+
+    showNotification(`📋 Mostrando órdenes del folio ${folioCompleto}`, 'info');
+}
+
+/**
+ * Imprime el folio de entrega (PDF)
+ */
+function printFolioDelivery(folioCompleto) {
+    // Obtener todas las órdenes del folio
+    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
+
+    if (ordenesDelFolio.length === 0) {
+        showNotification('⚠️ No hay órdenes en este folio', 'warning');
+        return;
+    }
+
+    // Obtener información consolidada del folio
+    const primeraOrden = ordenesDelFolio[0];
+    const conductor = primeraOrden.conductor || 'N/A';
+    const unidad = primeraOrden.unidad || 'N/A';
+
+    // Obtener horarios
+    const horarios = ordenesDelFolio
+        .map(o => o.horario)
+        .filter(h => h && h !== 'N/A');
+
+    const horarioInicial = horarios.length > 0
+        ? horarios.reduce((min, h) => h < min ? h : min, horarios[0])
+        : 'N/A';
+    const horarioFinal = horarios.length > 0
+        ? horarios.reduce((max, h) => h > max ? h : max, horarios[0])
+        : 'N/A';
+
+    // Obtener destinos únicos
+    const destinosUnicos = [...new Set(ordenesDelFolio.map(o => o.destino || o.recipient || 'N/A'))];
+    const destino = destinosUnicos.length === 1 ? destinosUnicos[0] : 'Múltiples destinos';
+
+    // Consolidar cajas por código base
+    const cajasMap = new Map(); // código base → { destino, orden, cantidad }
+
+    ordenesDelFolio.forEach(record => {
+        const orderData = STATE.obcData.get(record.orden) || {};
+        const validaciones = STATE.validacionData.get(record.orden) || [];
+        const destinoOrden = record.destino || orderData.recipient || 'N/A';
+
+        // Procesar cada caja validada
+        validaciones.forEach(caja => {
+            const codigoCompleto = caja.codigoCaja || '';
+            // Extraer código base (sin número de caja después de /)
+            const codigoBase = codigoCompleto.split('/')[0];
+
+            const key = `${record.orden}-${codigoBase}`;
+
+            if (!cajasMap.has(key)) {
+                cajasMap.set(key, {
+                    destino: destinoOrden,
+                    orden: record.orden,
+                    codigoBase: codigoBase,
+                    cantidad: 0
+                });
+            }
+
+            cajasMap.get(key).cantidad++;
+        });
+    });
+
+    const cajasList = Array.from(cajasMap.values());
+    const totalOrdenes = ordenesDelFolio.length;
+    const totalCajas = cajasList.reduce((sum, item) => sum + item.cantidad, 0);
+
+    // Verificar si hay códigos base válidos
+    console.log('📋 Datos para impresión:', { cajasList, totalOrdenes, totalCajas });
+
+    // Generar HTML del documento
+    const printHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Folio de Entrega - ${folioCompleto}</title>
+            <style>
+                @page {
+                    size: letter;
+                    margin: 15mm;
+                }
+
+                body {
+                    font-family: Arial, sans-serif;
+                    font-size: 11pt;
+                    line-height: 1.4;
+                    color: #1e293b;
+                    background: white;
+                }
+
+                .header {
+                    text-align: center;
+                    margin-bottom: 20px;
+                    border-bottom: 2px solid #cbd5e1;
+                    padding-bottom: 15px;
+                }
+
+                .header h1 {
+                    margin: 0;
+                    font-size: 20pt;
+                    color: #1e293b;
+                    font-weight: 700;
+                }
+
+                .header h2 {
+                    margin: 5px 0 0 0;
+                    font-size: 14pt;
+                    color: #64748b;
+                    font-weight: 500;
+                }
+
+                .info-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 12px;
+                    margin-bottom: 20px;
+                    background: #f8fafc;
+                    padding: 16px;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                }
+
+                .info-item {
+                    display: flex;
+                    gap: 8px;
+                    align-items: baseline;
+                }
+
+                .info-label {
+                    font-weight: 600;
+                    color: #475569;
+                    min-width: 120px;
+                }
+
+                .info-value {
+                    color: #1e293b;
+                    font-weight: 500;
+                }
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 15px;
+                    border: 1px solid #e2e8f0;
+                }
+
+                th {
+                    background: #f1f5f9;
+                    color: #475569;
+                    padding: 10px 8px;
+                    text-align: left;
+                    font-size: 10pt;
+                    font-weight: 600;
+                    border-bottom: 2px solid #cbd5e1;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                td {
+                    padding: 8px;
+                    border-bottom: 1px solid #e2e8f0;
+                    font-size: 10pt;
+                    color: #334155;
+                }
+
+                tbody tr:nth-child(even) {
+                    background: #f8fafc;
+                }
+
+                tbody tr:hover {
+                    background: #f1f5f9;
+                }
+
+                .codigo-base {
+                    font-family: 'Courier New', monospace;
+                    background: #e2e8f0;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-weight: 600;
+                    color: #1e293b;
+                }
+
+                .table-footer {
+                    margin-top: 20px;
+                    padding-top: 15px;
+                    border-top: 2px solid #cbd5e1;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .footer-info {
+                    font-size: 9pt;
+                    color: #64748b;
+                }
+
+                @media print {
+                    body {
+                        print-color-adjust: exact;
+                        -webkit-print-color-adjust: exact;
+                    }
+                    .info-grid {
+                        background: #f8fafc;
+                    }
+                    tbody tr:nth-child(even) {
+                        background: #f8fafc;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>📋 FOLIO DE ENTREGA</h1>
+                <h2>${folioCompleto}</h2>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">👤 Conductor:</span>
+                    <span class="info-value">${conductor}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">🚛 Unidad:</span>
+                    <span class="info-value">${unidad}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">📍 Destino:</span>
+                    <span class="info-value">${destino}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">⏰ Horario Inicial:</span>
+                    <span class="info-value">${horarioInicial}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">⏰ Horario Final:</span>
+                    <span class="info-value">${horarioFinal}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">📦 Total Órdenes:</span>
+                    <span class="info-value">${totalOrdenes}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">📦 Total Cajas:</span>
+                    <span class="info-value">${totalCajas}</span>
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">#</th>
+                        <th>Destino</th>
+                        <th>Orden</th>
+                        <th>Código de Caja (Base)</th>
+                        <th style="width: 120px; text-align: center;">Cantidad de Cajas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${cajasList.map((item, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.destino || 'N/A'}</td>
+                            <td>${item.orden || 'N/A'}</td>
+                            <td><span class="codigo-base">${item.codigoBase || 'N/A'}</span></td>
+                            <td style="text-align: center;"><strong>${item.cantidad || 0}</strong></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div class="table-footer">
+                <div class="footer-info">
+                    📅 Generado el ${new Date().toLocaleString('es-MX')}
+                </div>
+                <div class="footer-info">
+                    Sistema de Despacho WMS
+                </div>
+            </div>
+
+            <script>
+                // Auto-imprimir cuando se carga la página
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                    }, 250);
+                };
+            </script>
+        </body>
+        </html>
+    `;
+
+    // Crear un iframe oculto para la impresión
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.style.opacity = '0';
+    printFrame.style.pointerEvents = 'none';
+    document.body.appendChild(printFrame);
+
+    // Escribir el HTML al iframe
+    const printDoc = printFrame.contentWindow.document;
+    printDoc.open();
+    printDoc.write(printHTML);
+    printDoc.close();
+
+    // Remover el iframe después de imprimir
+    printFrame.contentWindow.onafterprint = function() {
+        setTimeout(() => {
+            document.body.removeChild(printFrame);
+        }, 100);
+    };
+
+    showNotification('🖨️ Preparando impresión...', 'info');
 }

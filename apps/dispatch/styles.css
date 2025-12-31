@@ -225,18 +225,21 @@
     width: 100%;
     padding: 15px;
     font-size: 1.3em;
-    border: 2px solid var(--border);
+    border: 2px solid #e2e8f0;
     border-radius: 8px;
     font-weight: 600;
     text-transform: uppercase;
     text-align: center;
-    background: #fff5ed;
+    background: #f8fafc;
+    color: #1e293b;
+    transition: all 0.2s ease;
 }
 
 .scanner-input:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background: white;
 }
 
 /* Section Header Inline */
@@ -250,9 +253,10 @@
 }
 
 .section-header-inline h3 {
-    color: var(--primary);
+    color: #1e293b;
     font-size: 1.1em;
     margin: 0;
+    font-weight: 600;
 }
 
 .filter-controls {
@@ -702,8 +706,8 @@
 
 .date-input:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* Empty state for orders list */
@@ -1204,7 +1208,7 @@
 .status-toggle-container {
     display: flex;
     gap: 8px;
-    background: rgba(249, 115, 22, 0.1);
+    background: #f1f5f9;
     padding: 4px;
     border-radius: 8px;
 }
@@ -1226,12 +1230,12 @@
 }
 
 .status-toggle-btn:hover {
-    background: rgba(255, 255, 255, 0.5);
-    color: var(--primary);
+    background: #e2e8f0;
+    color: #475569;
 }
 
 .status-toggle-btn.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
     color: white;
     box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
 }
@@ -1303,23 +1307,24 @@
 }
 
 .orders-table th {
-    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-    color: white;
+    background: #f8fafc;
+    color: #475569;
     padding: 14px 12px;
     text-align: left;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.85em;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 2px solid #ea580c;
+    border-bottom: 2px solid #e2e8f0;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    transition: background 0.2s ease;
+    transition: all 0.2s ease;
 }
 
 .orders-table th:hover {
-    background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+    background: #f1f5f9;
+    color: #334155;
 }
 
 .orders-table th .sort-indicator {
@@ -1428,32 +1433,59 @@
 }
 
 .orders-table .btn-action {
-    padding: 6px 12px;
-    font-size: 0.8em;
+    padding: 6px;
     border-radius: 6px;
-    border: none;
-    background: var(--primary);
-    color: white;
+    border: 1px solid #e2e8f0;
+    background: transparent;
+    color: #64748b;
     cursor: pointer;
-    font-weight: 600;
     transition: all 0.2s ease;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .orders-table .btn-action:hover {
-    background: #ea580c;
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #475569;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+}
+
+.orders-table .btn-action svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Colores específicos para diferentes acciones */
+.orders-table .btn-action.print:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+    background: #eff6ff;
+}
+
+.orders-table .btn-action.view:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+    background: #f5f3ff;
+}
+
+.orders-table .btn-action.dispatch:hover {
+    border-color: #10b981;
+    color: #10b981;
+    background: #f0fdf4;
 }
 
 .orders-table .order-code {
     font-family: 'Monaco', 'Courier New', monospace;
-    background: rgba(249, 115, 22, 0.08);
+    background: #f1f5f9;
     padding: 3px 8px;
     border-radius: 4px;
     font-size: 0.9em;
     font-weight: 600;
     display: inline-block;
+    color: #475569;
 }
 
 .orders-table .empty-cell {
@@ -1468,17 +1500,17 @@
 }
 
 .orders-table-container::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: #f1f5f9;
     border-radius: 5px;
 }
 
 .orders-table-container::-webkit-scrollbar-thumb {
-    background: #f97316;
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
     border-radius: 5px;
 }
 
 .orders-table-container::-webkit-scrollbar-thumb:hover {
-    background: #ea580c;
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
 }
 
 /* Responsive adjustments */
@@ -1531,18 +1563,19 @@ body, input, select, textarea, button {
 /* Code elements styling */
 code {
     font-family: 'Monaco', 'Courier New', monospace;
-    background: rgba(249, 115, 22, 0.08);
+    background: #f1f5f9;
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.9em;
     font-weight: 500;
+    color: #475569;
 }
 
 code.highlight {
-    background: rgba(34, 197, 94, 0.15);
-    color: #16a34a;
+    background: #d1fae5;
+    color: #065f46;
     font-weight: 600;
-    border: 1px solid rgba(34, 197, 94, 0.3);
+    border: 1px solid #a7f3d0;
 }
 
 /* Improved selectors */
@@ -1558,14 +1591,14 @@ select {
 }
 
 select:hover {
-    border-color: var(--primary);
-    background-color: rgba(249, 115, 22, 0.02);
+    border-color: #cbd5e1;
+    background-color: #f8fafc;
 }
 
 select:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* Copy icon improvements - removed duplicates, see line 516 for main styles */
@@ -1594,8 +1627,8 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 textarea:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* Improved table styling */
@@ -1882,4 +1915,84 @@ textarea:focus {
 .search-input-row button {
     flex-shrink: 0;
     margin: 0;
+}
+
+.date-filter-btn {
+    white-space: nowrap;
+    min-width: 150px;
+    font-weight: 500;
+}
+
+.date-filter-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* ==================== HEADER WITH BADGES ==================== */
+.header-with-badges {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.header-with-badges h3 {
+    margin: 0;
+}
+
+.header-with-badges .badge {
+    font-size: 0.75em;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-primary {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.badge-success {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+/* Folio de carga selector */
+.folio-selector {
+    padding: 8px 12px;
+    border: 2px solid #3b82f6;
+    border-radius: 6px;
+    font-size: 1em;
+    font-weight: 600;
+    background-color: white;
+    color: #1e293b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 120px;
+}
+
+.folio-selector:hover {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.folio-selector:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.folio-selector:disabled {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.folio-selector option {
+    padding: 8px;
+}
+.folio-selector option:disabled {
+    color: #94a3b8;
+    background-color: #f8fafc;
 }
