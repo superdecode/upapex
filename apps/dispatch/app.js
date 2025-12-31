@@ -441,6 +441,9 @@ function parseBDCajasData(csv) {
     const lines = csv.split('\n').filter(l => l.trim());
     STATE.bdCajasData.clear();
 
+    // Map para contar cajas por OBC
+    const cajasCountMap = new Map();
+
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length >= 9) {
@@ -449,6 +452,8 @@ function parseBDCajasData(csv) {
 
             if (obc && codigo) {
                 const codigoUpper = codigo.toUpperCase();
+
+                // Indexar por código de caja para búsqueda rápida
                 if (!STATE.bdCajasData.has(codigoUpper)) {
                     STATE.bdCajasData.set(codigoUpper, []);
                 }
@@ -463,9 +468,23 @@ function parseBDCajasData(csv) {
                     boxType: cols[7]?.trim() || '',
                     codigoCaja: codigo
                 });
+
+                // Contar cajas por OBC (cada fila = 1 caja)
+                cajasCountMap.set(obc, (cajasCountMap.get(obc) || 0) + 1);
             }
         }
     }
+
+    // Actualizar totalCajas en obcData basado en el conteo real de la pestaña BD
+    cajasCountMap.forEach((count, obc) => {
+        if (STATE.obcData.has(obc)) {
+            const orderData = STATE.obcData.get(obc);
+            orderData.totalCajas = count; // Sobrescribir con el conteo real
+            orderData.totalCajasCalculado = true; // Marcar como calculado dinámicamente
+        }
+    });
+
+    console.log(`✅ BD Cajas parsed: ${STATE.bdCajasData.size} códigos únicos, ${cajasCountMap.size} órdenes con conteo actualizado`);
 }
 
 function parseListasData(csv) {
@@ -1284,10 +1303,21 @@ function executeSearch() {
 }
 
 function showMultipleMatchesModal(foundOrders, query) {
-    document.getElementById('matches-count').textContent = foundOrders.length;
+    // Eliminar duplicados de órdenes (mantener el de mayor confianza)
+    const uniqueOrders = new Map();
+    foundOrders.forEach(match => {
+        if (!uniqueOrders.has(match.orden) ||
+            uniqueOrders.get(match.orden).confidence < match.confidence) {
+            uniqueOrders.set(match.orden, match);
+        }
+    });
+
+    const uniqueFoundOrders = Array.from(uniqueOrders.values());
+
+    document.getElementById('matches-count').textContent = uniqueFoundOrders.length;
     const matchesList = document.getElementById('matches-list');
 
-    matchesList.innerHTML = foundOrders.map((match, index) => {
+    matchesList.innerHTML = uniqueFoundOrders.map((match) => {
         const orderData = STATE.obcData.get(match.orden);
         const totalCajas = orderData?.totalCajas || 0;
 
