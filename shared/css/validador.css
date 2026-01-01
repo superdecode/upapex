@@ -395,7 +395,7 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 .consulta-progress-bar.complete {
-    background: linear-gradient(90deg, var(--primary), #1e40af);
+    background: linear-gradient(90deg, var(--primary), #ea580c);
 }
 .consulta-action {
     text-align: center;
@@ -452,7 +452,7 @@
     letter-spacing: 0.5px;
 }
 .obc-card-badge.complete {
-    background: linear-gradient(135deg, var(--primary), #1e40af);
+    background: linear-gradient(135deg, var(--primary), #ea580c);
     color: white;
 }
 .obc-card-badge.partial {
@@ -500,7 +500,7 @@
     transition: width 0.5s ease;
 }
 .obc-card-progress-fill.complete {
-    background: linear-gradient(90deg, var(--primary), #1e40af);
+    background: linear-gradient(90deg, var(--primary), #ea580c);
 }
 .obc-card-button {
     width: 100%;

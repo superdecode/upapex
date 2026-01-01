@@ -429,7 +429,7 @@ class SyncManager {
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay show sync-panel-overlay';
         overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 450px;">
+            <div class="popup-content sync-modal-content">
                 <div class="popup-header">
                     <span>${this.config.appIcon} Estado de Sincronización</span>
                     <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
@@ -505,7 +505,7 @@ class SyncManager {
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay show exit-dialog-overlay';
         overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 450px;">
+            <div class="popup-content sync-modal-content">
                 <div class="popup-header">
                     <span>⚠️ Salida Segura</span>
                     <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
@@ -665,6 +665,10 @@ const syncStyles = `
         background: linear-gradient(135deg, rgba(255, 152, 0, 0.15) 0%, rgba(255, 152, 0, 0.25) 100%);
         color: #e65100;
         border: 1px solid rgba(255, 152, 0, 0.3);
+    }
+    .sync-modal-content {
+        max-width: 500px !important;
+        width: 90% !important;
     }
     .sync-panel-overlay .popup-content,
     .exit-dialog-overlay .popup-content {

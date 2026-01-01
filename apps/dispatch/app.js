@@ -44,7 +44,24 @@ let STATE = {
     // Sistema de folios de carga
     // Map: fecha → Map(folio → {conductor, unidad})
     // Ejemplo: "2025-12-30" → Map("01" → {conductor: "Juan", unidad: "T-001"})
-    foliosDeCargas: new Map()
+    foliosDeCargas: new Map(),
+    isLoading: false,
+    loadingProgress: 0,
+    // CHANGE 5: Advanced filter system state
+    advancedFilters: {
+        orders: {
+            criterion: '',
+            selectedValues: []
+        },
+        validated: {
+            criterion: '',
+            selectedValues: []
+        },
+        folios: {
+            criterion: '',
+            selectedValues: []
+        }
+    }
 };
 
 // Cargar estado local al inicio
@@ -343,7 +360,7 @@ function initSidebarComponent() {
         onToggleConnection: toggleConnection,
         buttons: [
             { label: '🚀 Iniciar Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
-            { label: '📋 Gestión de Folios', onClick: 'showFoliosManagement()', class: 'sidebar-btn-primary' },
+            { label: '📋 Gestión de Folios', onClick: 'showFoliosManagement()', class: 'sidebar-btn-secondary' },
             { label: '📥 Exportar CSV', onClick: 'exportData()', class: 'sidebar-btn-secondary' }
         ]
     });
@@ -361,6 +378,166 @@ function setupEventListeners() {
             }
         });
     }
+
+    // CHANGE 4: Setup clear button listeners for all search inputs
+    setupClearButtonListeners();
+
+    // Setup date input auto-close and format display
+    setupDateInputListeners();
+
+    // Setup delegated click handlers for table rows
+    setupTableClickDelegation();
+}
+
+/**
+ * Setup delegated click handlers for table rows
+ * This ensures clicks work even after filtering/searching
+ */
+function setupTableClickDelegation() {
+    // Orders table (pendientes)
+    const ordersTableBody = document.getElementById('orders-table-body');
+    if (ordersTableBody) {
+        ordersTableBody.addEventListener('click', (e) => {
+            const row = e.target.closest('tr[data-orden]');
+            if (!row) return;
+
+            // Check if click was on a button or copy icon
+            if (e.target.closest('.btn-action') || e.target.closest('.copy-icon')) {
+                return; // Let the inline handler handle it
+            }
+
+            const orden = row.getAttribute('data-orden');
+            if (orden) {
+                showOrderInfo(orden);
+            }
+        });
+    }
+
+    // Validated table
+    const validatedTableBody = document.getElementById('validated-table-body');
+    if (validatedTableBody) {
+        validatedTableBody.addEventListener('click', (e) => {
+            const row = e.target.closest('tr[data-orden]');
+            if (!row) return;
+
+            // Check if click was on delete button or copy icon
+            if (e.target.closest('.btn-delete-validated') || e.target.closest('.copy-icon') || e.target.closest('.delete-cell')) {
+                return; // Let the inline handler handle it
+            }
+
+            const orden = row.getAttribute('data-orden');
+            if (orden) {
+                showValidatedDetails(orden);
+            }
+        });
+    }
+
+    // Search results panel - matches
+    document.addEventListener('click', (e) => {
+        const matchItem = e.target.closest('.match-item');
+        if (matchItem) {
+            const orden = matchItem.getAttribute('data-orden') || matchItem.querySelector('.match-header')?.textContent?.match(/\d+/)?.[0];
+            if (orden) {
+                selectMatch(orden);
+            }
+        }
+    });
+}
+
+/**
+ * Setup date input listeners for auto-close on selection
+ */
+function setupDateInputListeners() {
+    const dateInputs = ['date-start', 'date-end', 'folios-date-start', 'folios-date-end'];
+
+    dateInputs.forEach(inputId => {
+        const input = document.getElementById(inputId);
+        if (input) {
+            // Auto-close calendar picker when date is selected
+            input.addEventListener('change', () => {
+                // Blur to close the picker
+                input.blur();
+                // Update display
+                updateDateDisplay(input);
+            });
+        }
+    });
+}
+
+/**
+ * Update the date display span with DD-MM-YYYY format
+ */
+function updateDateDisplay(input) {
+    const displayId = `${input.id}-display`;
+    const displaySpan = document.getElementById(displayId);
+
+    if (!displaySpan) return;
+
+    if (input.value) {
+        const date = new Date(input.value + 'T00:00:00');
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        displaySpan.textContent = `📅 ${day}-${month}-${year}`;
+    } else {
+        displaySpan.textContent = '';
+    }
+}
+
+// CHANGE 4: Clear search input function
+function clearSearchInput(inputId) {
+    const input = document.getElementById(inputId);
+    const clearBtn = document.getElementById(`clear-${inputId}`);
+
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
+
+    // Trigger appropriate filter/search function
+    if (inputId === 'filter-folios') {
+        filterFoliosTable();
+    } else if (inputId === 'filter-orders') {
+        filterOrdersTable();
+    } else if (inputId === 'filter-validated') {
+        filterValidatedTable();
+    }
+}
+
+// CHANGE 4: Setup listeners for showing/hiding clear buttons
+function setupClearButtonListeners() {
+    const searchInputs = [
+        'search-input',
+        'filter-folios',
+        'filter-orders',
+        'filter-validated'
+    ];
+
+    searchInputs.forEach(inputId => {
+        const input = document.getElementById(inputId);
+        const clearBtn = document.getElementById(`clear-${inputId}`);
+
+        if (input && clearBtn) {
+            // Show/hide clear button on input
+            input.addEventListener('input', () => {
+                clearBtn.style.display = input.value.trim() ? 'flex' : 'none';
+            });
+
+            // Hide clear button on blur if empty
+            input.addEventListener('blur', () => {
+                if (!input.value.trim()) {
+                    clearBtn.style.display = 'none';
+                }
+            });
+
+            // Initialize clear button visibility
+            clearBtn.style.display = input.value.trim() ? 'flex' : 'none';
+        }
+    });
 }
 
 function setupConnectionMonitoring() {
@@ -508,10 +685,14 @@ function updateUserFooter() {
 
 // ==================== DATA LOADING ====================
 async function loadAllData() {
+    STATE.isLoading = true;
+    STATE.loadingProgress = 0;
+    showLoadingOverlay(true, 0, 5);
     showNotification('🔄 Cargando datos...', 'info');
 
     let errors = [];
     let loaded = 0;
+    const total = 5;
 
     // Load BD_CAJAS PRIMERO (Pestaña BD - gid=0 - FUENTE PRINCIPAL)
     // Esta es la base de datos completa con todas las cajas individuales
@@ -520,6 +701,8 @@ async function loadAllData() {
         const bdCajasCsv = await bdCajasResponse.text();
         parseBDCajasData(bdCajasCsv);
         loaded++;
+        STATE.loadingProgress = loaded;
+        showLoadingOverlay(true, loaded, total);
     } catch (e) {
         console.error('Error loading BD_CAJAS:', e);
         errors.push('BD_CAJAS');
@@ -531,6 +714,8 @@ async function loadAllData() {
         const validacionCsv = await validacionResponse.text();
         parseValidacionData(validacionCsv);
         loaded++;
+        STATE.loadingProgress = loaded;
+        showLoadingOverlay(true, loaded, total);
     } catch (e) {
         console.error('Error loading VALIDACION:', e);
         errors.push('VALIDACION');
@@ -542,6 +727,8 @@ async function loadAllData() {
         const mneCsv = await mneResponse.text();
         parseMNEData(mneCsv);
         loaded++;
+        STATE.loadingProgress = loaded;
+        showLoadingOverlay(true, loaded, total);
     } catch (e) {
         console.error('Error loading MNE:', e);
         errors.push('MNE');
@@ -553,6 +740,8 @@ async function loadAllData() {
         const trsCsv = await trsResponse.text();
         parseTRSData(trsCsv);
         loaded++;
+        STATE.loadingProgress = loaded;
+        showLoadingOverlay(true, loaded, total);
     } catch (e) {
         console.error('Error loading TRS:', e);
         errors.push('TRS');
@@ -564,10 +753,15 @@ async function loadAllData() {
         const listasCsv = await listasResponse.text();
         parseListasData(listasCsv);
         loaded++;
+        STATE.loadingProgress = loaded;
+        showLoadingOverlay(true, loaded, total);
     } catch (e) {
         console.error('Error loading LISTAS:', e);
         errors.push('LISTAS');
     }
+
+    STATE.isLoading = false;
+    showLoadingOverlay(false);
 
     // Show appropriate notification
     if (errors.length > 0 && loaded === 0) {
@@ -907,6 +1101,8 @@ function toggleConnection() {
 
 // ==================== UI FUNCTIONS ====================
 function showSearchPanel() {
+    // CHANGE 1: Show global navigation and enforce date filter
+    showGlobalNavigation();
     // Mostrar modal de fecha obligatorio antes de iniciar
     showDateFilterForDispatch();
 }
@@ -924,8 +1120,10 @@ function showDateFilterForDispatch() {
 }
 
 function activateSearchPanelWithFilter() {
+    // HIDE ALL OTHER PANELS
     document.getElementById('welcome-state').style.display = 'none';
     document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folios-content').style.display = 'none';
     document.getElementById('search-panel').style.display = 'block';
 
     filterOrdersByDateRange();
@@ -946,6 +1144,9 @@ function backToStart() {
     // Reset tabs to pending
     STATE.activeTab = 'pending';
     document.getElementById('tab-pending')?.classList.add('active');
+
+    // CHANGE 1: Hide global navigation on welcome screen
+    hideGlobalNavigation();
     document.getElementById('tab-validated')?.classList.remove('active');
 }
 
@@ -1118,6 +1319,19 @@ function renderOrdersTable() {
     const tableBody = document.getElementById('orders-table-body');
     if (!tableBody) return;
 
+    if (STATE.isLoading) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="10" class="table-empty-state">
+                    <div class="table-empty-icon">⏳</div>
+                    <div class="table-empty-text">Cargando datos...</div>
+                    <div class="table-empty-subtext">Espera mientras se descargan las bases de datos</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
 
     if (dataToUse.size === 0) {
@@ -1148,6 +1362,11 @@ function renderOrdersTable() {
         const statusClass = isValidated ? 'success' : 'warning';
         const statusText = isValidated ? '✅ Validada' : '⏳ Pendiente';
 
+        // CHANGE 6: Only show validation % if validaciones.length > 0
+        const validationDisplay = validaciones.length > 0
+            ? `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`
+            : '<span class="empty-cell">N/A</span>';
+
         return `
             <tr onclick="showOrderInfo('${orden}')" data-orden="${orden}">
                 <td><span class="order-code">${makeCopyable(orden)}</span></td>
@@ -1157,13 +1376,10 @@ function renderOrdersTable() {
                 <td>${makeCopyable(data.trackingCode || 'N/A')}</td>
                 <td style="text-align: center;">${totalCajas || '<span class="empty-cell">0</span>'}</td>
                 <td>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${porcentajeValidacion}%"></div>
-                    </div>
-                    <span class="progress-text">${porcentajeValidacion}%</span>
+                    ${validationDisplay}
                 </td>
                 <td style="text-align: center;">
-                    <span class="rastreo-icon">${tieneRastreo ? 'SI' : 'NO'}</span>
+                    <span class="rastreo-badge ${tieneRastreo ? 'si' : 'no'}">${tieneRastreo ? 'SI' : 'NO'}</span>
                 </td>
                 <td>
                     <span class="status-badge ${statusClass}">${statusText}</span>
@@ -1189,6 +1405,12 @@ function renderOrdersList() {
 }
 
 function filterOrdersTable() {
+    // CHANGE 5: Use advanced filters if active
+    if (STATE.advancedFilters.orders.selectedValues.length > 0) {
+        applyAdvancedFilters('orders');
+        return;
+    }
+
     const filterText = document.getElementById('filter-orders')?.value.toLowerCase() || '';
     const rows = document.querySelectorAll('#orders-table-body tr');
 
@@ -1199,6 +1421,12 @@ function filterOrdersTable() {
 }
 
 function filterValidatedTable() {
+    // CHANGE 5: Use advanced filters if active
+    if (STATE.advancedFilters.validated.selectedValues.length > 0) {
+        applyAdvancedFilters('validated');
+        return;
+    }
+
     const filterText = document.getElementById('filter-validated')?.value.toLowerCase() || '';
     const rows = document.querySelectorAll('#validated-table-body tr');
 
@@ -1206,11 +1434,445 @@ function filterValidatedTable() {
         const text = row.textContent.toLowerCase();
         row.style.display = text.includes(filterText) ? '' : 'none';
     });
+
+    // Update badges to reflect filtered results
+    updateValidatedBadges();
 }
 
 // Mantener compatibilidad con código existente
 function filterOrdersList() {
     filterOrdersTable();
+}
+
+// ==================== ADVANCED FILTER SYSTEM (CHANGE 5) ====================
+
+/**
+ * Get unique values for a given criterion from the data
+ * FIXED: Include ALL unique values, even empty ones
+ */
+function getUniqueFilterValues(view, criterion) {
+    const uniqueValues = new Set();
+
+    if (view === 'orders') {
+        // Get data from ALL current visible orders in table
+        const tableBody = document.getElementById('orders-table-body');
+        if (!tableBody) return [];
+
+        const rows = tableBody.querySelectorAll('tr[data-orden]');
+        rows.forEach(row => {
+            const orden = row.getAttribute('data-orden');
+            const order = STATE.obcData.get(orden) || STATE.obcDataFiltered.get(orden);
+            if (!order) return;
+
+            let value = '';
+            switch(criterion) {
+                case 'rastreo':
+                    // Check rastreo from MNE data
+                    const rastreoText = row.cells[7]?.textContent.trim() || '';
+                    value = rastreoText.includes('SI') ? 'SI' : 'NO';
+                    break;
+                case 'estatus':
+                    // Get estatus from table
+                    const estatusText = row.cells[8]?.textContent.trim() || '';
+                    value = estatusText;
+                    break;
+                case 'conductor':
+                case 'unidad':
+                    // These are not in pending orders table
+                    value = '';
+                    break;
+            }
+            // Include ALL values, even empty/N/A
+            uniqueValues.add(value || 'N/A');
+        });
+    } else if (view === 'validated') {
+        // Get data from validated orders - from actual table
+        const tableBody = document.getElementById('validated-table-body');
+        if (!tableBody) return [];
+
+        const rows = tableBody.querySelectorAll('tr[data-orden]');
+        rows.forEach(row => {
+            let value = '';
+            switch(criterion) {
+                case 'conductor':
+                    value = row.cells[12]?.textContent.trim() || 'N/A';
+                    break;
+                case 'unidad':
+                    // Unidad not directly in validated table
+                    value = 'N/A';
+                    break;
+                case 'rastreo':
+                    const rastreoText = row.cells[7]?.textContent.trim() || '';
+                    value = rastreoText.includes('SI') ? 'SI' : 'NO';
+                    break;
+                case 'estatus':
+                    const estatusText = row.cells[10]?.textContent.trim() || 'N/A';
+                    value = estatusText;
+                    break;
+            }
+            uniqueValues.add(value);
+        });
+    } else if (view === 'folios') {
+        // Get data from folios table
+        const tableBody = document.getElementById('folios-table-body');
+        if (!tableBody) return [];
+
+        const rows = tableBody.querySelectorAll('tr');
+        rows.forEach(row => {
+            let value = '';
+            switch(criterion) {
+                case 'conductor':
+                    value = row.cells[6]?.textContent.trim() || 'N/A';
+                    break;
+                case 'unidad':
+                    value = row.cells[7]?.textContent.trim() || 'N/A';
+                    break;
+            }
+            uniqueValues.add(value);
+        });
+    }
+
+    return Array.from(uniqueValues).filter(v => v && v !== 'N/A').sort();
+}
+
+/**
+ * Show filter dropdown with checkboxes for the selected criterion
+ * FIXED: Added clear X button that appears when filters are active
+ */
+function showFilterDropdown(view) {
+    const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+    const dropdown = document.getElementById(`filter-${view}-dropdown`);
+    const criterion = criterionSelect.value;
+
+    if (!criterion) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    // Get unique values
+    const values = getUniqueFilterValues(view, criterion);
+
+    if (values.length === 0) {
+        dropdown.innerHTML = '<div class="filter-dropdown-header">No hay valores disponibles</div>';
+        dropdown.style.display = 'block';
+        return;
+    }
+
+    // Build dropdown content
+    const hasActiveFilters = STATE.advancedFilters[view].selectedValues.length > 0;
+    let html = `
+        <div class="filter-dropdown-header">
+            <span>Seleccionar valores:</span>
+            ${hasActiveFilters ? `<button class="filter-clear-btn" onclick="clearAdvancedFilters('${view}')" title="Limpiar filtros">✕</button>` : ''}
+        </div>
+    `;
+
+    values.forEach(value => {
+        const isChecked = STATE.advancedFilters[view].selectedValues.includes(value);
+        const checkboxId = `filter-${view}-${criterion}-${value.replace(/\s+/g, '-').replace(/[^\w-]/g, '_')}`;
+        const escapedValue = value.replace(/'/g, "\\'");
+        html += `
+            <div class="filter-dropdown-item">
+                <input type="checkbox"
+                       id="${checkboxId}"
+                       value="${value}"
+                       ${isChecked ? 'checked' : ''}
+                       onchange="toggleFilterValue('${view}', '${escapedValue}')">
+                <label for="${checkboxId}">${value}</label>
+            </div>
+        `;
+    });
+
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+
+    // Update state
+    STATE.advancedFilters[view].criterion = criterion;
+}
+
+/**
+ * Toggle a filter value selection
+ */
+function toggleFilterValue(view, value) {
+    const selectedValues = STATE.advancedFilters[view].selectedValues;
+    const index = selectedValues.indexOf(value);
+
+    if (index === -1) {
+        selectedValues.push(value);
+    } else {
+        selectedValues.splice(index, 1);
+    }
+
+    // Apply filters
+    applyAdvancedFilters(view);
+
+    // Refresh dropdown to show/hide X button
+    showFilterDropdown(view);
+
+    // Update active filter chips
+    updateActiveFilterChips(view);
+}
+
+/**
+ * Clear all advanced filters for a view
+ */
+function clearAdvancedFilters(view) {
+    STATE.advancedFilters[view].selectedValues = [];
+    STATE.advancedFilters[view].criterion = '';
+
+    // Reset criterion selector
+    const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+    if (criterionSelect) {
+        criterionSelect.value = '';
+    }
+
+    // Hide dropdown
+    const dropdown = document.getElementById(`filter-${view}-dropdown`);
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+
+    // Clear active filter chips
+    updateActiveFilterChips(view);
+
+    // Reapply filters (which will show all rows since no filters active)
+    if (view === 'orders') {
+        filterOrdersTable();
+    } else if (view === 'validated') {
+        filterValidatedTable();
+    } else if (view === 'folios') {
+        filterFoliosTable();
+    }
+}
+
+/**
+ * Update active filter chips display
+ */
+function updateActiveFilterChips(view) {
+    const container = document.getElementById(`active-filters-${view}`);
+    if (!container) return;
+
+    const selectedValues = STATE.advancedFilters[view].selectedValues;
+    const criterion = STATE.advancedFilters[view].criterion;
+
+    if (selectedValues.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    // Get criterion label
+    const criterionLabels = {
+        'conductor': '👤',
+        'unidad': '🚛',
+        'rastreo': '📍',
+        'estatus': '📊'
+    };
+    const icon = criterionLabels[criterion] || '🔽';
+
+    container.innerHTML = selectedValues.map(value => `
+        <div class="filter-chip">
+            <span class="filter-chip-label">${icon} ${value}</span>
+            <button class="filter-chip-remove" onclick="removeFilterChip('${view}', '${value.replace(/'/g, "\\'")}')" title="Eliminar filtro">✕</button>
+        </div>
+    `).join('');
+}
+
+/**
+ * Remove a single filter chip
+ */
+function removeFilterChip(view, value) {
+    const selectedValues = STATE.advancedFilters[view].selectedValues;
+    const index = selectedValues.indexOf(value);
+
+    if (index > -1) {
+        selectedValues.splice(index, 1);
+    }
+
+    // If no more selected values, reset criterion
+    if (selectedValues.length === 0) {
+        STATE.advancedFilters[view].criterion = '';
+        const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+        if (criterionSelect) {
+            criterionSelect.value = '';
+        }
+        const dropdown = document.getElementById(`filter-${view}-dropdown`);
+        if (dropdown) {
+            dropdown.style.display = 'none';
+        }
+    }
+
+    // Update chips display
+    updateActiveFilterChips(view);
+
+    // Reapply filters
+    applyAdvancedFilters(view);
+}
+
+/**
+ * Apply advanced filters combining text search and dropdown selections
+ */
+function applyAdvancedFilters(view) {
+    const filterText = document.getElementById(`filter-${view}`)?.value.toLowerCase() || '';
+    const criterion = STATE.advancedFilters[view].criterion;
+    const selectedValues = STATE.advancedFilters[view].selectedValues;
+
+    let tableBodyId = '';
+    if (view === 'orders') tableBodyId = 'orders-table-body';
+    else if (view === 'validated') tableBodyId = 'validated-table-body';
+    else if (view === 'folios') tableBodyId = 'folios-table-body';
+
+    const rows = document.querySelectorAll(`#${tableBodyId} tr`);
+
+    rows.forEach(row => {
+        // Text search filter
+        const text = row.textContent.toLowerCase();
+        const textMatch = filterText === '' || text.includes(filterText);
+
+        // Dropdown filter
+        let dropdownMatch = true;
+        if (criterion && selectedValues.length > 0) {
+            const cells = row.cells;
+            let cellValue = '';
+
+            if (view === 'orders') {
+                // Map criterion to column index
+                if (criterion === 'rastreo') {
+                    cellValue = cells[7]?.textContent.trim() || ''; // Rastreo column
+                } else if (criterion === 'estatus') {
+                    cellValue = cells[8]?.textContent.trim() || ''; // Estatus column
+                } else if (criterion === 'conductor') {
+                    // Conductor is not in table, skip for orders pending
+                    cellValue = '';
+                } else if (criterion === 'unidad') {
+                    cellValue = '';
+                }
+            } else if (view === 'validated') {
+                // Map criterion to column index for validated
+                if (criterion === 'rastreo') {
+                    cellValue = cells[7]?.textContent.trim() || ''; // Rastreo column
+                } else if (criterion === 'estatus') {
+                    cellValue = cells[10]?.textContent.trim() || ''; // Estatus column
+                } else if (criterion === 'conductor') {
+                    cellValue = cells[12]?.textContent.trim() || ''; // Conductor column
+                } else if (criterion === 'unidad') {
+                    // Unidad is not directly in table for validated view
+                    cellValue = '';
+                }
+            } else if (view === 'folios') {
+                // Map criterion to column index for folios
+                if (criterion === 'conductor') {
+                    cellValue = cells[6]?.textContent.trim() || ''; // Conductor column
+                } else if (criterion === 'unidad') {
+                    cellValue = cells[7]?.textContent.trim() || ''; // Unidad column
+                }
+            }
+
+            dropdownMatch = cellValue === '' || selectedValues.includes(cellValue);
+        }
+
+        // Show row if both filters match
+        row.style.display = (textMatch && dropdownMatch) ? '' : 'none';
+    });
+
+    // Update badges after filtering
+    if (view === 'folios') {
+        updateFoliosBadges();
+    } else if (view === 'validated') {
+        updateValidatedBadges();
+    }
+    // Note: orders view doesn't have badges in the table header
+}
+
+/**
+ * Clear all filters for a view
+ */
+function clearAllFilters(view) {
+    // Reset state
+    STATE.advancedFilters[view].criterion = '';
+    STATE.advancedFilters[view].selectedValues = [];
+
+    // Reset UI
+    const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+    if (criterionSelect) criterionSelect.value = '';
+
+    const dropdown = document.getElementById(`filter-${view}-dropdown`);
+    if (dropdown) dropdown.style.display = 'none';
+
+    const textInput = document.getElementById(`filter-${view}`);
+    if (textInput) textInput.value = '';
+
+    // Re-apply filters (which will show all rows)
+    if (view === 'orders') filterOrdersTable();
+    else if (view === 'validated') filterValidatedTable();
+    else if (view === 'folios') filterFoliosTable();
+
+    // Hide clear button
+    updateClearButtonVisibility(view);
+}
+
+/**
+ * Update visibility of clear all filters button
+ */
+function updateClearButtonVisibility(view) {
+    const clearBtn = document.getElementById(`clear-all-filters-${view}`);
+    if (!clearBtn) return;
+
+    const hasFilters = STATE.advancedFilters[view].selectedValues.length > 0 ||
+                      STATE.advancedFilters[view].criterion !== '';
+
+    clearBtn.style.display = hasFilters ? 'inline-block' : 'none';
+}
+
+// ==================== GLOBAL NAVIGATION & DATE ENFORCEMENT (CHANGE 1) ====================
+
+/**
+ * Show and configure the persistent global navigation header
+ * DISABLED - Using individual section headers instead
+ */
+function showGlobalNavigation() {
+    // DISABLED - Global navigation is hidden, using individual section headers
+    return;
+}
+
+/**
+ * Hide the global navigation header
+ * DISABLED - Using individual section headers instead
+ */
+function hideGlobalNavigation() {
+    // DISABLED - Global navigation is hidden, using individual section headers
+    return;
+}
+
+/**
+ * Update global navigation state (badges, active button, date indicator)
+ * DISABLED - Using individual section headers instead
+ */
+function updateGlobalNavigation() {
+    // DISABLED - Global navigation is hidden, using individual section headers
+    return;
+}
+
+/**
+ * Update the date range indicator in global navigation
+ * DISABLED - Using individual section headers instead
+ */
+function updateGlobalDateIndicator() {
+    // DISABLED - Global navigation is hidden, using individual section headers
+    return;
+}
+
+/**
+ * Enforce date filter before allowing access to Pendientes or Validadas
+ * Returns true if date filter is active, false otherwise
+ */
+function enforceDateFilter() {
+    if (!STATE.dateFilter.active) {
+        // Show modal forcing date selection
+        showNotification('Por favor selecciona un rango de fechas primero', 'warning');
+        showDateFilterForDispatch();
+        return false;
+    }
+    return true;
 }
 
 // ==================== TABLE SORTING ====================
@@ -1312,6 +1974,14 @@ function updateSortIndicators(table, columnIndex, direction) {
 
 // ==================== VALIDATION TABS ====================
 function switchValidationTab(tab) {
+    // CHANGE 1: Enforce date filter before switching to pending
+    if (tab === 'pending' && !enforceDateFilter()) {
+        return; // Don't switch if date filter not active
+    }
+
+    // CHANGE 1: Show global navigation when switching tabs
+    showGlobalNavigation();
+
     STATE.activeTab = tab;
 
     // Update old tab styles (sidebar tabs - if they exist)
@@ -1350,9 +2020,10 @@ function switchValidationTab(tab) {
         togglePendingValidated?.classList.add('active');
         toggleValidatedValidated?.classList.remove('active');
 
-        // Show search panel / orders
+        // Show search panel / orders - HIDE ALL OTHERS
         document.getElementById('welcome-state').style.display = 'none';
         document.getElementById('validated-content').style.display = 'none';
+        document.getElementById('folios-content').style.display = 'none';
         document.getElementById('search-panel').style.display = 'block';
 
         // Render pending orders table
@@ -1378,9 +2049,10 @@ function switchValidationTab(tab) {
         togglePendingValidated?.classList.remove('active');
         toggleValidatedValidated?.classList.add('active');
 
-        // Show validated content
+        // Show validated content - HIDE ALL OTHERS
         document.getElementById('welcome-state').style.display = 'none';
         document.getElementById('search-panel').style.display = 'none';
+        document.getElementById('folios-content').style.display = 'none';
         document.getElementById('validated-content').style.display = 'block';
 
         // Render validated orders table
@@ -1389,6 +2061,9 @@ function switchValidationTab(tab) {
 
     // Update badges
     updateTabBadges();
+
+    // CHANGE 1: Update global navigation
+    updateGlobalNavigation();
 }
 
 function renderValidatedTable() {
@@ -1398,7 +2073,7 @@ function renderValidatedTable() {
     if (STATE.localValidated.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="14" class="table-empty-state">
+                <td colspan="16" class="table-empty-state">
                     <div class="table-empty-icon">📋</div>
                     <div class="table-empty-text">No hay despachos validados</div>
                     <div class="table-empty-subtext">Los despachos confirmados aparecerán aquí</div>
@@ -1424,6 +2099,11 @@ function renderValidatedTable() {
         const cajasValidadas = validaciones.length;
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
         const tieneRastreo = rastreoData.length > 0;
+
+        // CHANGE 6: Only show validation % if validaciones.length > 0
+        const validationDisplay = validaciones.length > 0
+            ? `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`
+            : '<span class="empty-cell">N/A</span>';
 
         // FIXED: Calculate dispatch status instead of sync status
         const cantidadDespachar = record.cantidadDespachar || 0;
@@ -1461,7 +2141,7 @@ function renderValidatedTable() {
         }
 
         return `
-            <tr onclick="showValidatedDetails(${index})" data-orden="${record.orden}">
+            <tr onclick="showValidatedDetails('${record.orden}')" data-orden="${record.orden}" class="validated-row">
                 <td><span class="order-code">${makeCopyable(record.orden)}</span></td>
                 <td class="td-wrap">${record.destino || orderData.recipient || '<span class="empty-cell">N/A</span>'}</td>
                 <td>${record.horario || orderData.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
@@ -1469,13 +2149,10 @@ function renderValidatedTable() {
                 <td>${makeCopyable(record.codigo || orderData.trackingCode || 'N/A')}</td>
                 <td style="text-align: center;">${totalCajas || '<span class="empty-cell">0</span>'}</td>
                 <td>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${porcentajeValidacion}%"></div>
-                    </div>
-                    <span class="progress-text">${porcentajeValidacion}%</span>
+                    ${validationDisplay}
                 </td>
                 <td style="text-align: center;">
-                    <span class="rastreo-icon">${tieneRastreo ? '✅' : ''}</span>
+                    ${tieneRastreo ? '<span class="rastreo-badge si">SI</span>' : '<span class="rastreo-badge no">NO</span>'}
                 </td>
                 <td style="text-align: center;">${trsCount > 0 ? `<span class="order-code">${trsCount} TRS</span>` : '<span class="empty-cell">N/A</span>'}</td>
                 <td style="text-align: center;"><strong>${record.cantidadDespachar || 0}</strong></td>
@@ -1484,7 +2161,19 @@ function renderValidatedTable() {
                 </td>
                 <td>${estatusCalidad}</td>
                 <td>${record.operador || '<span class="empty-cell">N/A</span>'}</td>
+                <td>${record.unidad || '<span class="empty-cell">N/A</span>'}</td>
                 <td><span class="order-code">${makeCopyable(record.folio)}</span></td>
+                <td class="delete-cell" onclick="event.stopPropagation(); confirmDeleteValidated('${record.orden}')">
+                    <button class="btn-delete-validated" title="Eliminar y mover a pendientes">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 6h18"></path>
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                    </button>
+                </td>
             </tr>
         `;
     }).join('');
@@ -1494,12 +2183,20 @@ function renderValidatedTable() {
 }
 
 // Actualizar badges de contadores en Órdenes Validadas
+// FIXED: Count only VISIBLE rows when filters are active
 function updateValidatedBadges() {
-    const totalOrders = STATE.localValidated.length;
+    const tableBody = document.getElementById('validated-table-body');
+    if (!tableBody) return;
+
+    // Count only visible rows
+    const visibleRows = Array.from(tableBody.querySelectorAll('tr[data-orden]')).filter(row => row.style.display !== 'none');
+    const totalOrders = visibleRows.length;
     let totalBoxes = 0;
 
-    STATE.localValidated.forEach(record => {
-        totalBoxes += parseInt(record.cantidadDespachar) || 0;
+    visibleRows.forEach(row => {
+        // Get cantidad from column 9 (Cant. Despachar)
+        const cantidadText = row.cells[9]?.textContent.trim() || '0';
+        totalBoxes += parseInt(cantidadText) || 0;
     });
 
     const ordersCountEl = document.getElementById('validated-orders-count');
@@ -1518,41 +2215,88 @@ function renderValidatedList() {
     renderValidatedTable();
 }
 
-function showValidatedDetails(index) {
-    const record = STATE.localValidated[index];
-    if (!record) return;
-
-    // Try to show the order info modal with existing data
-    if (STATE.obcData.has(record.orden)) {
-        showOrderInfo(record.orden);
-    } else {
-        // Show a simple notification with details
-        const details = `
-Folio: ${record.folio}
-Orden: ${record.orden}
-Destino: ${record.destino || 'N/A'}
-Fecha: ${record.fecha}
-Hora: ${record.hora}
-Operador: ${record.operador}
-Unidad: ${record.unidad}
-Cajas: ${record.cantidadDespachar || 0}
-Observaciones: ${record.observaciones || 'Ninguna'}
-        `.trim();
-
-        alert(details);
+function showValidatedDetails(orden) {
+    // Buscar el registro por orden en lugar de por índice
+    const record = STATE.localValidated.find(v => v.orden === orden);
+    if (!record) {
+        showNotification('❌ Registro no encontrado', 'error');
+        return;
     }
+
+    // Abrir modal con la orden
+    showOrderInfo(orden);
+}
+
+// ==================== DELETE VALIDATED ORDER ====================
+let pendingDeleteOrden = null;
+
+/**
+ * Show confirmation modal to delete validated order
+ */
+function confirmDeleteValidated(orden) {
+    pendingDeleteOrden = orden;
+    const record = STATE.localValidated.find(v => v.orden === orden);
+
+    if (!record) {
+        showNotification('❌ Orden no encontrada', 'error');
+        return;
+    }
+
+    // Update modal info
+    const infoEl = document.getElementById('delete-orden-info');
+    if (infoEl) {
+        infoEl.innerHTML = `Orden: <strong>${orden}</strong> | Destino: ${record.destino || 'N/A'}`;
+    }
+
+    // Show modal
+    document.getElementById('delete-validated-modal').style.display = 'flex';
+}
+
+/**
+ * Close delete confirmation modal
+ */
+function closeDeleteValidatedModal() {
+    document.getElementById('delete-validated-modal').style.display = 'none';
+    pendingDeleteOrden = null;
+}
+
+/**
+ * Execute delete and move order back to pending
+ */
+function executeDeleteValidated() {
+    if (!pendingDeleteOrden) {
+        closeDeleteValidatedModal();
+        return;
+    }
+
+    const orden = pendingDeleteOrden;
+
+    // Find and remove from localValidated
+    const index = STATE.localValidated.findIndex(v => v.orden === orden);
+    if (index > -1) {
+        STATE.localValidated.splice(index, 1);
+
+        // Save state
+        saveLocalState();
+
+        // Re-render validated table
+        renderValidatedTable();
+
+        // Update badges
+        updateTabBadges();
+
+        showNotification(`✅ Orden ${orden} eliminada y movida a pendientes`, 'success');
+    } else {
+        showNotification('❌ Error al eliminar la orden', 'error');
+    }
+
+    closeDeleteValidatedModal();
 }
 
 // ==================== SEARCH ====================
-function normalizeCode(code) {
-    if (!code) return '';
-
-    return String(code)
-        .replace(/&/g, '/')
-        .replace(/-/g, '/')
-        .toLowerCase()
-        .trim();
-}
+// CHANGE 4: Use normalizeCode from wms-utils.js for raw code search
+// The wms-utils normalizeCode function handles special characters, JSON patterns,
+// and provides more robust code normalization than the previous simple version
 
 function executeSearch() {
     const searchInput = document.getElementById('search-input');
@@ -1935,8 +2679,105 @@ function showOrderInfo(orden) {
     // Setup event listeners for folio selector
     setupFolioSelectorListeners();
 
+    // CHANGE 9: Initialize lock mode for validated orders
+    if (validationCheck.validated && validationCheck.data) {
+        initializeLockMode(true);
+    } else {
+        initializeLockMode(false);
+    }
+
     // Show modal
     document.getElementById('info-modal').classList.add('show');
+}
+
+// CHANGE 9: Lock mode for validated orders
+function initializeLockMode(isValidated) {
+    const modal = document.getElementById('info-modal');
+    const modalFooter = document.querySelector('.modal-footer');
+    const unlockBtn = document.getElementById('unlock-btn');
+
+    if (isValidated) {
+        // Apply locked state
+        modal.classList.add('locked-mode');
+
+        // Show unlock button if it doesn't exist
+        if (!unlockBtn && modalFooter) {
+            const unlockButton = document.createElement('button');
+            unlockButton.id = 'unlock-btn';
+            unlockButton.className = 'btn btn-warning';
+            unlockButton.innerHTML = '🔓 Desbloquear para Editar';
+            unlockButton.onclick = toggleLockMode;
+
+            // Insert before the confirm button
+            const confirmBtn = document.getElementById('confirm-dispatch-btn');
+            if (confirmBtn) {
+                modalFooter.insertBefore(unlockButton, confirmBtn);
+            } else {
+                modalFooter.appendChild(unlockButton);
+            }
+        }
+
+        // Disable all inputs
+        disableModalInputs(true);
+    } else {
+        // Remove locked state
+        modal.classList.remove('locked-mode');
+
+        // Remove unlock button if it exists
+        if (unlockBtn) {
+            unlockBtn.remove();
+        }
+
+        // Enable all inputs
+        disableModalInputs(false);
+    }
+}
+
+function toggleLockMode() {
+    const modal = document.getElementById('info-modal');
+    const unlockBtn = document.getElementById('unlock-btn');
+    const isLocked = modal.classList.contains('locked-mode');
+
+    if (isLocked) {
+        // Unlock
+        modal.classList.remove('locked-mode');
+        disableModalInputs(false);
+
+        if (unlockBtn) {
+            unlockBtn.innerHTML = '🔒 Bloquear';
+            unlockBtn.className = 'btn btn-secondary';
+        }
+
+        showNotification('🔓 Modo edición activado', 'info');
+    } else {
+        // Lock
+        modal.classList.add('locked-mode');
+        disableModalInputs(true);
+
+        if (unlockBtn) {
+            unlockBtn.innerHTML = '🔓 Desbloquear para Editar';
+            unlockBtn.className = 'btn btn-warning';
+        }
+
+        showNotification('🔒 Orden bloqueada', 'info');
+    }
+}
+
+function disableModalInputs(disable) {
+    // Disable/enable all input fields in the modal
+    const operadorSelect = document.getElementById('modal-operador');
+    const unidadSelect = document.getElementById('modal-unidad');
+    const cantidadInput = document.getElementById('cantidad-despachar');
+    const notaInput = document.getElementById('nota-despacho');
+    const folioSelect = document.getElementById('modal-folio-carga');
+    const confirmBtn = document.getElementById('confirm-dispatch-btn');
+
+    if (operadorSelect) operadorSelect.disabled = disable;
+    if (unidadSelect) unidadSelect.disabled = disable;
+    if (cantidadInput) cantidadInput.disabled = disable;
+    if (notaInput) notaInput.disabled = disable;
+    if (folioSelect) folioSelect.disabled = disable;
+    if (confirmBtn) confirmBtn.disabled = disable;
 }
 
 function renderKPICards(orderData) {
@@ -2092,11 +2933,11 @@ function renderModalBody(orden, orderData) {
                     <div class="row-2">
                         <div class="general-info-field">
                             <div class="general-info-label">CANT. CAJAS</div>
-                            <div class="general-info-value">${orderData.totalCajas || rastreoData.length || validaciones.length || 'N/A'}</div>
+                            <div class="general-info-value"><span class="highlight-orange">${orderData.totalCajas || rastreoData.length || validaciones.length || 'N/A'}</span></div>
                         </div>
                         <div class="general-info-field editable">
                             <div class="general-info-label">CANT. DESPACHAR</div>
-                            <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Cantidad..." min="0" value="${orderData.totalCajas || ''}">
+                            <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Cantidad..." min="0">
                         </div>
                         <div class="general-info-field editable">
                             <div class="general-info-label">NOTA</div>
@@ -2959,6 +3800,9 @@ function applyDateFilter() {
     }
 
     showNotification(`📅 Filtro aplicado: ${start} - ${end} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
+
+    // CHANGE 1: Update global navigation date indicator
+    updateGlobalDateIndicator();
 }
 
 function clearDateFilter() {
@@ -2972,6 +3816,9 @@ function clearDateFilter() {
     if (dateFilterText) {
         dateFilterText.textContent = 'Filtrar Fecha';
     }
+
+    // CHANGE 1: Update global navigation date indicator
+    updateGlobalDateIndicator();
 
     renderOrdersList();
     updateSummary();
@@ -3090,6 +3937,20 @@ function hidePreloader() {
     if (overlay) overlay.style.display = 'none';
 }
 
+function showLoadingOverlay(show, current = 0, total = 5) {
+    const overlay = document.getElementById('data-loading-overlay');
+    if (!overlay) return;
+
+    if (show) {
+        const percent = Math.round((current / total) * 100);
+        document.getElementById('loading-progress-fill').style.width = `${percent}%`;
+        document.getElementById('loading-progress-text').textContent = `${current}/${total} completadas`;
+        overlay.classList.add('show');
+    } else {
+        overlay.classList.remove('show');
+    }
+}
+
 function showNotification(message, type = 'info') {
     const container = document.getElementById('notifications');
     if (!container) return;
@@ -3134,6 +3995,37 @@ function makeCopyable(value) {
     return `<span class="copyable">${value}<span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${String(value).replace(/'/g, "\\'")}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></span>`;
 }
 
+// CHANGE 11: Format multiple services (comma-separated) with badges
+function formatMultipleServices(servicesString) {
+    if (!servicesString || servicesString === '-' || servicesString === 'N/A') {
+        return '<span class="empty-cell">N/A</span>';
+    }
+
+    // Split by comma and trim each service
+    const services = servicesString.split(',').map(s => s.trim()).filter(s => s);
+
+    if (services.length === 0) {
+        return '<span class="empty-cell">N/A</span>';
+    }
+
+    // Create a badge for each service
+    const badges = services.map(service => {
+        const colors = {
+            'ESTANDAR': '#3b82f6',
+            'EXPRESS': '#f59e0b',
+            'OCURRE': '#10b981',
+            'ESPECIAL': '#8b5cf6',
+            'DEFAULT': '#64748b'
+        };
+
+        const color = colors[service.toUpperCase()] || colors['DEFAULT'];
+
+        return `<span class="service-badge" style="background: ${color}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75em; font-weight: 600; margin-right: 6px; display: inline-block;">${service}</span>`;
+    }).join('');
+
+    return `<div style="display: flex; gap: 6px; flex-wrap: wrap;">${badges}</div>`;
+}
+
 // ==================== GESTIÓN DE FOLIOS DE CARGA ====================
 
 // Estado para el filtro de folios
@@ -3151,6 +4043,9 @@ let foliosSortDirection = 'desc';
  * Muestra el panel de gestión de folios
  */
 function showFoliosManagement() {
+    // CHANGE 1: Show global navigation
+    showGlobalNavigation();
+
     // Limpiar el flag de "viene desde folios"
     STATE.fromFolios = false;
 
@@ -3171,6 +4066,9 @@ function showFoliosManagement() {
 
     // Renderizar la tabla de folios
     renderFoliosTable();
+
+    // CHANGE 1: Update global navigation
+    updateGlobalNavigation();
 }
 
 /**
@@ -3287,11 +4185,8 @@ function renderFoliosTable() {
         }
     });
 
-    // Actualizar contador
-    const foliosCount = document.getElementById('folios-count');
-    if (foliosCount) {
-        foliosCount.textContent = `${folios.length} ${folios.length === 1 ? 'folio' : 'folios'}`;
-    }
+    // CHANGE 2: Actualizar badges dinámicos basados en filtros activos
+    updateFoliosBadges(folios);
 
     if (folios.length === 0) {
         tableBody.innerHTML = `
@@ -3350,6 +4245,45 @@ function renderFoliosTable() {
 }
 
 /**
+ * CHANGE 2: Actualiza los badges dinámicos de folios basados en datos visibles
+ * FIXED: Count only VISIBLE rows when filters are active
+ */
+function updateFoliosBadges() {
+    const tableBody = document.getElementById('folios-table-body');
+    if (!tableBody) return;
+
+    // Count visible rows
+    const visibleRows = Array.from(tableBody.querySelectorAll('tr')).filter(row => row.style.display !== 'none');
+    const totalFolios = visibleRows.length;
+    let totalOrders = 0;
+    let totalBoxes = 0;
+
+    visibleRows.forEach(row => {
+        // Get values from table cells
+        // Column 3: Cant. Órdenes, Column 2: Cant. Cajas
+        const cajasText = row.cells[2]?.textContent.trim() || '0';
+        const ordenesText = row.cells[3]?.textContent.trim() || '0';
+
+        totalBoxes += parseInt(cajasText) || 0;
+        totalOrders += parseInt(ordenesText) || 0;
+    });
+
+    const foliosCountEl = document.getElementById('folios-count');
+    const ordersCountEl = document.getElementById('folios-orders-count');
+    const boxesCountEl = document.getElementById('folios-boxes-count');
+
+    if (foliosCountEl) {
+        foliosCountEl.textContent = `${totalFolios} ${totalFolios === 1 ? 'folio' : 'folios'}`;
+    }
+    if (ordersCountEl) {
+        ordersCountEl.textContent = `${totalOrders} ${totalOrders === 1 ? 'orden' : 'órdenes'}`;
+    }
+    if (boxesCountEl) {
+        boxesCountEl.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'caja' : 'cajas'}`;
+    }
+}
+
+/**
  * Ordena la tabla de folios por columna
  */
 function sortFoliosTable(columnIndex) {
@@ -3386,6 +4320,12 @@ function updateFoliosSortIndicators() {
  * Filtra la tabla de folios
  */
 function filterFoliosTable() {
+    // CHANGE 5: Use advanced filters if active
+    if (STATE.advancedFilters.folios.selectedValues.length > 0) {
+        applyAdvancedFilters('folios');
+        return;
+    }
+
     const filterInput = document.getElementById('filter-folios');
     if (!filterInput) return;
 
@@ -3395,10 +4335,14 @@ function filterFoliosTable() {
 
     const rows = tableBody.querySelectorAll('tr');
 
-    rows.forEach(row => {
+    rows.forEach((row) => {
         const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filterValue) ? '' : 'none';
+        const isVisible = text.includes(filterValue);
+        row.style.display = isVisible ? '' : 'none';
     });
+
+    // Update badges based on visible rows
+    updateFoliosBadges();
 }
 
 /**
@@ -3605,7 +4549,7 @@ function printFolioDelivery(folioCompleto) {
     // Verificar si hay códigos base válidos
     console.log('📋 Datos para impresión:', { cajasList, totalOrdenes, totalCajas });
 
-    // Generar HTML del documento
+    // CHANGE 12: Redesigned print layout with repeating header
     const printHTML = `
         <!DOCTYPE html>
         <html>
@@ -3626,53 +4570,57 @@ function printFolioDelivery(folioCompleto) {
                     background: white;
                 }
 
+                /* FIXED: Compact header with folio inside header lines */
                 .header {
-                    text-align: center;
-                    margin-bottom: 20px;
-                    border-bottom: 2px solid #cbd5e1;
-                    padding-bottom: 15px;
+                    border: 2px solid #1e293b;
+                    margin-bottom: 15px;
+                    padding: 0;
+                    page-break-inside: avoid;
                 }
 
-                .header h1 {
-                    margin: 0;
-                    font-size: 20pt;
-                    color: #1e293b;
-                    font-weight: 700;
-                }
-
-                .header h2 {
-                    margin: 5px 0 0 0;
-                    font-size: 14pt;
-                    color: #64748b;
-                    font-weight: 500;
-                }
-
-                .info-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 12px;
-                    margin-bottom: 20px;
-                    background: #f8fafc;
-                    padding: 16px;
-                    border-radius: 8px;
-                    border: 1px solid #e2e8f0;
-                }
-
-                .info-item {
+                .header-row {
                     display: flex;
-                    gap: 8px;
-                    align-items: baseline;
+                    border-bottom: 1px solid #cbd5e1;
+                    line-height: 1.2;
                 }
 
-                .info-label {
-                    font-weight: 600;
+                .header-row:last-child {
+                    border-bottom: none;
+                }
+
+                .header-cell {
+                    padding: 6px 10px;
+                    border-right: 1px solid #cbd5e1;
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                }
+
+                .header-cell:last-child {
+                    border-right: none;
+                }
+
+                .header-label {
+                    font-weight: 700;
                     color: #475569;
-                    min-width: 120px;
+                    font-size: 9pt;
+                    margin-right: 5px;
                 }
 
-                .info-value {
+                .header-value {
                     color: #1e293b;
-                    font-weight: 500;
+                    font-weight: 600;
+                    font-size: 10pt;
+                }
+
+                .header-title {
+                    background: #1e293b;
+                    color: white;
+                    padding: 8px;
+                    text-align: center;
+                    font-weight: 700;
+                    font-size: 11pt;
+                    letter-spacing: 1px;
                 }
 
                 table {
@@ -3680,6 +4628,14 @@ function printFolioDelivery(folioCompleto) {
                     border-collapse: collapse;
                     margin-top: 15px;
                     border: 1px solid #e2e8f0;
+                }
+
+                thead {
+                    display: table-header-group;
+                }
+
+                tbody {
+                    display: table-row-group;
                 }
 
                 th {
@@ -3737,49 +4693,57 @@ function printFolioDelivery(folioCompleto) {
                         print-color-adjust: exact;
                         -webkit-print-color-adjust: exact;
                     }
+
                     .info-grid {
                         background: #f8fafc;
                     }
+
                     tbody tr:nth-child(even) {
                         background: #f8fafc;
+                    }
+
+                    /* CHANGE 12: Repeat header on each page */
+                    thead {
+                        display: table-header-group;
+                    }
+
+                    tbody {
+                        display: table-row-group;
+                    }
+
+                    tr {
+                        page-break-inside: avoid;
                     }
                 }
             </style>
         </head>
         <body>
+            <!-- FIXED: Compact repeatable header with folio inside -->
             <div class="header">
-                <h1>📋 FOLIO DE ENTREGA</h1>
-                <h2>${folioCompleto}</h2>
-            </div>
-
-            <div class="info-grid">
-                <div class="info-item">
-                    <span class="info-label">👤 Conductor:</span>
-                    <span class="info-value">${conductor}</span>
+                <div class="header-title">FOLIO DE ENTREGA</div>
+                <div class="header-row">
+                    <div class="header-cell">
+                        <span class="header-label">Folio:</span>
+                        <span class="header-value">${folioCompleto}</span>
+                    </div>
+                    <div class="header-cell">
+                        <span class="header-label">Conductor:</span>
+                        <span class="header-value">${conductor}</span>
+                    </div>
+                    <div class="header-cell">
+                        <span class="header-label">Unidad:</span>
+                        <span class="header-value">${unidad}</span>
+                    </div>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">🚛 Unidad:</span>
-                    <span class="info-value">${unidad}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">📍 Destino:</span>
-                    <span class="info-value">${destino}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">⏰ Horario Inicial:</span>
-                    <span class="info-value">${horarioInicial}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">⏰ Horario Final:</span>
-                    <span class="info-value">${horarioFinal}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">📦 Total Órdenes:</span>
-                    <span class="info-value">${totalOrdenes}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">📦 Total Cajas:</span>
-                    <span class="info-value">${totalCajas}</span>
+                <div class="header-row">
+                    <div class="header-cell">
+                        <span class="header-label">Horario:</span>
+                        <span class="header-value">${horarioInicial} - ${horarioFinal}</span>
+                    </div>
+                    <div class="header-cell">
+                        <span class="header-label">Total:</span>
+                        <span class="header-value">${totalOrdenes} órdenes / ${totalCajas} cajas</span>
+                    </div>
                 </div>
             </div>
 
@@ -3854,3 +4818,28 @@ function printFolioDelivery(folioCompleto) {
 
     showNotification('🖨️ Preparando impresión...', 'info');
 }
+
+// ==================== EXPOSE FUNCTIONS GLOBALLY ====================
+window.showOrderInfo = showOrderInfo;
+
+// ==================== CLOSE DROPDOWN ON OUTSIDE CLICK ====================
+document.addEventListener('click', function(event) {
+    // Get all filter dropdowns
+    const dropdowns = ['orders', 'validated', 'folios'];
+
+    dropdowns.forEach(view => {
+        const dropdown = document.getElementById(`filter-${view}-dropdown`);
+        const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+        const wrapper = document.querySelector(`#filter-${view}-criterion`)?.closest('.advanced-filter-wrapper');
+
+        if (!dropdown || !criterionSelect || !wrapper) return;
+
+        // Check if dropdown is visible
+        if (dropdown.style.display === 'block') {
+            // Check if click is outside the wrapper
+            if (!wrapper.contains(event.target)) {
+                dropdown.style.display = 'none';
+            }
+        }
+    });
+});

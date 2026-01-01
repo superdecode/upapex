@@ -31,6 +31,17 @@
         </div>
     </div>
 
+    <div class="preloader-overlay" id="data-loading-overlay">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text" style="color: #333;">🔄 Cargando bases de datos...</div>
+            <div class="progress-bar" style="width: 300px; height: 8px; background: #e5e7eb; border-radius: 4px; margin: 20px auto; overflow: hidden;">
+                <div id="loading-progress-fill" class="progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), #ea580c); transition: width 0.3s;"></div>
+            </div>
+            <div id="loading-progress-text" class="preloader-subtext" style="color: #666;">0/5 completadas</div>
+        </div>
+    </div>
+
     <!-- LOGIN SCREEN -->
     <div class="login-screen" id="login-screen">
         <div class="login-card">
@@ -51,6 +62,28 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
+                <!-- CHANGE 1: Persistent Global Navigation Header -->
+                <div class="global-navigation-header" id="global-nav-header">
+                    <div class="global-nav-left">
+                        <span class="global-nav-title">🚚 Sistema de Despacho</span>
+                    </div>
+                    <div class="global-nav-right">
+                        <button class="btn btn-secondary btn-sm" onclick="showDateFilter()" id="global-date-filter-btn">
+                            📅 <span id="global-date-filter-text">Filtrar Fecha</span>
+                        </button>
+                        <button class="global-nav-btn" id="global-nav-pending" onclick="switchValidationTab('pending')">
+                            ⏳ Pendientes <span class="global-nav-badge" id="global-pending-badge">0</span>
+                        </button>
+                        <button class="global-nav-btn" id="global-nav-validated" onclick="switchValidationTab('validated')">
+                            ✅ Validadas <span class="global-nav-badge" id="global-validated-badge">0</span>
+                        </button>
+                        <button class="global-nav-btn" id="global-nav-folios" onclick="showFoliosManagement()">
+                            📋 Folios
+                        </button>
+                        <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                    </div>
+                </div>
+
                 <!-- WELCOME STATE (igual a Inventario) -->
                 <div class="welcome-state module-visible" id="welcome-state">
                     <div class="welcome-content">
@@ -70,9 +103,20 @@
                             <h1>📋 Gestión de Folios de Carga</h1>
                         </div>
                         <div class="header-right">
-                            <button class="btn btn-secondary date-filter-btn" onclick="showFoliosDateFilter()" id="folios-date-filter-display">
-                                📅 <span id="folios-date-filter-text">Filtrar Fecha</span>
-                            </button>
+                            <div class="status-toggle-container">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showFoliosDateFilter()" id="folios-date-filter-display">
+                                    📅 <span id="folios-date-filter-text">Filtrar Fecha</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-pending-folios" onclick="switchValidationTab('pending')">
+                                    ⏳ Pendientes <span class="toggle-badge" id="pending-badge-folios">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-validated-folios" onclick="switchValidationTab('validated')">
+                                    ✅ Validadas <span class="toggle-badge" id="validated-badge-folios">0</span>
+                                </button>
+                                <button class="status-toggle-btn active" id="toggle-folios-folios" onclick="showFoliosManagement()">
+                                    📋 Folios
+                                </button>
+                            </div>
                             <button class="btn-close-modern" onclick="confirmExitFolios()" title="Cerrar">×</button>
                         </div>
                     </div>
@@ -81,9 +125,23 @@
                             <div class="header-with-badges">
                                 <h3>📋 Listado de Folios</h3>
                                 <span class="badge badge-primary" id="folios-count">0 folios</span>
+                                <span class="badge badge-success" id="folios-orders-count">0 órdenes</span>
+                                <span class="badge badge-success" id="folios-boxes-count">0 cajas</span>
                             </div>
                             <div class="filter-controls">
-                                <input type="text" id="filter-folios" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterFoliosTable()">
+                                <div class="advanced-filter-wrapper">
+                                    <select id="filter-folios-criterion" class="filter-criterion-select" onchange="showFilterDropdown('folios')">
+                                        <option value="">🔽 Filtrar por...</option>
+                                        <option value="conductor">👤 Conductor</option>
+                                        <option value="unidad">🚛 Unidad</option>
+                                    </select>
+                                    <div id="filter-folios-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                </div>
+                                <div id="active-filters-folios" class="active-filters-container"></div>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-folios" class="filter-input" placeholder="🔍 Buscar..." oninput="filterFoliosTable()">
+                                    <button class="clear-search-btn" id="clear-filter-folios" onclick="clearSearchInput('filter-folios')" style="display: none;">✕</button>
+                                </div>
                             </div>
                         </div>
                         <div class="orders-table-container">
@@ -115,6 +173,9 @@
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="validated-date-filter-display">
+                                    📅 <span id="validated-date-filter-text">Filtrar Fecha</span>
+                                </button>
                                 <button class="status-toggle-btn" id="toggle-pending-validated" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-validated">0</span>
                                 </button>
@@ -136,7 +197,21 @@
                                 <span class="badge badge-success" id="validated-boxes-count">0 cajas</span>
                             </div>
                             <div class="filter-controls">
-                                <input type="text" id="filter-validated" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterValidatedTable()">
+                                <div class="advanced-filter-wrapper">
+                                    <select id="filter-validated-criterion" class="filter-criterion-select" onchange="showFilterDropdown('validated')">
+                                        <option value="">🔽 Filtrar por...</option>
+                                        <option value="conductor">👤 Conductor</option>
+                                        <option value="unidad">🚛 Unidad</option>
+                                        <option value="rastreo">📍 Rastreo</option>
+                                        <option value="estatus">📊 Estatus</option>
+                                    </select>
+                                    <div id="filter-validated-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                </div>
+                                <div id="active-filters-validated" class="active-filters-container"></div>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-validated" class="filter-input" placeholder="🔍 Buscar..." oninput="filterValidatedTable()">
+                                    <button class="clear-search-btn" id="clear-filter-validated" onclick="clearSearchInput('filter-validated')" style="display: none;">✕</button>
+                                </div>
                             </div>
                         </div>
                         <div class="orders-table-container">
@@ -156,7 +231,9 @@
                                         <th onclick="sortValidatedTable(10)">Estatus <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(11)">Estatus Calidad <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(12)">Conductor <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(13)">Folio <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(13)">Unidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(14)">Folio <span class="sort-indicator">⇅</span></th>
+                                        <th style="width: 50px;"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="validated-table-body"></tbody>
@@ -173,7 +250,10 @@
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
-                                <button class="status-toggle-btn" id="toggle-pending" onclick="switchValidationTab('pending')">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display">
+                                    📅 <span id="date-filter-text">Filtrar Fecha</span>
+                                </button>
+                                <button class="status-toggle-btn active" id="toggle-pending" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-header">0</span>
                                 </button>
                                 <button class="status-toggle-btn" id="toggle-validated" onclick="switchValidationTab('validated')">
@@ -191,12 +271,12 @@
                         <div class="input-group">
                             <label style="font-size: 1.1em; color: var(--primary);">📦 Buscar por OBC o Código de Caja:</label>
                             <div class="search-input-row">
-                                <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
+                                    <button class="clear-search-btn" id="clear-search-input" onclick="clearSearchInput('search-input')" style="display: none;">✕</button>
+                                </div>
                                 <button class="btn btn-primary" onclick="executeSearch()">
                                     🔍 Buscar
-                                </button>
-                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display">
-                                    📅 <span id="date-filter-text">Filtrar Fecha</span>
                                 </button>
                             </div>
                         </div>
@@ -207,7 +287,21 @@
                         <div class="section-header-inline">
                             <h3>📋 Órdenes Pendientes</h3>
                             <div class="filter-controls">
-                                <input type="text" id="filter-orders" class="filter-input" placeholder="🔍 Filtrar..." oninput="filterOrdersTable()">
+                                <div class="advanced-filter-wrapper">
+                                    <select id="filter-orders-criterion" class="filter-criterion-select" onchange="showFilterDropdown('orders')">
+                                        <option value="">🔽 Filtrar por...</option>
+                                        <option value="conductor">👤 Conductor</option>
+                                        <option value="unidad">🚛 Unidad</option>
+                                        <option value="rastreo">📍 Rastreo</option>
+                                        <option value="estatus">📊 Estatus</option>
+                                    </select>
+                                    <div id="filter-orders-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                </div>
+                                <div id="active-filters-orders" class="active-filters-container"></div>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-orders" class="filter-input" placeholder="🔍 Buscar..." oninput="filterOrdersTable()">
+                                    <button class="clear-search-btn" id="clear-filter-orders" onclick="clearSearchInput('filter-orders')" style="display: none;">✕</button>
+                                </div>
                             </div>
                         </div>
                         <div class="orders-table-container">
@@ -297,11 +391,17 @@
             <div class="modal-body">
                 <div class="input-group">
                     <label>Fecha Inicio:</label>
-                    <input type="date" id="date-start" class="date-input">
+                    <div class="date-input-wrapper">
+                        <input type="date" id="date-start" class="date-input" onchange="updateDateDisplay(this)">
+                        <span class="date-display" id="date-start-display"></span>
+                    </div>
                 </div>
                 <div class="input-group" style="margin-top: 15px;">
                     <label>Fecha Fin:</label>
-                    <input type="date" id="date-end" class="date-input">
+                    <div class="date-input-wrapper">
+                        <input type="date" id="date-end" class="date-input" onchange="updateDateDisplay(this)">
+                        <span class="date-display" id="date-end-display"></span>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -325,11 +425,17 @@
             <div class="modal-body">
                 <div class="input-group">
                     <label>Fecha Inicio:</label>
-                    <input type="date" id="folios-date-start" class="date-input">
+                    <div class="date-input-wrapper">
+                        <input type="date" id="folios-date-start" class="date-input" onchange="updateDateDisplay(this)">
+                        <span class="date-display" id="folios-date-start-display"></span>
+                    </div>
                 </div>
                 <div class="input-group" style="margin-top: 15px;">
                     <label>Fecha Fin:</label>
-                    <input type="date" id="folios-date-end" class="date-input">
+                    <div class="date-input-wrapper">
+                        <input type="date" id="folios-date-end" class="date-input" onchange="updateDateDisplay(this)">
+                        <span class="date-display" id="folios-date-end-display"></span>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -465,6 +571,36 @@
                     Salir sin Guardar
                 </button>
                 <button class="btn btn-secondary" onclick="closeExitConfirm()">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE VALIDATED CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="delete-validated-modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>🗑️ Eliminar Orden Validada</h2>
+                <button class="modal-close" onclick="closeDeleteValidatedModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 3em; margin-bottom: 15px;">⚠️</div>
+                    <p style="font-size: 1.1em; color: #666; margin-bottom: 15px;">
+                        ¿Estás seguro de eliminar esta orden?
+                    </p>
+                    <p style="font-size: 0.95em; color: #ef4444; font-weight: 600; background: #fef2f2; padding: 12px; border-radius: 8px;">
+                        Todos los datos registrados se borrarán y la orden volverá a la lista de pendientes.
+                    </p>
+                    <p id="delete-orden-info" style="margin-top: 15px; font-weight: 600; color: #374151;"></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-error" onclick="executeDeleteValidated()">
+                    🗑️ Eliminar y Mover a Pendientes
+                </button>
+                <button class="btn btn-secondary" onclick="closeDeleteValidatedModal()">
                     Cancelar
                 </button>
             </div>
