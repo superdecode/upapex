@@ -48,20 +48,26 @@ let STATE = {
     isLoading: false,
     loadingProgress: 0,
     // CHANGE 5: Advanced filter system state
+    // selectedValues now stores objects: {criterion, value}
     advancedFilters: {
         orders: {
             criterion: '',
-            selectedValues: []
+            selectedValues: [] // Array of {criterion, value}
         },
         validated: {
             criterion: '',
-            selectedValues: []
+            selectedValues: [] // Array of {criterion, value}
         },
         folios: {
             criterion: '',
-            selectedValues: []
+            selectedValues: [] // Array of {criterion, value}
+        },
+        'folio-details': {
+            criterion: '',
+            selectedValues: [] // Array of {criterion, value}
         }
-    }
+    },
+    currentFolio: null // Current folio being viewed in details screen
 };
 
 // Cargar estado local al inicio
@@ -1419,8 +1425,11 @@ function renderOrdersTable() {
             ? `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`
             : '<span class="empty-cell">N/A</span>';
 
+        // Add validated-order class for visual highlight
+        const rowClass = isValidated ? 'validated-order' : '';
+
         return `
-            <tr data-orden="${orden}">
+            <tr data-orden="${orden}" class="${rowClass}">
                 <td><span class="order-code">${makeCopyable(orden)}</span></td>
                 <td class="td-wrap">${data.recipient || '<span class="empty-cell">Sin destino</span>'}</td>
                 <td>${data.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
@@ -1518,6 +1527,9 @@ function getUniqueFilterValues(view, criterion) {
 
             let value = '';
             switch(criterion) {
+                case 'destino':
+                    value = row.cells[1]?.textContent.trim() || '';
+                    break;
                 case 'rastreo':
                     // Check rastreo from MNE data
                     const rastreoText = row.cells[7]?.textContent.trim() || '';
@@ -1547,6 +1559,9 @@ function getUniqueFilterValues(view, criterion) {
         rows.forEach(row => {
             let value = '';
             switch(criterion) {
+                case 'destino':
+                    value = row.cells[2]?.textContent.trim() || 'N/A';
+                    break;
                 case 'conductor':
                     value = row.cells[11]?.textContent.trim() || 'N/A';
                     break;
@@ -1573,6 +1588,12 @@ function getUniqueFilterValues(view, criterion) {
         rows.forEach(row => {
             let value = '';
             switch(criterion) {
+                case 'destino':
+                    // For folios, we need to get destino from the orders in the folio
+                    // This is aggregated, so we'll need a different approach
+                    // For now, return empty to skip this filter
+                    value = '';
+                    break;
                 case 'conductor':
                     value = row.cells[6]?.textContent.trim() || 'N/A';
                     break;
@@ -1580,7 +1601,54 @@ function getUniqueFilterValues(view, criterion) {
                     value = row.cells[7]?.textContent.trim() || 'N/A';
                     break;
             }
+            if (value) uniqueValues.add(value);
+        });
+    } else if (view === 'folio-details') {
+        // Get data from folio-details table
+        // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-CantDesp, 6-Estatus, 7-Calidad, 8-Conductor, 9-Unidad
+        const tableBody = document.getElementById('folio-details-table-body');
+        if (!tableBody) return [];
+
+        const rows = tableBody.querySelectorAll('tr[data-orden]');
+        rows.forEach(row => {
+            let value = '';
+            switch(criterion) {
+                case 'destino':
+                    value = row.cells[2]?.textContent.trim() || 'N/A';
+                    break;
+                case 'conductor':
+                    value = row.cells[8]?.textContent.trim() || 'N/A';
+                    break;
+                case 'unidad':
+                    value = row.cells[9]?.textContent.trim() || 'N/A';
+                    break;
+                case 'rastreo':
+                    // Rastreo is not shown in folio-details table, use 'N/A'
+                    value = 'N/A';
+                    break;
+                case 'estatus':
+                    value = row.cells[6]?.textContent.trim() || 'N/A';
+                    break;
+            }
             uniqueValues.add(value);
+        });
+    } else if (view === 'agenda') {
+        // Get data from agenda view (grouped by destino)
+        if (!STATE.vistaAgenda.datosAgrupados) return [];
+
+        STATE.vistaAgenda.datosAgrupados.forEach(grupo => {
+            grupo.ordenes.forEach(orden => {
+                let value = '';
+                switch(criterion) {
+                    case 'destino':
+                        value = grupo.destino;
+                        break;
+                    case 'estatus':
+                        value = orden.estatus;
+                        break;
+                }
+                if (value) uniqueValues.add(value);
+            });
         });
     }
 
@@ -1620,7 +1688,10 @@ function showFilterDropdown(view) {
     `;
 
     values.forEach(value => {
-        const isChecked = STATE.advancedFilters[view].selectedValues.includes(value);
+        // Check if this value with this criterion is selected
+        const isChecked = STATE.advancedFilters[view].selectedValues.some(
+            item => item.value === value && item.criterion === criterion
+        );
         const checkboxId = `filter-${view}-${criterion}-${value.replace(/\s+/g, '-').replace(/[^\w-]/g, '_')}`;
         const escapedValue = value.replace(/'/g, "\\'");
         html += `
@@ -1647,19 +1718,33 @@ function showFilterDropdown(view) {
  */
 function toggleFilterValue(view, value) {
     const selectedValues = STATE.advancedFilters[view].selectedValues;
-    const index = selectedValues.indexOf(value);
+    const criterion = STATE.advancedFilters[view].criterion;
+
+    // Find if this value already exists
+    const index = selectedValues.findIndex(item => item.value === value && item.criterion === criterion);
 
     if (index === -1) {
-        selectedValues.push(value);
+        // Add new filter with criterion and value
+        selectedValues.push({ criterion, value });
     } else {
+        // Remove existing filter
         selectedValues.splice(index, 1);
     }
 
     // Apply filters
     applyAdvancedFilters(view);
 
-    // Refresh dropdown to show/hide X button
-    showFilterDropdown(view);
+    // Reset criterion selector back to default
+    const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+    if (criterionSelect) {
+        criterionSelect.value = '';
+    }
+
+    // Hide dropdown after selection
+    const dropdown = document.getElementById(`filter-${view}-dropdown`);
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
 
     // Update active filter chips
     updateActiveFilterChips(view);
@@ -1705,36 +1790,40 @@ function updateActiveFilterChips(view) {
     if (!container) return;
 
     const selectedValues = STATE.advancedFilters[view].selectedValues;
-    const criterion = STATE.advancedFilters[view].criterion;
 
     if (selectedValues.length === 0) {
         container.innerHTML = '';
         return;
     }
 
-    // Get criterion label
+    // Get criterion labels
     const criterionLabels = {
+        'destino': '🏢',
         'conductor': '👤',
         'unidad': '🚛',
         'rastreo': '📍',
         'estatus': '📊'
     };
-    const icon = criterionLabels[criterion] || '🔽';
 
-    container.innerHTML = selectedValues.map(value => `
-        <div class="filter-chip">
-            <span class="filter-chip-label">${icon} ${value}</span>
-            <button class="filter-chip-remove" onclick="removeFilterChip('${view}', '${value.replace(/'/g, "\\'")}')" title="Eliminar filtro">✕</button>
-        </div>
-    `).join('');
+    // Each chip gets its own icon based on its criterion
+    container.innerHTML = selectedValues.map(item => {
+        const icon = criterionLabels[item.criterion] || '🔽';
+        const escapedValue = item.value.replace(/'/g, "\\'");
+        return `
+            <div class="filter-chip">
+                <span class="filter-chip-label">${icon} ${item.value}</span>
+                <button class="filter-chip-remove" onclick="removeFilterChip('${view}', '${item.criterion}', '${escapedValue}')" title="Eliminar filtro">✕</button>
+            </div>
+        `;
+    }).join('');
 }
 
 /**
  * Remove a single filter chip
  */
-function removeFilterChip(view, value) {
+function removeFilterChip(view, criterion, value) {
     const selectedValues = STATE.advancedFilters[view].selectedValues;
-    const index = selectedValues.indexOf(value);
+    const index = selectedValues.findIndex(item => item.criterion === criterion && item.value === value);
 
     if (index > -1) {
         selectedValues.splice(index, 1);
@@ -1761,17 +1850,170 @@ function removeFilterChip(view, value) {
 }
 
 /**
+ * Apply filters to agenda view (special handling for grouped data)
+ */
+function applyAgendaFilters(filterText, selectedValues) {
+    if (!STATE.vistaAgenda.datosOriginales) return;
+
+    // Filter the original data based on criteria
+    let filteredData = [...STATE.vistaAgenda.datosOriginales];
+
+    // Apply text filter
+    if (filterText) {
+        filteredData = filteredData.filter(([orden, data]) => {
+            const searchText = `${orden} ${data.recipient || ''} ${data.expectedArrival || ''}`.toLowerCase();
+            return searchText.includes(filterText);
+        });
+    }
+
+    // Apply dropdown filters
+    if (selectedValues.length > 0) {
+        filteredData = filteredData.filter(([orden, data]) => {
+            return selectedValues.every(filter => {
+                const destino = data.recipient || 'Sin Destino Especificado';
+                const { validated: isValidated } = isOrderValidated(orden);
+                const estatus = isValidated ? 'Validada' : 'Pendiente';
+
+                let match = false;
+
+                if (filter.criterion === 'destino') {
+                    match = destino === filter.value;
+                } else if (filter.criterion === 'estatus') {
+                    match = estatus === filter.value;
+                }
+
+                // Check if any filter in the same criterion group matches
+                const sameFilterGroup = selectedValues.filter(f => f.criterion === filter.criterion);
+                return sameFilterGroup.some(f => {
+                    if (f.criterion === 'destino') {
+                        return destino === f.value;
+                    } else if (f.criterion === 'estatus') {
+                        return estatus === f.value;
+                    }
+                    return false;
+                });
+            });
+        });
+    }
+
+    // Re-group and re-render with filtered data
+    const datosAgrupados = groupOrdersByDestino(filteredData);
+    STATE.vistaAgenda.datosAgrupados = datosAgrupados;
+
+    // Render filtered results
+    const container = document.getElementById('agenda-table-container');
+
+    if (datosAgrupados.length === 0) {
+        container.innerHTML = `
+            <div class="table-empty-state">
+                <div class="table-empty-icon">📭</div>
+                <div class="table-empty-text">No hay órdenes que coincidan con los filtros</div>
+                <div class="table-empty-subtext">Intenta ajustar los criterios de búsqueda</div>
+            </div>
+        `;
+        updateAgendaSummary({ ordenes: 0, cajas: 0, promedioSurtido: 0, validadas: 0 });
+        return;
+    }
+
+    let html = '';
+
+    datosAgrupados.forEach(grupo => {
+        html += `
+            <div class="agenda-group">
+                <div class="agenda-group-header">
+                    <h3 style="margin: 0; color: var(--primary); font-size: 1.1em; font-weight: 700;">
+                        🏢 DESTINO: ${grupo.destino}
+                    </h3>
+                </div>
+
+                <table class="orders-table agenda-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">Fecha Horario</th>
+                            <th style="width: 150px;">Número de Orden</th>
+                            <th style="width: 100px; text-align: center;">Cantidad de Cajas</th>
+                            <th style="width: 120px; text-align: center;">% Surtido</th>
+                            <th style="width: 150px;">Estatus Actual</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        grupo.ordenes.forEach(orden => {
+            const rowClass = orden.esValidada ? 'validated-order' : '';
+            const estatusClass = orden.esValidada ? 'success' : 'warning';
+            const estatusIcon = orden.esValidada ? '✅' : '⏳';
+
+            html += `
+                <tr class="${rowClass}">
+                    <td>${orden.horario}</td>
+                    <td><span class="order-code">${orden.numeroOrden}</span></td>
+                    <td style="text-align: center;"><strong>${orden.cajas}</strong></td>
+                    <td style="text-align: center;">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            <div class="progress-bar" style="width: 60px;">
+                                <div class="progress-fill" style="width: ${orden.porcentajeSurtido}%"></div>
+                            </div>
+                            <span class="progress-text">${orden.porcentajeSurtido}%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="status-badge ${estatusClass}">${estatusIcon} ${orden.estatus}</span>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                    <tfoot>
+                        <tr class="agenda-subtotal-row">
+                            <td colspan="5" style="background: #f1f5f9; padding: 12px; font-weight: 700; color: var(--primary);">
+                                📊 SUBTOTAL ${grupo.destino}:
+                                <span style="margin-left: 16px;">
+                                    ${grupo.subtotales.totalOrdenes} orden${grupo.subtotales.totalOrdenes !== 1 ? 'es' : ''}
+                                </span>
+                                <span style="margin-left: 12px;">|</span>
+                                <span style="margin-left: 12px;">
+                                    ${grupo.subtotales.totalCajas} caja${grupo.subtotales.totalCajas !== 1 ? 's' : ''}
+                                </span>
+                                <span style="margin-left: 12px;">|</span>
+                                <span style="margin-left: 12px;">
+                                    Promedio: ${grupo.subtotales.promedioSurtido}%
+                                </span>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+
+    // Update summary with filtered data
+    const totales = calculateGeneralTotals(datosAgrupados);
+    updateAgendaSummary(totales);
+}
+
+/**
  * Apply advanced filters combining text search and dropdown selections
  */
 function applyAdvancedFilters(view) {
     const filterText = document.getElementById(`filter-${view}`)?.value.toLowerCase() || '';
-    const criterion = STATE.advancedFilters[view].criterion;
     const selectedValues = STATE.advancedFilters[view].selectedValues;
+
+    // Special handling for agenda view
+    if (view === 'agenda') {
+        applyAgendaFilters(filterText, selectedValues);
+        return;
+    }
 
     let tableBodyId = '';
     if (view === 'orders') tableBodyId = 'orders-table-body';
     else if (view === 'validated') tableBodyId = 'validated-table-body';
     else if (view === 'folios') tableBodyId = 'folios-table-body';
+    else if (view === 'folio-details') tableBodyId = 'folio-details-table-body';
 
     const rows = document.querySelectorAll(`#${tableBodyId} tr`);
 
@@ -1780,46 +2022,64 @@ function applyAdvancedFilters(view) {
         const text = row.textContent.toLowerCase();
         const textMatch = filterText === '' || text.includes(filterText);
 
-        // Dropdown filter
+        // Dropdown filter - match against all active filters
         let dropdownMatch = true;
-        if (criterion && selectedValues.length > 0) {
+        if (selectedValues.length > 0) {
             const cells = row.cells;
-            let cellValue = '';
 
-            if (view === 'orders') {
-                // Map criterion to column index
-                if (criterion === 'rastreo') {
-                    cellValue = cells[7]?.textContent.trim() || ''; // Rastreo column
-                } else if (criterion === 'estatus') {
-                    cellValue = cells[8]?.textContent.trim() || ''; // Estatus column
-                } else if (criterion === 'conductor') {
-                    // Conductor is not in table, skip for orders pending
-                    cellValue = '';
-                } else if (criterion === 'unidad') {
-                    cellValue = '';
-                }
-            } else if (view === 'validated') {
-                // Map criterion to column index for validated (after adding Fecha Validación column)
-                // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-%Surtido, 6-Rastreo, 7-TRS, 8-CantDesp, 9-Estatus, 10-Calidad, 11-Conductor, 12-Unidad, 13-Folio
-                if (criterion === 'rastreo') {
-                    cellValue = cells[6]?.textContent.trim() || ''; // Rastreo column
-                } else if (criterion === 'estatus') {
-                    cellValue = cells[9]?.textContent.trim() || ''; // Estatus column
-                } else if (criterion === 'conductor') {
-                    cellValue = cells[11]?.textContent.trim() || ''; // Conductor column
-                } else if (criterion === 'unidad') {
-                    cellValue = cells[12]?.textContent.trim() || ''; // Unidad column
-                }
-            } else if (view === 'folios') {
-                // Map criterion to column index for folios
-                if (criterion === 'conductor') {
-                    cellValue = cells[6]?.textContent.trim() || ''; // Conductor column
-                } else if (criterion === 'unidad') {
-                    cellValue = cells[7]?.textContent.trim() || ''; // Unidad column
-                }
-            }
+            // Check each filter criterion
+            dropdownMatch = selectedValues.every(filter => {
+                let cellValue = '';
 
-            dropdownMatch = cellValue === '' || selectedValues.includes(cellValue);
+                if (view === 'orders') {
+                    // Map criterion to column index
+                    if (filter.criterion === 'destino') {
+                        cellValue = cells[1]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'rastreo') {
+                        cellValue = cells[7]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'estatus') {
+                        cellValue = cells[8]?.textContent.trim() || '';
+                    }
+                } else if (view === 'validated') {
+                    // Map criterion to column index for validated
+                    // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-%Surtido, 6-Rastreo, 7-TRS, 8-CantDesp, 9-Estatus, 10-Calidad, 11-Conductor, 12-Unidad, 13-Folio
+                    if (filter.criterion === 'destino') {
+                        cellValue = cells[2]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'rastreo') {
+                        cellValue = cells[6]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'estatus') {
+                        cellValue = cells[9]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'conductor') {
+                        cellValue = cells[11]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'unidad') {
+                        cellValue = cells[12]?.textContent.trim() || '';
+                    }
+                } else if (view === 'folios') {
+                    // Map criterion to column index for folios
+                    if (filter.criterion === 'conductor') {
+                        cellValue = cells[6]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'unidad') {
+                        cellValue = cells[7]?.textContent.trim() || '';
+                    }
+                } else if (view === 'folio-details') {
+                    // Map criterion to column index for folio-details
+                    // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-CantDesp, 6-Estatus, 7-Calidad, 8-Conductor, 9-Unidad
+                    if (filter.criterion === 'destino') {
+                        cellValue = cells[2]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'conductor') {
+                        cellValue = cells[8]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'unidad') {
+                        cellValue = cells[9]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'estatus') {
+                        cellValue = cells[6]?.textContent.trim() || '';
+                    }
+                }
+
+                // Row must match at least one value from each criterion group
+                // Group filters by criterion
+                const sameFilterGroup = selectedValues.filter(f => f.criterion === filter.criterion);
+                return sameFilterGroup.some(f => f.value === cellValue);
+            });
         }
 
         // Show row if both filters match
@@ -2076,6 +2336,7 @@ function switchValidationTab(tab) {
         document.getElementById('welcome-state').style.display = 'none';
         document.getElementById('validated-content').style.display = 'none';
         document.getElementById('folios-content').style.display = 'none';
+        document.getElementById('folio-details-content').style.display = 'none';
         document.getElementById('search-panel').style.display = 'block';
 
         // Render pending orders table
@@ -2105,6 +2366,7 @@ function switchValidationTab(tab) {
         document.getElementById('welcome-state').style.display = 'none';
         document.getElementById('search-panel').style.display = 'none';
         document.getElementById('folios-content').style.display = 'none';
+        document.getElementById('folio-details-content').style.display = 'none';
         document.getElementById('validated-content').style.display = 'block';
 
         // Render validated orders table
@@ -2260,7 +2522,7 @@ function renderValidatedTable() {
                 <td><span class="order-code">${makeCopyable(record.folio)}</span></td>
                 <td class="actions-cell">
                     <div class="actions-buttons">
-                        <button class="btn-action dispatch" title="Ver detalles de orden">
+                        <button class="btn-action dispatch" onclick="showValidatedDetails('${record.orden}')" title="Ver detalles de orden">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M20 7h-9"></path>
                                 <path d="M14 17H5"></path>
@@ -2268,7 +2530,7 @@ function renderValidatedTable() {
                                 <circle cx="7" cy="7" r="3"></circle>
                             </svg>
                         </button>
-                        <button class="btn-delete-validated" title="Eliminar y mover a pendientes">
+                        <button class="btn-delete-validated" onclick="confirmDeleteValidated('${record.orden}')" title="Eliminar y mover a pendientes">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 6h18"></path>
                                 <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
@@ -2797,6 +3059,49 @@ function showOrderInfo(orden) {
             notaDespachoInput.value = savedData.observaciones || savedData.notaDespacho;
         }
 
+        // NEW: Populate Quality Control (QC) data if exists
+        if (savedData.qc) {
+            setTimeout(() => {
+                // Enable QC toggle if there was QC data
+                const qcToggle = document.getElementById('qc-toggle');
+                if (qcToggle && !qcToggle.checked) {
+                    qcToggle.checked = true;
+                    toggleQualityControl(true);
+                }
+
+                // Restore QC tasks and statuses
+                if (savedData.qc.tasks && savedData.qc.tasks.length > 0) {
+                    savedData.qc.tasks.forEach(taskId => {
+                        const checkbox = document.getElementById(`qc-${taskId}`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                            const statusSelect = document.getElementById(`qc-status-${taskId}`);
+                            if (statusSelect) {
+                                statusSelect.disabled = false;
+                                // Restore status if available
+                                if (savedData.qc.statuses && savedData.qc.statuses[taskId]) {
+                                    statusSelect.value = savedData.qc.statuses[taskId];
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Restore "otros" note if exists
+                if (savedData.qc.otrosNote) {
+                    const otrosNoteField = document.getElementById('qc-otros-note');
+                    if (otrosNoteField) {
+                        otrosNoteField.value = savedData.qc.otrosNote;
+                        // Show the note container
+                        const otrosContainer = document.getElementById('qc-otros-note-container');
+                        if (otrosContainer) {
+                            otrosContainer.style.display = 'block';
+                        }
+                    }
+                }
+            }, 150); // Small delay to ensure DOM elements are rendered
+        }
+
         // Change button text to "Guardar cambios" for validated orders
         const confirmBtn = document.getElementById('confirm-dispatch-btn');
         if (confirmBtn) {
@@ -2847,7 +3152,7 @@ function initializeLockMode(isValidated) {
         // Apply locked state
         modal.classList.add('locked-mode');
 
-        // Show unlock button if it doesn't exist
+        // Show unlock button if it doesn't exist, or reset it if it does
         if (!unlockBtn && modalFooter) {
             const unlockButton = document.createElement('button');
             unlockButton.id = 'unlock-btn';
@@ -2863,6 +3168,10 @@ function initializeLockMode(isValidated) {
                 // Fallback: append to modal footer
                 modalFooter.appendChild(unlockButton);
             }
+        } else if (unlockBtn) {
+            // Reset button to locked state if it already exists
+            unlockBtn.innerHTML = '🔓 Desbloquear para Editar';
+            unlockBtn.className = 'btn btn-warning';
         }
 
         // Disable all inputs
@@ -3482,40 +3791,73 @@ async function saveValidatedOrderChanges(orden) {
 
     const oldRecord = STATE.localValidated[recordIndex];
 
-    // Verificar si cambió el conductor o la unidad
+    // Extract old folio de carga from the full folio (last 2 digits)
+    const oldFolioCarga = oldRecord.folio.split('-').pop();
+
+    // Check what changed
     const conductorChanged = oldRecord.operador !== operador;
     const unidadChanged = oldRecord.unidad !== unidad;
+    const folioChanged = oldFolioCarga !== folioCarga;
 
     let newFolio = oldRecord.folio;
 
-    if (conductorChanged || unidadChanged) {
-        // Extraer el folio de carga del folio actual (últimos 2 dígitos)
-        const folioCarga = oldRecord.folio.split('-').pop();
-
-        // Verificar si el folio puede ser usado por la nueva combinación
+    // If anything changed, we need to handle the folio logic
+    if (conductorChanged || unidadChanged || folioChanged) {
+        // Check if the new folio can be used with the new conductor/unidad combination
         if (!canUseFolio(operador, unidad, folioCarga)) {
-            showNotification(`⚠️ El folio de carga ${folioCarga} no está disponible para ${operador}/${unidad}. Está siendo usado por otra combinación. Debes usar un conductor/unidad diferente.`, 'warning');
+            showNotification(`⚠️ El folio de carga ${folioCarga} no está disponible para ${operador}/${unidad}. Está siendo usado por otra combinación. Por favor selecciona otro folio.`, 'warning');
             return;
         }
 
-        // Liberar el folio de la combinación anterior
-        releaseFolio(folioCarga);
+        // Release the old folio from the old combination
+        releaseFolio(oldFolioCarga);
 
-        // Marcar el folio como usado para la nueva combinación
+        // Mark the new folio as used for the new combination
         markFolioAsUsed(operador, unidad, folioCarga);
 
-        // Regenerar el folio completo (la fecha sigue siendo la misma)
+        // Generate the complete folio with current date
         newFolio = generateFolio(folioCarga);
+    }
+
+    // Collect QC data if QC toggle is enabled
+    let qcData = null;
+    const qcToggle = document.getElementById('qc-toggle');
+    if (qcToggle && qcToggle.checked) {
+        const qcTasks = [];
+        const qcStatuses = {};
+
+        ['cambio-etiqueta', 'cambio-sku', 'reparacion', 'cambio-caja', 'otros'].forEach(taskId => {
+            const checkbox = document.getElementById(`qc-${taskId}`);
+            const statusSelect = document.getElementById(`qc-status-${taskId}`);
+
+            if (checkbox && checkbox.checked) {
+                qcTasks.push(taskId);
+                if (statusSelect && statusSelect.value) {
+                    qcStatuses[taskId] = statusSelect.value;
+                }
+            }
+        });
+
+        const otrosNote = document.getElementById('qc-otros-note')?.value || '';
+
+        qcData = {
+            tasks: qcTasks,
+            statuses: qcStatuses,
+            otrosNote: otrosNote
+        };
     }
 
     // Update the record
     const updatedRecord = {
         ...oldRecord,
         operador: operador,
+        conductor: operador, // Also update conductor field for consistency
         unidad: unidad,
         cantidadDespachar: cantidadDespacharNum,
         notaDespacho: notaDespacho,
+        observaciones: notaDespacho, // Also save as observaciones
         folio: newFolio,
+        qc: qcData, // Save QC data
         lastModified: new Date().toISOString()
     };
 
@@ -3533,6 +3875,11 @@ async function saveValidatedOrderChanges(orden) {
 
         // Update validated table
         renderValidatedTable();
+
+        // If we're viewing folio details, also update that view
+        if (STATE.currentFolio) {
+            renderFolioDetailsTable(STATE.currentFolio);
+        }
 
         // Close modal
         closeInfoModal();
@@ -3597,6 +3944,39 @@ async function confirmDispatch() {
             alert(mensaje);
             document.getElementById('nota-despacho').focus();
             return;
+        }
+    }
+
+    // NEW: Validación de destino por folio
+    // Check if there are other orders in the same folio with different destinations
+    const currentDestino = orderData.recipient || '';
+    const folioCompleto = generateFolio(folioCarga);
+    const ordenesEnFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
+
+    if (ordenesEnFolio.length > 0 && currentDestino) {
+        // Get unique destinations from orders already in this folio
+        const destinosEnFolio = [...new Set(ordenesEnFolio.map(r => {
+            const dest = r.destino || '';
+            return dest;
+        }).filter(d => d))];
+
+        // Check if current destination is different from existing ones
+        const hayConflictoDestino = destinosEnFolio.length > 0 && !destinosEnFolio.includes(currentDestino);
+
+        if (hayConflictoDestino) {
+            const destinosTexto = destinosEnFolio.join(', ');
+            const confirmar = confirm(
+                `⚠️ ALERTA DE DESTINO DIFERENTE\n\n` +
+                `El folio ${folioCompleto} ya contiene órdenes con destino:\n${destinosTexto}\n\n` +
+                `La orden actual (${STATE.currentOrder}) va a destino:\n${currentDestino}\n\n` +
+                `No se recomienda cargar mercancía de diferentes destinos en el mismo folio.\n\n` +
+                `¿Está seguro que desea continuar?`
+            );
+
+            if (!confirmar) {
+                showNotification('❌ Despacho cancelado - Verifique el folio de carga', 'warning');
+                return;
+            }
         }
     }
 
@@ -3731,7 +4111,7 @@ async function executeConfirmDispatch() {
     }
 
     closeInfoModal();
-    showNotification(`✅ Despacho confirmado: ${STATE.currentOrder} (${folio})`, 'success');
+    showNotification(`✅ Despacho confirmado: ${STATE.currentOrder || ''} (${folio || ''})`, 'success');
 
     // Actualizar UI
     updateTabBadges();
@@ -3838,6 +4218,30 @@ function updateTabBadges() {
 
     if (pendingBadgeValidated) {
         pendingBadgeValidated.textContent = pendingCount;
+    }
+
+    // Update header badges (panel de folios)
+    const validatedBadgeFolios = document.getElementById('validated-badge-folios');
+    const pendingBadgeFolios = document.getElementById('pending-badge-folios');
+
+    if (validatedBadgeFolios) {
+        validatedBadgeFolios.textContent = validatedCount;
+    }
+
+    if (pendingBadgeFolios) {
+        pendingBadgeFolios.textContent = pendingCount;
+    }
+
+    // Update global navigation badges
+    const globalPendingBadge = document.getElementById('global-pending-badge');
+    const globalValidatedBadge = document.getElementById('global-validated-badge');
+
+    if (globalPendingBadge) {
+        globalPendingBadge.textContent = pendingCount;
+    }
+
+    if (globalValidatedBadge) {
+        globalValidatedBadge.textContent = validatedCount;
     }
 }
 
@@ -3967,11 +4371,20 @@ function clearDateFilter() {
     // Restaurar texto del botón en Pendientes
     const dateFilterText = document.getElementById('date-filter-text');
     const dateFilterBtn = document.getElementById('date-filter-display');
+    const validatedDateFilterText = document.getElementById('validated-date-filter-text');
+    const validatedDateFilterBtn = document.getElementById('validated-date-filter-display');
+
     if (dateFilterText) {
-        dateFilterText.textContent = 'Filtrar Fecha';
+        dateFilterText.textContent = 'Mostrando Todo';
     }
     if (dateFilterBtn) {
         dateFilterBtn.classList.remove('active-filter');
+    }
+    if (validatedDateFilterText) {
+        validatedDateFilterText.textContent = 'Mostrando Todo';
+    }
+    if (validatedDateFilterBtn) {
+        validatedDateFilterBtn.classList.remove('active-filter');
     }
 
     // CHANGE 1: Update global navigation date indicator
@@ -4220,10 +4633,14 @@ function showFoliosManagement() {
     document.getElementById('welcome-state').style.display = 'none';
     document.getElementById('search-panel').style.display = 'none';
     document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folio-details-content').style.display = 'none';
     document.getElementById('folios-content').style.display = 'block';
 
     // Renderizar la tabla de folios
     renderFoliosTable();
+
+    // Update badges to show current counts
+    updateTabBadges();
 
     // CHANGE 1: Update global navigation
     updateGlobalNavigation();
@@ -4511,6 +4928,11 @@ function showFoliosDateFilter() {
     if (modal) {
         modal.classList.add('show');
 
+        // Establecer fecha máxima como hoy (no permitir fechas futuras)
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('folios-date-start').setAttribute('max', today);
+        document.getElementById('folios-date-end').setAttribute('max', today);
+
         // Establecer valores actuales si existen
         if (FOLIOS_DATE_FILTER.startDate) {
             document.getElementById('folios-date-start').value = FOLIOS_DATE_FILTER.startDate;
@@ -4547,10 +4969,14 @@ function applyFoliosDateFilter() {
     FOLIOS_DATE_FILTER.endDate = endDate;
     FOLIOS_DATE_FILTER.active = true;
 
-    // Actualizar texto del botón
+    // Actualizar texto y estilo del botón
     const filterText = document.getElementById('folios-date-filter-text');
+    const filterBtn = document.getElementById('folios-date-filter-display');
     if (filterText) {
-        filterText.textContent = `${startDate} → ${endDate}`;
+        filterText.textContent = `${formatDateDDMMYYYY(startDate)} → ${formatDateDDMMYYYY(endDate)}`;
+    }
+    if (filterBtn) {
+        filterBtn.classList.add('active-filter');
     }
 
     closeFoliosDateFilter();
@@ -4569,10 +4995,14 @@ function clearFoliosDateFilter() {
     document.getElementById('folios-date-start').value = '';
     document.getElementById('folios-date-end').value = '';
 
-    // Restaurar texto del botón
+    // Restaurar texto y estilo del botón
     const filterText = document.getElementById('folios-date-filter-text');
+    const filterBtn = document.getElementById('folios-date-filter-display');
     if (filterText) {
-        filterText.textContent = 'Filtrar Fecha';
+        filterText.textContent = 'Mostrando Todo';
+    }
+    if (filterBtn) {
+        filterBtn.classList.remove('active-filter');
     }
 
     closeFoliosDateFilter();
@@ -4604,38 +5034,204 @@ function confirmExitFolios() {
  * Filtra las órdenes validadas por folio de carga
  */
 function viewFolioOrders(folioCompleto) {
-    // Primero cerrar el panel de folios
+    // Set current folio
+    STATE.currentFolio = folioCompleto;
+
+    // Hide all other panels
+    document.getElementById('welcome-state').style.display = 'none';
+    document.getElementById('search-panel').style.display = 'none';
+    document.getElementById('validated-content').style.display = 'none';
     document.getElementById('folios-content').style.display = 'none';
+    document.getElementById('folio-details-content').style.display = 'block';
 
-    // Marcar que venimos desde folios para deshabilitar botón Pendientes
-    STATE.fromFolios = true;
-
-    // Cambiar a la vista de órdenes validadas
-    switchValidationTab('validated');
-
-    // Deshabilitar botón Pendientes cuando venimos desde folios
-    const togglePendingValidated = document.getElementById('toggle-pending-validated');
-    if (togglePendingValidated) {
-        togglePendingValidated.disabled = true;
-        togglePendingValidated.style.opacity = '0.5';
-        togglePendingValidated.style.cursor = 'not-allowed';
-        togglePendingValidated.title = 'No disponible cuando se visualiza desde folios';
+    // Update title with folio number
+    const titleElement = document.getElementById('folio-details-title');
+    if (titleElement) {
+        titleElement.textContent = `📋 Detalle de Folio ${folioCompleto}`;
     }
 
-    // Aplicar filtro por folio en la tabla de validadas
-    const filterInput = document.getElementById('filter-validated');
+    // Clear filters
+    STATE.advancedFilters['folio-details'].selectedValues = [];
+    STATE.advancedFilters['folio-details'].criterion = '';
+    const filterInput = document.getElementById('filter-folio-details');
     if (filterInput) {
-        filterInput.value = folioCompleto;
-
-        // Disparar el evento de input manualmente para activar el filtro
-        const event = new Event('input', { bubbles: true });
-        filterInput.dispatchEvent(event);
-
-        // También llamar directamente a la función de filtrado
-        filterValidatedTable();
+        filterInput.value = '';
     }
+
+    // Render table with orders from this folio
+    renderFolioDetailsTable(folioCompleto);
 
     showNotification(`📋 Mostrando órdenes del folio ${folioCompleto}`, 'info');
+}
+
+/**
+ * Close folio details and return to folios screen
+ */
+function closeFolioDetails() {
+    STATE.currentFolio = null;
+    showFoliosManagement();
+}
+
+/**
+ * Confirm exit from folio details
+ */
+function confirmExitFolioDetails() {
+    STATE.currentFolio = null;
+    confirmExit();
+}
+
+/**
+ * Render the table for folio details screen
+ */
+function renderFolioDetailsTable(folioCompleto) {
+    const tableBody = document.getElementById('folio-details-table-body');
+    if (!tableBody) return;
+
+    // Get orders for this folio
+    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
+
+    if (ordenesDelFolio.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="11" class="table-empty-state"><div class="table-empty-icon">📋</div><div class="table-empty-text">No hay órdenes en este folio</div></td></tr>';
+        updateFolioDetailsBadges(0, 0);
+        return;
+    }
+
+    let totalCajas = 0;
+
+    tableBody.innerHTML = ordenesDelFolio.map(record => {
+        const orderData = STATE.obcData.get(record.orden) || {};
+        const validaciones = STATE.validacionData.get(record.orden) || [];
+
+        const cantCajas = validaciones.length;
+        totalCajas += cantCajas;
+
+        const destino = record.destino || orderData.recipient || 'N/A';
+        const horario = record.horario || orderData.delivery || 'N/A';
+        const cantDespachar = record.cantidadDespachar || cantCajas;
+        const estatus = record.estatus || 'Pendiente';
+        const calidad = record.calidad || 'N/A';
+        const conductor = record.conductor || record.operador || 'N/A';
+        const unidad = record.unidad || 'N/A';
+        // Use timestamp for full date/time, or fall back to fecha+hora fields
+        const fechaValidacion = record.timestamp ? formatValidationDateTime(record.timestamp) :
+                                (record.fecha && record.hora ? `${record.fecha} ${record.hora}` : 'N/A');
+
+        return `
+            <tr class="validated-row" data-orden="${record.orden}">
+                <td><strong>${record.orden}</strong></td>
+                <td>${fechaValidacion}</td>
+                <td>${destino}</td>
+                <td>${horario}</td>
+                <td style="text-align: center;">${cantCajas}</td>
+                <td style="text-align: center;">${cantDespachar}</td>
+                <td>
+                    <span class="status-badge ${estatus === 'Completo' ? 'validated' : 'pending'}">${estatus}</span>
+                </td>
+                <td>${calidad}</td>
+                <td>${conductor}</td>
+                <td>${unidad}</td>
+                <td class="actions-cell">
+                    <div class="actions-buttons">
+                        <button class="btn-action dispatch" onclick="showValidatedDetails('${record.orden}')" title="Ver detalles">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.35-4.35"></path>
+                            </svg>
+                        </button>
+                        <button class="btn-delete-validated" onclick="confirmDeleteValidated('${record.orden}')" title="Eliminar y mover a pendientes">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Update badges
+    updateFolioDetailsBadges(ordenesDelFolio.length, totalCajas);
+}
+
+/**
+ * Update badges for folio details screen
+ */
+function updateFolioDetailsBadges(ordersCount, boxesCount) {
+    const ordersCountEl = document.getElementById('folio-details-orders-count');
+    const boxesCountEl = document.getElementById('folio-details-boxes-count');
+
+    if (ordersCountEl) {
+        ordersCountEl.textContent = `${ordersCount} orden${ordersCount !== 1 ? 'es' : ''}`;
+    }
+
+    if (boxesCountEl) {
+        boxesCountEl.textContent = `${boxesCount} caja${boxesCount !== 1 ? 's' : ''}`;
+    }
+}
+
+/**
+ * Filter folio details table
+ */
+function filterFolioDetailsTable() {
+    applyAdvancedFilters('folio-details');
+}
+
+/**
+ * Sort folio details table
+ */
+let folioDetailsSortColumn = 0;
+let folioDetailsSortDirection = 'asc';
+
+function sortFolioDetailsTable(columnIndex) {
+    const tbody = document.getElementById('folio-details-table-body');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // Toggle sort direction
+    if (folioDetailsSortColumn === columnIndex) {
+        folioDetailsSortDirection = folioDetailsSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        folioDetailsSortColumn = columnIndex;
+        folioDetailsSortDirection = 'asc';
+    }
+
+    // Sort rows
+    rows.sort((a, b) => {
+        let aVal = a.cells[columnIndex]?.textContent.trim() || '';
+        let bVal = b.cells[columnIndex]?.textContent.trim() || '';
+
+        // Try to parse as numbers
+        const aNum = parseFloat(aVal.replace(/[^\d.-]/g, ''));
+        const bNum = parseFloat(bVal.replace(/[^\d.-]/g, ''));
+
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return folioDetailsSortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+
+        // String comparison
+        return folioDetailsSortDirection === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+    });
+
+    // Re-append sorted rows
+    rows.forEach(row => tbody.appendChild(row));
+
+    // Update sort indicators
+    updateFolioDetailsSortIndicators();
+}
+
+/**
+ * Update sort indicators for folio details table
+ */
+function updateFolioDetailsSortIndicators() {
+    const headers = document.querySelectorAll('#folio-details-table th');
+    headers.forEach((header, index) => {
+        header.classList.remove('sorted-asc', 'sorted-desc');
+        if (index === folioDetailsSortColumn) {
+            header.classList.add(folioDetailsSortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        }
+    });
 }
 
 /**
@@ -4977,13 +5573,680 @@ function printFolioDelivery(folioCompleto) {
     showNotification('🖨️ Preparando impresión...', 'info');
 }
 
+// ==================== FOLIO DETAILS ACTIONS ====================
+/**
+ * Print current folio details
+ */
+function printFolioDetails() {
+    if (!STATE.currentFolio) {
+        showNotification('⚠️ No hay folio seleccionado', 'warning');
+        return;
+    }
+    printFolioDelivery(STATE.currentFolio);
+}
+
+/**
+ * Export current folio details to Excel
+ */
+function exportFolioDetailsToExcel() {
+    if (!STATE.currentFolio) {
+        showNotification('⚠️ No hay folio seleccionado', 'warning');
+        return;
+    }
+
+    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === STATE.currentFolio);
+
+    if (ordenesDelFolio.length === 0) {
+        showNotification('⚠️ No hay órdenes en este folio', 'warning');
+        return;
+    }
+
+    // Prepare data for export
+    const exportData = [];
+
+    ordenesDelFolio.forEach(record => {
+        const orderData = STATE.obcData.get(record.orden) || {};
+        const validaciones = STATE.validacionData.get(record.orden) || [];
+
+        exportData.push({
+            'Folio': STATE.currentFolio,
+            'N° Orden': record.orden,
+            'Fecha Validación': record.timestamp ? new Date(record.timestamp).toLocaleString('es-MX') : `${record.fecha || ''} ${record.hora || ''}`,
+            'Destino': record.destino || orderData.recipient || 'N/A',
+            'Horario': record.horario || orderData.expectedArrival || 'N/A',
+            'Cant. Cajas': validaciones.length,
+            'Cant. Despachar': record.cantidadDespachar || 0,
+            'Estatus': record.estatus || 'Pendiente',
+            'Calidad': record.calidad || 'N/A',
+            'Conductor': record.operador || record.conductor || 'N/A',
+            'Unidad': record.unidad || 'N/A',
+            'Observaciones': record.observaciones || record.notaDespacho || ''
+        });
+    });
+
+    // Convert to CSV
+    const headers = Object.keys(exportData[0]);
+    const csvContent = [
+        headers.join(','),
+        ...exportData.map(row => headers.map(header => {
+            const value = row[header] || '';
+            // Escape commas and quotes
+            return `"${String(value).replace(/"/g, '""')}"`;
+        }).join(','))
+    ].join('\n');
+
+    // Create download link
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Folio_${STATE.currentFolio}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    showNotification(`✅ Folio ${STATE.currentFolio} exportado exitosamente`, 'success');
+}
+
+// ==================== VISTA AGENDA ====================
+
+/**
+ * Initialize Vista Agenda state
+ */
+if (!STATE.vistaAgenda) {
+    STATE.vistaAgenda = {
+        activa: false,
+        fechaHeredada: null,
+        filtrosHeredados: {},
+        datosOriginales: null,
+        datosAgrupados: null,
+        filtrosLocales: {
+            destino: null,
+            estatus: null,
+            busqueda: ""
+        }
+    };
+
+    // Initialize advanced filters for agenda
+    STATE.advancedFilters.agenda = {
+        criterion: '',
+        selectedValues: []
+    };
+}
+
+/**
+ * Open Vista Agenda - inherits current date filter from Órdenes Pendientes
+ */
+function openVistaAgenda() {
+    // Capture current state
+    const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
+
+    if (dataToUse.size === 0) {
+        showNotification('⚠️ No hay órdenes para mostrar en la agenda', 'warning');
+        return;
+    }
+
+    // Save inherited state
+    STATE.vistaAgenda.fechaHeredada = STATE.dateFilter.active ? {
+        startDate: STATE.dateFilter.startDate,
+        endDate: STATE.dateFilter.endDate,
+        formatted: formatDateRangeForAgenda(STATE.dateFilter.startDate, STATE.dateFilter.endDate)
+    } : {
+        formatted: 'Todas las órdenes'
+    };
+
+    // Copy data (don't modify original)
+    STATE.vistaAgenda.datosOriginales = Array.from(dataToUse.entries());
+
+    // Mark as active
+    STATE.vistaAgenda.activa = true;
+
+    // Hide other panels and show Vista Agenda
+    document.getElementById('welcome-state').style.display = 'none';
+    document.getElementById('search-panel').style.display = 'none';
+    document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folio-details-content').style.display = 'none';
+    document.getElementById('folios-content').style.display = 'none';
+    document.getElementById('vista-agenda-content').style.display = 'block';
+
+    // Scroll to top
+    window.scrollTo(0, 0);
+
+    // Update date display
+    document.getElementById('agenda-fecha-display').textContent = STATE.vistaAgenda.fechaHeredada.formatted;
+
+    // Generate and render grouped data
+    renderVistaAgenda();
+
+    showNotification('📅 Vista Agenda cargada correctamente', 'success');
+}
+
+/**
+ * Close Vista Agenda and return to Órdenes Pendientes
+ */
+function closeVistaAgenda() {
+    STATE.vistaAgenda.activa = false;
+
+    // Show search panel (Órdenes Pendientes)
+    document.getElementById('vista-agenda-content').style.display = 'none';
+    document.getElementById('search-panel').style.display = 'block';
+
+    // Clear local filters
+    STATE.vistaAgenda.filtrosLocales = {
+        destino: null,
+        estatus: null,
+        busqueda: ""
+    };
+
+    // Clear advanced filters
+    STATE.advancedFilters.agenda.selectedValues = [];
+    STATE.advancedFilters.agenda.criterion = '';
+
+    // Clear search input
+    const searchInput = document.getElementById('filter-agenda');
+    if (searchInput) searchInput.value = '';
+
+    // Clear criterion select
+    const criterionSelect = document.getElementById('filter-agenda-criterion');
+    if (criterionSelect) criterionSelect.value = '';
+
+    // Clear active filters display
+    updateActiveFilterChips('agenda');
+
+    showNotification('↩️ Regresando a Órdenes Pendientes', 'info');
+}
+
+/**
+ * Confirm exit from Vista Agenda
+ */
+function confirmExitVistaAgenda() {
+    confirmExit();
+}
+
+/**
+ * Format date range for agenda display
+ */
+function formatDateRangeForAgenda(startDate, endDate) {
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const start = new Date(startDate).toLocaleDateString('es-MX', options);
+
+    if (startDate === endDate) {
+        return start;
+    }
+
+    const end = new Date(endDate).toLocaleDateString('es-MX', options);
+    return `${start} - ${end}`;
+}
+
+/**
+ * Group orders by Destino and calculate subtotals
+ */
+function groupOrdersByDestino(ordersData) {
+    const grupos = {};
+
+    ordersData.forEach(([orden, data]) => {
+        const destino = data.recipient || 'Sin Destino Especificado';
+
+        if (!grupos[destino]) {
+            grupos[destino] = {
+                destino: destino,
+                ordenes: [],
+                subtotales: {
+                    totalOrdenes: 0,
+                    totalCajas: 0,
+                    sumaPromedioSurtido: 0
+                }
+            };
+        }
+
+        const validaciones = STATE.validacionData.get(orden) || [];
+        const rastreoData = STATE.mneData.get(orden) || [];
+        const totalCajas = data.totalCajas || 0;
+        const cajasValidadas = validaciones.length;
+        const porcentajeSurtido = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
+        const { validated: isValidated } = isOrderValidated(orden);
+        const estatusTexto = isValidated ? 'Validada' : 'Pendiente';
+
+        grupos[destino].ordenes.push({
+            horario: data.expectedArrival || 'N/A',
+            fechaHorario: data.expectedArrival || 'Z', // For sorting
+            numeroOrden: orden,
+            cajas: totalCajas,
+            porcentajeSurtido: porcentajeSurtido,
+            estatus: estatusTexto,
+            esValidada: isValidated,
+            data: data // Keep original data for export
+        });
+
+        grupos[destino].subtotales.totalOrdenes++;
+        grupos[destino].subtotales.totalCajas += totalCajas;
+        grupos[destino].subtotales.sumaPromedioSurtido += porcentajeSurtido;
+    });
+
+    // Calculate average for each group and sort orders by horario
+    Object.values(grupos).forEach(grupo => {
+        if (grupo.subtotales.totalOrdenes > 0) {
+            grupo.subtotales.promedioSurtido = Math.round(
+                grupo.subtotales.sumaPromedioSurtido / grupo.subtotales.totalOrdenes
+            );
+        }
+        // Sort orders by horario (earliest first)
+        grupo.ordenes.sort((a, b) => a.fechaHorario.localeCompare(b.fechaHorario));
+    });
+
+    return Object.values(grupos);
+}
+
+/**
+ * Calculate general totals
+ */
+function calculateGeneralTotals(grupos) {
+    const totales = {
+        ordenes: 0,
+        cajas: 0,
+        sumaPromedioSurtido: 0,
+        validadas: 0
+    };
+
+    grupos.forEach(grupo => {
+        totales.ordenes += grupo.subtotales.totalOrdenes;
+        totales.cajas += grupo.subtotales.totalCajas;
+        totales.sumaPromedioSurtido += grupo.subtotales.sumaPromedioSurtido;
+
+        grupo.ordenes.forEach(orden => {
+            if (orden.esValidada) totales.validadas++;
+        });
+    });
+
+    if (totales.ordenes > 0) {
+        totales.promedioSurtido = Math.round(totales.sumaPromedioSurtido / totales.ordenes);
+    } else {
+        totales.promedioSurtido = 0;
+    }
+
+    return totales;
+}
+
+/**
+ * Render Vista Agenda with grouped data
+ */
+function renderVistaAgenda() {
+    // Group data by destino
+    const datosAgrupados = groupOrdersByDestino(STATE.vistaAgenda.datosOriginales);
+    STATE.vistaAgenda.datosAgrupados = datosAgrupados;
+
+    // Render table
+    const container = document.getElementById('agenda-table-container');
+
+    if (datosAgrupados.length === 0) {
+        container.innerHTML = `
+            <div class="table-empty-state">
+                <div class="table-empty-icon">📭</div>
+                <div class="table-empty-text">No hay órdenes para mostrar</div>
+                <div class="table-empty-subtext">Ajusta los filtros o la fecha</div>
+            </div>
+        `;
+        updateAgendaSummary({ ordenes: 0, cajas: 0, promedioSurtido: 0, validadas: 0 });
+        return;
+    }
+
+    let html = '';
+
+    datosAgrupados.forEach(grupo => {
+        // Grupo header
+        html += `
+            <div class="agenda-group">
+                <div class="agenda-group-header">
+                    <h3 style="margin: 0; color: var(--primary); font-size: 1.1em; font-weight: 700;">
+                        🏢 DESTINO: ${grupo.destino}
+                    </h3>
+                </div>
+
+                <table class="orders-table agenda-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">Fecha Horario</th>
+                            <th style="width: 150px;">Número de Orden</th>
+                            <th style="width: 100px; text-align: center;">Cantidad de Cajas</th>
+                            <th style="width: 120px; text-align: center;">% Surtido</th>
+                            <th style="width: 150px;">Estatus Actual</th>
+                            <th style="width: 80px; text-align: center;">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        // Orders in this group
+        grupo.ordenes.forEach(orden => {
+            const rowClass = orden.esValidada ? 'validated-order' : '';
+            const estatusClass = orden.esValidada ? 'success' : 'warning';
+            const estatusIcon = orden.esValidada ? '✅' : '⏳';
+
+            html += `
+                <tr class="${rowClass}">
+                    <td>${orden.horario}</td>
+                    <td><span class="order-code">${orden.numeroOrden}</span></td>
+                    <td style="text-align: center;"><strong>${orden.cajas}</strong></td>
+                    <td style="text-align: center;">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            <div class="progress-bar" style="width: 60px;">
+                                <div class="progress-fill" style="width: ${orden.porcentajeSurtido}%"></div>
+                            </div>
+                            <span class="progress-text">${orden.porcentajeSurtido}%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="status-badge ${estatusClass}">${estatusIcon} ${orden.estatus}</span>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn-action dispatch" onclick="openDispatchFromAgenda('${orden.numeroOrden}')" title="Ir a despacho">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 7h-9"></path>
+                                <path d="M14 17H5"></path>
+                                <circle cx="17" cy="17" r="3"></circle>
+                                <circle cx="7" cy="7" r="3"></circle>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        // Subtotals row
+        html += `
+                    </tbody>
+                    <tfoot>
+                        <tr class="agenda-subtotal-row">
+                            <td colspan="6" style="background: #f1f5f9; padding: 12px; font-weight: 700; color: var(--primary);">
+                                📊 SUBTOTAL ${grupo.destino}:
+                                <span style="margin-left: 16px;">
+                                    ${grupo.subtotales.totalOrdenes} orden${grupo.subtotales.totalOrdenes !== 1 ? 'es' : ''}
+                                </span>
+                                <span style="margin-left: 12px;">|</span>
+                                <span style="margin-left: 12px;">
+                                    ${grupo.subtotales.totalCajas} caja${grupo.subtotales.totalCajas !== 1 ? 's' : ''}
+                                </span>
+                                <span style="margin-left: 12px;">|</span>
+                                <span style="margin-left: 12px;">
+                                    Promedio: ${grupo.subtotales.promedioSurtido}%
+                                </span>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+
+    // Update summary
+    const totales = calculateGeneralTotals(datosAgrupados);
+    updateAgendaSummary(totales);
+}
+
+/**
+ * Update general summary panel
+ */
+function updateAgendaSummary(totales) {
+    document.getElementById('agenda-total-ordenes').textContent = totales.ordenes;
+    document.getElementById('agenda-total-cajas').textContent = totales.cajas;
+    document.getElementById('agenda-promedio-surtido').textContent = `${totales.promedioSurtido}%`;
+    document.getElementById('agenda-ordenes-validadas').textContent = totales.validadas;
+
+    // Update header badges
+    document.getElementById('agenda-total-ordenes-badge').textContent = `${totales.ordenes} orden${totales.ordenes !== 1 ? 'es' : ''}`;
+    document.getElementById('agenda-total-cajas-badge').textContent = `${totales.cajas} caja${totales.cajas !== 1 ? 's' : ''}`;
+}
+
+/**
+ * Filter agenda table
+ */
+function filterAgendaTable() {
+    applyAdvancedFilters('agenda');
+}
+
+/**
+ * Export agenda to Excel/CSV
+ */
+function exportAgendaToExcel() {
+    if (!STATE.vistaAgenda.datosAgrupados || STATE.vistaAgenda.datosAgrupados.length === 0) {
+        showNotification('⚠️ No hay datos para exportar', 'warning');
+        return;
+    }
+
+    const exportData = [];
+
+    // Add header info
+    exportData.push({
+        'AGENDA DE ÓRDENES': STATE.vistaAgenda.fechaHeredada.formatted,
+        'Fecha de Exportación': new Date().toLocaleString('es-MX')
+    });
+    exportData.push({}); // Empty row
+
+    // Add data grouped by destino
+    STATE.vistaAgenda.datosAgrupados.forEach(grupo => {
+        // Grupo header
+        exportData.push({
+            'Destino': `DESTINO: ${grupo.destino}`,
+            'Horario': '',
+            'Número de Orden': '',
+            'Cantidad de Cajas': '',
+            '% Surtido': '',
+            'Estatus': ''
+        });
+
+        // Orders
+        grupo.ordenes.forEach(orden => {
+            exportData.push({
+                'Destino': '',
+                'Horario': orden.horario,
+                'Número de Orden': orden.numeroOrden,
+                'Cantidad de Cajas': orden.cajas,
+                '% Surtido': `${orden.porcentajeSurtido}%`,
+                'Estatus': orden.estatus
+            });
+        });
+
+        // Subtotal
+        exportData.push({
+            'Destino': `SUBTOTAL ${grupo.destino}`,
+            'Horario': `${grupo.subtotales.totalOrdenes} órdenes`,
+            'Número de Orden': `${grupo.subtotales.totalCajas} cajas`,
+            'Cantidad de Cajas': '',
+            '% Surtido': `Promedio: ${grupo.subtotales.promedioSurtido}%`,
+            'Estatus': ''
+        });
+        exportData.push({}); // Empty row
+    });
+
+    // Add general totals
+    const totales = calculateGeneralTotals(STATE.vistaAgenda.datosAgrupados);
+    exportData.push({});
+    exportData.push({
+        'Destino': 'RESUMEN GENERAL',
+        'Horario': `Total Órdenes: ${totales.ordenes}`,
+        'Número de Orden': `Total Cajas: ${totales.cajas}`,
+        'Cantidad de Cajas': `Promedio Surtido: ${totales.promedioSurtido}%`,
+        '% Surtido': `Órdenes Validadas: ${totales.validadas}`,
+        'Estatus': ''
+    });
+
+    // Convert to CSV
+    const headers = ['Destino', 'Horario', 'Número de Orden', 'Cantidad de Cajas', '% Surtido', 'Estatus'];
+    const csvContent = [
+        headers.join(','),
+        ...exportData.map(row => headers.map(header => {
+            const value = row[header] || '';
+            return `"${String(value).replace(/"/g, '""')}"`;
+        }).join(','))
+    ].join('\n');
+
+    // Create download
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset-utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Agenda_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    showNotification('✅ Agenda exportada exitosamente', 'success');
+}
+
+/**
+ * Print agenda
+ */
+function printAgenda() {
+    if (!STATE.vistaAgenda.datosAgrupados || STATE.vistaAgenda.datosAgrupados.length === 0) {
+        showNotification('⚠️ No hay datos para imprimir', 'warning');
+        return;
+    }
+
+    const totales = calculateGeneralTotals(STATE.vistaAgenda.datosAgrupados);
+
+    let printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Agenda de Órdenes</title>
+            <style>
+                @page { margin: 1in; }
+                body { font-family: Arial, sans-serif; font-size: 12px; }
+                .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #f97316; padding-bottom: 15px; }
+                .header h1 { margin: 0; color: #f97316; font-size: 24px; }
+                .header .date { color: #64748b; font-size: 14px; margin-top: 8px; }
+                .group { margin-bottom: 30px; page-break-inside: avoid; }
+                .group-title { background: #f1f5f9; padding: 10px; font-weight: 700; color: #f97316; font-size: 14px; margin-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th { background: #f8fafc; color: #475569; padding: 8px; text-align: left; font-weight: 700; border-bottom: 2px solid #e2e8f0; }
+                td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; }
+                .subtotal { background: #f1f5f9; font-weight: 700; color: #f97316; }
+                .summary { margin-top: 30px; padding: 20px; background: #f8fafc; border-left: 4px solid #f97316; }
+                .summary h3 { margin: 0 0 15px 0; color: #f97316; }
+                .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+                .summary-item { display: flex; justify-content: space-between; padding: 5px 0; }
+                .summary-label { color: #64748b; }
+                .summary-value { font-weight: 700; color: #f97316; }
+                .validated-row { background: #f0fdf4; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>📅 AGENDA DE ÓRDENES</h1>
+                <div class="date">Fecha: ${STATE.vistaAgenda.fechaHeredada.formatted}</div>
+                <div class="date">Generado: ${new Date().toLocaleString('es-MX')}</div>
+            </div>
+    `;
+
+    STATE.vistaAgenda.datosAgrupados.forEach(grupo => {
+        printContent += `
+            <div class="group">
+                <div class="group-title">🏢 DESTINO: ${grupo.destino}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Horario</th>
+                            <th>Número de Orden</th>
+                            <th style="text-align: center;">Cajas</th>
+                            <th style="text-align: center;">% Surtido</th>
+                            <th>Estatus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        grupo.ordenes.forEach(orden => {
+            const rowClass = orden.esValidada ? 'validated-row' : '';
+            printContent += `
+                <tr class="${rowClass}">
+                    <td>${orden.horario}</td>
+                    <td>${orden.numeroOrden}</td>
+                    <td style="text-align: center;">${orden.cajas}</td>
+                    <td style="text-align: center;">${orden.porcentajeSurtido}%</td>
+                    <td>${orden.estatus}</td>
+                </tr>
+            `;
+        });
+
+        printContent += `
+                    </tbody>
+                    <tfoot>
+                        <tr class="subtotal">
+                            <td colspan="5">
+                                📊 SUBTOTAL: ${grupo.subtotales.totalOrdenes} orden${grupo.subtotales.totalOrdenes !== 1 ? 'es' : ''} |
+                                ${grupo.subtotales.totalCajas} caja${grupo.subtotales.totalCajas !== 1 ? 's' : ''} |
+                                Promedio: ${grupo.subtotales.promedioSurtido}%
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    });
+
+    printContent += `
+            <div class="summary">
+                <h3>📊 RESUMEN GENERAL</h3>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Total de Órdenes:</span>
+                        <span class="summary-value">${totales.ordenes}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Total de Cajas:</span>
+                        <span class="summary-value">${totales.cajas}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Promedio Surtido:</span>
+                        <span class="summary-value">${totales.promedioSurtido}%</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Órdenes Validadas:</span>
+                        <span class="summary-value">${totales.validadas}</span>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+
+    setTimeout(() => {
+        printWindow.print();
+    }, 250);
+
+    showNotification('🖨️ Preparando impresión...', 'info');
+}
+
+/**
+ * Open dispatch modal from Vista Agenda
+ */
+function openDispatchFromAgenda(orden) {
+    // Simply call the existing showOrderInfo function
+    showOrderInfo(orden);
+}
+
 // ==================== EXPOSE FUNCTIONS GLOBALLY ====================
 window.showOrderInfo = showOrderInfo;
+window.printFolioDetails = printFolioDetails;
+window.exportFolioDetailsToExcel = exportFolioDetailsToExcel;
+window.openVistaAgenda = openVistaAgenda;
+window.closeVistaAgenda = closeVistaAgenda;
+window.confirmExitVistaAgenda = confirmExitVistaAgenda;
+window.filterAgendaTable = filterAgendaTable;
+window.exportAgendaToExcel = exportAgendaToExcel;
+window.printAgenda = printAgenda;
+window.openDispatchFromAgenda = openDispatchFromAgenda;
 
 // ==================== CLOSE DROPDOWN ON OUTSIDE CLICK ====================
 document.addEventListener('click', function(event) {
     // Get all filter dropdowns
-    const dropdowns = ['orders', 'validated', 'folios'];
+    const dropdowns = ['orders', 'validated', 'folios', 'folio-details', 'agenda'];
 
     dropdowns.forEach(view => {
         const dropdown = document.getElementById(`filter-${view}-dropdown`);

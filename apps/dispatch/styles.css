@@ -1436,7 +1436,7 @@
     color: #475569;
     padding: 14px 12px;
     text-align: left;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.85em;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -1484,6 +1484,62 @@
     background: #fff5ed;
     transform: scale(1.01);
     box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
+}
+
+/* Highlight validated orders with light green background */
+.orders-table tbody tr.validated-order {
+    background: #f0fdf4 !important;
+}
+
+.orders-table tbody tr.validated-order:nth-child(even) {
+    background: #dcfce7 !important;
+}
+
+.orders-table tbody tr.validated-order:hover {
+    background: #bbf7d0 !important;
+    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+}
+
+/* ==================== VISTA AGENDA STYLES ==================== */
+.agenda-table-wrapper {
+    min-height: 200px;
+}
+
+.agenda-group {
+    margin-bottom: 30px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+}
+
+.agenda-group-header {
+    background: linear-gradient(135deg, #fff5ed 0%, #ffedd5 100%);
+    color: #ea580c;
+    padding: 16px 20px;
+    border-bottom: 2px solid #fed7aa;
+}
+
+.agenda-group .orders-table {
+    margin: 0;
+}
+
+.agenda-group .orders-table thead th {
+    background: #f8fafc;
+    color: #475569;
+}
+
+.agenda-subtotal-row td {
+    background: #f1f5f9 !important;
+    font-weight: 700 !important;
+    color: var(--primary) !important;
+    border-top: 2px solid var(--primary) !important;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .orders-table td {
@@ -1782,7 +1838,7 @@ textarea:focus {
 
 /* Improved table styling */
 .data-table th {
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     font-size: 0.8em;
     letter-spacing: 0.5px;
@@ -2389,10 +2445,16 @@ textarea:focus {
     flex-wrap: wrap;
 }
 
-/* Ensure search input stays on same row as filter */
+/* Ensure search input stays on same row as filter and matches height */
 .filter-controls .search-input-wrapper {
     flex: 0 0 180px;
     min-width: 150px;
+}
+
+.filter-controls .search-input-wrapper input.filter-input {
+    height: 38px; /* Match advanced-filter-wrapper total height (padding + content) */
+    padding: 8px 35px 8px 12px;
+    border-radius: 8px;
 }
 
 .btn-sm {

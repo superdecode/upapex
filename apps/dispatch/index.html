@@ -101,12 +101,12 @@
                     <div class="header">
                         <div class="header-left">
                             <h1>📋 Gestión de Folios de Carga</h1>
+                            <button class="btn btn-secondary date-filter-btn" onclick="showFoliosDateFilter()" id="folios-date-filter-display" style="margin-left: 20px;">
+                                📅 <span id="folios-date-filter-text">Mostrando Todo</span>
+                            </button>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
-                                <button class="btn btn-secondary date-filter-btn" onclick="showFoliosDateFilter()" id="folios-date-filter-display">
-                                    📅 <span id="folios-date-filter-text">Filtrar Fecha</span>
-                                </button>
                                 <button class="status-toggle-btn" id="toggle-pending-folios" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-folios">0</span>
                                 </button>
@@ -132,6 +132,7 @@
                                 <div class="advanced-filter-wrapper">
                                     <select id="filter-folios-criterion" class="filter-criterion-select" onchange="showFilterDropdown('folios')">
                                         <option value="">🔽 Filtrar por...</option>
+                                        <option value="destino">🏢 Destino</option>
                                         <option value="conductor">👤 Conductor</option>
                                         <option value="unidad">🚛 Unidad</option>
                                     </select>
@@ -165,17 +166,87 @@
                     </div>
                 </div>
 
+                <!-- FOLIO DETAILS SCREEN -->
+                <div id="folio-details-content" class="tab-content" style="display: none;">
+                    <div class="header">
+                        <div class="header-left">
+                            <h1 id="folio-details-title">📋 Detalle de Folio</h1>
+                        </div>
+                        <div class="header-right">
+                            <button class="btn btn-secondary" onclick="closeFolioDetails()">
+                                ← Regresar a Folios
+                            </button>
+                            <button class="btn-close-modern" onclick="confirmExitFolioDetails()" title="Cerrar">×</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="section-header-inline">
+                            <div class="header-with-badges">
+                                <h3>📋 Órdenes del Folio</h3>
+                                <span class="badge badge-primary" id="folio-details-orders-count">0 órdenes</span>
+                                <span class="badge badge-success" id="folio-details-boxes-count">0 cajas</span>
+                                <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
+                                    <button class="btn btn-secondary btn-sm" onclick="printFolioDetails()" title="Imprimir folio de entrega">
+                                        🖨️ Imprimir
+                                    </button>
+                                    <button class="btn btn-success btn-sm" onclick="exportFolioDetailsToExcel()" title="Exportar a Excel">
+                                        📊 Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="filter-controls">
+                                <div class="advanced-filter-wrapper">
+                                    <select id="filter-folio-details-criterion" class="filter-criterion-select" onchange="showFilterDropdown('folio-details')">
+                                        <option value="">🔽 Filtrar por...</option>
+                                        <option value="destino">🏢 Destino</option>
+                                        <option value="conductor">👤 Conductor</option>
+                                        <option value="unidad">🚛 Unidad</option>
+                                        <option value="rastreo">📍 Rastreo</option>
+                                        <option value="estatus">📊 Estatus</option>
+                                    </select>
+                                    <div id="active-filters-folio-details" class="active-filters-container"></div>
+                                    <div id="filter-folio-details-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                </div>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-folio-details" class="filter-input" placeholder="🔍 Buscar..." oninput="filterFolioDetailsTable()">
+                                    <button class="clear-search-btn" id="clear-filter-folio-details" onclick="clearSearchInput('filter-folio-details')" style="display: none;">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="orders-table-container">
+                            <table class="orders-table" id="folio-details-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortFolioDetailsTable(0)">N° Orden <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(1)">Fecha Validación <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(2)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(3)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(4)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(5)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(6)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(7)">Calidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(8)">Conductor <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFolioDetailsTable(9)">Unidad <span class="sort-indicator">⇅</span></th>
+                                        <th style="width: 80px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="folio-details-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- VALIDATED TAB CONTENT -->
                 <div id="validated-content" class="tab-content" style="display: none;">
                     <div class="header">
                         <div class="header-left">
                             <h1>✅ Despachos Validados</h1>
+                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="validated-date-filter-display" style="margin-left: 20px;">
+                                📅 <span id="validated-date-filter-text">Mostrando Todo</span>
+                            </button>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
-                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="validated-date-filter-display">
-                                    📅 <span id="validated-date-filter-text">Filtrar Fecha</span>
-                                </button>
                                 <button class="status-toggle-btn" id="toggle-pending-validated" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-validated">0</span>
                                 </button>
@@ -200,6 +271,7 @@
                                 <div class="advanced-filter-wrapper">
                                     <select id="filter-validated-criterion" class="filter-criterion-select" onchange="showFilterDropdown('validated')">
                                         <option value="">🔽 Filtrar por...</option>
+                                        <option value="destino">🏢 Destino</option>
                                         <option value="conductor">👤 Conductor</option>
                                         <option value="unidad">🚛 Unidad</option>
                                         <option value="rastreo">📍 Rastreo</option>
@@ -232,7 +304,7 @@
                                         <th onclick="sortValidatedTable(11)">Conductor <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(12)">Unidad <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(13)">Folio <span class="sort-indicator">⇅</span></th>
-                                        <th style="width: 80px;"></th>
+                                        <th style="width: 80px;">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="validated-table-body"></tbody>
@@ -246,12 +318,12 @@
                     <div class="header">
                         <div class="header-left">
                             <h1>🔍 Búsqueda de Órdenes</h1>
+                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display" style="margin-left: 20px;">
+                                📅 <span id="date-filter-text">Mostrando Todo</span>
+                            </button>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
-                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display">
-                                    📅 <span id="date-filter-text">Filtrar Fecha</span>
-                                </button>
                                 <button class="status-toggle-btn active" id="toggle-pending" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-header">0</span>
                                 </button>
@@ -284,11 +356,17 @@
                     <!-- Órdenes del Día -->
                     <div class="card" style="margin-top: 15px;">
                         <div class="section-header-inline">
-                            <h3>📋 Órdenes Pendientes</h3>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <h3>📋 Órdenes Pendientes</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="openVistaAgenda()" title="Ver agenda del día" style="display: flex; align-items: center; gap: 6px; font-size: 0.9em;">
+                                    📅 Ver Agenda
+                                </button>
+                            </div>
                             <div class="filter-controls">
                                 <div class="advanced-filter-wrapper">
                                     <select id="filter-orders-criterion" class="filter-criterion-select" onchange="showFilterDropdown('orders')">
                                         <option value="">🔽 Filtrar por...</option>
+                                        <option value="destino">🏢 Destino</option>
                                         <option value="rastreo">📍 Rastreo</option>
                                         <option value="estatus">📊 Estatus</option>
                                     </select>
@@ -321,6 +399,86 @@
                             </table>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISTA AGENDA -->
+    <div id="vista-agenda-content" class="tab-content" style="display: none;">
+        <div class="header">
+            <div class="header-left">
+                <h1 id="vista-agenda-title">📅 Agenda de Órdenes</h1>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-secondary" onclick="closeVistaAgenda()">
+                    ← Regresar a Órdenes Pendientes
+                </button>
+                <button class="btn-close-modern" onclick="confirmExitVistaAgenda()" title="Cerrar">×</button>
+            </div>
+        </div>
+
+        <!-- Fecha Heredada -->
+        <div style="background: linear-gradient(135deg, #fff5ed 0%, #ffedd5 100%); padding: 12px 20px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+            <span style="font-weight: 600; color: var(--text);">Mostrando Agenda:</span>
+            <span id="agenda-fecha-display" style="color: var(--primary); font-weight: 700; font-size: 1.1em;">Cargando...</span>
+        </div>
+
+        <div class="card">
+            <div class="section-header-inline">
+                <div class="header-with-badges">
+                    <h3>📋 Órdenes Agrupadas por Destino</h3>
+                    <span class="badge badge-primary" id="agenda-total-ordenes-badge">0 órdenes</span>
+                    <span class="badge badge-success" id="agenda-total-cajas-badge">0 cajas</span>
+                    <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
+                        <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir agenda">
+                            🖨️ Imprimir
+                        </button>
+                        <button class="btn btn-success btn-sm" onclick="exportAgendaToExcel()" title="Exportar a Excel">
+                            📊 Exportar
+                        </button>
+                    </div>
+                </div>
+                <div class="filter-controls">
+                    <div class="advanced-filter-wrapper">
+                        <select id="filter-agenda-criterion" class="filter-criterion-select" onchange="showFilterDropdown('agenda')">
+                            <option value="">🔽 Filtrar por...</option>
+                            <option value="destino">🏢 Destino</option>
+                            <option value="estatus">📊 Estatus</option>
+                        </select>
+                        <div id="active-filters-agenda" class="active-filters-container"></div>
+                        <div id="filter-agenda-dropdown" class="filter-dropdown" style="display: none;"></div>
+                    </div>
+                    <div class="search-input-wrapper">
+                        <input type="text" id="filter-agenda" class="filter-input" placeholder="🔍 Buscar..." oninput="filterAgendaTable()">
+                        <button class="clear-search-btn" id="clear-filter-agenda" onclick="clearSearchInput('filter-agenda')" style="display: none;">✕</button>
+                    </div>
+                </div>
+            </div>
+            <div id="agenda-table-container" class="agenda-table-wrapper">
+                <!-- Contenido dinámico generado por JavaScript -->
+            </div>
+        </div>
+
+        <!-- Resumen General -->
+        <div class="card" style="margin-top: 15px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--primary); font-size: 1.1em; font-weight: 700;">📊 RESUMEN GENERAL</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                <div class="summary-item">
+                    <span style="font-size: 0.85em; color: #64748b;">Total de Órdenes:</span>
+                    <span id="agenda-total-ordenes" style="font-size: 1.3em; font-weight: 700; color: var(--primary);">0</span>
+                </div>
+                <div class="summary-item">
+                    <span style="font-size: 0.85em; color: #64748b;">Total de Cajas:</span>
+                    <span id="agenda-total-cajas" style="font-size: 1.3em; font-weight: 700; color: var(--success);">0</span>
+                </div>
+                <div class="summary-item">
+                    <span style="font-size: 0.85em; color: #64748b;">Promedio Surtido:</span>
+                    <span id="agenda-promedio-surtido" style="font-size: 1.3em; font-weight: 700; color: var(--warning);">0%</span>
+                </div>
+                <div class="summary-item">
+                    <span style="font-size: 0.85em; color: #64748b;">Órdenes Validadas:</span>
+                    <span id="agenda-ordenes-validadas" style="font-size: 1.3em; font-weight: 700; color: #22c55e;">0</span>
                 </div>
             </div>
         </div>
@@ -423,14 +581,14 @@
                 <div class="input-group">
                     <label>Fecha Inicio:</label>
                     <div class="date-input-wrapper" onclick="document.getElementById('folios-date-start').showPicker()">
-                        <input type="date" id="folios-date-start" class="date-input-hidden" onchange="updateDateDisplay(this)">
+                        <input type="date" id="folios-date-start" class="date-input-hidden" max="" onchange="updateDateDisplay(this)">
                         <span class="date-display-inline" id="folios-date-start-display">Seleccionar fecha...</span>
                     </div>
                 </div>
                 <div class="input-group" style="margin-top: 15px;">
                     <label>Fecha Fin:</label>
                     <div class="date-input-wrapper" onclick="document.getElementById('folios-date-end').showPicker()">
-                        <input type="date" id="folios-date-end" class="date-input-hidden" onchange="updateDateDisplay(this)">
+                        <input type="date" id="folios-date-end" class="date-input-hidden" max="" onchange="updateDateDisplay(this)">
                         <span class="date-display-inline" id="folios-date-end-display">Seleccionar fecha...</span>
                     </div>
                 </div>
