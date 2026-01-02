@@ -400,85 +400,85 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- VISTA AGENDA -->
-    <div id="vista-agenda-content" class="tab-content" style="display: none;">
-        <div class="header">
-            <div class="header-left">
-                <h1 id="vista-agenda-title">📅 Agenda de Órdenes</h1>
-            </div>
-            <div class="header-right">
-                <button class="btn btn-secondary" onclick="closeVistaAgenda()">
-                    ← Regresar a Órdenes Pendientes
-                </button>
-                <button class="btn-close-modern" onclick="confirmExitVistaAgenda()" title="Cerrar">×</button>
-            </div>
-        </div>
-
-        <!-- Fecha Heredada -->
-        <div style="background: linear-gradient(135deg, #fff5ed 0%, #ffedd5 100%); padding: 12px 20px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
-            <span style="font-weight: 600; color: var(--text);">Mostrando Agenda:</span>
-            <span id="agenda-fecha-display" style="color: var(--primary); font-weight: 700; font-size: 1.1em;">Cargando...</span>
-        </div>
-
-        <div class="card">
-            <div class="section-header-inline">
-                <div class="header-with-badges">
-                    <h3>📋 Órdenes Agrupadas por Destino</h3>
-                    <span class="badge badge-primary" id="agenda-total-ordenes-badge">0 órdenes</span>
-                    <span class="badge badge-success" id="agenda-total-cajas-badge">0 cajas</span>
-                    <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
-                        <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir agenda">
-                            🖨️ Imprimir
-                        </button>
-                        <button class="btn btn-success btn-sm" onclick="exportAgendaToExcel()" title="Exportar a Excel">
-                            📊 Exportar
-                        </button>
+                <!-- VISTA AGENDA -->
+                <div id="vista-agenda-content" class="tab-content" style="display: none;">
+                    <div class="header">
+                        <div class="header-left">
+                            <h1 id="vista-agenda-title">📅 Agenda de Órdenes</h1>
+                        </div>
+                        <div class="header-right">
+                            <button class="btn btn-secondary" onclick="closeVistaAgenda()">
+                                ← Regresar a Órdenes Pendientes
+                            </button>
+                            <button class="btn-close-modern" onclick="confirmExitVistaAgenda()" title="Cerrar">×</button>
+                        </div>
                     </div>
-                </div>
-                <div class="filter-controls">
-                    <div class="advanced-filter-wrapper">
-                        <select id="filter-agenda-criterion" class="filter-criterion-select" onchange="showFilterDropdown('agenda')">
-                            <option value="">🔽 Filtrar por...</option>
-                            <option value="destino">🏢 Destino</option>
-                            <option value="estatus">📊 Estatus</option>
-                        </select>
-                        <div id="active-filters-agenda" class="active-filters-container"></div>
-                        <div id="filter-agenda-dropdown" class="filter-dropdown" style="display: none;"></div>
-                    </div>
-                    <div class="search-input-wrapper">
-                        <input type="text" id="filter-agenda" class="filter-input" placeholder="🔍 Buscar..." oninput="filterAgendaTable()">
-                        <button class="clear-search-btn" id="clear-filter-agenda" onclick="clearSearchInput('filter-agenda')" style="display: none;">✕</button>
-                    </div>
-                </div>
-            </div>
-            <div id="agenda-table-container" class="agenda-table-wrapper">
-                <!-- Contenido dinámico generado por JavaScript -->
-            </div>
-        </div>
 
-        <!-- Resumen General -->
-        <div class="card" style="margin-top: 15px;">
-            <h3 style="margin: 0 0 16px 0; color: var(--primary); font-size: 1.1em; font-weight: 700;">📊 RESUMEN GENERAL</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                <div class="summary-item">
-                    <span style="font-size: 0.85em; color: #64748b;">Total de Órdenes:</span>
-                    <span id="agenda-total-ordenes" style="font-size: 1.3em; font-weight: 700; color: var(--primary);">0</span>
-                </div>
-                <div class="summary-item">
-                    <span style="font-size: 0.85em; color: #64748b;">Total de Cajas:</span>
-                    <span id="agenda-total-cajas" style="font-size: 1.3em; font-weight: 700; color: var(--success);">0</span>
-                </div>
-                <div class="summary-item">
-                    <span style="font-size: 0.85em; color: #64748b;">Promedio Surtido:</span>
-                    <span id="agenda-promedio-surtido" style="font-size: 1.3em; font-weight: 700; color: var(--warning);">0%</span>
-                </div>
-                <div class="summary-item">
-                    <span style="font-size: 0.85em; color: #64748b;">Órdenes Validadas:</span>
-                    <span id="agenda-ordenes-validadas" style="font-size: 1.3em; font-weight: 700; color: #22c55e;">0</span>
+                    <!-- Fecha Heredada -->
+                    <div style="background: linear-gradient(135deg, #fff5ed 0%, #ffedd5 100%); padding: 12px 20px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 600; color: var(--text);">Mostrando Agenda:</span>
+                        <span id="agenda-fecha-display" style="color: var(--primary); font-weight: 700; font-size: 1.1em;">Cargando...</span>
+                    </div>
+
+                    <div class="card">
+                        <div class="section-header-inline">
+                            <div class="header-with-badges">
+                                <h3>📋 Órdenes Agrupadas por Destino</h3>
+                                <span class="badge badge-primary" id="agenda-total-ordenes-badge">0 órdenes</span>
+                                <span class="badge badge-success" id="agenda-total-cajas-badge">0 cajas</span>
+                                <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
+                                    <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir agenda">
+                                        🖨️ Imprimir
+                                    </button>
+                                    <button class="btn btn-success btn-sm" onclick="exportAgendaToExcel()" title="Exportar a Excel">
+                                        📊 Exportar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="filter-controls">
+                                <div class="advanced-filter-wrapper">
+                                    <select id="filter-agenda-criterion" class="filter-criterion-select" onchange="showFilterDropdown('agenda')">
+                                        <option value="">🔽 Filtrar por...</option>
+                                        <option value="destino">🏢 Destino</option>
+                                        <option value="estatus">📊 Estatus</option>
+                                    </select>
+                                    <div id="active-filters-agenda" class="active-filters-container"></div>
+                                    <div id="filter-agenda-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                </div>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-agenda" class="filter-input" placeholder="🔍 Buscar..." oninput="filterAgendaTable()">
+                                    <button class="clear-search-btn" id="clear-filter-agenda" onclick="clearSearchInput('filter-agenda')" style="display: none;">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="agenda-table-container" class="agenda-table-wrapper">
+                            <!-- Contenido dinámico generado por JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Resumen General -->
+                    <div class="card" style="margin-top: 15px;">
+                        <h3 style="margin: 0 0 16px 0; color: var(--primary); font-size: 1.1em; font-weight: 700;">📊 RESUMEN GENERAL</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                            <div class="summary-item">
+                                <span style="font-size: 0.85em; color: #64748b;">Total de Órdenes:</span>
+                                <span id="agenda-total-ordenes" style="font-size: 1.3em; font-weight: 700; color: var(--primary);">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span style="font-size: 0.85em; color: #64748b;">Total de Cajas:</span>
+                                <span id="agenda-total-cajas" style="font-size: 1.3em; font-weight: 700; color: var(--success);">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span style="font-size: 0.85em; color: #64748b;">Promedio Surtido:</span>
+                                <span id="agenda-promedio-surtido" style="font-size: 1.3em; font-weight: 700; color: var(--warning);">0%</span>
+                            </div>
+                            <div class="summary-item">
+                                <span style="font-size: 0.85em; color: #64748b;">Órdenes Validadas:</span>
+                                <span id="agenda-ordenes-validadas" style="font-size: 1.3em; font-weight: 700; color: #22c55e;">0</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

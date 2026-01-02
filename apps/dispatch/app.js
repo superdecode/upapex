@@ -5810,6 +5810,8 @@ function groupOrdersByDestino(ordersData) {
             horario: data.expectedArrival || 'N/A',
             fechaHorario: data.expectedArrival || 'Z', // For sorting
             numeroOrden: orden,
+            codigo: data.referenceNo || 'N/A',
+            track: data.trackingCode || 'N/A',
             cajas: totalCajas,
             porcentajeSurtido: porcentajeSurtido,
             estatus: estatusTexto,
@@ -5906,6 +5908,8 @@ function renderVistaAgenda() {
                         <tr>
                             <th style="width: 120px;">Fecha Horario</th>
                             <th style="width: 150px;">Número de Orden</th>
+                            <th style="width: 120px;">Código</th>
+                            <th style="width: 120px;">Track</th>
                             <th style="width: 100px; text-align: center;">Cantidad de Cajas</th>
                             <th style="width: 120px; text-align: center;">% Surtido</th>
                             <th style="width: 150px;">Estatus Actual</th>
@@ -5925,6 +5929,8 @@ function renderVistaAgenda() {
                 <tr class="${rowClass}">
                     <td>${orden.horario}</td>
                     <td><span class="order-code">${orden.numeroOrden}</span></td>
+                    <td>${orden.codigo}</td>
+                    <td>${orden.track}</td>
                     <td style="text-align: center;"><strong>${orden.cajas}</strong></td>
                     <td style="text-align: center;">
                         <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -5956,7 +5962,7 @@ function renderVistaAgenda() {
                     </tbody>
                     <tfoot>
                         <tr class="agenda-subtotal-row">
-                            <td colspan="6" style="background: #f1f5f9; padding: 12px; font-weight: 700; color: var(--primary);">
+                            <td colspan="8" style="background: #f1f5f9; padding: 12px; font-weight: 700; color: var(--primary);">
                                 📊 SUBTOTAL ${grupo.destino}:
                                 <span style="margin-left: 16px;">
                                     ${grupo.subtotales.totalOrdenes} orden${grupo.subtotales.totalOrdenes !== 1 ? 'es' : ''}
@@ -6030,6 +6036,8 @@ function exportAgendaToExcel() {
             'Destino': `DESTINO: ${grupo.destino}`,
             'Horario': '',
             'Número de Orden': '',
+            'Código': '',
+            'Track': '',
             'Cantidad de Cajas': '',
             '% Surtido': '',
             'Estatus': ''
@@ -6041,6 +6049,8 @@ function exportAgendaToExcel() {
                 'Destino': '',
                 'Horario': orden.horario,
                 'Número de Orden': orden.numeroOrden,
+                'Código': orden.codigo,
+                'Track': orden.track,
                 'Cantidad de Cajas': orden.cajas,
                 '% Surtido': `${orden.porcentajeSurtido}%`,
                 'Estatus': orden.estatus
@@ -6052,6 +6062,8 @@ function exportAgendaToExcel() {
             'Destino': `SUBTOTAL ${grupo.destino}`,
             'Horario': `${grupo.subtotales.totalOrdenes} órdenes`,
             'Número de Orden': `${grupo.subtotales.totalCajas} cajas`,
+            'Código': '',
+            'Track': '',
             'Cantidad de Cajas': '',
             '% Surtido': `Promedio: ${grupo.subtotales.promedioSurtido}%`,
             'Estatus': ''
@@ -6066,13 +6078,15 @@ function exportAgendaToExcel() {
         'Destino': 'RESUMEN GENERAL',
         'Horario': `Total Órdenes: ${totales.ordenes}`,
         'Número de Orden': `Total Cajas: ${totales.cajas}`,
+        'Código': '',
+        'Track': '',
         'Cantidad de Cajas': `Promedio Surtido: ${totales.promedioSurtido}%`,
         '% Surtido': `Órdenes Validadas: ${totales.validadas}`,
         'Estatus': ''
     });
 
     // Convert to CSV
-    const headers = ['Destino', 'Horario', 'Número de Orden', 'Cantidad de Cajas', '% Surtido', 'Estatus'];
+    const headers = ['Destino', 'Horario', 'Número de Orden', 'Código', 'Track', 'Cantidad de Cajas', '% Surtido', 'Estatus'];
     const csvContent = [
         headers.join(','),
         ...exportData.map(row => headers.map(header => {
@@ -6148,6 +6162,8 @@ function printAgenda() {
                         <tr>
                             <th>Horario</th>
                             <th>Número de Orden</th>
+                            <th>Código</th>
+                            <th>Track</th>
                             <th style="text-align: center;">Cajas</th>
                             <th style="text-align: center;">% Surtido</th>
                             <th>Estatus</th>
@@ -6162,6 +6178,8 @@ function printAgenda() {
                 <tr class="${rowClass}">
                     <td>${orden.horario}</td>
                     <td>${orden.numeroOrden}</td>
+                    <td>${orden.codigo}</td>
+                    <td>${orden.track}</td>
                     <td style="text-align: center;">${orden.cajas}</td>
                     <td style="text-align: center;">${orden.porcentajeSurtido}%</td>
                     <td>${orden.estatus}</td>
@@ -6173,7 +6191,7 @@ function printAgenda() {
                     </tbody>
                     <tfoot>
                         <tr class="subtotal">
-                            <td colspan="5">
+                            <td colspan="7">
                                 📊 SUBTOTAL: ${grupo.subtotales.totalOrdenes} orden${grupo.subtotales.totalOrdenes !== 1 ? 'es' : ''} |
                                 ${grupo.subtotales.totalCajas} caja${grupo.subtotales.totalCajas !== 1 ? 's' : ''} |
                                 Promedio: ${grupo.subtotales.promedioSurtido}%
