@@ -408,17 +408,21 @@ function setupTableClickDelegation() {
         }
 
         // Handle btn-action clicks explicitly
+        // BUT only for orders tables (tr with data-orden), NOT for folios table
         const btnAction = target.closest('.btn-action');
         if (btnAction) {
-            e.preventDefault();
-            e.stopPropagation();
             const row = btnAction.closest('tr[data-orden]');
             if (row) {
+                // This is an order row - handle manually
+                e.preventDefault();
+                e.stopPropagation();
                 const orden = row.getAttribute('data-orden');
                 if (orden) {
                     showOrderInfo(orden);
                 }
+                return;
             }
+            // If no data-orden (e.g., folios table), let the button's onclick handler work
             return;
         }
 
@@ -1535,6 +1539,7 @@ function getUniqueFilterValues(view, criterion) {
         });
     } else if (view === 'validated') {
         // Get data from validated orders - from actual table
+        // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-%Surtido, 6-Rastreo, 7-TRS, 8-CantDesp, 9-Estatus, 10-Calidad, 11-Conductor, 12-Unidad, 13-Folio
         const tableBody = document.getElementById('validated-table-body');
         if (!tableBody) return [];
 
@@ -1543,18 +1548,17 @@ function getUniqueFilterValues(view, criterion) {
             let value = '';
             switch(criterion) {
                 case 'conductor':
-                    value = row.cells[12]?.textContent.trim() || 'N/A';
+                    value = row.cells[11]?.textContent.trim() || 'N/A';
                     break;
                 case 'unidad':
-                    // Unidad not directly in validated table
-                    value = 'N/A';
+                    value = row.cells[12]?.textContent.trim() || 'N/A';
                     break;
                 case 'rastreo':
-                    const rastreoText = row.cells[7]?.textContent.trim() || '';
+                    const rastreoText = row.cells[6]?.textContent.trim() || '';
                     value = rastreoText.includes('SI') ? 'SI' : 'NO';
                     break;
                 case 'estatus':
-                    const estatusText = row.cells[10]?.textContent.trim() || 'N/A';
+                    const estatusText = row.cells[9]?.textContent.trim() || 'N/A';
                     value = estatusText;
                     break;
             }
@@ -1795,16 +1799,16 @@ function applyAdvancedFilters(view) {
                     cellValue = '';
                 }
             } else if (view === 'validated') {
-                // Map criterion to column index for validated
+                // Map criterion to column index for validated (after adding Fecha Validación column)
+                // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-%Surtido, 6-Rastreo, 7-TRS, 8-CantDesp, 9-Estatus, 10-Calidad, 11-Conductor, 12-Unidad, 13-Folio
                 if (criterion === 'rastreo') {
-                    cellValue = cells[7]?.textContent.trim() || ''; // Rastreo column
+                    cellValue = cells[6]?.textContent.trim() || ''; // Rastreo column
                 } else if (criterion === 'estatus') {
-                    cellValue = cells[10]?.textContent.trim() || ''; // Estatus column
+                    cellValue = cells[9]?.textContent.trim() || ''; // Estatus column
                 } else if (criterion === 'conductor') {
-                    cellValue = cells[12]?.textContent.trim() || ''; // Conductor column
+                    cellValue = cells[11]?.textContent.trim() || ''; // Conductor column
                 } else if (criterion === 'unidad') {
-                    // Unidad is not directly in table for validated view
-                    cellValue = '';
+                    cellValue = cells[12]?.textContent.trim() || ''; // Unidad column
                 }
             } else if (view === 'folios') {
                 // Map criterion to column index for folios
@@ -2254,16 +2258,26 @@ function renderValidatedTable() {
                 <td>${record.operador || '<span class="empty-cell">N/A</span>'}</td>
                 <td>${record.unidad || '<span class="empty-cell">N/A</span>'}</td>
                 <td><span class="order-code">${makeCopyable(record.folio)}</span></td>
-                <td class="delete-cell">
-                    <button class="btn-delete-validated" title="Eliminar y mover a pendientes">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 6h18"></path>
-                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                            <line x1="10" y1="11" x2="10" y2="17"></line>
-                            <line x1="14" y1="11" x2="14" y2="17"></line>
-                        </svg>
-                    </button>
+                <td class="actions-cell">
+                    <div class="actions-buttons">
+                        <button class="btn-action dispatch" title="Ver detalles de orden">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 7h-9"></path>
+                                <path d="M14 17H5"></path>
+                                <circle cx="17" cy="17" r="3"></circle>
+                                <circle cx="7" cy="7" r="3"></circle>
+                            </svg>
+                        </button>
+                        <button class="btn-delete-validated" title="Eliminar y mover a pendientes">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -2707,7 +2721,24 @@ function confirmDateException() {
 
 // ==================== ORDER INFO MODAL ====================
 function showOrderInfo(orden) {
-    const orderData = STATE.obcData.get(orden);
+    let orderData = STATE.obcData.get(orden);
+
+    // If not found in obcData, try to get from validated records
+    if (!orderData) {
+        const validatedRecord = STATE.localValidated.find(v => v.orden === orden);
+        if (validatedRecord) {
+            // Create a minimal orderData from validated record
+            orderData = {
+                orden: validatedRecord.orden,
+                recipient: validatedRecord.destino,
+                expectedArrival: validatedRecord.horario,
+                totalCajas: validatedRecord.totalCajas || 0,
+                referenceNo: validatedRecord.referenceNo || '',
+                trackingCode: validatedRecord.trackingCode || ''
+            };
+        }
+    }
+
     if (!orderData) {
         showNotification('❌ Orden no encontrada', 'error');
         return;
@@ -2806,7 +2837,10 @@ function showOrderInfo(orden) {
 // CHANGE 9: Lock mode for validated orders
 function initializeLockMode(isValidated) {
     const modal = document.getElementById('info-modal');
-    const modalFooter = document.querySelector('.modal-footer');
+    if (!modal) return;
+
+    // Get the modal footer INSIDE the info-modal specifically
+    const modalFooter = modal.querySelector('.modal-footer');
     const unlockBtn = document.getElementById('unlock-btn');
 
     if (isValidated) {
@@ -2821,11 +2855,12 @@ function initializeLockMode(isValidated) {
             unlockButton.innerHTML = '🔓 Desbloquear para Editar';
             unlockButton.onclick = toggleLockMode;
 
-            // Insert before the confirm button
+            // Insert before the confirm button (which is inside modal-buttons div)
             const confirmBtn = document.getElementById('confirm-dispatch-btn');
-            if (confirmBtn) {
-                modalFooter.insertBefore(unlockButton, confirmBtn);
+            if (confirmBtn && confirmBtn.parentNode) {
+                confirmBtn.parentNode.insertBefore(unlockButton, confirmBtn);
             } else {
+                // Fallback: append to modal footer
                 modalFooter.appendChild(unlockButton);
             }
         }
@@ -3068,7 +3103,7 @@ function renderModalBody(orden, orderData) {
             <div class="section-card" id="section-validaciones">
                 <div class="section-header" onclick="toggleSection('section-validaciones-content')">
                     <div class="section-header-left">
-                        <div class="section-title">✅ Validación de Surtido (${validaciones.length})</div>
+                        <div class="section-title">✅ Surtido (${validaciones.length})</div>
                     </div>
                     <span class="section-toggle collapsed" id="section-validaciones-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">

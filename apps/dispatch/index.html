@@ -223,7 +223,7 @@
                                         <th onclick="sortValidatedTable(2)">Destino <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(3)">Horario <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(4)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(5)">% Validación <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(5)">% Surtido <span class="sort-indicator">⇅</span></th>
                                         <th>Rastreo</th>
                                         <th onclick="sortValidatedTable(7)">TRS <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(8)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
@@ -232,7 +232,7 @@
                                         <th onclick="sortValidatedTable(11)">Conductor <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(12)">Unidad <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortValidatedTable(13)">Folio <span class="sort-indicator">⇅</span></th>
-                                        <th style="width: 50px;"></th>
+                                        <th style="width: 80px;"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="validated-table-body"></tbody>
@@ -289,8 +289,6 @@
                                 <div class="advanced-filter-wrapper">
                                     <select id="filter-orders-criterion" class="filter-criterion-select" onchange="showFilterDropdown('orders')">
                                         <option value="">🔽 Filtrar por...</option>
-                                        <option value="conductor">👤 Conductor</option>
-                                        <option value="unidad">🚛 Unidad</option>
                                         <option value="rastreo">📍 Rastreo</option>
                                         <option value="estatus">📊 Estatus</option>
                                     </select>
@@ -313,7 +311,7 @@
                                         <th onclick="sortTable(3)">Código <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortTable(4)">Track <span class="sort-indicator">⇅</span></th>
                                         <th onclick="sortTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(6)">% Validación <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(6)">% Surtido <span class="sort-indicator">⇅</span></th>
                                         <th>Rastreo</th>
                                         <th onclick="sortTable(8)">Estatus <span class="sort-indicator">⇅</span></th>
                                         <th>Acción</th>

@@ -748,14 +748,20 @@
     font-weight: 600;
 }
 
-/* Delete button in validated rows */
-.validated-row .delete-cell {
+/* Actions buttons in validated rows */
+.validated-row .actions-cell {
     opacity: 0;
     transition: opacity 0.2s ease;
 }
 
-.validated-row:hover .delete-cell {
+.validated-row:hover .actions-cell {
     opacity: 1;
+}
+
+.actions-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .btn-delete-validated {
@@ -1347,13 +1353,16 @@
 }
 
 .date-filter-btn.active-filter {
-    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-    color: white;
-    border-color: #ea580c;
+    background: rgba(249, 115, 22, 0.12);
+    color: #ea580c;
+    border: 1px solid rgba(249, 115, 22, 0.25);
+    border-radius: 16px;
+    font-weight: 600;
 }
 
 .date-filter-btn.active-filter:hover {
-    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+    background: rgba(249, 115, 22, 0.18);
+    border-color: rgba(249, 115, 22, 0.35);
 }
 
 .toggle-badge {
@@ -2172,28 +2181,38 @@ textarea:focus {
 /* ==================== ADVANCED FILTER SYSTEM (CHANGE 5) ==================== */
 .advanced-filter-wrapper {
     position: relative;
-    margin-right: 10px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    min-width: 180px;
+    max-width: 400px;
 }
 
 .filter-criterion-select {
-    padding: 8px 12px;
+    padding: 6px 10px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
-    font-size: 0.9em;
+    font-size: 0.85em;
     background-color: white;
     cursor: pointer;
-    min-width: 160px;
+    min-width: 140px;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .filter-criterion-select:hover {
-    border-color: #3b82f6;
+    border-color: #f97316;
 }
 
 .filter-criterion-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
 }
 
 .clear-filter-criterion-btn {
@@ -2222,13 +2241,14 @@ textarea:focus {
     transform: translateY(-50%) scale(1.1);
 }
 
-/* Active filters chips container - inline with select */
+/* Active filters chips container - inside filter wrapper with flex-wrap */
 .active-filters-container {
-    display: inline-flex;
+    display: flex;
     flex-wrap: wrap;
     gap: 4px;
     align-items: center;
-    margin-left: 8px;
+    flex: 1;
+    min-width: 0;
 }
 
 .filter-chip {
@@ -2366,6 +2386,13 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Ensure search input stays on same row as filter */
+.filter-controls .search-input-wrapper {
+    flex: 0 0 180px;
+    min-width: 150px;
 }
 
 .btn-sm {
