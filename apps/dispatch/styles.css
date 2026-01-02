@@ -1501,6 +1501,49 @@
 }
 
 /* ==================== VISTA AGENDA STYLES ==================== */
+#vista-agenda-content {
+    height: calc(100vh - 120px); /* Ajustar según el header y otros elementos fijos */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 15px;
+    position: relative;
+}
+
+/* Estilos de scrollbar para navegadores WebKit (Chrome, Safari, Edge) */
+#vista-agenda-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+#vista-agenda-content::-webkit-scrollbar-track {
+    background: rgba(241, 245, 249, 0.5);
+    border-radius: 4px;
+}
+
+#vista-agenda-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+#vista-agenda-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+/* Estilos para Firefox */
+#vista-agenda-content {
+    scrollbar-width: thin;
+    scrollbar-color: #f97316 #f1f5f9;
+}
+
+/* Asegurar que el contenedor de la tabla de agenda sea responsivo */
+.agenda-table-wrapper {
+    width: 100%;
+    min-height: 200px;
+    overflow-x: auto;
+}
+
 .agenda-table-wrapper {
     min-height: 200px;
 }
