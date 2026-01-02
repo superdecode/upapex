@@ -391,57 +391,87 @@ function setupEventListeners() {
 
 /**
  * Setup delegated click handlers for table rows
- * This ensures clicks work even after filtering/searching
+ * Uses document-level delegation to ensure it always works
  */
 function setupTableClickDelegation() {
-    // Orders table (pendientes)
-    const ordersTableBody = document.getElementById('orders-table-body');
-    if (ordersTableBody) {
-        ordersTableBody.addEventListener('click', (e) => {
-            const row = e.target.closest('tr[data-orden]');
-            if (!row) return;
+    // Document-level listener with capture phase to ensure we catch all clicks
+    document.addEventListener('click', (e) => {
+        // Get the actual target element
+        const target = e.target;
 
-            // Check if click was on a button or copy icon
-            if (e.target.closest('.btn-action') || e.target.closest('.copy-icon')) {
-                return; // Let the inline handler handle it
+        // Skip if click was on specific interactive elements that handle their own clicks
+        if (target.closest('.copy-icon') ||
+            target.closest('.filter-chip-remove') ||
+            target.closest('.modal-close') ||
+            target.closest('.modal-overlay > .modal-content button')) {
+            return;
+        }
+
+        // Handle btn-action clicks explicitly
+        const btnAction = target.closest('.btn-action');
+        if (btnAction) {
+            e.preventDefault();
+            e.stopPropagation();
+            const row = btnAction.closest('tr[data-orden]');
+            if (row) {
+                const orden = row.getAttribute('data-orden');
+                if (orden) {
+                    showOrderInfo(orden);
+                }
+            }
+            return;
+        }
+
+        // Handle delete button clicks
+        const deleteBtn = target.closest('.btn-delete-validated');
+        if (deleteBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const row = deleteBtn.closest('tr[data-orden]');
+            if (row) {
+                const orden = row.getAttribute('data-orden');
+                if (orden) {
+                    confirmDeleteValidated(orden);
+                }
+            }
+            return;
+        }
+
+        // Check for order row click - this handles clicks anywhere on the row
+        const row = target.closest('tr[data-orden]');
+        if (row) {
+            const orden = row.getAttribute('data-orden');
+            if (!orden) return;
+
+            // Determine which table this row belongs to
+            const tableBody = row.closest('tbody');
+            if (!tableBody) return;
+
+            // Only process if click was not on a button or interactive element
+            if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('select')) {
+                return;
             }
 
-            const orden = row.getAttribute('data-orden');
-            if (orden) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (tableBody.id === 'orders-table-body') {
                 showOrderInfo(orden);
-            }
-        });
-    }
-
-    // Validated table
-    const validatedTableBody = document.getElementById('validated-table-body');
-    if (validatedTableBody) {
-        validatedTableBody.addEventListener('click', (e) => {
-            const row = e.target.closest('tr[data-orden]');
-            if (!row) return;
-
-            // Check if click was on delete button or copy icon
-            if (e.target.closest('.btn-delete-validated') || e.target.closest('.copy-icon') || e.target.closest('.delete-cell')) {
-                return; // Let the inline handler handle it
-            }
-
-            const orden = row.getAttribute('data-orden');
-            if (orden) {
+            } else if (tableBody.id === 'validated-table-body') {
                 showValidatedDetails(orden);
             }
-        });
-    }
+            return;
+        }
 
-    // Search results panel - matches
-    document.addEventListener('click', (e) => {
-        const matchItem = e.target.closest('.match-item');
+        // Check for match item click
+        const matchItem = target.closest('.match-item');
         if (matchItem) {
-            const orden = matchItem.getAttribute('data-orden') || matchItem.querySelector('.match-header')?.textContent?.match(/\d+/)?.[0];
-            if (orden) {
-                selectMatch(orden);
+            const ordenMatch = matchItem.querySelector('.match-header')?.textContent?.match(/\d+/)?.[0];
+            if (ordenMatch) {
+                selectMatch(ordenMatch);
             }
         }
-    });
+    }, true); // Use capture phase
 }
 
 /**
@@ -478,9 +508,11 @@ function updateDateDisplay(input) {
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const year = date.getFullYear();
-        displaySpan.textContent = `📅 ${day}-${month}-${year}`;
+        displaySpan.textContent = `${day}-${month}-${year}`;
+        displaySpan.classList.add('has-value');
     } else {
-        displaySpan.textContent = '';
+        displaySpan.textContent = 'Seleccionar fecha...';
+        displaySpan.classList.remove('has-value');
     }
 }
 
@@ -1315,6 +1347,22 @@ function formatDateDDMMYYYY(date) {
     return `${day}-${month}-${year}`;
 }
 
+// Format timestamp to display in Fecha Validación column
+function formatValidationDateTime(timestamp) {
+    if (!timestamp) return '';
+
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return '';
+
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    return `${day}-${month}-${year} ${hours}:${minutes}`;
+}
+
 function renderOrdersTable() {
     const tableBody = document.getElementById('orders-table-body');
     if (!tableBody) return;
@@ -1368,7 +1416,7 @@ function renderOrdersTable() {
             : '<span class="empty-cell">N/A</span>';
 
         return `
-            <tr onclick="showOrderInfo('${orden}')" data-orden="${orden}">
+            <tr data-orden="${orden}">
                 <td><span class="order-code">${makeCopyable(orden)}</span></td>
                 <td class="td-wrap">${data.recipient || '<span class="empty-cell">Sin destino</span>'}</td>
                 <td>${data.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
@@ -1384,8 +1432,8 @@ function renderOrdersTable() {
                 <td>
                     <span class="status-badge ${statusClass}">${statusText}</span>
                 </td>
-                <td onclick="event.stopPropagation(); showOrderInfo('${orden}')">
-                    <button class="btn-action dispatch">
+                <td>
+                    <button class="btn-action dispatch" title="Ver detalles de orden">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M20 7h-9"></path>
                             <path d="M14 17H5"></path>
@@ -2073,10 +2121,51 @@ function renderValidatedTable() {
     if (STATE.localValidated.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="16" class="table-empty-state">
+                <td colspan="15" class="table-empty-state">
                     <div class="table-empty-icon">📋</div>
                     <div class="table-empty-text">No hay despachos validados</div>
                     <div class="table-empty-subtext">Los despachos confirmados aparecerán aquí</div>
+                </td>
+            </tr>
+        `;
+        updateValidatedBadges();
+        updateValidatedFilterIndicator();
+        return;
+    }
+
+    // Filter validated orders by date range if active
+    let filteredValidated = [...STATE.localValidated];
+
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+        const startDate = new Date(STATE.dateFilter.startDate);
+        const endDate = new Date(STATE.dateFilter.endDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        filteredValidated = filteredValidated.filter(record => {
+            // Get the order data to check expectedArrival (delivery date)
+            const orderData = STATE.obcData.get(record.orden) || {};
+            const dateStr = record.horario || orderData.expectedArrival;
+
+            if (!dateStr) return false;
+
+            const orderDate = parseOrderDate(dateStr);
+            return orderDate && orderDate >= startDate && orderDate <= endDate;
+        });
+    }
+
+    // Update filter indicator
+    updateValidatedFilterIndicator();
+
+    // If filter is active but no results
+    if (filteredValidated.length === 0 && STATE.dateFilter.active) {
+        const start = formatDateDDMMYYYY(new Date(STATE.dateFilter.startDate));
+        const end = formatDateDDMMYYYY(new Date(STATE.dateFilter.endDate));
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="15" class="table-empty-state">
+                    <div class="table-empty-icon">🔍</div>
+                    <div class="table-empty-text">Sin resultados para el filtro</div>
+                    <div class="table-empty-subtext">No hay despachos validados para ${start} → ${end}</div>
                 </td>
             </tr>
         `;
@@ -2085,7 +2174,7 @@ function renderValidatedTable() {
     }
 
     // Sort by timestamp descending (most recent first)
-    const sortedValidated = [...STATE.localValidated].sort((a, b) => {
+    const sortedValidated = filteredValidated.sort((a, b) => {
         return new Date(b.timestamp) - new Date(a.timestamp);
     });
 
@@ -2140,13 +2229,15 @@ function renderValidatedTable() {
             }
         }
 
+        // Format validation date/time
+        const fechaValidacion = record.timestamp ? formatValidationDateTime(record.timestamp) : `${record.fecha || ''} ${record.hora || ''}`;
+
         return `
-            <tr onclick="showValidatedDetails('${record.orden}')" data-orden="${record.orden}" class="validated-row">
+            <tr data-orden="${record.orden}" class="validated-row">
                 <td><span class="order-code">${makeCopyable(record.orden)}</span></td>
+                <td class="fecha-validacion">${fechaValidacion}</td>
                 <td class="td-wrap">${record.destino || orderData.recipient || '<span class="empty-cell">N/A</span>'}</td>
                 <td>${record.horario || orderData.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
-                <td>${makeCopyable(record.codigo2 || orderData.referenceNo || 'N/A')}</td>
-                <td>${makeCopyable(record.codigo || orderData.trackingCode || 'N/A')}</td>
                 <td style="text-align: center;">${totalCajas || '<span class="empty-cell">0</span>'}</td>
                 <td>
                     ${validationDisplay}
@@ -2154,7 +2245,7 @@ function renderValidatedTable() {
                 <td style="text-align: center;">
                     ${tieneRastreo ? '<span class="rastreo-badge si">SI</span>' : '<span class="rastreo-badge no">NO</span>'}
                 </td>
-                <td style="text-align: center;">${trsCount > 0 ? `<span class="order-code">${trsCount} TRS</span>` : '<span class="empty-cell">N/A</span>'}</td>
+                <td style="text-align: center;">${trsCount > 0 ? `<span class="order-code">${trsCount}</span>` : '<span class="empty-cell">-</span>'}</td>
                 <td style="text-align: center;"><strong>${record.cantidadDespachar || 0}</strong></td>
                 <td>
                     <span class="status-badge" style="background-color: ${statusColor}; color: white;">${statusBadge}</span>
@@ -2163,7 +2254,7 @@ function renderValidatedTable() {
                 <td>${record.operador || '<span class="empty-cell">N/A</span>'}</td>
                 <td>${record.unidad || '<span class="empty-cell">N/A</span>'}</td>
                 <td><span class="order-code">${makeCopyable(record.folio)}</span></td>
-                <td class="delete-cell" onclick="event.stopPropagation(); confirmDeleteValidated('${record.orden}')">
+                <td class="delete-cell">
                     <button class="btn-delete-validated" title="Eliminar y mover a pendientes">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 6h18"></path>
@@ -2194,8 +2285,8 @@ function updateValidatedBadges() {
     let totalBoxes = 0;
 
     visibleRows.forEach(row => {
-        // Get cantidad from column 9 (Cant. Despachar)
-        const cantidadText = row.cells[9]?.textContent.trim() || '0';
+        // Get cantidad from column 8 (Cant. Despachar) - after removing Código and Track columns
+        const cantidadText = row.cells[8]?.textContent.trim() || '0';
         totalBoxes += parseInt(cantidadText) || 0;
     });
 
@@ -2207,6 +2298,28 @@ function updateValidatedBadges() {
     }
     if (boxesCountEl) {
         boxesCountEl.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'caja' : 'cajas'}`;
+    }
+}
+
+// Update the date filter indicator in the Validated section
+function updateValidatedFilterIndicator() {
+    const filterTextEl = document.getElementById('validated-date-filter-text');
+    const filterBtn = document.getElementById('validated-date-filter-display');
+
+    if (!filterTextEl) return;
+
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+        const start = formatDateDDMMYYYY(new Date(STATE.dateFilter.startDate));
+        const end = formatDateDDMMYYYY(new Date(STATE.dateFilter.endDate));
+        filterTextEl.textContent = `${start} → ${end}`;
+        if (filterBtn) {
+            filterBtn.classList.add('active-filter');
+        }
+    } else {
+        filterTextEl.textContent = 'Mostrando todo';
+        if (filterBtn) {
+            filterBtn.classList.remove('active-filter');
+        }
     }
 }
 
@@ -3784,8 +3897,9 @@ function applyDateFilter() {
         closeDateFilter();
         activateSearchPanelWithFilter();
     } else {
-        // Solo actualizar filtro
+        // Solo actualizar filtro - both Pendientes and Validadas
         renderOrdersList();
+        renderValidatedTable(); // Also update Validadas with same filter
         updateSummary();
         closeDateFilter();
     }
@@ -3793,10 +3907,14 @@ function applyDateFilter() {
     const start = formatDateDDMMYYYY(new Date(startDate));
     const end = formatDateDDMMYYYY(new Date(endDate));
 
-    // Actualizar botón de filtro
+    // Actualizar botón de filtro en Pendientes
     const dateFilterText = document.getElementById('date-filter-text');
+    const dateFilterBtn = document.getElementById('date-filter-display');
     if (dateFilterText) {
         dateFilterText.textContent = `${start} → ${end}`;
+    }
+    if (dateFilterBtn) {
+        dateFilterBtn.classList.add('active-filter');
     }
 
     showNotification(`📅 Filtro aplicado: ${start} - ${end} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
@@ -3811,16 +3929,21 @@ function clearDateFilter() {
     STATE.dateFilter.active = false;
     STATE.obcDataFiltered.clear();
 
-    // Restaurar texto del botón
+    // Restaurar texto del botón en Pendientes
     const dateFilterText = document.getElementById('date-filter-text');
+    const dateFilterBtn = document.getElementById('date-filter-display');
     if (dateFilterText) {
         dateFilterText.textContent = 'Filtrar Fecha';
+    }
+    if (dateFilterBtn) {
+        dateFilterBtn.classList.remove('active-filter');
     }
 
     // CHANGE 1: Update global navigation date indicator
     updateGlobalDateIndicator();
 
     renderOrdersList();
+    renderValidatedTable(); // Also update Validadas - shared filter
     updateSummary();
     closeDateFilter();
 

@@ -135,9 +135,9 @@
                                         <option value="conductor">👤 Conductor</option>
                                         <option value="unidad">🚛 Unidad</option>
                                     </select>
+                                    <div id="active-filters-folios" class="active-filters-container"></div>
                                     <div id="filter-folios-dropdown" class="filter-dropdown" style="display: none;"></div>
                                 </div>
-                                <div id="active-filters-folios" class="active-filters-container"></div>
                                 <div class="search-input-wrapper">
                                     <input type="text" id="filter-folios" class="filter-input" placeholder="🔍 Buscar..." oninput="filterFoliosTable()">
                                     <button class="clear-search-btn" id="clear-filter-folios" onclick="clearSearchInput('filter-folios')" style="display: none;">✕</button>
@@ -205,9 +205,9 @@
                                         <option value="rastreo">📍 Rastreo</option>
                                         <option value="estatus">📊 Estatus</option>
                                     </select>
+                                    <div id="active-filters-validated" class="active-filters-container"></div>
                                     <div id="filter-validated-dropdown" class="filter-dropdown" style="display: none;"></div>
                                 </div>
-                                <div id="active-filters-validated" class="active-filters-container"></div>
                                 <div class="search-input-wrapper">
                                     <input type="text" id="filter-validated" class="filter-input" placeholder="🔍 Buscar..." oninput="filterValidatedTable()">
                                     <button class="clear-search-btn" id="clear-filter-validated" onclick="clearSearchInput('filter-validated')" style="display: none;">✕</button>
@@ -219,20 +219,19 @@
                                 <thead>
                                     <tr>
                                         <th onclick="sortValidatedTable(0)">N° Orden <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(1)">Destino <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(2)">Horario <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(3)">Código <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(4)">Track <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(6)">% Validación <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(1)">Fecha Validación <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(2)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(3)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(4)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(5)">% Validación <span class="sort-indicator">⇅</span></th>
                                         <th>Rastreo</th>
-                                        <th onclick="sortValidatedTable(8)">Orden Trabajo (TRS) <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(9)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(10)">Estatus <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(11)">Estatus Calidad <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(12)">Conductor <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(13)">Unidad <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(14)">Folio <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(7)">TRS <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(8)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(9)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(10)">Calidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(11)">Conductor <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(12)">Unidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(13)">Folio <span class="sort-indicator">⇅</span></th>
                                         <th style="width: 50px;"></th>
                                     </tr>
                                 </thead>
@@ -295,9 +294,9 @@
                                         <option value="rastreo">📍 Rastreo</option>
                                         <option value="estatus">📊 Estatus</option>
                                     </select>
+                                    <div id="active-filters-orders" class="active-filters-container"></div>
                                     <div id="filter-orders-dropdown" class="filter-dropdown" style="display: none;"></div>
                                 </div>
-                                <div id="active-filters-orders" class="active-filters-container"></div>
                                 <div class="search-input-wrapper">
                                     <input type="text" id="filter-orders" class="filter-input" placeholder="🔍 Buscar..." oninput="filterOrdersTable()">
                                     <button class="clear-search-btn" id="clear-filter-orders" onclick="clearSearchInput('filter-orders')" style="display: none;">✕</button>
@@ -391,16 +390,16 @@
             <div class="modal-body">
                 <div class="input-group">
                     <label>Fecha Inicio:</label>
-                    <div class="date-input-wrapper">
-                        <input type="date" id="date-start" class="date-input" onchange="updateDateDisplay(this)">
-                        <span class="date-display" id="date-start-display"></span>
+                    <div class="date-input-wrapper" onclick="document.getElementById('date-start').showPicker()">
+                        <input type="date" id="date-start" class="date-input-hidden" onchange="updateDateDisplay(this)">
+                        <span class="date-display-inline" id="date-start-display">Seleccionar fecha...</span>
                     </div>
                 </div>
                 <div class="input-group" style="margin-top: 15px;">
                     <label>Fecha Fin:</label>
-                    <div class="date-input-wrapper">
-                        <input type="date" id="date-end" class="date-input" onchange="updateDateDisplay(this)">
-                        <span class="date-display" id="date-end-display"></span>
+                    <div class="date-input-wrapper" onclick="document.getElementById('date-end').showPicker()">
+                        <input type="date" id="date-end" class="date-input-hidden" onchange="updateDateDisplay(this)">
+                        <span class="date-display-inline" id="date-end-display">Seleccionar fecha...</span>
                     </div>
                 </div>
             </div>
@@ -425,16 +424,16 @@
             <div class="modal-body">
                 <div class="input-group">
                     <label>Fecha Inicio:</label>
-                    <div class="date-input-wrapper">
-                        <input type="date" id="folios-date-start" class="date-input" onchange="updateDateDisplay(this)">
-                        <span class="date-display" id="folios-date-start-display"></span>
+                    <div class="date-input-wrapper" onclick="document.getElementById('folios-date-start').showPicker()">
+                        <input type="date" id="folios-date-start" class="date-input-hidden" onchange="updateDateDisplay(this)">
+                        <span class="date-display-inline" id="folios-date-start-display">Seleccionar fecha...</span>
                     </div>
                 </div>
                 <div class="input-group" style="margin-top: 15px;">
                     <label>Fecha Fin:</label>
-                    <div class="date-input-wrapper">
-                        <input type="date" id="folios-date-end" class="date-input" onchange="updateDateDisplay(this)">
-                        <span class="date-display" id="folios-date-end-display"></span>
+                    <div class="date-input-wrapper" onclick="document.getElementById('folios-date-end').showPicker()">
+                        <input type="date" id="folios-date-end" class="date-input-hidden" onchange="updateDateDisplay(this)">
+                        <span class="date-display-inline" id="folios-date-end-display">Seleccionar fecha...</span>
                     </div>
                 </div>
             </div>

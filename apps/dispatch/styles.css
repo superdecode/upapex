@@ -535,11 +535,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    pointer-events: none;
-}
-
-.copyable .copy-icon {
-    pointer-events: auto;
+    cursor: pointer;
 }
 
 .copy-icon {
@@ -718,31 +714,38 @@
 .date-input-wrapper {
     position: relative;
     display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.date-input {
-    width: 100%;
+    align-items: center;
     padding: 10px 12px;
     border: 2px solid #e5e7eb;
     border-radius: 6px;
-    font-size: 0.95em;
+    cursor: pointer;
+    background: white;
+    transition: all 0.2s ease;
+}
+
+.date-input-wrapper:hover {
+    border-color: #f97316;
+}
+
+.date-input-hidden {
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
     cursor: pointer;
 }
 
-.date-input:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+.date-display-inline {
+    font-size: 0.95em;
+    color: #374151;
+    font-weight: 500;
 }
 
-.date-display {
-    font-size: 0.85em;
+.date-display-inline.has-value {
     color: #f97316;
     font-weight: 600;
-    padding-left: 2px;
-    min-height: 18px;
 }
 
 /* Delete button in validated rows */
@@ -1341,6 +1344,16 @@
 .date-filter-btn:hover {
     background: #e2e8f0;
     color: #475569;
+}
+
+.date-filter-btn.active-filter {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    color: white;
+    border-color: #ea580c;
+}
+
+.date-filter-btn.active-filter:hover {
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
 }
 
 .toggle-badge {
@@ -2209,34 +2222,36 @@ textarea:focus {
     transform: translateY(-50%) scale(1.1);
 }
 
-/* Active filters chips container */
+/* Active filters chips container - inline with select */
 .active-filters-container {
-    display: flex;
+    display: inline-flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
+    margin-left: 8px;
 }
 
 .filter-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-    color: white;
-    border-radius: 16px;
-    font-size: 0.8em;
-    font-weight: 500;
-    animation: chipSlideIn 0.2s ease-out;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(249, 115, 22, 0.12);
+    color: #ea580c;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: 600;
+    border: 1px solid rgba(249, 115, 22, 0.25);
+    animation: chipSlideIn 0.15s ease-out;
 }
 
 @keyframes chipSlideIn {
-    from { transform: scale(0.8); opacity: 0; }
+    from { transform: scale(0.9); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
 }
 
 .filter-chip-label {
-    max-width: 120px;
+    max-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2246,13 +2261,13 @@ textarea:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
-    background: rgba(255, 255, 255, 0.3);
+    width: 14px;
+    height: 14px;
+    background: rgba(249, 115, 22, 0.2);
     border: none;
     border-radius: 50%;
-    color: white;
-    font-size: 12px;
+    color: #ea580c;
+    font-size: 10px;
     font-weight: bold;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -2261,7 +2276,8 @@ textarea:focus {
 }
 
 .filter-chip-remove:hover {
-    background: rgba(255, 255, 255, 0.5);
+    background: #ea580c;
+    color: white;
     transform: scale(1.1);
 }
 
