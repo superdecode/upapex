@@ -111,8 +111,8 @@
         /* SIDEBAR */
         .sidebar {
             width: 220px;
-            background: #333;
-            color: white;
+            background: #7c69fd; /* Morado pastel basado en el primario #6f73e2 */
+            color: #333; /* Texto más oscuro para mejor contraste */
             padding: 15px;
             display: flex;
             flex-direction: column;
@@ -1054,6 +1054,28 @@
             border-left-color: #228B22 !important;
         }
 
+        /* Source badges for two-level inventory search */
+        .inventory-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+        .inventory-badge.badge-WMS {
+            background: #4CAF50;
+            color: white;
+        }
+        .inventory-badge.badge-FILE2 {
+            background: #2196F3;
+            color: white;
+        }
+        .inventory-badge.badge-UNKNOWN {
+            background: #FF6B6B;
+            color: white;
+        }
+
         .box-item.verified .box-check-icon {
             color: #228B22;
         }
@@ -1335,9 +1357,9 @@
         }
 
         .unified-tab.active {
-            background: #f97316;
+            background: var(--primary);
             color: white;
-            border-color: #f97316;
+            border-color: var(--primary);
         }
 
         .unified-tab .tab-count {
@@ -2549,7 +2571,8 @@
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
             SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
             SHEET_NAME: 'BD',  // Nombre de la hoja donde se escriben los datos
-            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQiV79-kXoNlWqzL5LlDQfD2frq1EZ7mnRtwfpACEpA3nQymdLHth0e1XdidhYfavy3YuamZkv2tX-W/pub?output=csv'
+            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQiV79-kXoNlWqzL5LlDQfD2frq1EZ7mnRtwfpACEpA3nQymdLHth0e1XdidhYfavy3YuamZkv2tX-W/pub?gid=127613821&single=true&output=csv',
+            FILE2_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv'  // Archivo 2 - Segundo nivel de búsqueda
         };
 
         // ==================== STATE ====================
@@ -2564,6 +2587,10 @@
             pendingCode1: null,
             history: []
         };
+
+        // FILE2 - Segundo nivel de búsqueda
+        let BD_CODES_FILE2 = new Set();
+        let FILE2_LAST_UPDATE = null;
 
         let CURRENT_USER = '';
         let USER_EMAIL = '';
@@ -2785,7 +2812,13 @@
             if (response?.access_token) {
                 gapi.client.setToken(response);
                 await getUserProfile();
-                await loadInventory();
+
+                // Cargar AMBAS bases de datos en paralelo
+                await Promise.all([
+                    loadInventory(),      // WMS - Base de datos principal
+                    loadFILE2Inventory()  // FILE2 - Base de datos secundaria
+                ]);
+
                 SyncManager.init();
                 if (PENDING_SYNC.length > 0) SyncManager.sync();
                 showApp();
@@ -2982,27 +3015,33 @@
                 showLoadingOverlay(true);
                 updateConnectionIndicator(true);
 
+                console.log('🔄 Cargando inventario desde CSV...');
                 const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
                     method: 'GET',
                     mode: 'cors',
                     cache: 'no-cache'
                 });
 
+                console.log('📡 Respuesta recibida:', response.status, response.statusText);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const csv = await response.text();
+                console.log('📄 CSV recibido, tamaño:', csv.length, 'caracteres');
                 if (!csv || csv.trim().length === 0) throw new Error('CSV vacío');
 
                 parseInventoryCSV(csv);
                 await saveToStorage();
+                console.log('✅ Inventario parseado:', STATE.inventory.size, 'códigos');
                 showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
                 updateBdInfo();
             } catch (e) {
-                console.error('Error cargando inventario:', e);
-                showNotification(`⚠️ ${e.message}`, 'warning');
+                console.error('❌ Error cargando inventario:', e);
+                showNotification(`⚠️ Error: ${e.message}`, 'warning');
 
                 if (STATE.inventory.size > 0) {
                     showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
+                } else {
+                    console.warn('⚠️ No hay códigos en caché. Inventario vacío.');
                 }
             } finally {
                 showLoadingOverlay(false);
@@ -3013,6 +3052,22 @@
         function parseInventoryCSV(csv) {
             const lines = csv.split('\n').filter(line => line.trim().length > 0);
             STATE.inventory.clear();
+
+            console.log('📊 Parseando CSV:', lines.length, 'líneas totales');
+
+            // Mostrar header y primera línea de datos
+            if (lines.length > 0) {
+                const header = parseCSVLine(lines[0]);
+                console.log('📋 Header (columnas):', header.length, '→', header.slice(0, 5).join(' | '));
+            }
+            if (lines.length > 1) {
+                const firstRow = parseCSVLine(lines[1]);
+                console.log('📄 Primera fila:', firstRow.length, 'columnas →', firstRow.slice(0, 5).join(' | '));
+                console.log('   → Código en col[1]:', firstRow[1]);
+            }
+
+            let validRows = 0;
+            let invalidRows = 0;
 
             for (let i = 1; i < lines.length; i++) {
                 const cols = parseCSVLine(lines[i]);
@@ -3037,11 +3092,30 @@
                             isAvailable: availableStock > 0,
                             isBlocked: lockedInventory > 0
                         });
+                        validRows++;
+                    } else {
+                        invalidRows++;
+                        if (invalidRows <= 3) {
+                            console.log(`⚠️ Fila ${i}: código vacío. Cols:`, cols.length, '→ Col[1]:', cols[1]);
+                        }
+                    }
+                } else {
+                    invalidRows++;
+                    if (invalidRows <= 3) {
+                        console.log(`⚠️ Fila ${i}: solo tiene ${cols.length} columnas (necesita >= 11)`);
                     }
                 }
             }
 
             STATE.inventoryLastUpdate = new Date().toLocaleString();
+            console.log('✅ Parseado completo:', STATE.inventory.size, 'códigos únicos');
+            console.log('📊 Filas válidas:', validRows, '| Filas inválidas:', invalidRows);
+
+            // Mostrar primeros 3 códigos como ejemplo
+            if (STATE.inventory.size > 0) {
+                const samples = Array.from(STATE.inventory.keys()).slice(0, 3);
+                console.log('📦 Ejemplos de códigos:', samples.join(', '));
+            }
         }
 
         function parseCSVLine(line) {
@@ -3064,13 +3138,167 @@
             return result;
         }
 
-        function refreshInventory() {
-            loadInventory();
+        async function refreshInventory() {
+            // Recargar AMBAS bases de datos
+            await Promise.all([
+                loadInventory(),      // WMS
+                loadFILE2Inventory()  // FILE2
+            ]);
+        }
+
+        // ==================== FILE2 LOADING (Segundo nivel de búsqueda) ====================
+        async function loadFILE2Inventory() {
+            // Verificar caché (30 minutos de validez)
+            const cachedData = localStorage.getItem('pd_file2_codes');
+            const cachedTimestamp = localStorage.getItem('pd_file2_timestamp');
+
+            if (cachedData && cachedTimestamp) {
+                const cacheAge = Date.now() - parseInt(cachedTimestamp);
+                const THIRTY_MINUTES = 30 * 60 * 1000;
+
+                if (cacheAge < THIRTY_MINUTES) {
+                    // Usar caché COMPACTADO (formato pipe-separated)
+                    try {
+                        const codesArray = cachedData.includes('|')
+                            ? cachedData.split('|')  // Nuevo formato compactado
+                            : JSON.parse(cachedData);  // Formato antiguo (compatibilidad)
+
+                        BD_CODES_FILE2 = new Set(codesArray);
+                        FILE2_LAST_UPDATE = new Date(parseInt(cachedTimestamp)).toLocaleString();
+                        const sizeKB = Math.round(cachedData.length / 1024);
+                        console.log(`✅ FILE2: ${BD_CODES_FILE2.size} códigos desde caché (${Math.round(cacheAge / 60000)} min, ${sizeKB} KB)`);
+                        return;
+                    } catch (e) {
+                        console.warn('⚠️ Error leyendo caché FILE2, recargando...', e);
+                        // Continuar para recargar desde CSV
+                    }
+                }
+            }
+
+            // Cargar desde CSV
+            try {
+                console.log('🔄 Cargando FILE2 desde CSV...');
+                const response = await fetch(CONFIG.FILE2_CSV_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+
+                console.log('📡 FILE2 respuesta:', response.status, response.statusText);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const csv = await response.text();
+                console.log('📄 FILE2 CSV recibido, tamaño:', csv.length, 'caracteres');
+                if (!csv || csv.trim().length === 0) throw new Error('FILE2 CSV vacío');
+
+                // Parsear CSV de FILE2 - SOLO columna I (índice 8)
+                const lines = csv.split('\n').filter(line => line.trim().length > 0);
+                BD_CODES_FILE2.clear();
+
+                console.log('📊 FILE2: parseando', lines.length, 'líneas');
+
+                // Saltar header (línea 0) y procesar solo columna I
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    if (cols.length >= 9) {  // Necesita al menos 9 columnas para tener índice 8
+                        const code = cols[8]?.toString().trim();  // Columna I (índice 8)
+                        if (code && code.length > 0) {
+                            const normalized = normalizeCode(code);
+                            BD_CODES_FILE2.add(normalized);
+                        }
+                    }
+                }
+
+                // Guardar en caché COMPACTADO (pipe-separated para ahorrar ~50% espacio vs JSON)
+                const now = Date.now();
+                try {
+                    const codesArray = [...BD_CODES_FILE2];
+                    const compactData = codesArray.join('|');  // Usar | como separador
+                    const sizeKB = Math.round(compactData.length / 1024);
+
+                    localStorage.setItem('pd_file2_codes', compactData);
+                    localStorage.setItem('pd_file2_timestamp', now.toString());
+                    console.log(`💾 FILE2 guardado en caché (${sizeKB} KB)`);
+                } catch (storageError) {
+                    console.warn('⚠️ No se pudo guardar FILE2 en caché (muy grande):', storageError.message);
+                    // Continuar sin caché - se recargará en la próxima sesión
+                }
+                FILE2_LAST_UPDATE = new Date(now).toLocaleString();
+
+                console.log(`✅ FILE2: ${BD_CODES_FILE2.size} códigos únicos cargados`);
+
+                // Mostrar ejemplos
+                if (BD_CODES_FILE2.size > 0) {
+                    const samples = Array.from(BD_CODES_FILE2).slice(0, 3);
+                    console.log('📦 FILE2 ejemplos:', samples.join(', '));
+                }
+            } catch (error) {
+                console.error('❌ Error cargando FILE2:', error);
+            }
+        }
+
+        /**
+         * Búsqueda de dos niveles: WMS (inventario principal) + FILE2 (base secundaria)
+         * Retorna: { code: string, item: object|null, source: 'WMS'|'FILE2'|'UNKNOWN', variant: string }
+         */
+        async function findCodeInInventoryTwoLevel(rawCode) {
+            const normalized = normalizeCode(rawCode);
+
+            // NIVEL 1: Buscar en WMS (inventario principal)
+            const wmsResult = findCodeInInventory(rawCode);
+            if (wmsResult.item) {
+                return {
+                    ...wmsResult,
+                    source: 'WMS'
+                };
+            }
+
+            // NIVEL 2: Buscar en FILE2 (carga bajo demanda con caché)
+            if (BD_CODES_FILE2.size === 0) {
+                await loadFILE2Inventory();
+            }
+
+            // Intentar búsqueda con variantes en FILE2
+            const variants = [
+                normalized,
+                normalized.replace(/\//g, '-'),
+                normalized.replace(/-/g, '/')
+            ];
+
+            for (const variant of variants) {
+                if (BD_CODES_FILE2.has(variant)) {
+                    // Encontrado en FILE2 - crear item sintético
+                    return {
+                        code: variant,
+                        item: {
+                            cellNo: '-',
+                            sku: '-',
+                            productName: 'Archivo 2',
+                            availableStock: 0,
+                            isBlocked: false,
+                            isAvailable: true
+                        },
+                        source: 'FILE2',
+                        variant: variant === normalized ? 'original' :
+                                variant.includes('-') ? 'dash' : 'slash'
+                    };
+                }
+            }
+
+            // No encontrado en ningún nivel
+            return {
+                code: normalized,
+                item: null,
+                source: 'UNKNOWN',
+                variant: 'none'
+            };
         }
 
         function updateBdInfo() {
-            document.getElementById('bd-count').textContent = STATE.inventory.size.toLocaleString();
-            document.getElementById('bd-update-time').textContent = STATE.inventoryLastUpdate || 'Sin actualizar';
+            const totalCodes = STATE.inventory.size + BD_CODES_FILE2.size;
+            document.getElementById('bd-count').textContent = totalCodes.toLocaleString();
+            document.getElementById('bd-update-time').textContent =
+                `WMS: ${STATE.inventoryLastUpdate || 'Sin actualizar'}`;
         }
 
         // ==================== SCAN PROCESSING ====================
@@ -3110,11 +3338,12 @@
             }
         }
 
-        function processScan(rawCode) {
-            // Búsqueda inteligente: intenta con "-" y "/" antes de marcar como NO ENCONTRADO
-            const result = findCodeInInventory(rawCode);
+        async function processScan(rawCode) {
+            // Búsqueda de dos niveles: WMS + FILE2
+            const result = await findCodeInInventoryTwoLevel(rawCode);
             const code = result.code;
             const item = result.item;
+            const source = result.source;
 
             // Check duplicates across all pallets con info detallada
             const duplicateInfo = findDuplicate(code);
@@ -3127,10 +3356,10 @@
             }
 
             if (!item) {
-                // Not found - show Code2 input
+                // Not found in both levels - show Code2 input
                 STATE.pendingCode1 = { raw: rawCode, code };
                 showResultBox('error', code, 'NO ENCONTRADO',
-                    'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.', null);
+                    'Código no encontrado en WMS ni Archivo 2. Ingresa Código 2 o usa INSERTADO.', null);
                 document.getElementById('code2-container').classList.add('show');
                 flashInput('error');
                 playSound('error');
@@ -3144,15 +3373,16 @@
 
             // Determine status and add to appropriate pallet
             if (item.isBlocked) {
-                addBox('blocked', createBoxData(rawCode, code, '', item));
+                addBox('blocked', createBoxData(rawCode, code, '', item, source));
                 showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
                 playSound('warning');
             } else if (item.isAvailable) {
-                addBox('ok', createBoxData(rawCode, code, '', item));
-                showResultBox('success', code, 'OK', 'Validado correctamente', item);
+                addBox('ok', createBoxData(rawCode, code, '', item, source));
+                const statusMsg = source === 'FILE2' ? 'Validado en Archivo 2 (OK - No WMS)' : 'Validado correctamente';
+                showResultBox('success', code, 'OK', statusMsg, item);
                 playSound('success');
             } else {
-                addBox('blocked', createBoxData(rawCode, code, '', item));
+                addBox('blocked', createBoxData(rawCode, code, '', item, source));
                 showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
                 playSound('warning');
             }
@@ -3231,20 +3461,21 @@
         }
 
         // Forzar inserción de duplicado
-        function forceInsertDuplicate(code, rawCode) {
-            // Usar búsqueda inteligente para el duplicado también
-            const result = findCodeInInventory(rawCode);
+        async function forceInsertDuplicate(code, rawCode) {
+            // Usar búsqueda de dos niveles para el duplicado también
+            const result = await findCodeInInventoryTwoLevel(rawCode);
             const finalCode = result.code;
             const item = result.item;
+            const source = result.source;
 
             if (!item) {
-                addBox('nowms', createBoxData(rawCode, finalCode, '', null));
+                addBox('nowms', createBoxData(rawCode, finalCode, '', null, 'UNKNOWN'));
                 showNotification('⚡ Duplicado insertado en No WMS', 'warning');
             } else if (item.isBlocked) {
-                addBox('blocked', createBoxData(rawCode, finalCode, '', item));
+                addBox('blocked', createBoxData(rawCode, finalCode, '', item, source));
                 showNotification('⚡ Duplicado insertado en Bloqueado', 'warning');
             } else {
-                addBox('ok', createBoxData(rawCode, finalCode, '', item));
+                addBox('ok', createBoxData(rawCode, finalCode, '', item, source));
                 showNotification('⚡ Duplicado insertado en OK', 'warning');
             }
 
@@ -3252,31 +3483,32 @@
             document.getElementById('scan-input').focus();
         }
 
-        function processCode2(rawCode2) {
+        async function processCode2(rawCode2) {
             if (!STATE.pendingCode1) return;
 
-            // Búsqueda inteligente para Code2 también
-            const result = findCodeInInventory(rawCode2);
+            // Búsqueda de dos niveles para Code2 también
+            const result = await findCodeInInventoryTwoLevel(rawCode2);
             const code2 = result.code;
             const item = result.item;
+            const source = result.source;
 
             document.getElementById('code2-container').classList.remove('show');
 
             if (!item) {
                 // Both codes failed - add to No WMS with BOTH codes
-                addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null));
+                addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null, 'UNKNOWN'));
                 showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
                     `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
                 playSound('error');
             } else if (item.isBlocked) {
-                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
+                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source));
                 showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
                     'Validado con Código 2 - Bloqueado', item);
                 playSound('warning');
             } else {
-                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item));
-                showResultBox('success', code2, 'OK (Código 2)',
-                    'Validado correctamente con Código 2', item);
+                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source));
+                const statusMsg = source === 'FILE2' ? 'Validado con Código 2 en Archivo 2' : 'Validado correctamente con Código 2';
+                showResultBox('success', code2, 'OK (Código 2)', statusMsg, item);
                 playSound('success');
             }
 
@@ -3298,7 +3530,8 @@
                 STATE.pendingCode1.raw,
                 STATE.pendingCode1.code,
                 code2Value,  // Puede estar vacío o tener valor
-                null
+                null,
+                'UNKNOWN'
             ));
 
             const msg = code2Value
@@ -3317,7 +3550,7 @@
             showNotification('⚡ Registro insertado forzosamente', 'warning');
         }
 
-        function createBoxData(raw, code, scan2, item) {
+        function createBoxData(raw, code, scan2, item, source = 'WMS') {
             const cleanScan2 = scan2 ? normalizeCode(scan2) : '';
             return {
                 raw,
@@ -3328,7 +3561,8 @@
                 location: item?.cellNo || '-',
                 sku: item?.sku || '-',
                 product: item?.productName || '-',
-                timestamp: new Date().toLocaleTimeString()
+                timestamp: new Date().toLocaleTimeString(),
+                source: source  // 'WMS' | 'FILE2' | 'UNKNOWN'
             };
         }
 
@@ -3404,7 +3638,7 @@
                 return {
                     valid: false,
                     message: '❌ Formato inválido',
-                    details: 'La ubicación debe seguir el formato: [LETRA][NUM]-[NUM]-[NUM]-[NUM]\nEjemplo: A21-06-05-01',
+                    details: 'Ejemplo: A1-06-05-01',
                     parsed: null
                 };
             }
@@ -3441,16 +3675,6 @@
                 `Ubicación ingresada: "${location}"\n\n` +
                 `${validation.message}\n` +
                 `${validation.details}\n\n` +
-                `Formato correcto:\n` +
-                `• Área (letra): A, B, C, etc.\n` +
-                `• Pasillo (números): 01-99\n` +
-                `• Rack (números): 01-99\n` +
-                `• Nivel (números): 01-99\n` +
-                `• Palet (números): 01-99\n\n` +
-                `Ejemplos válidos:\n` +
-                `• A21-06-05-01\n` +
-                `• B27-01-04-01\n` +
-                `• C15-03-02-05\n\n` +
                 `¿Estás seguro que deseas usar "${location}"?`
             );
 
@@ -3651,18 +3875,33 @@
             const timeStr = now.toTimeString().slice(0, 8);
 
             // Incluye columna J: Ubicación Física de Origen
-            const records = pallet.boxes.map(box => ({
-                date: dateStr,
-                time: timeStr,
-                user: CURRENT_USER || 'Usuario',
-                scan1: box.code,
-                scan2: box.scan2 || '',
-                location: finalLocation,
-                status: statusMap[category],
-                note: '',
-                pallet: pallet.id,
-                originLocation: originLocation
-            }));
+            const records = pallet.boxes.map(box => {
+                // Determinar estatus y nota según source
+                let finalStatus = statusMap[category];
+                let finalNote = '';
+
+                // Si es FILE2 y está en pallet OK, cambiar estatus a "OK - NO WMS"
+                if (box.source === 'FILE2' && category === 'ok') {
+                    finalStatus = 'OK - NO WMS';
+                    finalNote = 'Estatus: NO WMS';
+                } else if (box.source === 'FILE2' && category === 'blocked') {
+                    // Si es FILE2 y bloqueado, agregar nota también
+                    finalNote = 'Estatus: NO WMS';
+                }
+
+                return {
+                    date: dateStr,
+                    time: timeStr,
+                    user: CURRENT_USER || 'Usuario',
+                    scan1: box.code,
+                    scan2: box.scan2 || '',
+                    location: finalLocation,
+                    status: finalStatus,
+                    note: finalNote,
+                    pallet: pallet.id,
+                    originLocation: originLocation
+                };
+            });
 
             // Add to history
             STATE.history = [...records, ...STATE.history].slice(0, 1000);
@@ -3762,10 +4001,16 @@
                        </button>`
                     : '';
 
+                // Source badge (dos niveles de búsqueda)
+                const source = box.source || 'WMS';
+                const badgeText = source === 'WMS' ? 'OK' :
+                                 source === 'FILE2' ? 'OK - NO WMS' : 'NO WMS';
+                const sourceBadge = `<span class="inventory-badge badge-${source}">${badgeText}</span>`;
+
                 return `
                 <div class="box-item ${verifiedClass}">
                     <div class="box-info">
-                        <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}</div>
+                        <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}${sourceBadge}</div>
                         <div class="box-meta">${box.location} • ${box.timestamp}</div>
                     </div>
                     <div class="box-actions">
@@ -4211,13 +4456,13 @@
                 const saved = localStorage.getItem('pd_system_state');
                 if (saved) {
                     const data = JSON.parse(saved);
-                    if (data.inventory) STATE.inventory = new Map(data.inventory);
+                    // NO cargar inventory desde storage (se carga desde CSV)
                     STATE.inventoryLastUpdate = data.inventoryLastUpdate;
                     if (data.pallets) STATE.pallets = data.pallets;
                     STATE.history = data.history || [];
-                    console.log('Datos cargados desde storage:', {
+                    console.log('📦 Datos cargados desde storage:', {
                         pallets: STATE.pallets,
-                        inventory: STATE.inventory.size
+                        historyItems: STATE.history.length
                     });
                 }
                 updateBdInfo();
@@ -4232,15 +4477,26 @@
 
         async function saveToStorage() {
             try {
+                // NO guardar inventory completo (demasiado grande - 61k códigos)
+                // El inventory se recarga desde CSV al iniciar sesión
                 const data = {
-                    inventory: Array.from(STATE.inventory.entries()),
                     inventoryLastUpdate: STATE.inventoryLastUpdate,
                     pallets: STATE.pallets,
-                    history: STATE.history.slice(0, 1000)
+                    history: STATE.history.slice(0, 500)  // Reducido de 1000 a 500
                 };
                 localStorage.setItem('pd_system_state', JSON.stringify(data));
             } catch (e) {
                 console.error('Error saving to storage:', e);
+                // Si falla, intentar guardar solo lo esencial
+                try {
+                    const minimalData = {
+                        pallets: STATE.pallets
+                    };
+                    localStorage.setItem('pd_system_state', JSON.stringify(minimalData));
+                    console.warn('⚠️ Guardado solo pallets (storage lleno)');
+                } catch (e2) {
+                    console.error('❌ Error crítico guardando estado mínimo:', e2);
+                }
             }
         }
 
@@ -5085,17 +5341,18 @@
                 return tab ? tab.state.unified : null;
             },
 
-            processScan(rawCode) {
+            async processScan(rawCode) {
                 const tab = this.getActiveTab();
                 if (!tab) {
                     showNotification('⚠️ No hay sesión activa', 'warning');
                     return;
                 }
 
-                // Búsqueda inteligente: intenta con "-" y "/" antes de marcar como NO ENCONTRADO
-                const result = findCodeInInventory(rawCode);
+                // Búsqueda de dos niveles: WMS + FILE2
+                const result = await findCodeInInventoryTwoLevel(rawCode);
                 const code = result.code;
                 const item = result.item;
+                const source = result.source;
 
                 // Check duplicates
                 const duplicateIndex = tab.boxes.findIndex(b => b.code === code);
@@ -5107,10 +5364,10 @@
                 }
 
                 if (!item) {
-                    // Not found - show Code2 input
+                    // Not found in both levels - show Code2 input
                     this.pendingCode1 = { raw: rawCode, code };
                     this.showResultBox('error', code, 'NO ENCONTRADO',
-                        'Código no encontrado en WMS. Ingresa Código 2 o usa INSERTADO.', null);
+                        'Código no encontrado en WMS ni Archivo 2. Ingresa Código 2 o usa INSERTADO.', null);
                     document.getElementById('unified-code2-container').classList.add('show');
                     this.flashInput('error');
                     playSound('error');
@@ -5130,7 +5387,8 @@
                     playSound('warning');
                 } else if (item.isAvailable) {
                     status = 'ok';
-                    this.showResultBox('success', code, 'OK', 'Validado correctamente', item);
+                    const statusMsg = source === 'FILE2' ? 'Validado en Archivo 2 (OK - No WMS)' : 'Validado correctamente';
+                    this.showResultBox('success', code, 'OK', statusMsg, item);
                     playSound('success');
                 } else {
                     status = 'blocked';
@@ -5138,17 +5396,18 @@
                     playSound('warning');
                 }
 
-                this.addBox(status, this.createBoxData(rawCode, code, '', item));
+                this.addBox(status, this.createBoxData(rawCode, code, '', item, source));
                 this.flashInput('success');
             },
 
-            processCode2(rawCode2) {
+            async processCode2(rawCode2) {
                 if (!this.pendingCode1) return;
 
-                // Búsqueda inteligente para Code2 también
-                const result = findCodeInInventory(rawCode2);
+                // Búsqueda de dos niveles para Code2 también
+                const result = await findCodeInInventoryTwoLevel(rawCode2);
                 const code2 = result.code;
                 const item = result.item;
+                const source = result.source;
 
                 document.getElementById('unified-code2-container').classList.remove('show');
 
@@ -5156,21 +5415,21 @@
                 if (!item) {
                     // Both codes failed - add to No WMS
                     status = 'nowms';
-                    this.addBox('nowms', this.createBoxData(this.pendingCode1.raw, this.pendingCode1.code, rawCode2, null));
+                    this.addBox('nowms', this.createBoxData(this.pendingCode1.raw, this.pendingCode1.code, rawCode2, null, 'UNKNOWN'));
                     this.showResultBox('error', this.pendingCode1.code, 'NO WMS',
                         `Ambos códigos no encontrados. Guardados: ${this.pendingCode1.code} y ${code2}`, null);
                     playSound('error');
                 } else if (item.isBlocked) {
                     status = 'blocked';
-                    this.addBox('blocked', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item));
+                    this.addBox('blocked', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source));
                     this.showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
                         'Validado con Código 2 - Bloqueado', item);
                     playSound('warning');
                 } else {
                     status = 'ok';
-                    this.addBox('ok', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item));
-                    this.showResultBox('success', code2, 'OK (Código 2)',
-                        'Validado correctamente con Código 2', item);
+                    this.addBox('ok', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source));
+                    const statusMsg = source === 'FILE2' ? 'Validado con Código 2 en Archivo 2' : 'Validado correctamente con Código 2';
+                    this.showResultBox('success', code2, 'OK (Código 2)', statusMsg, item);
                     playSound('success');
                 }
 
@@ -5179,7 +5438,7 @@
                 document.getElementById('unified-scan-input').focus();
             },
 
-            createBoxData(raw, code, scan2, item) {
+            createBoxData(raw, code, scan2, item, source = 'WMS') {
                 const cleanScan2 = scan2 ? normalizeCode(scan2) : '';
                 return {
                     raw,
@@ -5190,7 +5449,8 @@
                     location: item?.cellNo || '-',
                     sku: item?.sku || '-',
                     product: item?.productName || '-',
-                    timestamp: new Date().toLocaleTimeString()
+                    timestamp: new Date().toLocaleTimeString(),
+                    source: source  // 'WMS' | 'FILE2' | 'UNKNOWN'
                 };
             },
 
@@ -5262,11 +5522,12 @@
                 });
             },
 
-            forceInsertDuplicate(code, rawCode) {
-                // Usar búsqueda inteligente para el duplicado también
-                const result = findCodeInInventory(rawCode);
+            async forceInsertDuplicate(code, rawCode) {
+                // Usar búsqueda de dos niveles para el duplicado también
+                const result = await findCodeInInventoryTwoLevel(rawCode);
                 const finalCode = result.code;
                 const item = result.item;
+                const source = result.source;
                 let status;
 
                 if (!item) {
@@ -5280,7 +5541,7 @@
                     showNotification('⚡ Duplicado insertado en OK', 'warning');
                 }
 
-                this.addBox(status, this.createBoxData(rawCode, finalCode, '', item));
+                this.addBox(status, this.createBoxData(rawCode, finalCode, '', item, source));
                 playSound('warning');
                 document.getElementById('unified-scan-input').focus();
             },
@@ -5447,9 +5708,26 @@
 
                 // Create records for ALL boxes in the unified pallet
                 const records = tab.boxes.map(box => {
-                    // If cancelados mode, status = CANCELADO and note contains real status
-                    const finalStatus = isCancelados ? 'CANCELADO' : statusMap[box.status];
-                    const note = isCancelados ? `Estatus: ${statusMapDisplay[box.status]}` : '';
+                    let finalStatus, finalNote;
+
+                    if (isCancelados) {
+                        // Modo cancelados
+                        finalStatus = 'CANCELADO';
+                        finalNote = `Estatus: ${statusMapDisplay[box.status]}`;
+                    } else {
+                        // Modo normal - verificar si es FILE2
+                        finalStatus = statusMap[box.status];
+                        finalNote = '';
+
+                        // Si es FILE2 y está OK, cambiar estatus a "OK - NO WMS"
+                        if (box.source === 'FILE2' && box.status === 'ok') {
+                            finalStatus = 'OK - NO WMS';
+                            finalNote = 'Estatus: NO WMS';
+                        } else if (box.source === 'FILE2' && box.status === 'blocked') {
+                            // Si es FILE2 y bloqueado, agregar nota
+                            finalNote = 'Estatus: NO WMS';
+                        }
+                    }
 
                     return {
                         date: dateStr,
@@ -5459,7 +5737,7 @@
                         scan2: box.scan2 || '',
                         location: finalLocation,
                         status: finalStatus,
-                        note: note,
+                        note: finalNote,
                         pallet: tab.palletId,  // Same pallet ID for all
                         originLocation: originLocation
                     };
@@ -5569,6 +5847,14 @@
                         : '';
                     const canceladoClass = isCancelados ? 'cancelado-mode' : '';
 
+                    // Source badge (dos niveles de búsqueda)
+                    const source = box.source || 'WMS';
+                    const badgeText = source === 'WMS' ? 'OK' :
+                                     source === 'FILE2' ? 'OK - NO WMS' : 'NO WMS';
+                    const sourceBadge = box.status === 'ok' || box.status === 'blocked'
+                        ? `<span class="inventory-badge badge-${source}">${badgeText}</span>`
+                        : '';
+
                     return `
                         <div class="unified-box-item ${box.status} ${canceladoClass}">
                             <span class="unified-box-num">${index + 1}.</span>
@@ -5576,6 +5862,7 @@
                             <div class="unified-box-info">
                                 <div class="unified-box-code">
                                     ${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}
+                                    ${sourceBadge}
                                     ${canceladoBadge}
                                 </div>
                                 <div class="unified-box-meta">${box.location} • ${box.timestamp}</div>
@@ -5604,7 +5891,8 @@
                 UnifiedModule.pendingCode1.raw,
                 UnifiedModule.pendingCode1.code,
                 code2Value,
-                null
+                null,
+                'UNKNOWN'
             ));
 
             const msg = code2Value
