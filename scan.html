@@ -2574,8 +2574,10 @@
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
             SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
             SHEET_NAME: 'BD',  // Nombre de la hoja donde se escriben los datos
-            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQiV79-kXoNlWqzL5LlDQfD2frq1EZ7mnRtwfpACEpA3nQymdLHth0e1XdidhYfavy3YuamZkv2tX-W/pub?gid=127613821&single=true&output=csv',
-            FILE2_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv'  // Archivo 2 - Segundo nivel de búsqueda
+            // WMS Inventory - Lectura de códigos, stock, ubicaciones (17 columnas)
+            INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
+            // FILE2 - Segundo nivel de búsqueda (columna I)
+            FILE2_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv'
         };
 
         // ==================== STATE ====================
@@ -2594,6 +2596,115 @@
         // FILE2 - Segundo nivel de búsqueda
         let BD_CODES_FILE2 = new Set();
         let FILE2_LAST_UPDATE = null;
+
+        // IndexedDB para FILE2 (cache grande)
+        let FILE2_DB = null;
+        const DB_NAME = 'ScanAppDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'file2_codes';
+
+        // Inicializar IndexedDB
+        async function initIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onerror = () => {
+                    console.error('❌ Error abriendo IndexedDB:', request.error);
+                    reject(request.error);
+                };
+
+                request.onsuccess = () => {
+                    FILE2_DB = request.result;
+                    console.log('✅ IndexedDB inicializado correctamente');
+                    resolve(FILE2_DB);
+                };
+
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME);
+                        console.log('📦 Object store creado:', STORE_NAME);
+                    }
+                };
+            });
+        }
+
+        // Guardar FILE2 en IndexedDB
+        async function saveFile2ToIndexedDB(codesArray, timestamp) {
+            try {
+                if (!FILE2_DB) {
+                    await initIndexedDB();
+                }
+
+                return new Promise((resolve, reject) => {
+                    const transaction = FILE2_DB.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+
+                    // Guardar los códigos
+                    const codesRequest = store.put(codesArray, 'codes');
+                    const timestampRequest = store.put(timestamp, 'timestamp');
+
+                    transaction.oncomplete = () => {
+                        console.log(`✅ FILE2 guardado en IndexedDB: ${codesArray.length} códigos`);
+                        resolve();
+                    };
+
+                    transaction.onerror = () => {
+                        console.error('❌ Error guardando en IndexedDB:', transaction.error);
+                        reject(transaction.error);
+                    };
+                });
+            } catch (error) {
+                console.error('❌ Error en saveFile2ToIndexedDB:', error);
+                throw error;
+            }
+        }
+
+        // Cargar FILE2 desde IndexedDB
+        async function loadFile2FromIndexedDB() {
+            try {
+                if (!FILE2_DB) {
+                    await initIndexedDB();
+                }
+
+                return new Promise((resolve, reject) => {
+                    const transaction = FILE2_DB.transaction([STORE_NAME], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+
+                    const codesRequest = store.get('codes');
+                    const timestampRequest = store.get('timestamp');
+
+                    let codes = null;
+                    let timestamp = null;
+
+                    codesRequest.onsuccess = () => {
+                        codes = codesRequest.result;
+                    };
+
+                    timestampRequest.onsuccess = () => {
+                        timestamp = timestampRequest.result;
+                    };
+
+                    transaction.oncomplete = () => {
+                        if (codes && timestamp) {
+                            console.log(`✅ FILE2 cargado desde IndexedDB: ${codes.length} códigos`);
+                            resolve({ codes, timestamp });
+                        } else {
+                            console.log('ℹ️ No hay datos de FILE2 en IndexedDB');
+                            resolve(null);
+                        }
+                    };
+
+                    transaction.onerror = () => {
+                        console.error('❌ Error leyendo IndexedDB:', transaction.error);
+                        reject(transaction.error);
+                    };
+                });
+            } catch (error) {
+                console.error('❌ Error en loadFile2FromIndexedDB:', error);
+                return null;
+            }
+        }
 
         let CURRENT_USER = '';
         let USER_EMAIL = '';
@@ -3151,31 +3262,25 @@
 
         // ==================== FILE2 LOADING (Segundo nivel de búsqueda) ====================
         async function loadFILE2Inventory() {
-            // Verificar caché (30 minutos de validez)
-            const cachedData = localStorage.getItem('pd_file2_codes');
-            const cachedTimestamp = localStorage.getItem('pd_file2_timestamp');
+            // Verificar caché en IndexedDB (30 minutos de validez)
+            try {
+                const cachedData = await loadFile2FromIndexedDB();
 
-            if (cachedData && cachedTimestamp) {
-                const cacheAge = Date.now() - parseInt(cachedTimestamp);
-                const THIRTY_MINUTES = 30 * 60 * 1000;
+                if (cachedData) {
+                    const cacheAge = Date.now() - cachedData.timestamp;
+                    const THIRTY_MINUTES = 30 * 60 * 1000;
 
-                if (cacheAge < THIRTY_MINUTES) {
-                    // Usar caché COMPACTADO (formato pipe-separated)
-                    try {
-                        const codesArray = cachedData.includes('|')
-                            ? cachedData.split('|')  // Nuevo formato compactado
-                            : JSON.parse(cachedData);  // Formato antiguo (compatibilidad)
-
-                        BD_CODES_FILE2 = new Set(codesArray);
-                        FILE2_LAST_UPDATE = new Date(parseInt(cachedTimestamp)).toLocaleString();
-                        const sizeKB = Math.round(cachedData.length / 1024);
-                        console.log(`✅ FILE2: ${BD_CODES_FILE2.size} códigos desde caché (${Math.round(cacheAge / 60000)} min, ${sizeKB} KB)`);
+                    if (cacheAge < THIRTY_MINUTES) {
+                        BD_CODES_FILE2 = new Set(cachedData.codes);
+                        FILE2_LAST_UPDATE = new Date(cachedData.timestamp).toLocaleString();
+                        console.log(`✅ FILE2: ${BD_CODES_FILE2.size} códigos desde IndexedDB (${Math.round(cacheAge / 60000)} min)`);
                         return;
-                    } catch (e) {
-                        console.warn('⚠️ Error leyendo caché FILE2, recargando...', e);
-                        // Continuar para recargar desde CSV
+                    } else {
+                        console.log('⏰ Caché de FILE2 expirado, recargando...');
                     }
                 }
+            } catch (e) {
+                console.warn('⚠️ Error leyendo caché FILE2 de IndexedDB, recargando...', e);
             }
 
             // Cargar desde CSV
@@ -3212,18 +3317,14 @@
                     }
                 }
 
-                // Guardar en caché COMPACTADO (pipe-separated para ahorrar ~50% espacio vs JSON)
+                // Guardar en IndexedDB (soporta hasta 50+ MB, ideal para 188k códigos)
                 const now = Date.now();
                 try {
                     const codesArray = [...BD_CODES_FILE2];
-                    const compactData = codesArray.join('|');  // Usar | como separador
-                    const sizeKB = Math.round(compactData.length / 1024);
-
-                    localStorage.setItem('pd_file2_codes', compactData);
-                    localStorage.setItem('pd_file2_timestamp', now.toString());
-                    console.log(`💾 FILE2 guardado en caché (${sizeKB} KB)`);
+                    await saveFile2ToIndexedDB(codesArray, now);
+                    console.log(`💾 FILE2 guardado en IndexedDB: ${codesArray.length} códigos`);
                 } catch (storageError) {
-                    console.warn('⚠️ No se pudo guardar FILE2 en caché (muy grande):', storageError.message);
+                    console.warn('⚠️ No se pudo guardar FILE2 en IndexedDB:', storageError.message);
                     // Continuar sin caché - se recargará en la próxima sesión
                 }
                 FILE2_LAST_UPDATE = new Date(now).toLocaleString();
