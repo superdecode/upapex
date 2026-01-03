@@ -2572,7 +2572,7 @@
         const CONFIG = {
             CLIENT_ID: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
-            SPREADSHEET_WRITE: '1FBhZloEeT-xTe1yVKzdWxGJa6gKkZQOObmkBMuxqcv8',
+            SPREADSHEET_WRITE: '1CIeBFP59ri6LUEbYg-530Nurd5iKcu1YedtUfeTBWQ8',
             SHEET_NAME: 'BD',  // Nombre de la hoja donde se escriben los datos
             // WMS Inventory - Lectura de códigos, stock, ubicaciones (17 columnas)
             INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
@@ -3683,6 +3683,15 @@
             for (const pattern of patterns) {
                 const match = code.match(pattern);
                 if (match) return match[1];
+            }
+
+            // Patrón especial: IDxxxxxx-xxOPERATION... → extraer solo xxxxxx-xx
+            // Ejemplo: ID51014088-10PERATIONFBMTYPENBOUNDSOURCESELLER → 51014088-10
+            const idPattern = /^ID(\d+[-\/]\d+)/i;
+            const idMatch = code.match(idPattern);
+            if (idMatch) {
+                console.log(`🔍 Código extraído de patrón ID: ${idMatch[1]} (original: ${raw})`);
+                return idMatch[1];
             }
 
             // Limpiar caracteres especiales excepto guiones, diagonales y letras/números

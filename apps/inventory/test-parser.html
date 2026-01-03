@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test CSV Parser</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test CSV Parser - Inventory App</h1>
+
+    <div class="test-section">
+        <h2>Información del CSV</h2>
+        <div id="csv-info"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Prueba de código: 49162343/10</h2>
+        <div id="test-code"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Primeros 10 códigos cargados</h2>
+        <div id="first-codes"></div>
+    </div>
+
+    <script>
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv';
+
+        /**
+         * Parser CSV robusto que maneja comillas y comas dentro de valores
+         */
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+
+                if (char === '"') {
+                    // Manejar comillas dobles escapadas ""
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++; // Saltar la siguiente comilla
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current);
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current);
+            return result;
+        }
+
+        function normalizeCode(rawCode) {
+            if (!rawCode) return '';
+
+            let code = rawCode.trim().toUpperCase();
+
+            // Patrones de extracción especiales (JSON, etc)
+            const jsonMatch = code.match(/"code"\s*:\s*"([^"]+)"/i);
+            if (jsonMatch) {
+                code = jsonMatch[1];
+            }
+
+            // Eliminar caracteres especiales excepto guiones y slashes
+            code = code.replace(/[^A-Z0-9\-\/]/g, '');
+
+            return code;
+        }
+
+        function findCodeInInventory(rawCode, inventory) {
+            const normalized = normalizeCode(rawCode);
+
+            // 1. Intentar búsqueda directa
+            let item = inventory.get(normalized);
+            if (item) {
+                return { code: normalized, item, variant: 'original' };
+            }
+
+            // 2. Intentar con guión si tiene slash
+            if (normalized.includes('/')) {
+                const withDash = normalized.replace(/\//g, '-');
+                item = inventory.get(withDash);
+                if (item) {
+                    return { code: withDash, item, variant: 'dash' };
+                }
+            }
+
+            // 3. Intentar con slash si tiene guión
+            if (normalized.includes('-')) {
+                const withSlash = normalized.replace(/-/g, '/');
+                item = inventory.get(withSlash);
+                if (item) {
+                    return { code: withSlash, item, variant: 'slash' };
+                }
+            }
+
+            // 4. No encontrado
+            return { code: normalized, item: null, variant: 'none' };
+        }
+
+        async function testParser() {
+            const csvInfo = document.getElementById('csv-info');
+            const testCode = document.getElementById('test-code');
+            const firstCodes = document.getElementById('first-codes');
+
+            csvInfo.innerHTML = '<p class="info">Cargando CSV...</p>';
+
+            try {
+                const response = await fetch(CSV_URL);
+                const csvText = await response.text();
+                const lines = csvText.split('\n');
+
+                const inventory = new Map();
+
+                // Procesar CSV
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+
+                    const row = parseCSVLine(lines[i]);
+                    const customBarcode = row[1]?.trim();
+                    const boxType = row[0]?.trim();
+
+                    if (customBarcode) {
+                        inventory.set(customBarcode, {
+                            code: customBarcode,
+                            boxType: boxType || '',
+                            sku: row[11] || '',
+                            productName: row[12] || '',
+                            cellNo: row[6] || '',
+                            availableStock: parseInt(row[9]) || 0,
+                            isBlocked: parseInt(row[9]) === 0,
+                            isAvailable: parseInt(row[9]) > 0
+                        });
+
+                        if (boxType && boxType !== customBarcode) {
+                            inventory.set(boxType, {
+                                code: boxType,
+                                boxType: boxType,
+                                sku: row[11] || '',
+                                productName: row[12] || '',
+                                cellNo: row[6] || '',
+                                availableStock: parseInt(row[9]) || 0,
+                                isBlocked: parseInt(row[9]) === 0,
+                                isAvailable: parseInt(row[9]) > 0
+                            });
+                        }
+                    }
+                }
+
+                // Mostrar información del CSV
+                csvInfo.innerHTML = `
+                    <p class="success">✅ CSV cargado correctamente</p>
+                    <p>Total de líneas: ${lines.length}</p>
+                    <p>Total de códigos en inventario: ${inventory.size}</p>
+                `;
+
+                // Probar código específico
+                const testResult = findCodeInInventory('49162343/10', inventory);
+                if (testResult.item) {
+                    testCode.innerHTML = `
+                        <p class="success">✅ Código encontrado!</p>
+                        <table>
+                            <tr><th>Campo</th><th>Valor</th></tr>
+                            <tr><td>Código buscado</td><td>49162343/10</td></tr>
+                            <tr><td>Código encontrado</td><td>${testResult.code}</td></tr>
+                            <tr><td>Variante</td><td>${testResult.variant}</td></tr>
+                            <tr><td>Box Type</td><td>${testResult.item.boxType}</td></tr>
+                            <tr><td>SKU</td><td>${testResult.item.sku}</td></tr>
+                            <tr><td>Producto</td><td>${testResult.item.productName}</td></tr>
+                            <tr><td>Ubicación</td><td>${testResult.item.cellNo}</td></tr>
+                            <tr><td>Stock disponible</td><td>${testResult.item.availableStock}</td></tr>
+                            <tr><td>Bloqueado</td><td>${testResult.item.isBlocked ? 'Sí' : 'No'}</td></tr>
+                            <tr><td>Disponible</td><td>${testResult.item.isAvailable ? 'Sí' : 'No'}</td></tr>
+                        </table>
+                    `;
+                } else {
+                    testCode.innerHTML = `<p class="error">❌ Código NO encontrado</p>`;
+                }
+
+                // Mostrar primeros códigos
+                const firstCodesArray = Array.from(inventory.entries()).slice(0, 10);
+                let table = `
+                    <table>
+                        <tr>
+                            <th>Código</th>
+                            <th>Box Type</th>
+                            <th>SKU</th>
+                            <th>Producto</th>
+                            <th>Ubicación</th>
+                            <th>Stock</th>
+                        </tr>
+                `;
+
+                firstCodesArray.forEach(([code, item]) => {
+                    table += `
+                        <tr>
+                            <td>${code}</td>
+                            <td>${item.boxType}</td>
+                            <td>${item.sku}</td>
+                            <td>${item.productName.substring(0, 30)}...</td>
+                            <td>${item.cellNo}</td>
+                            <td>${item.availableStock}</td>
+                        </tr>
+                    `;
+                });
+
+                table += '</table>';
+                firstCodes.innerHTML = table;
+
+            } catch (error) {
+                csvInfo.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                console.error('Error:', error);
+            }
+        }
+
+        // Ejecutar test al cargar la página
+        testParser();
+    </script>
+</body>
+</html>
