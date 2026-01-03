@@ -2790,13 +2790,27 @@
                         r.location, r.status, r.note, r.pallet, r.originLocation || ''
                     ]);
 
-                    await gapi.client.sheets.spreadsheets.values.append({
+                    console.log('📤 Intentando sincronizar con:');
+                    console.log('  - SpreadsheetId:', CONFIG.SPREADSHEET_WRITE);
+                    console.log('  - Hoja:', CONFIG.SHEET_NAME);
+                    console.log('  - Rango:', `${CONFIG.SHEET_NAME}!A:J`);
+                    console.log('  - Registros:', values.length);
+                    console.log('  - Primer registro:', values[0]);
+
+                    const response = await gapi.client.sheets.spreadsheets.values.append({
                         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
                         range: `${CONFIG.SHEET_NAME}!A:J`,
                         valueInputOption: 'USER_ENTERED',
                         insertDataOption: 'INSERT_ROWS',
                         resource: { values }
                     });
+
+                    console.log('✅ Respuesta de Google Sheets:', response);
+                    console.log('  - Updates:', response.result?.updates);
+                    console.log('  - SpreadsheetId respuesta:', response.result?.spreadsheetId);
+                    console.log('  - Rango actualizado:', response.result?.updates?.updatedRange);
+                    console.log('  - Filas actualizadas:', response.result?.updates?.updatedRows);
+                    console.log('  - Columnas actualizadas:', response.result?.updates?.updatedColumns);
 
                     const synced = PENDING_SYNC.length;
                     PENDING_SYNC = [];
@@ -2806,7 +2820,10 @@
                     if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success');
                     return { success: true, synced };
                 } catch (e) {
-                    console.error('Sync error:', e);
+                    console.error('❌ Error completo de sincronización:', e);
+                    console.error('  - Mensaje:', e.message);
+                    console.error('  - Result:', e.result);
+                    console.error('  - Status:', e.status);
                     this.updateUI(false);
                     if (showMessages) showNotification(`❌ Error: ${e.result?.error?.message || e.message || 'Error desconocido'}`, 'error');
                     return { success: false };
@@ -4021,14 +4038,24 @@
 
             // Add to pending sync
             PENDING_SYNC = [...PENDING_SYNC, ...records];
+            console.log('📝 Registros agregados a PENDING_SYNC:', records.length);
+            console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+            console.log('🔍 Ejemplo de registro:', records[0]);
             SyncManager.save();
 
             showNotification(`💾 ${records.length} registros agregados`, 'info');
 
             // Try to sync immediately
+            console.log('🔌 Estado de conexión:');
+            console.log('  - IS_ONLINE:', IS_ONLINE);
+            console.log('  - gapi disponible:', !!gapi);
+            console.log('  - Token disponible:', !!gapi?.client?.getToken());
+
             if (IS_ONLINE && gapi?.client?.getToken()) {
+                console.log('✅ Intentando sincronizar automáticamente...');
                 await SyncManager.sync();
             } else {
+                console.log('⚠️ No se puede sincronizar automáticamente (offline o sin token)');
                 SyncManager.updateUI(false);
             }
 
@@ -5162,6 +5189,10 @@
                 if (blockedEl) blockedEl.textContent = totalBlocked;
                 if (nowmsEl) nowmsEl.textContent = totalNowms;
                 if (totalEl) totalEl.textContent = total;
+                
+                // Also update the global box count in the main interface
+                const globalBoxCountEl = document.getElementById('global-box-count');
+                if (globalBoxCountEl) globalBoxCountEl.textContent = total;
             }
         };
 
@@ -5194,9 +5225,9 @@
                             <span class="toggle-icon">📋</span>
                             Clasificar
                         </button>
-                        <button class="work-type-toggle-btn" id="toggle-unified" onclick="selectWorkType('unified')">
+                        <button class="work-type-toggle-btn" id="toggle-unified" disabled style="opacity: 0.6; cursor: not-allowed;" title="Opción deshabilitada">
                             <span class="toggle-icon">📦</span>
-                            Unificado
+                            Unificado (Deshabilitado)
                         </button>
                     </div>
 
@@ -5245,6 +5276,12 @@
         };
 
         function selectWorkType(type) {
+            // Prevent selecting unified type
+            if (type === 'unified') {
+                showNotification('La opción de escaneo unificado está deshabilitada actualmente', 'warning');
+                return;
+            }
+            
             const popup = document.getElementById('work-type-popup');
             if (!popup) return;
 
@@ -5282,11 +5319,9 @@
                 return;
             }
 
-            // Validate work type
-            if (PENDING_WORK_TYPE !== 'classic' && PENDING_WORK_TYPE !== 'unified') {
-                console.error('Invalid pending work type:', PENDING_WORK_TYPE);
-                showNotification('Error: tipo de trabajo inválido', 'error');
-                PENDING_WORK_TYPE = null;
+            // Only allow 'classic' work type
+            if (PENDING_WORK_TYPE !== 'classic') {
+                showNotification('Solo el modo de trabajo "Clasificar" está disponible actualmente', 'warning');
                 return;
             }
 
@@ -5861,6 +5896,9 @@
 
                 // Add to pending sync
                 PENDING_SYNC = [...PENDING_SYNC, ...records];
+                console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', records.length);
+                console.log('📊 [UNIFICADO] Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+                console.log('🔍 [UNIFICADO] Ejemplo de registro:', records[0]);
                 SyncManager.save();
 
                 // Show appropriate notification
@@ -5868,9 +5906,16 @@
                 showNotification(`💾 ${records.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
 
                 // Try to sync immediately
+                console.log('🔌 [UNIFICADO] Estado de conexión:');
+                console.log('  - IS_ONLINE:', IS_ONLINE);
+                console.log('  - gapi disponible:', !!gapi);
+                console.log('  - Token disponible:', !!gapi?.client?.getToken());
+
                 if (IS_ONLINE && gapi?.client?.getToken()) {
+                    console.log('✅ [UNIFICADO] Intentando sincronizar automáticamente...');
                     await SyncManager.sync();
                 } else {
+                    console.log('⚠️ [UNIFICADO] No se puede sincronizar automáticamente (offline o sin token)');
                     SyncManager.updateUI(false);
                 }
 

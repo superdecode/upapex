@@ -622,25 +622,38 @@ function updateConnectionIndicator() {
 // ==================== GOOGLE API ====================
 async function initGAPI() {
     try {
-        await gapi.client.init({
-            discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
-        });
-        TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-            client_id: CONFIG.CLIENT_ID,
-            scope: CONFIG.SCOPES,
-            callback: handleAuthCallback,
-            error_callback: (error) => {
-                hidePreloader();
-                if (error.type !== 'popup_closed') {
-                    showNotification('❌ Error de autenticación: ' + error.message, 'error');
-                } else {
-                    showNotification('⚠️ Autenticación cancelada', 'warning');
+        // Only initialize if not already done
+        if (!gapi.client) {
+            await gapi.client.init({
+                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
+            });
+        }
+        
+        // Initialize token client if not already done
+        if (!TOKEN_CLIENT) {
+            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                client_id: CONFIG.CLIENT_ID,
+                scope: CONFIG.SCOPES,
+                callback: handleAuthCallback,
+                error_callback: (error) => {
+                    hidePreloader();
+                    if (error.type === 'popup_closed') {
+                        showNotification('⚠️ Autenticación cancelada', 'warning');
+                    } else if (error.type === 'popup_blocked') {
+                        showNotification('❌ El navegador bloqueó la ventana emergente. Por favor permite ventanas emergentes para este sitio.', 'error');
+                    } else {
+                        showNotification('❌ Error de autenticación: ' + (error.message || 'Error desconocido'), 'error');
+                    }
+                    console.error('Error de autenticación:', error);
                 }
-            }
-        });
+            });
+        }
+        return true;
     } catch (e) {
+        console.error('Error en initGAPI:', e);
         hidePreloader();
-        showNotification('Error inicializando API', 'error');
+        showNotification('❌ Error al inicializar la API de Google: ' + (e.message || 'Error desconocido'), 'error');
+        return false;
     }
 }
 
@@ -668,9 +681,72 @@ async function handleAuthCallback(response) {
     }
 }
 
-function handleLogin() {
-    showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
-    TOKEN_CLIENT?.requestAccessToken();
+async function handleLogin() {
+    try {
+        showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
+        
+        // Ensure gapi is loaded
+        if (!window.gapi) {
+            throw new Error('La API de Google no se ha cargado correctamente. Por favor recarga la página.');
+        }
+
+        // Initialize gapi client if not already done
+        if (!gapi.client) {
+            await new Promise((resolve, reject) => {
+                gapi.load('client', {
+                    callback: resolve,
+                    onerror: () => reject(new Error('Error al cargar la API de Google')),
+                    timeout: 5000,
+                    ontimeout: () => reject(new Error('Tiempo de espera agotado al cargar la API de Google'))
+                });
+            });
+            
+            // Initialize the client
+            await gapi.client.init({
+                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
+            });
+            
+            // Initialize token client if not already done
+            if (!TOKEN_CLIENT) {
+                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+                    client_id: CONFIG.CLIENT_ID,
+                    scope: CONFIG.SCOPES,
+                    callback: handleAuthCallback,
+                    error_callback: (error) => {
+                        hidePreloader();
+                        if (error.type === 'popup_closed') {
+                            showNotification('⚠️ Autenticación cancelada', 'warning');
+                        } else if (error.type === 'popup_blocked') {
+                            showNotification('❌ El navegador bloqueó la ventana emergente. Por favor permite ventanas emergentes para este sitio.', 'error');
+                        } else {
+                            showNotification('❌ Error de autenticación: ' + (error.message || 'Error desconocido'), 'error');
+                        }
+                        console.error('Error de autenticación:', error);
+                    }
+                });
+            }
+        }
+
+        // Request token with error handling for popup blockers
+        try {
+            TOKEN_CLIENT.requestAccessToken();
+        } catch (e) {
+            if (e.message && e.message.includes('popup')) {
+                showNotification('❌ No se pudo abrir la ventana de autenticación. Por favor verifica la configuración de ventanas emergentes.', 'error');
+            } else {
+                throw e;
+            }
+        }
+    } catch (error) {
+        console.error('Error en handleLogin:', error);
+        hidePreloader();
+        showNotification(`❌ Error de autenticación: ${error.message || 'Error desconocido'}`, 'error');
+        
+        // If it's a popup blocked error, show a more helpful message
+        if (error.message && error.message.includes('popup')) {
+            showNotification('🔔 Por favor permite ventanas emergentes para este sitio e intenta de nuevo.', 'warning');
+        }
+    }
 }
 
 async function getUserProfile() {
