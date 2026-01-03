@@ -30,6 +30,7 @@ let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 let syncManager = null;
+let sidebarComponent = null;
 
 // ==================== GLOBAL TABS SYSTEM ====================
 const GlobalTabs = {
@@ -547,12 +548,164 @@ function initializeApp() {
     GlobalTabs.init();
     UnifiedModule.init();
     updateUI();
-    
-    // Inicializar sistema de avatar
-    if (window.AvatarSystem) {
-        window.AvatarSystem.init();
-        window.AvatarSystem.createActions();
+}
+
+// Inicializar sidebar (se llama después de login)
+function initializeSidebar() {
+    console.log('🔧 initializeSidebar() llamado');
+    console.log('🔍 sidebarComponent existe?', !!sidebarComponent);
+    console.log('🔍 window.SidebarComponent existe?', !!window.SidebarComponent);
+
+    const sidebarEl = document.getElementById('sidebar');
+    console.log('🔍 Elemento #sidebar existe?', !!sidebarEl);
+
+    if (!sidebarEl) {
+        console.error('❌ Elemento #sidebar no encontrado en el DOM');
+        return;
     }
+
+    if (sidebarComponent) {
+        console.log('⚠️ sidebarComponent ya existe, saltando inicialización');
+        return;
+    }
+
+    if (window.SidebarComponent) {
+        console.log('✅ Usando SidebarComponent compartido...');
+
+        try {
+            sidebarComponent = new window.SidebarComponent({
+                appName: 'Inventario',
+                appIcon: '📦',
+                appSubtitle: 'Sistema de gestión',
+                containerId: 'sidebar',
+                syncManager: syncManager,
+                summaryConfig: {
+                    title: '📊 Resumen Global',
+                    items: [
+                        { id: 'global-ok-count', icon: '✅', label: 'OK', class: 'ok' },
+                        { id: 'global-blocked-count', icon: '⚠️', label: 'Bloqueado', class: 'blocked' },
+                        { id: 'global-nowms-count', icon: '❌', label: 'No WMS', class: 'nowms' },
+                        { id: 'global-total-count', icon: '📦', label: 'Total', class: 'total' }
+                    ]
+                },
+                buttons: [
+                    { label: '➕ Nuevo', onClick: 'GlobalTabs.createTab()', class: 'sidebar-btn-primary' }
+                ],
+                onReloadBD: refreshInventory,
+                onLogout: handleLogout,
+                onToggleConnection: toggleGoogleConnection
+            });
+
+            console.log('🎨 Renderizando sidebar...');
+            sidebarComponent.render();
+            window.sidebarComponent = sidebarComponent;
+
+            // Verificar que se renderizó
+            setTimeout(() => {
+                const html = sidebarEl.innerHTML;
+                console.log('📊 Sidebar HTML length:', html.length);
+                console.log('📊 Sidebar HTML preview:', html.substring(0, 300));
+
+                if (html.length < 100) {
+                    console.error('❌ Sidebar no se renderizó correctamente (HTML muy corto)');
+                }
+            }, 100);
+
+            // Actualizar info de BD si ya está cargada
+            if (STATE.inventory.size > 0) {
+                console.log('📦 Actualizando BD info:', STATE.inventory.size);
+                sidebarComponent.updateBDInfo(STATE.inventory.size);
+            }
+
+            console.log('✅ Sidebar inicializado correctamente');
+        } catch (error) {
+            console.error('❌ Error al crear SidebarComponent:', error);
+            renderFallbackSidebar();
+        }
+    } else {
+        console.warn('⚠️ window.SidebarComponent no disponible, usando fallback');
+        renderFallbackSidebar();
+    }
+}
+
+// Renderizar sidebar fallback si SidebarComponent no está disponible
+function renderFallbackSidebar() {
+    console.log('🔄 Renderizando sidebar fallback...');
+
+    const sidebarEl = document.getElementById('sidebar');
+    if (!sidebarEl) return;
+
+    sidebarEl.innerHTML = `
+        <div class="sidebar-header">
+            <h2>📦 Inventario</h2>
+            <p>Sistema de gestión</p>
+        </div>
+
+        <div class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
+            ✅ Sincronizado
+        </div>
+
+        <div class="global-summary-section">
+            <div class="summary-title">📊 Resumen Global</div>
+            <div class="summary-grid">
+                <div class="summary-item ok">
+                    <span class="summary-icon">✅</span>
+                    <span class="summary-value" id="global-ok-count">0</span>
+                    <span class="summary-label">OK</span>
+                </div>
+                <div class="summary-item blocked">
+                    <span class="summary-icon">⚠️</span>
+                    <span class="summary-value" id="global-blocked-count">0</span>
+                    <span class="summary-label">Bloqueado</span>
+                </div>
+                <div class="summary-item nowms">
+                    <span class="summary-icon">❌</span>
+                    <span class="summary-value" id="global-nowms-count">0</span>
+                    <span class="summary-label">No WMS</span>
+                </div>
+                <div class="summary-item total">
+                    <span class="summary-icon">📦</span>
+                    <span class="summary-value" id="global-total-count">0</span>
+                    <span class="summary-label">Total</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <button class="sidebar-btn sidebar-btn-primary" onclick="GlobalTabs.createTab()">
+                ➕ Nuevo
+            </button>
+        </div>
+
+        <div class="user-footer">
+            <div class="user-info">
+                <div class="user-avatar" id="user-avatar" onclick="showAliasPopup()" style="cursor: pointer;">?</div>
+                <div class="user-details">
+                    <div class="user-name" id="user-name-display" onclick="showAliasPopup()" style="cursor: pointer;">No conectado</div>
+                    <div class="connection-indicator">
+                        <div class="connection-dot" id="connection-dot"></div>
+                        <span id="connection-text">Offline</span>
+                    </div>
+                </div>
+            </div>
+            <div class="user-footer-actions">
+                <button class="btn btn-secondary btn-small" onclick="refreshInventory()" title="Actualizar BD">🔄</button>
+                <button class="btn btn-secondary btn-small" onclick="toggleGoogleConnection()" title="Conectar/Desconectar">🔌</button>
+                <button class="btn btn-secondary btn-small" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
+            </div>
+            <div class="bd-info">
+                <div><span id="bd-count">0</span> registros cargados</div>
+                <div id="bd-update-time">Sin actualizar</div>
+            </div>
+        </div>
+    `;
+
+    console.log('✅ Sidebar fallback renderizado');
+
+    // Actualizar displays
+    updateUserDisplay();
+    updateConnectionStatus();
+    updateBdInfo();
 }
 
 function gapiLoaded() {
@@ -578,6 +731,69 @@ function gisLoaded() {
 function maybeEnableButtons() {
     if (gapiInited && gisInited) {
         console.log('Google APIs initialized');
+        // Intentar restaurar sesión guardada
+        tryRestoreSession();
+    }
+}
+
+// Restaurar sesión de Google si existe
+function tryRestoreSession() {
+    const savedToken = localStorage.getItem('gapi_token');
+    const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+
+    if (savedToken && tokenExpiry) {
+        const expiryTime = parseInt(tokenExpiry, 10);
+        const now = Date.now();
+
+        // Verificar si el token todavía es válido (con 5 minutos de margen)
+        if (expiryTime > now + (5 * 60 * 1000)) {
+            try {
+                const tokenObj = JSON.parse(savedToken);
+                gapi.client.setToken(tokenObj);
+
+                // Verificar que el token funciona
+                gapi.client.request({
+                    path: 'https://www.googleapis.com/oauth2/v2/userinfo',
+                }).then(async () => {
+                    // Token válido, continuar con la sesión
+                    await getUserProfile();
+                    await loadInventory();
+
+                    syncManager = new SyncManager({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        sheetName: CONFIG.SHEET_NAME,
+                        storageKey: 'wms_inventory_pending_sync'
+                    });
+                    syncManager.init();
+                    window.syncManager = syncManager;
+
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('main-app').classList.remove('hidden');
+
+                    // Inicializar sidebar después de mostrar el main-app
+                    initializeSidebar();
+
+                    GlobalTabs.updateVisibility();
+                    updateConnectionStatus();
+
+                    console.log('Sesión de Google restaurada exitosamente');
+                }).catch(err => {
+                    // Token inválido, limpiar
+                    console.log('Token guardado inválido, requiere nuevo login');
+                    localStorage.removeItem('gapi_token');
+                    localStorage.removeItem('gapi_token_expiry');
+                });
+            } catch (e) {
+                console.error('Error al restaurar token:', e);
+                localStorage.removeItem('gapi_token');
+                localStorage.removeItem('gapi_token_expiry');
+            }
+        } else {
+            // Token expirado
+            console.log('Token expirado, requiere nuevo login');
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
+        }
     }
 }
 
@@ -591,6 +807,18 @@ function handleLogin() {
         }
 
         gapi.client.setToken(resp);
+
+        // Guardar token en localStorage para persistencia
+        const tokenObj = gapi.client.getToken();
+        if (tokenObj) {
+            localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
+            // Guardar tiempo de expiración (generalmente 1 hora)
+            const expiresIn = resp.expires_in || 3600; // segundos
+            const expiryTime = Date.now() + (expiresIn * 1000);
+            localStorage.setItem('gapi_token_expiry', expiryTime.toString());
+            console.log('Token de Google guardado en localStorage');
+        }
+
         await getUserProfile();
         await loadInventory();
 
@@ -604,6 +832,10 @@ function handleLogin() {
 
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('main-app').classList.remove('hidden');
+
+        // Inicializar sidebar después de mostrar el main-app
+        initializeSidebar();
+
         GlobalTabs.updateVisibility();
         updateConnectionStatus();
     };
@@ -623,39 +855,65 @@ async function getUserProfile() {
         const profile = await response.json();
         STATE.userEmail = profile.email;
         STATE.userName = profile.name || profile.email.split('@')[0];
-        
-        // Integrar con sistema de avatar
-        if (window.AvatarSystem) {
+
+        // Obtener nombre guardado desde localStorage (sidebar puede no estar inicializado aún)
+        const savedName = localStorage.getItem('wms_user_name') || STATE.userName;
+        STATE.userAlias = savedName;
+
+        // Integrar con sidebar component si está disponible
+        if (sidebarComponent) {
+            if (!localStorage.getItem('wms_user_name')) {
+                sidebarComponent.setUserName(STATE.userName);
+            }
+            sidebarComponent.setUserEmail(STATE.userEmail);
+
+            // Guardar conexión de Google
+            const token = gapi.client.getToken();
+            if (token && token.access_token) {
+                sidebarComponent.saveGoogleConnection(token.access_token, token.expires_in || 3600);
+            }
+
+            updateUserDisplay();
+
+            // Mostrar popup de alias si es primera vez
+            if (!savedName || savedName === 'Usuario') {
+                setTimeout(() => {
+                    sidebarComponent.showNameEditPopup();
+                }, 1500);
+            }
+        } else if (window.AvatarSystem) {
+            // Fallback a AvatarSystem
             const savedName = window.AvatarSystem.getUserName();
             STATE.userAlias = savedName || STATE.userName;
-            
+
             if (!savedName) {
                 window.AvatarSystem.setUserName(STATE.userName);
             }
             window.AvatarSystem.setUserEmail(STATE.userEmail);
-            
-            // Guardar conexión de Google
+
             const token = gapi.client.getToken();
             if (token && token.access_token) {
                 window.AvatarSystem.saveGoogleConnection(token.access_token, token.expires_in || 3600);
             }
+
+            updateUserDisplay();
+
+            if (!STATE.userAlias || STATE.userAlias === 'Usuario') {
+                setTimeout(() => {
+                    window.AvatarSystem.showNamePopup();
+                }, 1000);
+            }
         } else {
-            // Fallback si no está disponible el sistema de avatar
+            // Fallback final
             const savedAlias = localStorage.getItem('wms_user_alias');
             STATE.userAlias = savedAlias || STATE.userName;
-        }
-        
-        updateUserDisplay();
-        
-        // Mostrar popup de alias si es primera vez
-        if (!STATE.userAlias || STATE.userAlias === 'Usuario') {
-            setTimeout(() => {
-                if (window.AvatarSystem) {
-                    window.AvatarSystem.showNamePopup();
-                } else {
+            updateUserDisplay();
+
+            if (!STATE.userAlias || STATE.userAlias === 'Usuario') {
+                setTimeout(() => {
                     showAliasPopup();
-                }
-            }, 1000);
+                }, 1000);
+            }
         }
     } catch (e) {
         console.error('Error getting profile:', e);
@@ -684,8 +942,18 @@ function handleLogout() {
         gapi.client.setToken('');
     }
 
+    // Limpiar token guardado en localStorage
+    localStorage.removeItem('gapi_token');
+    localStorage.removeItem('gapi_token_expiry');
+    console.log('Sesión de Google limpiada');
+
     if (syncManager) {
         syncManager.stopAutoSync();
+    }
+
+    // Limpiar sidebar component
+    if (sidebarComponent) {
+        sidebarComponent.clearGoogleConnection();
     }
 
     document.getElementById('main-app').classList.add('hidden');
@@ -1323,12 +1591,18 @@ function updateConnectionStatus(isOnline) {
 }
 
 function updateUserDisplay() {
+    // Usar sidebar component si está disponible
+    if (sidebarComponent) {
+        sidebarComponent.updateAvatarDisplay();
+        return;
+    }
+
     // Usar sistema de avatar si está disponible
     if (window.AvatarSystem) {
         window.AvatarSystem.updateDisplay();
         return;
     }
-    
+
     // Fallback
     const avatar = document.getElementById('user-avatar');
     const userName = document.getElementById('user-name-display');
@@ -1349,11 +1623,17 @@ function updateUserDisplay() {
 }
 
 function updateBdInfo() {
-    const bdCount = document.getElementById('bd-count');
-    const bdTime = document.getElementById('bd-update-time');
+    // Usar sidebar component si está disponible
+    if (sidebarComponent) {
+        sidebarComponent.updateBDInfo(STATE.inventory.size);
+    } else {
+        // Fallback
+        const bdCount = document.getElementById('bd-count');
+        const bdTime = document.getElementById('bd-update-time');
 
-    if (bdCount) bdCount.textContent = STATE.inventory.size.toLocaleString();
-    if (bdTime) bdTime.textContent = STATE.inventoryLastUpdate || getTimestamp();
+        if (bdCount) bdCount.textContent = STATE.inventory.size.toLocaleString();
+        if (bdTime) bdTime.textContent = STATE.inventoryLastUpdate || getTimestamp();
+    }
 }
 
 function updateGlobalSummaryFromTabs() {
@@ -1495,13 +1775,23 @@ function saveUserAlias() {
         return;
     }
 
-    STATE.userAlias = alias;
-    localStorage.setItem('wms_user_alias', alias);
+    // Usar sidebar component si está disponible
+    if (sidebarComponent) {
+        const result = sidebarComponent.setUserName(alias);
+        if (!result.success) {
+            showNotification(`⚠️ ${result.message}`, 'warning');
+            return;
+        }
+        STATE.userAlias = result.formatted;
+    } else {
+        STATE.userAlias = alias;
+        localStorage.setItem('wms_user_alias', alias);
+    }
 
     document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
     updateUserDisplay();
 
-    showNotification(`✅ Nombre actualizado: ${alias}`, 'success');
+    showNotification(`✅ Nombre actualizado: ${STATE.userAlias}`, 'success');
     playSound('success');
 }
 
@@ -1775,8 +2065,16 @@ function toggleGoogleConnection() {
             google.accounts.oauth2.revoke(token.access_token);
             gapi.client.setToken('');
 
+            // Limpiar token guardado
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
+
             if (syncManager) {
                 syncManager.stopAutoSync();
+            }
+
+            if (sidebarComponent) {
+                sidebarComponent.clearGoogleConnection();
             }
 
             if (connectBtn) connectBtn.classList.add('disconnected');
@@ -1796,9 +2094,22 @@ function toggleGoogleConnection() {
 
             gapi.client.setToken(resp);
 
+            // Guardar token
+            const tokenObj = gapi.client.getToken();
+            if (tokenObj) {
+                localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
+                const expiresIn = resp.expires_in || 3600;
+                const expiryTime = Date.now() + (expiresIn * 1000);
+                localStorage.setItem('gapi_token_expiry', expiryTime.toString());
+            }
+
             if (syncManager) {
                 syncManager.startAutoSync();
                 await syncManager.sync();
+            }
+
+            if (sidebarComponent) {
+                sidebarComponent.saveGoogleConnection(tokenObj.access_token, resp.expires_in || 3600);
             }
 
             if (connectBtn) connectBtn.classList.remove('disconnected');

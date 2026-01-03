@@ -415,43 +415,51 @@
                         </div>
                     </div>
 
-                    <!-- Fecha Heredada -->
-                    <div style="background: linear-gradient(135deg, #fff5ed 0%, #ffedd5 100%); padding: 12px 20px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
-                        <span style="font-weight: 600; color: var(--text);">Mostrando Agenda:</span>
-                        <span id="agenda-fecha-display" style="color: var(--primary); font-weight: 700; font-size: 1.1em;">Cargando...</span>
-                    </div>
+                    <!-- Sticky Header: Fecha + Filtros -->
+                    <div class="agenda-sticky-header">
+                        <!-- Fecha Heredada -->
+                        <div class="agenda-date-banner">
+                            <span style="font-weight: 600; color: var(--text);">Mostrando Agenda:</span>
+                            <span id="agenda-fecha-display" style="color: var(--primary); font-weight: 700; font-size: 1.1em;">Cargando...</span>
+                        </div>
 
-                    <div class="card">
-                        <div class="section-header-inline">
-                            <div class="header-with-badges">
-                                <h3>📋 Órdenes Agrupadas por Destino</h3>
-                                <span class="badge badge-primary" id="agenda-total-ordenes-badge">0 órdenes</span>
-                                <span class="badge badge-success" id="agenda-total-cajas-badge">0 cajas</span>
-                                <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
-                                    <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir agenda">
-                                        🖨️ Imprimir
-                                    </button>
-                                    <button class="btn btn-success btn-sm" onclick="exportAgendaToExcel()" title="Exportar a Excel">
-                                        📊 Exportar
-                                    </button>
+                        <!-- Header con filtros -->
+                        <div class="card" style="margin-bottom: 0;">
+                            <div class="section-header-inline">
+                                <div class="header-with-badges">
+                                    <h3>📋 Órdenes Agrupadas por Destino</h3>
+                                    <span class="badge badge-primary" id="agenda-total-ordenes-badge">0 órdenes</span>
+                                    <span class="badge badge-success" id="agenda-total-cajas-badge">0 cajas</span>
+                                    <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
+                                        <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir agenda">
+                                            🖨️ Imprimir
+                                        </button>
+                                        <button class="btn btn-success btn-sm" onclick="exportAgendaToExcel()" title="Exportar a Excel">
+                                            📊 Exportar
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="filter-controls">
-                                <div class="advanced-filter-wrapper">
-                                    <select id="filter-agenda-criterion" class="filter-criterion-select" onchange="showFilterDropdown('agenda')">
-                                        <option value="">🔽 Filtrar por...</option>
-                                        <option value="destino">🏢 Destino</option>
-                                        <option value="estatus">📊 Estatus</option>
-                                    </select>
-                                    <div id="active-filters-agenda" class="active-filters-container"></div>
-                                    <div id="filter-agenda-dropdown" class="filter-dropdown" style="display: none;"></div>
-                                </div>
-                                <div class="search-input-wrapper">
-                                    <input type="text" id="filter-agenda" class="filter-input" placeholder="🔍 Buscar..." oninput="filterAgendaTable()">
-                                    <button class="clear-search-btn" id="clear-filter-agenda" onclick="clearSearchInput('filter-agenda')" style="display: none;">✕</button>
+                                <div class="filter-controls">
+                                    <div class="advanced-filter-wrapper">
+                                        <select id="filter-agenda-criterion" class="filter-criterion-select" onchange="showFilterDropdown('agenda')">
+                                            <option value="">🔽 Filtrar por...</option>
+                                            <option value="destino">🏢 Destino</option>
+                                            <option value="estatus">📊 Estatus</option>
+                                        </select>
+                                        <div id="active-filters-agenda" class="active-filters-container"></div>
+                                        <div id="filter-agenda-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                    </div>
+                                    <div class="search-input-wrapper">
+                                        <input type="text" id="filter-agenda" class="filter-input" placeholder="🔍 Buscar..." oninput="filterAgendaTable()">
+                                        <button class="clear-search-btn" id="clear-filter-agenda" onclick="clearSearchInput('filter-agenda')" style="display: none;">✕</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Contenedor de tabla -->
+                    <div class="card" style="margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0;">
                         <div id="agenda-table-container" class="agenda-table-wrapper">
                             <!-- Contenido dinámico generado por JavaScript -->
                         </div>
@@ -757,6 +765,46 @@
                 </button>
                 <button class="btn btn-secondary" onclick="closeDeleteValidatedModal()">
                     Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CANCEL ORDER CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="cancel-order-modal" style="display: none;">
+        <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>⚠️</span>
+                    <span>CANCELAR ORDEN</span>
+                </div>
+                <button class="modal-close" onclick="closeCancelOrderModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 3em; margin-bottom: 15px;">🚫</div>
+                    <p style="font-size: 1.1em; color: #666; margin-bottom: 15px;">
+                        ¿Confirmar cancelación de la orden?
+                    </p>
+                    <div style="background: #fff5ed; border-left: 4px solid #f97316; padding: 15px; border-radius: 8px; text-align: left; margin-bottom: 15px;">
+                        <p style="margin: 5px 0;"><strong>Orden:</strong> <span id="cancel-orden-numero">-</span></p>
+                        <p style="margin: 5px 0;"><strong>Destino:</strong> <span id="cancel-orden-destino">-</span></p>
+                        <p style="margin: 5px 0;"><strong>Cajas:</strong> <span id="cancel-orden-cajas">-</span></p>
+                    </div>
+                    <p style="font-size: 0.95em; color: #ea580c; font-weight: 600; background: #fef2f2; padding: 12px; border-radius: 8px; text-align: left;">
+                        La orden será marcada como <strong>CANCELADA</strong>.<br>
+                        No podrá ser despachada.<br>
+                        Podrá editarse posteriormente para revertir la cancelación.
+                    </p>
+                    <p style="font-size: 0.9em; color: #999; margin-top: 15px;">¿Desea continuar?</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-error" onclick="executeConfirmCancelOrder()">
+                    🚫 Confirmar Cancelación
+                </button>
+                <button class="btn btn-secondary" onclick="closeCancelOrderModal()">
+                    Cancelar Operación
                 </button>
             </div>
         </div>

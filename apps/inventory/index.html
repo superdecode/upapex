@@ -16,8 +16,9 @@
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="../../shared/js/wms-utils.js"></script>
     <script src="../../shared/js/sync-manager.js"></script>
-    <script src="../../shared/js/sidebar-component.js"></script>
+    <!-- IMPORTANTE: avatar-system.js DEBE cargarse ANTES de sidebar-component.js -->
     <script src="../../shared/js/avatar-system.js"></script>
+    <script src="../../shared/js/sidebar-component.js"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -45,66 +46,7 @@
     <div id="main-app" class="hidden">
         <div class="main-container">
             <!-- SIDEBAR -->
-            <div class="sidebar">
-                <div class="sidebar-header">
-                    <h2>📦 Inventario</h2>
-                    <p>Sistema de gestión</p>
-                </div>
-
-                <div id="sync-status" class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
-                    ✅ Sincronizado
-                </div>
-
-                <!-- Global Summary Section -->
-                <div class="global-summary-section" id="global-summary-section">
-                    <div class="summary-title">📊 Resumen Global</div>
-                    <div class="summary-grid">
-                        <div class="summary-item ok">
-                            <span class="summary-icon">✅</span>
-                            <span class="summary-value" id="global-ok-count">0</span>
-                            <span class="summary-label">OK</span>
-                        </div>
-                        <div class="summary-item blocked">
-                            <span class="summary-icon">⚠️</span>
-                            <span class="summary-value" id="global-blocked-count">0</span>
-                            <span class="summary-label">Bloqueado</span>
-                        </div>
-                        <div class="summary-item nowms">
-                            <span class="summary-icon">❌</span>
-                            <span class="summary-value" id="global-nowms-count">0</span>
-                            <span class="summary-label">No WMS</span>
-                        </div>
-                        <div class="summary-item total">
-                            <span class="summary-icon">📦</span>
-                            <span class="summary-value" id="global-total-count">0</span>
-                            <span class="summary-label">Total</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="sidebar-section">
-                    <button class="sidebar-btn sidebar-btn-primary" onclick="GlobalTabs.createTab()">
-                        ➕ Nuevo
-                    </button>
-                </div>
-
-                <div class="user-footer">
-                    <div class="user-info">
-                        <div class="user-avatar" id="user-avatar">?</div>
-                        <div class="user-details">
-                            <div class="user-name" id="user-name-display">No conectado</div>
-                            <div class="connection-indicator">
-                                <div class="connection-dot" id="connection-dot"></div>
-                                <span id="connection-text">Offline</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bd-info" style="font-size: 0.7em; color: #aaa; text-align: center; line-height: 1.4;">
-                        <div><span id="bd-count">0</span> códigos cargados</div>
-                        <div id="bd-update-time">Sin actualizar</div>
-                    </div>
-                </div>
-            </div>
+            <div class="sidebar" id="sidebar"></div>
 
             <div class="main-content">
                 <!-- Tab Bar -->

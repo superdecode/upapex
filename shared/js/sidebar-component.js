@@ -5,16 +5,10 @@
  * Incluye: Sistema de avatar integrado, validación de nombres, gestión de Google
  *
  * @version 2.0.0
+ *
+ * IMPORTANTE: Este archivo depende de que avatar-system.js se cargue PRIMERO
+ * para definir window.AVATAR_CONFIG
  */
-
-const AVATAR_CONFIG = {
-    storageKeys: {
-        userName: 'wms_user_name',
-        userEmail: 'wms_user_email',
-        googleToken: 'wms_google_token',
-        googleExpiry: 'wms_google_expiry'
-    }
-};
 
 class SidebarComponent {
     constructor(config = {}) {
@@ -108,8 +102,8 @@ class SidebarComponent {
     }
 
     loadAvatarData() {
-        const savedName = localStorage.getItem(AVATAR_CONFIG.storageKeys.userName);
-        const savedEmail = localStorage.getItem(AVATAR_CONFIG.storageKeys.userEmail);
+        const savedName = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.userName);
+        const savedEmail = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.userEmail);
         
         if (savedName) {
             this.avatarState.userName = savedName;
@@ -122,8 +116,8 @@ class SidebarComponent {
     }
 
     checkGoogleConnection() {
-        const token = localStorage.getItem(AVATAR_CONFIG.storageKeys.googleToken);
-        const expiry = localStorage.getItem(AVATAR_CONFIG.storageKeys.googleExpiry);
+        const token = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.googleToken);
+        const expiry = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.googleExpiry);
         
         if (token && expiry) {
             const expiryTime = parseInt(expiry, 10);
@@ -141,16 +135,16 @@ class SidebarComponent {
 
     saveGoogleConnection(token, expiresIn = 3600) {
         const expiryTime = Date.now() + (expiresIn * 1000);
-        localStorage.setItem(AVATAR_CONFIG.storageKeys.googleToken, token);
-        localStorage.setItem(AVATAR_CONFIG.storageKeys.googleExpiry, expiryTime.toString());
+        localStorage.setItem(window.AVATAR_CONFIG.storageKeys.googleToken, token);
+        localStorage.setItem(window.AVATAR_CONFIG.storageKeys.googleExpiry, expiryTime.toString());
         this.avatarState.isGoogleConnected = true;
         this.notifyAvatarUpdate();
         this.updateAvatarButtons();
     }
 
     clearGoogleConnection() {
-        localStorage.removeItem(AVATAR_CONFIG.storageKeys.googleToken);
-        localStorage.removeItem(AVATAR_CONFIG.storageKeys.googleExpiry);
+        localStorage.removeItem(window.AVATAR_CONFIG.storageKeys.googleToken);
+        localStorage.removeItem(window.AVATAR_CONFIG.storageKeys.googleExpiry);
         this.avatarState.isGoogleConnected = false;
         this.notifyAvatarUpdate();
         this.updateAvatarButtons();
@@ -188,7 +182,7 @@ class SidebarComponent {
         }
         
         this.avatarState.userName = validation.formatted;
-        localStorage.setItem(AVATAR_CONFIG.storageKeys.userName, validation.formatted);
+        localStorage.setItem(window.AVATAR_CONFIG.storageKeys.userName, validation.formatted);
         this.notifyAvatarUpdate();
         
         return { success: true, formatted: validation.formatted };
@@ -196,7 +190,7 @@ class SidebarComponent {
 
     setUserEmail(email) {
         this.avatarState.userEmail = email;
-        localStorage.setItem(AVATAR_CONFIG.storageKeys.userEmail, email);
+        localStorage.setItem(window.AVATAR_CONFIG.storageKeys.userEmail, email);
         this.notifyAvatarUpdate();
     }
 

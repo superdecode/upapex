@@ -1278,6 +1278,8 @@
             }
         }
     </style>
+    <!-- WMS Utils - Funciones compartidas -->
+    <script src="shared/js/wms-utils.js"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -1405,7 +1407,7 @@
                                 </div>
                                 <div class="input-group">
                                     <label>📍 Ubicación:</label>
-                                    <input type="text" id="location-input" placeholder="Ej: PLEC123" onchange="updateState()">
+                                    <input type="text" id="location-input" placeholder="Ej: A1-02-05-01" onchange="updateState()">
                                 </div>
                             </div>
                             <div class="scanner-section">
@@ -1688,8 +1690,16 @@
             <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
                 <p style="margin-bottom: 15px; color: #e65100;"><strong>Formato incorrecto:</strong></p>
                 <strong>Código ingresado:</strong> <span id="invalid-location-code" style="color: var(--error);"></span><br><br>
-                <strong>Formato esperado:</strong> <code>Letra-Números-Números-Números</code><br>
-                <p style="margin-top: 10px; color: #666; font-size: 0.9em;">Ejemplos válidos: <code>A26-06-01-02</code>, <code>B11-11-02-01</code>, <code>A1-11-02-01</code>, <code>C9-11-02-01</code></p>
+                <strong>Error:</strong> <span id="invalid-location-message" style="color: #e65100;"></span><br><br>
+                <strong>Formato esperado:</strong> <code>[LETRA(S)][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]</code><br>
+                <p style="margin-top: 10px; color: #666; font-size: 0.9em;">
+                    Ejemplos válidos: <code>A26-06-01-02</code>, <code>B11-11-02-01</code>, <code>A1-01-01-01</code>, <code>C9-01-02-01</code>
+                </p>
+                <p style="margin-top: 10px; color: #666; font-size: 0.85em;">
+                    <strong>Reglas:</strong><br>
+                    • La zona (primer número) NO requiere ceros a la izquierda (puede ser 1-999)<br>
+                    • Pasillo, Rack y Nivel SÍ requieren ceros (01-99)
+                </p>
             </div>
             <div class="popup-buttons">
                 <button class="btn btn-secondary" onclick="closePopup('invalid-location')">Corregir</button>
@@ -4148,7 +4158,7 @@
             if (!validation.valid && locationValue !== '') {
                 // Si no es válido, mostrar popup y guardar los datos para el forzado
                 invalidLocationData = { code: locationValue };
-                showPopup('invalid-location', locationValue, null);
+                showPopup('invalid-location', locationValue, validation.message || 'Formato de ubicación incorrecto');
                 // No guardar aún, esperar decisión del usuario
                 return;
             }
@@ -4156,6 +4166,12 @@
             // Si es válido o está vacío, normalizar y guardar
             tab.location = validation.normalized;
             locationInput.value = validation.normalized; // Actualizar input con valor normalizado
+
+            // Mostrar notificación si se auto-corrigió el formato
+            if (validation.needsCorrection && locationValue !== '') {
+                showNotification(`✓ Ubicación corregida: ${validation.normalized}`, 'success');
+            }
+
             saveState();
         }
 
@@ -4312,6 +4328,7 @@
                 document.getElementById('popup-dup').style.display = 'flex';
             } else if (type === 'invalid-location') {
                 document.getElementById('invalid-location-code').textContent = code;
+                document.getElementById('invalid-location-message').textContent = data || 'Formato de ubicación incorrecto';
                 document.getElementById('popup-invalid-location').style.display = 'flex';
             }
             document.getElementById('scanner').blur();
@@ -4370,16 +4387,18 @@
                 return { valid: true, normalized: '' }; // Permitir ubicación vacía
             }
 
-            // Normalizar primero (convertir comillas a guiones)
-            const normalized = normalizeLocationCode(code.toUpperCase().trim());
+            // Usar la validación avanzada de wms-utils.js
+            // Esta función valida el formato correcto y normaliza automáticamente
+            // Formato: [LETRA(S)][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
+            // Ejemplos: A26-06-01-02, B11-11-02-01, A1-01-01-01 (con auto-corrección)
+            const validation = validateAndNormalizeLocation(code);
 
-            // Formato esperado: Letra(s)-Numero(s)-Numero(s)-Numero(s)
-            // Ejemplos: A26-06-01-02, B11-11-02-01, A1-11-02-01, C9-11-02-01
-            const locationPattern = /^[A-Z]+\d+-\d+-\d+-\d+$/;
-
-            const isValid = locationPattern.test(normalized);
-
-            return { valid: isValid, normalized: normalized };
+            return {
+                valid: validation.valid,
+                normalized: validation.normalized,
+                needsCorrection: validation.needsCorrection,
+                message: validation.message
+            };
         }
 
         function forceInvalidLocation() {

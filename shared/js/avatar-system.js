@@ -5,7 +5,8 @@
  */
 
 // ==================== CONFIGURACIÓN ====================
-const AVATAR_CONFIG = {
+// Definir en window para que esté disponible globalmente
+window.AVATAR_CONFIG = {
     storageKeys: {
         userName: 'wms_user_name',
         userEmail: 'wms_user_email',
@@ -13,6 +14,9 @@ const AVATAR_CONFIG = {
         googleExpiry: 'wms_google_expiry'
     }
 };
+
+// Referencia local para uso interno
+const AVATAR_CONFIG = window.AVATAR_CONFIG;
 
 // ==================== ESTADO DEL AVATAR ====================
 const AvatarState = {

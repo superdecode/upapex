@@ -1868,8 +1868,8 @@
 }
 
 /* ==================== WORK TYPE POPUP ==================== */
-.work-type-popup {
-    max-width: 550px;
+.popup-content.work-type-popup {
+    max-width: 550px !important;
     position: relative;
     padding: 30px 25px 25px;
 }

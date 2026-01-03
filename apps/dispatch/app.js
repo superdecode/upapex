@@ -1258,8 +1258,13 @@ function filterOrdersByDateRange() {
         return;
     }
 
-    const startDate = new Date(STATE.dateFilter.startDate);
-    const endDate = new Date(STATE.dateFilter.endDate);
+    // Parse dates as local time to avoid timezone offset issues
+    const startParts = STATE.dateFilter.startDate.split('-');
+    const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+    startDate.setHours(0, 0, 0, 0);
+
+    const endParts = STATE.dateFilter.endDate.split('-');
+    const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
     endDate.setHours(23, 59, 59, 999);
 
     console.log(`🔍 Filtrando órdenes por rango: ${startDate.toLocaleDateString('es-ES')} - ${endDate.toLocaleDateString('es-ES')}`);
@@ -2403,8 +2408,13 @@ function renderValidatedTable() {
     let filteredValidated = [...STATE.localValidated];
 
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        const startDate = new Date(STATE.dateFilter.startDate);
-        const endDate = new Date(STATE.dateFilter.endDate);
+        // Parse dates as local time to avoid timezone offset issues
+        const startParts = STATE.dateFilter.startDate.split('-');
+        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        startDate.setHours(0, 0, 0, 0);
+
+        const endParts = STATE.dateFilter.endDate.split('-');
+        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
         endDate.setHours(23, 59, 59, 999);
 
         filteredValidated = filteredValidated.filter(record => {
@@ -2462,9 +2472,16 @@ function renderValidatedTable() {
 
         // FIXED: Calculate dispatch status instead of sync status
         const cantidadDespachar = record.cantidadDespachar || 0;
-        const dispatchStatus = calculateOrderStatus(totalCajas, cantidadDespachar);
-        const statusBadge = dispatchStatus.status;
-        const statusColor = dispatchStatus.color;
+        let dispatchStatus, statusBadge, statusColor;
+
+        if (record.estatus === 'Cancelada') {
+            statusBadge = '🚫 CANCELADA';
+            statusColor = '#ef4444';
+        } else {
+            dispatchStatus = calculateOrderStatus(totalCajas, cantidadDespachar);
+            statusBadge = dispatchStatus.status;
+            statusColor = dispatchStatus.color;
+        }
 
         // Buscar TRS relacionados
         const boxCodes = new Set();
@@ -2498,8 +2515,12 @@ function renderValidatedTable() {
         // Format validation date/time
         const fechaValidacion = record.timestamp ? formatValidationDateTime(record.timestamp) : `${record.fecha || ''} ${record.hora || ''}`;
 
+        // Check if order is cancelled
+        const isCancelled = record.estatus === 'Cancelada';
+        const rowClass = isCancelled ? 'validated-row cancelled-order' : 'validated-row';
+
         return `
-            <tr data-orden="${record.orden}" class="validated-row">
+            <tr data-orden="${record.orden}" class="${rowClass}">
                 <td><span class="order-code">${makeCopyable(record.orden)}</span></td>
                 <td class="fecha-validacion">${fechaValidacion}</td>
                 <td class="td-wrap">${record.destino || orderData.recipient || '<span class="empty-cell">N/A</span>'}</td>
@@ -2647,6 +2668,98 @@ function confirmDeleteValidated(orden) {
 function closeDeleteValidatedModal() {
     document.getElementById('delete-validated-modal').style.display = 'none';
     pendingDeleteOrden = null;
+}
+
+/**
+ * Show cancel order confirmation modal
+ */
+function showCancelOrderModal() {
+    const orderData = STATE.obcData.get(STATE.currentOrder);
+    if (!orderData) return;
+
+    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
+    const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
+    const totalCajas = orderData.totalCajas || rastreoData.length || validaciones.length || 0;
+
+    // Fill modal with order data
+    document.getElementById('cancel-orden-numero').textContent = STATE.currentOrder;
+    document.getElementById('cancel-orden-destino').textContent = orderData.recipient || 'N/A';
+    document.getElementById('cancel-orden-cajas').textContent = totalCajas;
+
+    // Show modal
+    const modal = document.getElementById('cancel-order-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Close cancel order modal
+ */
+function closeCancelOrderModal() {
+    const modal = document.getElementById('cancel-order-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Execute order cancellation
+ */
+async function executeConfirmCancelOrder() {
+    if (!STATE.currentOrder) {
+        closeCancelOrderModal();
+        return;
+    }
+
+    const orderData = STATE.obcData.get(STATE.currentOrder);
+    if (!orderData) {
+        showNotification('❌ Error al obtener datos de la orden', 'error');
+        closeCancelOrderModal();
+        return;
+    }
+
+    try {
+        // Prepare validation record for cancelled order
+        const validationRecord = {
+            orden: STATE.currentOrder,
+            destino: orderData.recipient || '',
+            horario: orderData.expectedArrival || '',
+            cajas: orderData.totalCajas || 0,
+            cantidadDespachar: 0,
+            porcentajeSurtido: 0,
+            estatus: 'Cancelada',
+            calidad: 'N/A',
+            conductor: '',
+            unidad: '',
+            folio: '',
+            nota: 'Orden cancelada',
+            timestamp: new Date().toISOString(),
+            codigo: orderData.referenceNo || '',
+            track: orderData.trackingCode || ''
+        };
+
+        // Add to local validated
+        STATE.localValidated.push(validationRecord);
+        saveLocalState();
+
+        // Close modals
+        closeCancelOrderModal();
+        closeInfoModal();
+
+        // Re-render tables and update badges
+        renderValidatedTable();
+        renderOrdersTable();
+        updateTabBadges();
+
+        // Show success notification
+        showNotification('🚫 Orden marcada como Cancelada', 'info');
+
+    } catch (error) {
+        console.error('Error al cancelar orden:', error);
+        showNotification('❌ Error al cancelar la orden: ' + error.message, 'error');
+        closeCancelOrderModal();
+    }
 }
 
 /**
@@ -3035,29 +3148,34 @@ function showOrderInfo(orden) {
     if (validationCheck.validated && validationCheck.data) {
         const savedData = validationCheck.data;
 
-        // Populate operator/driver dropdown
-        const operadorSelect = document.getElementById('modal-operador');
-        if (operadorSelect && savedData.operador) {
-            operadorSelect.value = savedData.operador;
-        }
+        // Use setTimeout to ensure DOM elements are ready and dropdowns are populated
+        setTimeout(() => {
+            // Populate operator/driver dropdown
+            const operadorSelect = document.getElementById('modal-operador');
+            if (operadorSelect && savedData.operador) {
+                operadorSelect.value = savedData.operador;
+                console.log(`✅ Operador populated: ${savedData.operador}`);
+            }
 
-        // Populate unit/vehicle dropdown
-        const unidadSelect = document.getElementById('modal-unidad');
-        if (unidadSelect && savedData.unidad) {
-            unidadSelect.value = savedData.unidad;
-        }
+            // Populate unit/vehicle dropdown
+            const unidadSelect = document.getElementById('modal-unidad');
+            if (unidadSelect && savedData.unidad) {
+                unidadSelect.value = savedData.unidad;
+                console.log(`✅ Unidad populated: ${savedData.unidad}`);
+            }
 
-        // FIXED: Populate cantidad despachar field
-        const cantidadDespacharInput = document.getElementById('cantidad-despachar');
-        if (cantidadDespacharInput && savedData.cantidadDespachar) {
-            cantidadDespacharInput.value = savedData.cantidadDespachar;
-        }
+            // FIXED: Populate cantidad despachar field
+            const cantidadDespacharInput = document.getElementById('cantidad-despachar');
+            if (cantidadDespacharInput && savedData.cantidadDespachar) {
+                cantidadDespacharInput.value = savedData.cantidadDespachar;
+            }
 
-        // Populate nota despacho field
-        const notaDespachoInput = document.getElementById('nota-despacho');
-        if (notaDespachoInput && (savedData.observaciones || savedData.notaDespacho)) {
-            notaDespachoInput.value = savedData.observaciones || savedData.notaDespacho;
-        }
+            // Populate nota despacho field
+            const notaDespachoInput = document.getElementById('nota-despacho');
+            if (notaDespachoInput && (savedData.observaciones || savedData.notaDespacho)) {
+                notaDespachoInput.value = savedData.observaciones || savedData.notaDespacho;
+            }
+        }, 100);
 
         // NEW: Populate Quality Control (QC) data if exists
         if (savedData.qc) {
@@ -3116,11 +3234,21 @@ function showOrderInfo(orden) {
             updateFolioSelector();
             folioSelect.value = folioCarga;
         }
+
+        // Set cancellation toggle state if order is cancelled
+        setTimeout(() => {
+            const cancelToggle = document.getElementById('orden-cancelada-toggle');
+            if (cancelToggle && savedData.estatus === 'Cancelada') {
+                cancelToggle.checked = true;
+                // Trigger toggle function to disable fields
+                toggleOrderCancellation();
+            }
+        }, 200);
     } else {
         // Reset button for non-validated orders
         const confirmBtn = document.getElementById('confirm-dispatch-btn');
         if (confirmBtn) {
-            confirmBtn.innerHTML = '✅ Confirmar Despacho';
+            confirmBtn.innerHTML = '✅ Confirmar';
             confirmBtn.onclick = function() { confirmDispatch(); };
         }
     }
@@ -3235,6 +3363,44 @@ function disableModalInputs(disable) {
     if (notaInput) notaInput.disabled = disable;
     if (folioSelect) folioSelect.disabled = disable;
     if (confirmBtn) confirmBtn.disabled = disable;
+}
+
+// Toggle order cancellation state
+function toggleOrderCancellation() {
+    const toggle = document.getElementById('orden-cancelada-toggle');
+    const operadorSelect = document.getElementById('modal-operador');
+    const unidadSelect = document.getElementById('modal-unidad');
+    const folioSelect = document.getElementById('modal-folio-carga');
+
+    if (!toggle) return;
+
+    const isCancelled = toggle.checked;
+
+    // Disable/enable Conductor, Unidad, and Folio fields based on cancellation state
+    if (operadorSelect) operadorSelect.disabled = isCancelled;
+    if (unidadSelect) unidadSelect.disabled = isCancelled;
+    if (folioSelect) folioSelect.disabled = isCancelled;
+
+    // Add visual feedback
+    const fieldsToStyle = [operadorSelect, unidadSelect, folioSelect];
+    fieldsToStyle.forEach(field => {
+        if (field) {
+            if (isCancelled) {
+                field.style.opacity = '0.5';
+                field.style.background = '#f5f5f5';
+            } else {
+                field.style.opacity = '1';
+                field.style.background = 'white';
+            }
+        }
+    });
+
+    // Show notification
+    if (isCancelled) {
+        showNotification('⚠️ Orden marcada como Cancelada - Campos bloqueados', 'warning');
+    } else {
+        showNotification('✅ Orden reactivada - Campos habilitados', 'info');
+    }
 }
 
 function renderKPICards(orderData) {
@@ -3360,6 +3526,13 @@ function renderModalBody(orden, orderData) {
             <div class="section-header">
                 <div class="section-header-left">
                     <div class="section-title">📋 Información General</div>
+                    <div class="qc-toggle-container" style="display: inline-flex; align-items: center; gap: 8px; margin-left: 15px; padding: 6px 12px; background: #fff5ed; border: 1px solid #fed7aa; border-radius: 6px;">
+                        <span class="qc-toggle-label" style="font-size: 0.85em; color: #ea580c;">🚫 Cancelada</span>
+                        <label class="qc-toggle-switch" style="margin: 0;">
+                            <input type="checkbox" id="orden-cancelada-toggle" onchange="toggleOrderCancellation()">
+                            <span class="qc-toggle-slider"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
             <div class="section-content">
@@ -3743,8 +3916,36 @@ async function saveValidatedOrderChanges(orden) {
     const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
+    const cancelToggle = document.getElementById('orden-cancelada-toggle');
+    const isCancelled = cancelToggle && cancelToggle.checked;
 
-    // Validación de campos requeridos
+    // If order is being cancelled, show cancel confirmation modal
+    if (isCancelled) {
+        // Update the current order being edited
+        const recordIndex = STATE.localValidated.findIndex(r => r.orden === orden);
+        if (recordIndex !== -1) {
+            // Update the status to cancelled
+            STATE.localValidated[recordIndex].estatus = 'Cancelada';
+            STATE.localValidated[recordIndex].cantidadDespachar = 0;
+            STATE.localValidated[recordIndex].conductor = '';
+            STATE.localValidated[recordIndex].unidad = '';
+            STATE.localValidated[recordIndex].folio = '';
+            STATE.localValidated[recordIndex].nota = 'Orden cancelada';
+
+            // Save state
+            saveLocalState();
+
+            // Close modal and refresh tables
+            closeInfoModal();
+            renderValidatedTable();
+            updateTabBadges();
+
+            showNotification('🚫 Orden actualizada como Cancelada', 'info');
+        }
+        return;
+    }
+
+    // Validación de campos requeridos (solo para órdenes NO canceladas)
     if (!operador || !unidad) {
         showNotification('⚠️ Debes seleccionar conductor y unidad', 'warning');
         return;
@@ -3895,8 +4096,21 @@ async function confirmDispatch() {
     const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
+    const cancelToggle = document.getElementById('orden-cancelada-toggle');
+    const isCancelled = cancelToggle && cancelToggle.checked;
 
-    // Validación de campos requeridos
+    if (!STATE.currentOrder) {
+        showNotification('❌ No hay orden seleccionada', 'error');
+        return;
+    }
+
+    // If order is marked as cancelled, show cancellation confirmation modal
+    if (isCancelled) {
+        showCancelOrderModal();
+        return;
+    }
+
+    // Validación de campos requeridos (solo para órdenes NO canceladas)
     if (!operador || !unidad) {
         showNotification('⚠️ Debes seleccionar conductor y unidad', 'warning');
         return;
@@ -3909,11 +4123,6 @@ async function confirmDispatch() {
 
     if (!cantidadDespachar || cantidadDespachar <= 0) {
         showNotification('⚠️ Debes ingresar la cantidad a despachar', 'warning');
-        return;
-    }
-
-    if (!STATE.currentOrder) {
-        showNotification('❌ No hay orden seleccionada', 'error');
         return;
     }
 
@@ -4315,8 +4524,18 @@ function applyDateFilter() {
         return;
     }
 
-    if (new Date(startDate) > new Date(endDate)) {
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+
+    if (startDateObj > endDateObj) {
         showNotification('⚠️ La fecha de inicio debe ser anterior a la fecha fin', 'warning');
+        return;
+    }
+
+    // Check for 7-day max range restriction
+    const daysDiff = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
+    if (daysDiff > 7) {
+        showNotification('⚠️ El rango máximo permitido es de 7 días', 'warning');
         return;
     }
 
@@ -4325,11 +4544,11 @@ function applyDateFilter() {
     STATE.dateFilter.active = true;
 
     filterOrdersByDateRange();
-    
+
     // Verificar si es inicio de despacho
     const modal = document.getElementById('date-filter-modal');
     const isDispatchInit = modal.getAttribute('data-dispatch-init') === 'true';
-    
+
     if (isDispatchInit) {
         // Activar panel de búsqueda
         modal.removeAttribute('data-dispatch-init');
@@ -4343,20 +4562,26 @@ function applyDateFilter() {
         closeDateFilter();
     }
 
-    const start = formatDateDDMMYYYY(new Date(startDate));
-    const end = formatDateDDMMYYYY(new Date(endDate));
+    // Parse dates as local time to avoid timezone offset in display
+    const startParts = startDate.split('-');
+    const startDateForDisplay = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+    const endParts = endDate.split('-');
+    const endDateForDisplay = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+
+    const startFormatted = formatDateDDMMYYYY(startDateForDisplay);
+    const endFormatted = formatDateDDMMYYYY(endDateForDisplay);
 
     // Actualizar botón de filtro en Pendientes
     const dateFilterText = document.getElementById('date-filter-text');
     const dateFilterBtn = document.getElementById('date-filter-display');
     if (dateFilterText) {
-        dateFilterText.textContent = `${start} → ${end}`;
+        dateFilterText.textContent = `${startFormatted} → ${endFormatted}`;
     }
     if (dateFilterBtn) {
         dateFilterBtn.classList.add('active-filter');
     }
 
-    showNotification(`📅 Filtro aplicado: ${start} - ${end} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
+    showNotification(`📅 Filtro aplicado: ${startFormatted} - ${endFormatted} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
 
     // CHANGE 1: Update global navigation date indicator
     updateGlobalDateIndicator();
