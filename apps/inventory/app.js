@@ -961,28 +961,88 @@ function handleLogout() {
     updateConnectionStatus();
 }
 
+/**
+ * Parser CSV robusto que maneja comillas y comas dentro de valores
+ */
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+            // Manejar comillas dobles escapadas ""
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i++; // Saltar la siguiente comilla
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',' && !inQuotes) {
+            result.push(current);
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    result.push(current);
+    return result;
+}
+
 async function loadInventory() {
     showLoading(true);
     try {
         const response = await fetch(CONFIG.INVENTORY_CSV_URL);
         const csvText = await response.text();
-        const rows = csvText.split('\n').map(row => row.split(','));
+        const lines = csvText.split('\n');
 
         STATE.inventory.clear();
 
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            const code = row[0]?.trim();
-            if (code) {
-                STATE.inventory.set(code, {
-                    code: code,
-                    sku: row[1] || '',
-                    productName: row[2] || '',
-                    cellNo: row[3] || '',
-                    availableStock: parseInt(row[4]) || 0,
-                    isBlocked: row[5] === 'BLOCKED',
-                    isAvailable: parseInt(row[4]) > 0
+        // Mapeo de columnas según el CSV real:
+        // Col 0: Box type No./箱类型号
+        // Col 1: Customize Barcode/自定义箱条码 (CÓDIGO PRINCIPAL)
+        // Col 6: cellNo (UBICACIÓN)
+        // Col 9: Available stock/可用库存 (STOCK DISPONIBLE)
+        // Col 11: sku
+        // Col 12: Product name/产品名称
+
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue; // Saltar líneas vacías
+
+            const row = parseCSVLine(lines[i]);
+
+            // El código principal está en la columna B (índice 1)
+            const customBarcode = row[1]?.trim();
+            const boxType = row[0]?.trim();
+
+            if (customBarcode) {
+                // Indexar por el código de barras personalizado (columna B)
+                STATE.inventory.set(customBarcode, {
+                    code: customBarcode,
+                    boxType: boxType || '',
+                    sku: row[11] || '',
+                    productName: row[12] || '',
+                    cellNo: row[6] || '',
+                    availableStock: parseInt(row[9]) || 0,
+                    isBlocked: parseInt(row[9]) === 0, // Bloqueado si no hay stock
+                    isAvailable: parseInt(row[9]) > 0
                 });
+
+                // También indexar por Box Type (columna A) como alternativa
+                if (boxType && boxType !== customBarcode) {
+                    STATE.inventory.set(boxType, {
+                        code: boxType,
+                        boxType: boxType,
+                        sku: row[11] || '',
+                        productName: row[12] || '',
+                        cellNo: row[6] || '',
+                        availableStock: parseInt(row[9]) || 0,
+                        isBlocked: parseInt(row[9]) === 0,
+                        isAvailable: parseInt(row[9]) > 0
+                    });
+                }
             }
         }
 
