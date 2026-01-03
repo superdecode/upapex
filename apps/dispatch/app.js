@@ -620,132 +620,153 @@ function updateConnectionIndicator() {
 }
 
 // ==================== GOOGLE API ====================
-async function initGAPI() {
-    try {
-        // Only initialize if not already done
-        if (!gapi.client) {
-            await gapi.client.init({
-                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
-            });
-        }
-        
-        // Initialize token client if not already done
-        if (!TOKEN_CLIENT) {
-            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                client_id: CONFIG.CLIENT_ID,
-                scope: CONFIG.SCOPES,
-                callback: handleAuthCallback,
-                error_callback: (error) => {
-                    hidePreloader();
-                    if (error.type === 'popup_closed') {
-                        showNotification('⚠️ Autenticación cancelada', 'warning');
-                    } else if (error.type === 'popup_blocked') {
-                        showNotification('❌ El navegador bloqueó la ventana emergente. Por favor permite ventanas emergentes para este sitio.', 'error');
-                    } else {
-                        showNotification('❌ Error de autenticación: ' + (error.message || 'Error desconocido'), 'error');
-                    }
-                    console.error('Error de autenticación:', error);
+let gapiInited = false;
+let gisInited = false;
+let tokenClient;
+
+function gapiLoaded() {
+    gapi.load('client', async () => {
+        await gapi.client.init({
+            discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+        });
+        gapiInited = true;
+        maybeEnableButtons();
+    });
+}
+
+function gisLoaded() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.CLIENT_ID,
+        scope: CONFIG.SCOPES,
+        callback: '', // Will be set in handleLogin
+    });
+    gisInited = true;
+    maybeEnableButtons();
+}
+
+function maybeEnableButtons() {
+    if (gapiInited && gisInited) {
+        console.log('Google APIs initialized');
+        // Try to restore saved session
+        tryRestoreSession();
+    }
+}
+
+// Restore Google session if exists
+async function tryRestoreSession() {
+    const savedToken = localStorage.getItem('gapi_token');
+    const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+
+    if (savedToken && tokenExpiry) {
+        const expiryTime = parseInt(tokenExpiry, 10);
+        const now = Date.now();
+
+        // Check if token is still valid (with 5 minute buffer)
+        if (expiryTime > now + (5 * 60 * 1000)) {
+            try {
+                const tokenObj = JSON.parse(savedToken);
+                gapi.client.setToken(tokenObj);
+
+                // Verify token works
+                await getUserProfile();
+                await loadAllData();
+                
+                // Initialize sync manager
+                syncManager = new SyncManager({
+                    spreadsheetId: CONFIG.SPREADSHEET_ID,
+                    sheetName: 'Despachos',
+                    storageKey: 'wms_dispatch_pending_sync'
+                });
+                syncManager.init();
+                window.syncManager = syncManager;
+
+                // Update UI
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+                updateConnectionIndicator();
+                updateSyncStatus();
+                showNotification('✅ Sesión restaurada', 'success');
+
+                // Load pending sync data
+                await loadPendingSync();
+                if (STATE.pendingSync.length > 0) {
+                    setTimeout(() => syncPendingData(), 1000);
                 }
-            });
-        }
-        return true;
-    } catch (e) {
-        console.error('Error en initGAPI:', e);
-        hidePreloader();
-        showNotification('❌ Error al inicializar la API de Google: ' + (e.message || 'Error desconocido'), 'error');
-        return false;
-    }
-}
-
-async function handleAuthCallback(response) {
-    if (response?.access_token) {
-        gapi.client.setToken(response);
-        
-        // Guardar token en el sistema de avatar
-        if (window.sidebarComponent) {
-            window.sidebarComponent.saveGoogleConnection(response.access_token, response.expires_in || 3600);
-        }
-        
-        showPreloader('Cargando base de datos...', 'Obteniendo información del sistema');
-        await getUserProfile();
-        await loadAllData();
-        hidePreloader();
-        updateConnectionIndicator();
-        updateSyncStatus();
-        showNotification('✅ Conexión exitosa - BD cargada', 'success');
-        showApp();
-
-        if (STATE.pendingSync.length > 0) {
-            setTimeout(() => syncPendingData(), 1000);
-        }
-    }
-}
-
-async function handleLogin() {
-    try {
-        showPreloader('Conectando con Google Sheets...', 'Por favor autoriza el acceso en la ventana emergente');
-        
-        // Ensure gapi is loaded
-        if (!window.gapi) {
-            throw new Error('La API de Google no se ha cargado correctamente. Por favor recarga la página.');
-        }
-
-        // Initialize gapi client if not already done
-        if (!gapi.client) {
-            await new Promise((resolve, reject) => {
-                gapi.load('client', {
-                    callback: resolve,
-                    onerror: () => reject(new Error('Error al cargar la API de Google')),
-                    timeout: 5000,
-                    ontimeout: () => reject(new Error('Tiempo de espera agotado al cargar la API de Google'))
-                });
-            });
-            
-            // Initialize the client
-            await gapi.client.init({
-                discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
-            });
-            
-            // Initialize token client if not already done
-            if (!TOKEN_CLIENT) {
-                TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                    client_id: CONFIG.CLIENT_ID,
-                    scope: CONFIG.SCOPES,
-                    callback: handleAuthCallback,
-                    error_callback: (error) => {
-                        hidePreloader();
-                        if (error.type === 'popup_closed') {
-                            showNotification('⚠️ Autenticación cancelada', 'warning');
-                        } else if (error.type === 'popup_blocked') {
-                            showNotification('❌ El navegador bloqueó la ventana emergente. Por favor permite ventanas emergentes para este sitio.', 'error');
-                        } else {
-                            showNotification('❌ Error de autenticación: ' + (error.message || 'Error desconocido'), 'error');
-                        }
-                        console.error('Error de autenticación:', error);
-                    }
-                });
+            } catch (err) {
+                console.error('Error restoring session:', err);
+                // Clear invalid token
+                localStorage.removeItem('gapi_token');
+                localStorage.removeItem('gapi_token_expiry');
             }
+        } else {
+            // Token expired
+            console.log('Token expirado, requiere nuevo login');
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
+        }
+    }
+}
+
+// ==================== AUTHENTICATION ====================
+function handleLogin() {
+    tokenClient.callback = async (resp) => {
+        if (resp.error !== undefined) {
+            console.error('Auth error:', resp);
+            hidePreloader();
+            showNotification('❌ Error de autenticación', 'error');
+            return;
         }
 
-        // Request token with error handling for popup blockers
+        gapi.client.setToken(resp);
+
+        // Save token for persistence
+        const tokenObj = gapi.client.getToken();
+        if (tokenObj) {
+            localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
+            // Save expiry time (usually 1 hour)
+            const expiresIn = resp.expires_in || 3600; // seconds
+            const expiryTime = Date.now() + (expiresIn * 1000);
+            localStorage.setItem('gapi_token_expiry', expiryTime.toString());
+            console.log('Token de Google guardado en localStorage');
+        }
+
         try {
-            TOKEN_CLIENT.requestAccessToken();
-        } catch (e) {
-            if (e.message && e.message.includes('popup')) {
-                showNotification('❌ No se pudo abrir la ventana de autenticación. Por favor verifica la configuración de ventanas emergentes.', 'error');
-            } else {
-                throw e;
+            await getUserProfile();
+            await loadAllData();
+
+            // Initialize sync manager
+            syncManager = new SyncManager({
+                spreadsheetId: CONFIG.SPREADSHEET_ID,
+                sheetName: 'Despachos',
+                storageKey: 'wms_dispatch_pending_sync'
+            });
+            syncManager.init();
+            window.syncManager = syncManager;
+
+            // Update UI
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            updateConnectionIndicator();
+            updateSyncStatus();
+            showNotification('✅ Conexión exitosa', 'success');
+
+            // Load pending sync data
+            await loadPendingSync();
+            if (STATE.pendingSync.length > 0) {
+                setTimeout(() => syncPendingData(), 1000);
             }
+        } catch (error) {
+            console.error('Error during login:', error);
+            showNotification('❌ Error al cargar los datos', 'error');
+        } finally {
+            hidePreloader();
         }
-    } catch (error) {
-        console.error('Error en handleLogin:', error);
-        hidePreloader();
-        showNotification(`❌ Error de autenticación: ${error.message || 'Error desconocido'}`, 'error');
-        
-        // If it's a popup blocked error, show a more helpful message
-        if (error.message && error.message.includes('popup')) {
-            showNotification('🔔 Por favor permite ventanas emergentes para este sitio e intenta de nuevo.', 'warning');
-        }
+    };
+
+    if (gapi.client.getToken() === null) {
+        tokenClient.requestAccessToken({prompt: 'consent'});
+    } else {
+        tokenClient.requestAccessToken({prompt: ''});
     }
 }
 
@@ -758,6 +779,17 @@ async function getUserProfile() {
         USER_EMAIL = data.email || '';
         USER_GOOGLE_NAME = data.name || 'Usuario';
 
+        // Update avatar system if available
+        if (window.sidebarComponent) {
+            window.sidebarComponent.setUserEmail(USER_EMAIL);
+            window.sidebarComponent.setUserName(USER_GOOGLE_NAME);
+            window.sidebarComponent.saveGoogleConnection(
+                gapi.client.getToken().access_token,
+                (gapi.client.getToken().expires_in || 3600)
+            );
+        }
+
+        // Handle user alias
         const savedAlias = localStorage.getItem(`dispatch_alias_${USER_EMAIL}`);
         if (savedAlias) {
             CURRENT_USER = savedAlias;
@@ -767,23 +799,26 @@ async function getUserProfile() {
         }
         updateUserFooter();
     } catch (e) {
+        console.error('Error getting user profile:', e);
         CURRENT_USER = 'Usuario';
+        throw e; // Re-throw to handle in the calling function
     }
-}
-
-function showApp() {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('main-app').classList.remove('hidden');
-
-    // REMOVED: Sidebar validation tabs eliminated per user request
-    // Toggle buttons now only appear in header, not in sidebar
 }
 
 function handleLogout() {
     if (gapi.client.getToken()) {
-        google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+        const token = gapi.client.getToken().access_token;
+        if (token) {
+            google.accounts.oauth2.revoke(token);
+        }
         gapi.client.setToken(null);
     }
+    
+    // Clear tokens
+    localStorage.removeItem('gapi_token');
+    localStorage.removeItem('gapi_token_expiry');
+    
+    // Reload to reset the app state
     location.reload();
 }
 
