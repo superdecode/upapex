@@ -13,18 +13,27 @@
  */
 function normalizeCode(rawCode) {
     if (!rawCode) return '';
-    
+
     let code = rawCode.trim().toUpperCase();
-    
+
     // Patrones de extracción especiales (JSON, etc)
     const jsonMatch = code.match(/"code"\s*:\s*"([^"]+)"/i);
     if (jsonMatch) {
         code = jsonMatch[1];
     }
-    
+
+    // Patrón especial: IDxxxxxx-xxOPERATION... → extraer solo xxxxxx-xx
+    // Ejemplo: ID51014088-10PERATIONFBMTYPENBOUNDSOURCESELLER → 51014088-10
+    const idPattern = /^ID(\d+[-\/]\d+)/i;
+    const idMatch = code.match(idPattern);
+    if (idMatch) {
+        console.log(`🔍 Código extraído de patrón ID: ${idMatch[1]} (original: ${rawCode})`);
+        return idMatch[1];
+    }
+
     // Eliminar caracteres especiales excepto guiones y slashes
     code = code.replace(/[^A-Z0-9\-\/]/g, '');
-    
+
     return code;
 }
 
