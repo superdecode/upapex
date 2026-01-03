@@ -855,7 +855,7 @@
 
 /* ==================== DUPLICATE POPUP ==================== */
 .duplicate-popup {
-    max-width: 420px;
+    max-width: 500px !important;
 }
 
 .duplicate-info {
@@ -1869,7 +1869,7 @@
 
 /* ==================== WORK TYPE POPUP ==================== */
 .popup-content.work-type-popup {
-    max-width: 550px !important;
+    max-width: 500px !important;
     position: relative;
     padding: 30px 25px 25px;
 }
@@ -2059,7 +2059,7 @@
 
 /* ==================== COUNT VALIDATION POPUP ==================== */
 .count-validation-popup {
-    max-width: 340px;
+    max-width: 350px;
     position: relative;
     padding: 20px 18px 18px;
 }
