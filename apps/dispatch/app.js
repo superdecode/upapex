@@ -2419,6 +2419,11 @@ function switchValidationTab(tab) {
 
     STATE.activeTab = tab;
 
+    // CRITICAL: Remove active class from ALL tab buttons first to prevent persistence
+    document.querySelectorAll('.status-toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
     // Update old tab styles (sidebar tabs - if they exist)
     const tabPending = document.getElementById('tab-pending');
     const tabValidated = document.getElementById('tab-validated');

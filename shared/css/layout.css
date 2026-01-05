@@ -48,7 +48,8 @@
     padding: 15px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: auto;
+    height: 100%;
 }
 
 .header {
