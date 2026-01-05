@@ -1911,8 +1911,15 @@
         }
 
         /* Classic Module when visible */
+        #classic-module {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+        }
+
         #classic-module.module-visible {
-            display: block !important;
+            display: flex !important;
         }
 
         /* Welcome State - No active sessions */
