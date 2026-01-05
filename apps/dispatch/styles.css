@@ -2259,12 +2259,15 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: visible;
 }
 
 #validated-content .orders-table-container {
     flex: 1;
     height: auto;
     max-height: none;
+    overflow-y: auto;
+    overflow-x: auto;
 }
 
 /* ==================== SEARCH PANEL (TODO/PENDIENTES) FULL HEIGHT ==================== */
@@ -2279,12 +2282,15 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: visible;
 }
 
 #search-panel .orders-table-container {
     flex: 1;
     height: auto;
     max-height: none;
+    overflow-y: auto;
+    overflow-x: auto;
 }
 
 /* ==================== FOLIOS CONTENT FULL HEIGHT ==================== */
@@ -2299,12 +2305,15 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: visible;
 }
 
 #folios-content .orders-table-container {
     flex: 1;
     height: auto;
     max-height: none;
+    overflow-y: auto;
+    overflow-x: auto;
 }
 
 /* ==================== SEARCH INPUT ROW ==================== */

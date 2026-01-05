@@ -2476,9 +2476,11 @@ function switchValidationTab(tab) {
         const scannerCardTodo = document.getElementById('search-scanner-card');
         const agendaBtnTodo = document.getElementById('btn-ver-agenda');
         const sectionTitleTodo = document.getElementById('orders-section-title');
+        const searchPanelTitle = document.getElementById('search-panel-title');
         if (scannerCardTodo) scannerCardTodo.style.display = 'block';
         if (agendaBtnTodo) agendaBtnTodo.style.display = 'flex';
         if (sectionTitleTodo) sectionTitleTodo.textContent = '📋 Órdenes';
+        if (searchPanelTitle) searchPanelTitle.textContent = '📋 Órdenes';
         renderOrdersTable('todo');
     } else if (tab === 'pending') {
         // Limpiar flag de "viene desde folios" si estaba activo
@@ -2527,9 +2529,11 @@ function switchValidationTab(tab) {
         const scannerCardPending = document.getElementById('search-scanner-card');
         const agendaBtnPending = document.getElementById('btn-ver-agenda');
         const sectionTitlePending = document.getElementById('orders-section-title');
+        const searchPanelTitlePending = document.getElementById('search-panel-title');
         if (scannerCardPending) scannerCardPending.style.display = 'none';
         if (agendaBtnPending) agendaBtnPending.style.display = 'none';
         if (sectionTitlePending) sectionTitlePending.textContent = '📋 Órdenes Pendientes';
+        if (searchPanelTitlePending) searchPanelTitlePending.textContent = '📋 Órdenes Pendientes';
     } else {
         // Si NO venimos desde folios, habilitar el botón normalmente
         if (!STATE.fromFolios && togglePendingValidated) {
@@ -5108,6 +5112,21 @@ function showFoliosManagement() {
         togglePendingValidated.style.cursor = 'pointer';
         togglePendingValidated.title = '';
     }
+
+    // Remove active class from all tab buttons across all panels
+    document.querySelectorAll('.status-toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Add active class to all Folios buttons
+    const folioButtons = [
+        document.getElementById('toggle-folios'),
+        document.getElementById('toggle-folios-validated'),
+        document.getElementById('toggle-folios-folios')
+    ];
+    folioButtons.forEach(btn => {
+        if (btn) btn.classList.add('active');
+    });
 
     // Ocultar todos los demás paneles
     document.getElementById('welcome-state').style.display = 'none';
