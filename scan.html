@@ -3121,18 +3121,59 @@
         }
 
         function handleLogout() {
-            const hasData = PENDING_SYNC.length > 0 ||
-                STATE.pallets.ok.boxes.length > 0 ||
+            // Verificar si hay datos sin sincronizar en TODOS los tabs
+            const hasUnsyncedData = PENDING_SYNC.length > 0;
+            const hasClassicData = STATE.pallets.ok.boxes.length > 0 ||
                 STATE.pallets.blocked.boxes.length > 0 ||
                 STATE.pallets.nowms.boxes.length > 0;
 
+            let hasTabData = false;
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.tabs) {
+                hasTabData = GlobalTabs.tabs.some(tab => {
+                    const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
+                    const unifiedBoxes = tab.state.unified.boxes.length;
+                    return classicBoxes > 0 || unifiedBoxes > 0;
+                });
+            }
+
+            const hasData = hasUnsyncedData || hasClassicData || hasTabData;
+
             if (hasData) {
-                if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres salir?')) {
+                if (!confirm('⚠️ Tienes datos sin sincronizar. ¿Seguro que quieres cerrar sesión y BORRAR todos los datos?')) {
                     return;
                 }
             }
 
-            if (gapi.client.getToken()) {
+            // LIMPIAR TODO EL CACHE AL CERRAR SESIÓN
+            console.log('🗑️ Cerrando sesión - Limpiando cache completo...');
+
+            // Limpiar estado del módulo clásico
+            STATE.pallets = {
+                ok: { id: generatePalletId('OK'), boxes: [], location: '' },
+                blocked: { id: generatePalletId('BLK'), boxes: [], location: '' },
+                nowms: { id: generatePalletId('NW'), boxes: [], location: '' }
+            };
+            STATE.history = [];
+            STATE.pendingCode1 = null;
+
+            // Limpiar PENDING_SYNC
+            PENDING_SYNC = [];
+
+            // Limpiar todos los tabs
+            if (typeof GlobalTabs !== 'undefined') {
+                GlobalTabs.tabs = [];
+                GlobalTabs.activeTabId = null;
+            }
+
+            // Limpiar localStorage
+            localStorage.removeItem('pd_system_state');
+            localStorage.removeItem('pd_global_tabs');
+            localStorage.removeItem('pd_pending_sync');
+
+            console.log('✅ Cache limpiado completamente');
+
+            // Revocar token de Google
+            if (gapi?.client?.getToken()) {
                 google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
                 gapi.client.setToken(null);
             }
@@ -3141,6 +3182,8 @@
             USER_EMAIL = '';
             document.getElementById('login-screen').classList.remove('hidden');
             document.getElementById('main-app').classList.add('hidden');
+
+            showNotification('✅ Sesión cerrada y datos eliminados', 'info');
         }
 
         // ==================== ALIAS/NICKNAME SYSTEM ====================
@@ -3713,6 +3756,21 @@
 
             if (!item) {
                 // Not found in both levels - show Code2 input
+                // PROTECCIÓN: Si ya hay un pendingCode1, advertir al usuario
+                if (STATE.pendingCode1 && STATE.pendingCode1.code !== code) {
+                    const userConfirm = confirm(
+                        `⚠️ Ya tienes un código pendiente: ${STATE.pendingCode1.code}\n\n` +
+                        `¿Deseas cancelar el código anterior y usar el nuevo código: ${code}?`
+                    );
+                    if (!userConfirm) {
+                        flashInput('warning');
+                        playSound('warning');
+                        // Mantener el foco en code2-input para continuar con el código anterior
+                        setTimeout(() => document.getElementById('code2-input').focus(), 100);
+                        return;
+                    }
+                }
+
                 STATE.pendingCode1 = { raw: rawCode, code, isPriority };
                 showResultBox('error', code, 'NO ENCONTRADO',
                     'Código no encontrado en WMS ni Archivo 2. Ingresa Código 2 o usa INSERTADO.', null);
@@ -3923,31 +3981,43 @@
             const item = result.item;
             const source = result.source;
 
-            // Usar isPriority del código 1 si existe
-            const isPriority = STATE.pendingCode1.isPriority || false;
+            // Validar prioridad del código 2
+            const priorityCheck2 = await checkIfPriority(rawCode2);
+            const isPriorityCode2 = priorityCheck2.isPriority;
+            const isPriority = STATE.pendingCode1.isPriority || isPriorityCode2;
 
             if (isPriority) {
-                showPriorityAlert(STATE.pendingCode1.code);
+                showPriorityAlert(item ? code2 : STATE.pendingCode1.code);
             }
 
             document.getElementById('code2-container').classList.remove('show');
 
             if (!item) {
-                // Both codes failed - add to No WMS with BOTH codes
+                // ESCENARIO 2: Ambos códigos fallaron - add to No WMS con AMBOS códigos
                 addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null, 'UNKNOWN', isPriority));
                 showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
                     `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
                 playSound('error');
-            } else if (item.isBlocked) {
-                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
-                showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
-                    'Validado con Código 2 - Bloqueado', item);
-                playSound('warning');
             } else {
-                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
-                const statusMsg = source === 'FILE2' ? 'Validado con Código 2 en Archivo 2' : 'Validado correctamente con Código 2';
-                showResultBox('success', code2, 'OK (Código 2)', statusMsg, item);
-                playSound('success');
+                // ESCENARIO 3: Código 2 SÍ coincide - HACER SWAP
+                // El código 2 que coincidió se convierte en el principal (scan1)
+                // El código 1 que falló se guarda como secundario (scan2)
+                let status;
+                if (item.isBlocked) {
+                    status = 'blocked';
+                    // SWAP: code2 va a scan1, pendingCode1.raw va a scan2
+                    addBox('blocked', createBoxData(rawCode2, code2, STATE.pendingCode1.raw, item, source, isPriority));
+                    showResultBox('blocked', code2, 'BLOQUEADO (Código 2 Validado)',
+                        'Código 2 validado correctamente - Inventario bloqueado', item);
+                    playSound('warning');
+                } else {
+                    status = 'ok';
+                    // SWAP: code2 va a scan1, pendingCode1.raw va a scan2
+                    addBox('ok', createBoxData(rawCode2, code2, STATE.pendingCode1.raw, item, source, isPriority));
+                    const statusMsg = source === 'FILE2' ? 'Código 2 validado en Archivo 2 (SWAP realizado)' : 'Código 2 validado correctamente (SWAP realizado)';
+                    showResultBox('success', code2, 'OK (Código 2 Validado)', statusMsg, item);
+                    playSound('success');
+                }
             }
 
             STATE.pendingCode1 = null;
@@ -4179,6 +4249,17 @@
         function addBox(category, boxData) {
             STATE.pallets[category].boxes.push(boxData);
             saveToStorage();
+
+            // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                GlobalTabs.saveCurrentTabState();
+            }
+
+            // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                GlobalTabs.updateGlobalSummary();
+            }
+
             updateUI();
         }
 
@@ -4186,6 +4267,17 @@
             if (confirm('¿Eliminar esta caja?')) {
                 STATE.pallets[category].boxes.splice(index, 1);
                 saveToStorage();
+
+                // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
+                if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                    GlobalTabs.saveCurrentTabState();
+                }
+
+                // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
+                if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                    GlobalTabs.updateGlobalSummary();
+                }
+
                 updateUI();
                 showNotification('Caja eliminada', 'info');
             }
@@ -4353,7 +4445,7 @@
                     date: dateStr,
                     time: timeStr,
                     user: CURRENT_USER || 'Usuario',
-                    scan1: box.code,
+                    scan1: box.scan1 || box.raw || box.code,  // Usar scan1 (raw), con fallbacks
                     scan2: box.scan2 || '',
                     location: finalLocation,
                     status: finalStatus,
@@ -4399,6 +4491,17 @@
             locationInput.value = '';
 
             saveToStorage();
+
+            // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                GlobalTabs.saveCurrentTabState();
+            }
+
+            // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                GlobalTabs.updateGlobalSummary();
+            }
+
             updateUI();
             playSound('success');
 
@@ -4957,6 +5060,10 @@
                 // Actualizar botones de envío con delay para asegurar DOM listo
                 setTimeout(() => {
                     updateSendButtons();
+                    // IMPORTANTE: Actualizar tarjetas globales después de cargar desde storage
+                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                        GlobalTabs.updateGlobalSummary();
+                    }
                 }, 50);
             } catch (e) {
                 console.error('Error loading from storage:', e);
@@ -5388,6 +5495,9 @@
                 // No usar setTimeout aquí porque showModuleForTab() lo hará
                 // pero agregamos esto como respaldo
                 updateSendButtons();
+
+                // IMPORTANTE: Actualizar tarjetas globales después de cargar el estado del tab
+                this.updateGlobalSummary();
             },
 
             renderTabs() {
@@ -5511,21 +5621,42 @@
                 let totalBlocked = 0;
                 let totalNowms = 0;
 
-                this.tabs.forEach(tab => {
+                console.log('🔄 Actualizando resumen global. Tabs:', this.tabs.length);
+
+                this.tabs.forEach((tab, idx) => {
                     // Count from classic module
-                    totalOk += tab.state.classic.pallets.ok.boxes.length;
-                    totalBlocked += tab.state.classic.pallets.blocked.boxes.length;
-                    totalNowms += tab.state.classic.pallets.nowms.boxes.length;
+                    const classicOk = tab.state.classic.pallets.ok.boxes.length;
+                    const classicBlocked = tab.state.classic.pallets.blocked.boxes.length;
+                    const classicNowms = tab.state.classic.pallets.nowms.boxes.length;
+
+                    totalOk += classicOk;
+                    totalBlocked += classicBlocked;
+                    totalNowms += classicNowms;
 
                     // Count from unified module
+                    let unifiedOk = 0;
+                    let unifiedBlocked = 0;
+                    let unifiedNowms = 0;
+
                     tab.state.unified.boxes.forEach(box => {
-                        if (box.status === 'ok') totalOk++;
-                        else if (box.status === 'blocked') totalBlocked++;
-                        else if (box.status === 'nowms') totalNowms++;
+                        if (box.status === 'ok') unifiedOk++;
+                        else if (box.status === 'blocked') unifiedBlocked++;
+                        else if (box.status === 'nowms') unifiedNowms++;
+                    });
+
+                    totalOk += unifiedOk;
+                    totalBlocked += unifiedBlocked;
+                    totalNowms += unifiedNowms;
+
+                    console.log(`  Tab ${idx} (${tab.name}):`, {
+                        classic: { ok: classicOk, blocked: classicBlocked, nowms: classicNowms },
+                        unified: { ok: unifiedOk, blocked: unifiedBlocked, nowms: unifiedNowms }
                     });
                 });
 
                 const total = totalOk + totalBlocked + totalNowms;
+
+                console.log('📊 Totales calculados:', { ok: totalOk, blocked: totalBlocked, nowms: totalNowms, total });
 
                 // Update sidebar summary
                 const okEl = document.getElementById('global-summary-ok');
@@ -5533,14 +5664,23 @@
                 const nowmsEl = document.getElementById('global-summary-nowms');
                 const totalEl = document.getElementById('global-summary-total');
 
+                console.log('🎯 Elementos DOM encontrados:', {
+                    okEl: !!okEl,
+                    blockedEl: !!blockedEl,
+                    nowmsEl: !!nowmsEl,
+                    totalEl: !!totalEl
+                });
+
                 if (okEl) okEl.textContent = totalOk;
                 if (blockedEl) blockedEl.textContent = totalBlocked;
                 if (nowmsEl) nowmsEl.textContent = totalNowms;
                 if (totalEl) totalEl.textContent = total;
-                
+
                 // Also update the global box count in the main interface
                 const globalBoxCountEl = document.getElementById('global-box-count');
                 if (globalBoxCountEl) globalBoxCountEl.textContent = total;
+
+                console.log('✅ Resumen global actualizado');
             }
         };
 
@@ -5854,10 +5994,10 @@
                 const priorityCheck = await checkIfPriority(rawCode);
                 const isPriority = priorityCheck.isPriority;
 
-                // Check duplicates
-                const duplicateIndex = tab.boxes.findIndex(b => b.code === code);
-                if (duplicateIndex !== -1) {
-                    this.showDuplicatePopup(code, rawCode, duplicateIndex);
+                // Check duplicates across ALL tabs (global detection)
+                const duplicateInfo = this.findDuplicateGlobal(code);
+                if (duplicateInfo) {
+                    this.showDuplicatePopupGlobal(code, rawCode, duplicateInfo);
                     this.flashInput('warning');
                     playSound('warning');
                     return;
@@ -5865,6 +6005,21 @@
 
                 if (!item) {
                     // Not found in both levels - show Code2 input
+                    // PROTECCIÓN: Si ya hay un pendingCode1, advertir al usuario
+                    if (this.pendingCode1 && this.pendingCode1.code !== code) {
+                        const userConfirm = confirm(
+                            `⚠️ Ya tienes un código pendiente: ${this.pendingCode1.code}\n\n` +
+                            `¿Deseas cancelar el código anterior y usar el nuevo código: ${code}?`
+                        );
+                        if (!userConfirm) {
+                            this.flashInput('warning');
+                            playSound('warning');
+                            // Mantener el foco en code2-input para continuar con el código anterior
+                            setTimeout(() => document.getElementById('unified-code2-input').focus(), 100);
+                            return;
+                        }
+                    }
+
                     this.pendingCode1 = { raw: rawCode, code, isPriority };
                     this.showResultBox('error', code, 'NO ENCONTRADO',
                         'Código no encontrado en WMS ni Archivo 2. Ingresa Código 2 o usa INSERTADO.', null);
@@ -5914,35 +6069,44 @@
                 const item = result.item;
                 const source = result.source;
 
-                // Usar isPriority del código 1 si existe
-                const isPriority = this.pendingCode1.isPriority || false;
+                // Validar prioridad del código 2
+                const priorityCheck2 = await checkIfPriority(rawCode2);
+                const isPriorityCode2 = priorityCheck2.isPriority;
+                const isPriority = this.pendingCode1.isPriority || isPriorityCode2;
 
                 if (isPriority) {
-                    showPriorityAlert(this.pendingCode1.code);
+                    showPriorityAlert(item ? code2 : this.pendingCode1.code);
                 }
 
                 document.getElementById('unified-code2-container').classList.remove('show');
 
                 let status;
                 if (!item) {
-                    // Both codes failed - add to No WMS
+                    // ESCENARIO 2: Ambos códigos fallaron - add to No WMS con AMBOS códigos
                     status = 'nowms';
                     this.addBox('nowms', this.createBoxData(this.pendingCode1.raw, this.pendingCode1.code, rawCode2, null, 'UNKNOWN', isPriority));
                     this.showResultBox('error', this.pendingCode1.code, 'NO WMS',
                         `Ambos códigos no encontrados. Guardados: ${this.pendingCode1.code} y ${code2}`, null);
                     playSound('error');
-                } else if (item.isBlocked) {
-                    status = 'blocked';
-                    this.addBox('blocked', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
-                    this.showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
-                        'Validado con Código 2 - Bloqueado', item);
-                    playSound('warning');
                 } else {
-                    status = 'ok';
-                    this.addBox('ok', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
-                    const statusMsg = source === 'FILE2' ? 'Validado con Código 2 en Archivo 2' : 'Validado correctamente con Código 2';
-                    this.showResultBox('success', code2, 'OK (Código 2)', statusMsg, item);
-                    playSound('success');
+                    // ESCENARIO 3: Código 2 SÍ coincide - HACER SWAP
+                    // El código 2 que coincidió se convierte en el principal (scan1)
+                    // El código 1 que falló se guarda como secundario (scan2)
+                    if (item.isBlocked) {
+                        status = 'blocked';
+                        // SWAP: code2 va a scan1, pendingCode1.raw va a scan2
+                        this.addBox('blocked', this.createBoxData(rawCode2, code2, this.pendingCode1.raw, item, source, isPriority));
+                        this.showResultBox('blocked', code2, 'BLOQUEADO (Código 2 Validado)',
+                            'Código 2 validado correctamente - Inventario bloqueado', item);
+                        playSound('warning');
+                    } else {
+                        status = 'ok';
+                        // SWAP: code2 va a scan1, pendingCode1.raw va a scan2
+                        this.addBox('ok', this.createBoxData(rawCode2, code2, this.pendingCode1.raw, item, source, isPriority));
+                        const statusMsg = source === 'FILE2' ? 'Código 2 validado en Archivo 2 (SWAP realizado)' : 'Código 2 validado correctamente (SWAP realizado)';
+                        this.showResultBox('success', code2, 'OK (Código 2 Validado)', statusMsg, item);
+                        playSound('success');
+                    }
                 }
 
                 this.pendingCode1 = null;
@@ -5977,6 +6141,8 @@
 
                 GlobalTabs.saveToStorage();
                 this.updateUI();
+                // Asegurar actualización de tarjetas globales
+                GlobalTabs.updateGlobalSummary();
             },
 
             deleteBox(index) {
@@ -5987,8 +6153,92 @@
                     tab.boxes.splice(index, 1);
                     GlobalTabs.saveToStorage();
                     this.updateUI();
+                    // Asegurar actualización de tarjetas globales
+                    GlobalTabs.updateGlobalSummary();
                     showNotification('Caja eliminada', 'info');
                 }
+            },
+
+            // Buscar duplicado globalmente en TODOS los tabs
+            findDuplicateGlobal(code) {
+                const statusNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
+
+                for (const tab of GlobalTabs.tabs) {
+                    const index = tab.state.unified.boxes.findIndex(b => b.code === code);
+                    if (index !== -1) {
+                        const box = tab.state.unified.boxes[index];
+                        return {
+                            tabId: tab.id,
+                            tabName: tab.name,
+                            index,
+                            box,
+                            status: box.status,
+                            statusName: statusNames[box.status] || box.status,
+                            timestamp: box.timestamp,
+                            isCurrentTab: tab.id === GlobalTabs.activeTabId
+                        };
+                    }
+                }
+                return null;
+            },
+
+            // Mostrar popup de duplicado con información de tab
+            showDuplicatePopupGlobal(code, rawCode, duplicateInfo) {
+                const tabInfo = duplicateInfo.isCurrentTab
+                    ? 'esta misma sesión'
+                    : `la sesión "${duplicateInfo.tabName}"`;
+
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.innerHTML = `
+                    <div class="popup-content duplicate-popup">
+                        <div class="popup-header">
+                            <span>⚠️ Código Duplicado</span>
+                            <button class="popup-close" data-action="close">×</button>
+                        </div>
+                        <div class="duplicate-info">
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Código:</span>
+                                <span class="duplicate-info-value"><code>${code}</code></span>
+                            </div>
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Ya registrado en:</span>
+                                <span class="duplicate-info-value">${tabInfo}</span>
+                            </div>
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Estado:</span>
+                                <span class="duplicate-info-value">${duplicateInfo.statusName}</span>
+                            </div>
+                            <div class="duplicate-info-row">
+                                <span class="duplicate-info-label">Hora de registro:</span>
+                                <span class="duplicate-info-value">${duplicateInfo.timestamp}</span>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
+                            Este código ya fue escaneado. ¿Deseas forzar un nuevo registro en la sesión actual?
+                        </p>
+                        <div class="popup-buttons">
+                            <button class="btn btn-warning btn-full" data-action="force">
+                                ⚡ Ingreso Forzado
+                            </button>
+                            <button class="btn btn-secondary btn-full" data-action="close">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+
+                const closePopup = () => overlay.remove();
+
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) closePopup();
+                    if (e.target.dataset.action === 'close') closePopup();
+                    if (e.target.dataset.action === 'force') {
+                        UnifiedModule.forceInsertDuplicate(code, rawCode);
+                        closePopup();
+                    }
+                });
             },
 
             showDuplicatePopup(code, rawCode, existingIndex) {
@@ -6269,7 +6519,7 @@
                         date: dateStr,
                         time: timeStr,
                         user: CURRENT_USER || 'Usuario',
-                        scan1: box.code,
+                        scan1: box.scan1 || box.raw || box.code,  // Usar scan1 (raw), con fallbacks
                         scan2: box.scan2 || '',
                         location: finalLocation,
                         status: finalStatus,
@@ -6315,6 +6565,8 @@
 
                 GlobalTabs.saveToStorage();
                 this.updateUI();
+                // Asegurar actualización de tarjetas globales
+                GlobalTabs.updateGlobalSummary();
                 playSound('success');
 
                 document.getElementById('unified-origin-location').focus();
