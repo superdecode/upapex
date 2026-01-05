@@ -4076,7 +4076,7 @@
             return {
                 raw,
                 code,
-                scan1: raw,
+                scan1: code,
                 scan2: cleanScan2,  // Código limpio del segundo escaneo
                 rawScan2: scan2 || '',  // Valor raw para referencia
                 location: item?.cellNo || '-',
@@ -4452,7 +4452,7 @@
                     date: dateStr,
                     time: timeStr,
                     user: CURRENT_USER || 'Usuario',
-                    scan1: box.scan1 || box.raw || box.code,  // Usar scan1 (raw), con fallbacks
+                    scan1: box.code || box.scan1,  // Usar código normalizado, con fallback
                     scan2: box.scan2 || '',
                     location: finalLocation,
                     status: finalStatus,

@@ -73,7 +73,7 @@
                             ✅ Validadas <span class="global-nav-badge" id="global-validated-badge">0</span>
                         </button>
                         <button class="global-nav-btn" id="global-nav-folios" onclick="showFoliosManagement()">
-                            📋 Folios
+                            🚚 Folios
                         </button>
                         <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
                     </div>
@@ -102,6 +102,9 @@
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
+                                <button class="status-toggle-btn" id="toggle-todo-folios" onclick="switchValidationTab('todo')">
+                                    📋 Todo <span class="toggle-badge" id="todo-badge-folios">0</span>
+                                </button>
                                 <button class="status-toggle-btn" id="toggle-pending-folios" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-folios">0</span>
                                 </button>
@@ -109,7 +112,7 @@
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-folios">0</span>
                                 </button>
                                 <button class="status-toggle-btn active" id="toggle-folios-folios" onclick="showFoliosManagement()">
-                                    📋 Folios
+                                    🚚 Folios
                                 </button>
                             </div>
                             <button class="btn-close-modern" onclick="confirmExitFolios()" title="Cerrar">×</button>
@@ -242,6 +245,9 @@
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
+                                <button class="status-toggle-btn" id="toggle-todo-validated" onclick="switchValidationTab('todo')">
+                                    📋 Todo <span class="toggle-badge" id="todo-badge-validated">0</span>
+                                </button>
                                 <button class="status-toggle-btn" id="toggle-pending-validated" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-validated">0</span>
                                 </button>
@@ -249,7 +255,7 @@
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-validated">0</span>
                                 </button>
                                 <button class="status-toggle-btn" id="toggle-folios-validated" onclick="showFoliosManagement()">
-                                    📋 Folios
+                                    🚚 Folios
                                 </button>
                             </div>
                             <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
@@ -319,6 +325,9 @@
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
+                                <button class="status-toggle-btn" id="toggle-todo" onclick="switchValidationTab('todo')">
+                                    📋 Todo <span class="toggle-badge" id="todo-badge-header">0</span>
+                                </button>
                                 <button class="status-toggle-btn active" id="toggle-pending" onclick="switchValidationTab('pending')">
                                     ⏳ Pendientes <span class="toggle-badge" id="pending-badge-header">0</span>
                                 </button>
@@ -326,14 +335,14 @@
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-header">0</span>
                                 </button>
                                 <button class="status-toggle-btn" id="toggle-folios" onclick="showFoliosManagement()">
-                                    📋 Folios
+                                    🚚 Folios
                                 </button>
                             </div>
                             <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
                         </div>
                     </div>
 
-                    <div class="card">
+                    <div class="card" id="search-scanner-card">
                         <div class="input-group">
                             <label style="font-size: 1.1em; color: var(--primary);">📦 Buscar por OBC o Código de Caja:</label>
                             <div class="search-input-row">
@@ -351,9 +360,11 @@
                     <!-- Órdenes del Día -->
                     <div class="card" style="margin-top: 15px;">
                         <div class="section-header-inline">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <h3>📋 Órdenes Pendientes</h3>
-                                <button class="btn btn-secondary btn-sm" onclick="openVistaAgenda()" title="Ver agenda del día" style="display: flex; align-items: center; gap: 6px; font-size: 0.9em;">
+                            <div class="header-with-badges">
+                                <h3 id="orders-section-title">📋 Órdenes Pendientes</h3>
+                                <span class="badge badge-primary" id="orders-count">0 órdenes</span>
+                                <span class="badge badge-success" id="orders-boxes-count">0 cajas</span>
+                                <button class="btn btn-sm btn-ver-agenda" id="btn-ver-agenda" onclick="openVistaAgenda()" title="Ver agenda del día" style="display: flex; align-items: center; gap: 6px; font-size: 0.9em; margin-left: 8px;">
                                     📅 Ver Agenda
                                 </button>
                             </div>

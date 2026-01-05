@@ -1217,15 +1217,8 @@ function showDateFilterForDispatch() {
 }
 
 function activateSearchPanelWithFilter() {
-    // HIDE ALL OTHER PANELS
-    document.getElementById('welcome-state').style.display = 'none';
-    document.getElementById('validated-content').style.display = 'none';
-    document.getElementById('folios-content').style.display = 'none';
-    document.getElementById('search-panel').style.display = 'block';
-
-    filterOrdersByDateRange();
-    renderOrdersList();
-    updateSummary();
+    // Switch to "Todo" tab instead of "Pendientes"
+    switchValidationTab('todo');
 
     setTimeout(() => {
         document.getElementById('search-input')?.focus();
@@ -1424,6 +1417,7 @@ function formatValidationDateTime(timestamp) {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return '';
 
+    // Use local timezone methods to avoid UTC offset issues
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
@@ -1433,7 +1427,7 @@ function formatValidationDateTime(timestamp) {
     return `${day}-${month}-${year} ${hours}:${minutes}`;
 }
 
-function renderOrdersTable() {
+function renderOrdersTable(mode = 'pending') {
     const tableBody = document.getElementById('orders-table-body');
     if (!tableBody) return;
 
@@ -1466,7 +1460,29 @@ function renderOrdersTable() {
     }
 
     const ordersArray = Array.from(dataToUse.entries());
-    tableBody.innerHTML = ordersArray.map(([orden, data]) => {
+
+    // Filtrar según el modo
+    const filteredOrders = ordersArray.filter(([orden]) => {
+        const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
+
+        if (mode === 'todo') {
+            // Mostrar todas las órdenes
+            return true;
+        } else if (mode === 'pending') {
+            // Solo mostrar órdenes Pendiente o Pendiente Calidad
+            if (isValidated && validatedData) {
+                // Verificar si tiene estado "Pendiente Calidad"
+                const calidad = validatedData.calidad || '';
+                const estatus = validatedData.estatus || '';
+                return calidad.includes('Pendiente') || estatus === 'Pendiente Calidad';
+            }
+            // Mostrar si no está validada (Pendiente)
+            return !isValidated;
+        }
+        return !isValidated;
+    });
+
+    tableBody.innerHTML = filteredOrders.map(([orden, data]) => {
         const validaciones = STATE.validacionData.get(orden) || [];
         const rastreoData = STATE.mneData.get(orden) || [];
         // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES), not from validation/rastreo
@@ -1475,10 +1491,24 @@ function renderOrdersTable() {
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
 
         const tieneRastreo = rastreoData.length > 0;
-        const { validated: isValidated } = isOrderValidated(orden);
+        const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
 
-        const statusClass = isValidated ? 'success' : 'warning';
-        const statusText = isValidated ? '✅ Validada' : '⏳ Pendiente';
+        // Determinar estado basado en lógica de calidad
+        let statusClass = 'warning';
+        let statusText = '⏳ Pendiente';
+
+        if (isValidated && validatedData) {
+            const calidad = validatedData.calidad || '';
+            const estatus = validatedData.estatus || '';
+
+            if (calidad.includes('Pendiente') || estatus === 'Pendiente Calidad') {
+                statusClass = 'warning';
+                statusText = '🔧 Pendiente Calidad';
+            } else {
+                statusClass = 'success';
+                statusText = '✅ Validada';
+            }
+        }
 
         // CHANGE 6: Only show validation % if validaciones.length > 0
         const validationDisplay = validaciones.length > 0
@@ -1518,6 +1548,36 @@ function renderOrdersTable() {
             </tr>
         `;
     }).join('');
+
+    // Update order and box count badges
+    updateOrdersBadges(mode);
+}
+
+// Update badges for orders count and boxes count in Pendientes/Todo screens
+function updateOrdersBadges(mode) {
+    const tableBody = document.getElementById('orders-table-body');
+    if (!tableBody) return;
+
+    // Count only visible rows
+    const visibleRows = Array.from(tableBody.querySelectorAll('tr[data-orden]')).filter(row => row.style.display !== 'none');
+    const totalOrders = visibleRows.length;
+    let totalBoxes = 0;
+
+    visibleRows.forEach(row => {
+        // Get boxes count from column 5 (Cant. Cajas)
+        const boxesText = row.cells[5]?.textContent.trim() || '0';
+        totalBoxes += parseInt(boxesText) || 0;
+    });
+
+    const ordersCountEl = document.getElementById('orders-count');
+    const boxesCountEl = document.getElementById('orders-boxes-count');
+
+    if (ordersCountEl) {
+        ordersCountEl.textContent = `${totalOrders} ${totalOrders === 1 ? 'orden' : 'órdenes'}`;
+    }
+    if (boxesCountEl) {
+        boxesCountEl.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'caja' : 'cajas'}`;
+    }
 }
 
 // Mantener compatibilidad con código existente
@@ -1539,6 +1599,9 @@ function filterOrdersTable() {
         const text = row.textContent.toLowerCase();
         row.style.display = text.includes(filterText) ? '' : 'none';
     });
+
+    // Update badges to reflect filtered results
+    updateOrdersBadges(STATE.activeTab);
 }
 
 function filterValidatedTable() {
@@ -2361,14 +2424,63 @@ function switchValidationTab(tab) {
     const tabValidated = document.getElementById('tab-validated');
 
     // Update header toggle buttons (en panel de búsqueda)
+    const toggleTodo = document.getElementById('toggle-todo');
     const togglePending = document.getElementById('toggle-pending');
     const toggleValidated = document.getElementById('toggle-validated');
 
     // Update header toggle buttons (en panel de validadas)
+    const toggleTodoValidated = document.getElementById('toggle-todo-validated');
     const togglePendingValidated = document.getElementById('toggle-pending-validated');
     const toggleValidatedValidated = document.getElementById('toggle-validated-validated');
 
-    if (tab === 'pending') {
+    // Update header toggle buttons (en panel de folios)
+    const toggleTodoFolios = document.getElementById('toggle-todo-folios');
+    const togglePendingFolios = document.getElementById('toggle-pending-folios');
+    const toggleValidatedFolios = document.getElementById('toggle-validated-folios');
+
+    if (tab === 'todo') {
+        // Limpiar flag de "viene desde folios" si estaba activo
+        STATE.fromFolios = false;
+
+        // Actualizar tabs del sidebar (si existen)
+        tabPending?.classList.remove('active');
+        tabValidated?.classList.remove('active');
+
+        // Actualizar botones en panel de búsqueda
+        toggleTodo?.classList.add('active');
+        togglePending?.classList.remove('active');
+        toggleValidated?.classList.remove('active');
+
+        // Actualizar botones en panel de validadas
+        toggleTodoValidated?.classList.add('active');
+        togglePendingValidated?.classList.remove('active');
+        toggleValidatedValidated?.classList.remove('active');
+
+        // Actualizar botones en panel de folios
+        toggleTodoFolios?.classList.add('active');
+        togglePendingFolios?.classList.remove('active');
+        toggleValidatedFolios?.classList.remove('active');
+
+        // Show search panel / orders - HIDE ALL OTHERS
+        document.getElementById('welcome-state').style.display = 'none';
+        document.getElementById('validated-content').style.display = 'none';
+        document.getElementById('folios-content').style.display = 'none';
+        document.getElementById('folio-details-content').style.display = 'none';
+        const searchPanelTodo = document.getElementById('search-panel');
+        searchPanelTodo.style.display = 'none';
+        setTimeout(() => { searchPanelTodo.style.display = 'block'; }, 10);
+
+        // Render ALL orders (todo)
+
+        // MOSTRAR elementos de escaneo y agenda en vista "Todo"
+        const scannerCardTodo = document.getElementById('search-scanner-card');
+        const agendaBtnTodo = document.getElementById('btn-ver-agenda');
+        const sectionTitleTodo = document.getElementById('orders-section-title');
+        if (scannerCardTodo) scannerCardTodo.style.display = 'block';
+        if (agendaBtnTodo) agendaBtnTodo.style.display = 'flex';
+        if (sectionTitleTodo) sectionTitleTodo.textContent = '📋 Órdenes';
+        renderOrdersTable('todo');
+    } else if (tab === 'pending') {
         // Limpiar flag de "viene desde folios" si estaba activo
         STATE.fromFolios = false;
 
@@ -2385,22 +2497,39 @@ function switchValidationTab(tab) {
         tabValidated?.classList.remove('active');
 
         // Actualizar botones en panel de búsqueda
+        toggleTodo?.classList.remove('active');
         togglePending?.classList.add('active');
         toggleValidated?.classList.remove('active');
 
         // Actualizar botones en panel de validadas
+        toggleTodoValidated?.classList.remove('active');
         togglePendingValidated?.classList.add('active');
         toggleValidatedValidated?.classList.remove('active');
+
+        // Actualizar botones en panel de folios
+        toggleTodoFolios?.classList.remove('active');
+        togglePendingFolios?.classList.add('active');
+        toggleValidatedFolios?.classList.remove('active');
 
         // Show search panel / orders - HIDE ALL OTHERS
         document.getElementById('welcome-state').style.display = 'none';
         document.getElementById('validated-content').style.display = 'none';
         document.getElementById('folios-content').style.display = 'none';
         document.getElementById('folio-details-content').style.display = 'none';
-        document.getElementById('search-panel').style.display = 'block';
+        const searchPanelPending = document.getElementById('search-panel');
+        searchPanelPending.style.display = 'none';
+        setTimeout(() => { searchPanelPending.style.display = 'block'; }, 10);
 
-        // Render pending orders table
-        renderOrdersTable();
+        // Render pending orders table (filtered)
+        renderOrdersTable('pending');
+
+        // OCULTAR elementos de escaneo y agenda en vista "Pendientes"
+        const scannerCardPending = document.getElementById('search-scanner-card');
+        const agendaBtnPending = document.getElementById('btn-ver-agenda');
+        const sectionTitlePending = document.getElementById('orders-section-title');
+        if (scannerCardPending) scannerCardPending.style.display = 'none';
+        if (agendaBtnPending) agendaBtnPending.style.display = 'none';
+        if (sectionTitlePending) sectionTitlePending.textContent = '📋 Órdenes Pendientes';
     } else {
         // Si NO venimos desde folios, habilitar el botón normalmente
         if (!STATE.fromFolios && togglePendingValidated) {
@@ -2415,19 +2544,28 @@ function switchValidationTab(tab) {
         tabValidated?.classList.add('active');
 
         // Actualizar botones en panel de búsqueda
+        toggleTodo?.classList.remove('active');
         togglePending?.classList.remove('active');
         toggleValidated?.classList.add('active');
 
         // Actualizar botones en panel de validadas
+        toggleTodoValidated?.classList.remove('active');
         togglePendingValidated?.classList.remove('active');
         toggleValidatedValidated?.classList.add('active');
+
+        // Actualizar botones en panel de folios
+        toggleTodoFolios?.classList.remove('active');
+        togglePendingFolios?.classList.remove('active');
+        toggleValidatedFolios?.classList.add('active');
 
         // Show validated content - HIDE ALL OTHERS
         document.getElementById('welcome-state').style.display = 'none';
         document.getElementById('search-panel').style.display = 'none';
         document.getElementById('folios-content').style.display = 'none';
         document.getElementById('folio-details-content').style.display = 'none';
-        document.getElementById('validated-content').style.display = 'block';
+        const validatedContent = document.getElementById('validated-content');
+        validatedContent.style.display = 'none';
+        setTimeout(() => { validatedContent.style.display = 'block'; }, 10);
 
         // Render validated orders table
         renderValidatedTable();
@@ -2661,8 +2799,15 @@ function updateValidatedFilterIndicator() {
     if (!filterTextEl) return;
 
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        const start = formatDateDDMMYYYY(new Date(STATE.dateFilter.startDate));
-        const end = formatDateDDMMYYYY(new Date(STATE.dateFilter.endDate));
+        // Parse dates as local time to avoid UTC offset issues
+        const startParts = STATE.dateFilter.startDate.split('-');
+        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        
+        const endParts = STATE.dateFilter.endDate.split('-');
+        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+        
+        const start = formatDateDDMMYYYY(startDate);
+        const end = formatDateDDMMYYYY(endDate);
         filterTextEl.textContent = `${start} → ${end}`;
         if (filterBtn) {
             filterBtn.classList.add('active-filter');
@@ -2775,21 +2920,28 @@ async function executeConfirmCancelOrder() {
     }
 
     try {
+        // Get current date and time for validation record
+        const now = new Date();
+        const fecha = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
+        const hora = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
         // Prepare validation record for cancelled order
         const validationRecord = {
             orden: STATE.currentOrder,
             destino: orderData.recipient || '',
             horario: orderData.expectedArrival || '',
-            cajas: orderData.totalCajas || 0,
+            totalCajas: orderData.totalCajas || 0,
             cantidadDespachar: 0,
             porcentajeSurtido: 0,
             estatus: 'Cancelada',
             calidad: 'N/A',
-            conductor: '',
+            operador: CURRENT_USER || USER_GOOGLE_NAME || '',
             unidad: '',
             folio: '',
             nota: 'Orden cancelada',
-            timestamp: new Date().toISOString(),
+            timestamp: now.toISOString(),
+            fecha: fecha,
+            hora: hora,
             codigo: orderData.referenceNo || '',
             track: orderData.trackingCode || ''
         };
@@ -2797,6 +2949,11 @@ async function executeConfirmCancelOrder() {
         // Add to local validated
         STATE.localValidated.push(validationRecord);
         saveLocalState();
+
+        // Add to sync queue to write to database
+        if (window.syncManager) {
+            await window.syncManager.addToQueue(validationRecord);
+        }
 
         // Close modals
         closeCancelOrderModal();
@@ -2808,7 +2965,7 @@ async function executeConfirmCancelOrder() {
         updateTabBadges();
 
         // Show success notification
-        showNotification('🚫 Orden marcada como Cancelada', 'info');
+        showNotification('🚫 Orden marcada como Cancelada y agregada a sincronización', 'info');
 
     } catch (error) {
         console.error('Error al cancelar orden:', error);
@@ -4435,25 +4592,59 @@ function updateTabBadges() {
     const pendingBadge = document.getElementById('pending-badge');
 
     // Header badges (panel de búsqueda)
+    const todoBadgeHeader = document.getElementById('todo-badge-header');
     const validatedBadgeHeader = document.getElementById('validated-badge-header');
     const pendingBadgeHeader = document.getElementById('pending-badge-header');
 
     // Header badges (panel de validadas)
+    const todoBadgeValidated = document.getElementById('todo-badge-validated');
     const validatedBadgeValidated = document.getElementById('validated-badge-validated');
     const pendingBadgeValidated = document.getElementById('pending-badge-validated');
 
-    // Calculate counts
-    const validatedCount = STATE.localValidated.length;
+    // Header badges (panel de folios)
+    const todoBadgeFolios = document.getElementById('todo-badge-folios');
+    const validatedBadgeFolios = document.getElementById('validated-badge-folios');
+    const pendingBadgeFolios = document.getElementById('pending-badge-folios');
+
+    // Calculate validated count - filter by date range if active
+    let validatedCount = STATE.localValidated.length;
+    
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+        const startParts = STATE.dateFilter.startDate.split('-');
+        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        startDate.setHours(0, 0, 0, 0);
+
+        const endParts = STATE.dateFilter.endDate.split('-');
+        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+        endDate.setHours(23, 59, 59, 999);
+
+        validatedCount = STATE.localValidated.filter(record => {
+            const orderData = STATE.obcData.get(record.orden) || {};
+            const dateStr = record.horario || orderData.expectedArrival;
+            if (!dateStr) return false;
+            const orderDate = parseOrderDate(dateStr);
+            return orderDate && orderDate >= startDate && orderDate <= endDate;
+        }).length;
+    }
 
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
     let pendingCount = 0;
+    let pendingCalidadCount = 0;
+    let todoCount = dataToUse.size;
 
     for (const [orden] of dataToUse.entries()) {
-        // Check if not in local validated
-        const inLocalValidated = STATE.localValidated.some(v => v.orden === orden);
-        // No verificar contra validación de surtido, solo contra despachos locales
-        if (!inLocalValidated) {
+        const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
+
+        if (!isValidated) {
             pendingCount++;
+        } else if (validatedData) {
+            // Verificar si tiene estado "Pendiente Calidad"
+            const calidad = validatedData.calidad || '';
+            const estatus = validatedData.estatus || '';
+            if (calidad.includes('Pendiente') || estatus === 'Pendiente Calidad') {
+                pendingCalidadCount++;
+                pendingCount++; // También cuenta como pendiente
+            }
         }
     }
 
@@ -4467,6 +4658,10 @@ function updateTabBadges() {
     }
 
     // Update header badges (panel de búsqueda)
+    if (todoBadgeHeader) {
+        todoBadgeHeader.textContent = todoCount;
+    }
+
     if (validatedBadgeHeader) {
         validatedBadgeHeader.textContent = validatedCount;
     }
@@ -4476,6 +4671,10 @@ function updateTabBadges() {
     }
 
     // Update header badges (panel de validadas)
+    if (todoBadgeValidated) {
+        todoBadgeValidated.textContent = todoCount;
+    }
+
     if (validatedBadgeValidated) {
         validatedBadgeValidated.textContent = validatedCount;
     }
@@ -4485,8 +4684,9 @@ function updateTabBadges() {
     }
 
     // Update header badges (panel de folios)
-    const validatedBadgeFolios = document.getElementById('validated-badge-folios');
-    const pendingBadgeFolios = document.getElementById('pending-badge-folios');
+    if (todoBadgeFolios) {
+        todoBadgeFolios.textContent = todoCount;
+    }
 
     if (validatedBadgeFolios) {
         validatedBadgeFolios.textContent = validatedCount;
@@ -5528,7 +5728,7 @@ function printFolioDelivery(folioCompleto) {
 
     // Obtener información consolidada del folio
     const primeraOrden = ordenesDelFolio[0];
-    const conductor = primeraOrden.conductor || 'N/A';
+    const conductor = primeraOrden.operador || primeraOrden.conductor || 'N/A';
     const unidad = primeraOrden.unidad || 'N/A';
 
     // Obtener horarios
@@ -5787,7 +5987,7 @@ function printFolioDelivery(folioCompleto) {
                         <th style="width: 50px;">#</th>
                         <th>Destino</th>
                         <th>Orden</th>
-                        <th>Código de Caja (Base)</th>
+                        <th>Código de Caja</th>
                         <th style="width: 120px; text-align: center;">Cantidad de Cajas</th>
                     </tr>
                 </thead>
