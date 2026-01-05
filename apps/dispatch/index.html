@@ -12,13 +12,7 @@
     <link rel="stylesheet" href="../../shared/css/sidebar.css">
     <link rel="stylesheet" href="../../shared/css/avatar-system.css">
     <link rel="stylesheet" href="styles.css">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script src="../../shared/js/debug-mode.js"></script>
-    <script src="../../shared/js/wms-utils.js"></script>
-    <script src="../../shared/js/avatar-system.js"></script>
-    <script src="../../shared/js/sync-manager.js"></script>
-    <script src="../../shared/js/sidebar-component.js"></script>
+    <!-- Moved scripts to end of body -->
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -811,6 +805,55 @@
         </div>
     </div>
 
+    <!-- Google API Scripts -->
+    <script>
+        // Define callback functions before loading Google API scripts
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+        
+        function gapiLoaded() {
+            gapi.load('client', async () => {
+                await gapi.client.init({
+                    discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+                });
+                gapiInited = true;
+                maybeEnableButtons();
+            });
+        }
+        
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: '1013623813866-70ovrtt690fbka3a97h4fenpp54hm7j8.apps.googleusercontent.com',
+                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile',
+                callback: '',
+            });
+            gisInited = true;
+            maybeEnableButtons();
+        }
+        
+        function maybeEnableButtons() {
+            if (gapiInited && gisInited) {
+                console.log('✅ Google APIs initialized');
+                // Try to restore session if exists
+                if (typeof tryRestoreSession === 'function') {
+                    tryRestoreSession();
+                }
+            }
+        }
+    </script>
+    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
+    
+    <!-- Shared Scripts -->
+    <script src="../../shared/js/debug-mode.js"></script>
+    <script src="../../shared/js/wms-utils.js"></script>
+    <script src="../../shared/js/auth-manager.js"></script>
+    <script src="../../shared/js/avatar-system.js"></script>
+    <script src="../../shared/js/sync-manager.js"></script>
+    <script src="../../shared/js/sidebar-component.js"></script>
+    
+    <!-- App Script -->
     <script src="app.js"></script>
 </body>
 </html>

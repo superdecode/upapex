@@ -1079,6 +1079,25 @@
             color: white;
         }
 
+        /* Priority badge - Purple/Morado */
+        .priority-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: 700;
+            margin-left: 8px;
+            background: linear-gradient(135deg, #9C27B0, #7B1FA2);
+            color: white;
+            animation: priorityPulse 2s ease-in-out infinite;
+            box-shadow: 0 2px 8px rgba(156, 39, 176, 0.4);
+        }
+
+        @keyframes priorityPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.05); }
+        }
+
         .box-item.verified .box-check-icon {
             color: #228B22;
         }
@@ -2577,7 +2596,9 @@
             // WMS Inventory - Lectura de códigos, stock, ubicaciones (17 columnas)
             INVENTORY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-HG8HPf-94Ki5Leo5iEF5pyqsiD9CVk-mcl-F8BAw34kT0s3nzNn532YTYDCtkG76NbauiVx0Ffmd/pub?output=csv',
             // FILE2 - Segundo nivel de búsqueda (columna I)
-            FILE2_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv'
+            FILE2_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv',
+            // PRIORIDAD - Validación de códigos prioritarios
+            PRIORITY_CSV_URL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQiV79-kXoNlWqzL5LlDQfD2frq1EZ7mnRtwfpACEpA3nQymdLHth0e1XdidhYfavy3YuamZkv2tX-W/pub?gid=956570526&single=true&output=csv'
         };
 
         // ==================== STATE ====================
@@ -2597,11 +2618,16 @@
         let BD_CODES_FILE2 = new Set();
         let FILE2_LAST_UPDATE = null;
 
+        // PRIORIDAD - Validación de códigos prioritarios
+        let PRIORITY_CODES = new Set();
+        let PRIORITY_LAST_UPDATE = null;
+
         // IndexedDB para FILE2 (cache grande)
         let FILE2_DB = null;
         const DB_NAME = 'ScanAppDB';
-        const DB_VERSION = 1;
-        const STORE_NAME = 'file2_codes';
+        const DB_VERSION = 2;  // Incrementado para agregar store de prioridad
+        const STORE_NAME_FILE2 = 'file2_codes';
+        const STORE_NAME_PRIORITY = 'priority_codes';
 
         // Inicializar IndexedDB
         async function initIndexedDB() {
@@ -2621,9 +2647,15 @@
 
                 request.onupgradeneeded = (event) => {
                     const db = event.target.result;
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        db.createObjectStore(STORE_NAME);
-                        console.log('📦 Object store creado:', STORE_NAME);
+                    // Crear store para FILE2
+                    if (!db.objectStoreNames.contains(STORE_NAME_FILE2)) {
+                        db.createObjectStore(STORE_NAME_FILE2);
+                        console.log('📦 Object store creado:', STORE_NAME_FILE2);
+                    }
+                    // Crear store para PRIORIDAD
+                    if (!db.objectStoreNames.contains(STORE_NAME_PRIORITY)) {
+                        db.createObjectStore(STORE_NAME_PRIORITY);
+                        console.log('🔴 Object store creado:', STORE_NAME_PRIORITY);
                     }
                 };
             });
@@ -2637,8 +2669,8 @@
                 }
 
                 return new Promise((resolve, reject) => {
-                    const transaction = FILE2_DB.transaction([STORE_NAME], 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
+                    const transaction = FILE2_DB.transaction([STORE_NAME_FILE2], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME_FILE2);
 
                     // Guardar los códigos
                     const codesRequest = store.put(codesArray, 'codes');
@@ -2668,8 +2700,8 @@
                 }
 
                 return new Promise((resolve, reject) => {
-                    const transaction = FILE2_DB.transaction([STORE_NAME], 'readonly');
-                    const store = transaction.objectStore(STORE_NAME);
+                    const transaction = FILE2_DB.transaction([STORE_NAME_FILE2], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME_FILE2);
 
                     const codesRequest = store.get('codes');
                     const timestampRequest = store.get('timestamp');
@@ -2702,6 +2734,82 @@
                 });
             } catch (error) {
                 console.error('❌ Error en loadFile2FromIndexedDB:', error);
+                return null;
+            }
+        }
+
+        // Guardar PRIORIDAD en IndexedDB
+        async function savePriorityToIndexedDB(codesArray, timestamp) {
+            try {
+                if (!FILE2_DB) {
+                    await initIndexedDB();
+                }
+
+                return new Promise((resolve, reject) => {
+                    const transaction = FILE2_DB.transaction([STORE_NAME_PRIORITY], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME_PRIORITY);
+
+                    store.put(codesArray, 'codes');
+                    store.put(timestamp, 'timestamp');
+
+                    transaction.oncomplete = () => {
+                        console.log(`🔴 PRIORIDAD guardada en IndexedDB: ${codesArray.length} códigos`);
+                        resolve();
+                    };
+
+                    transaction.onerror = () => {
+                        console.error('❌ Error guardando PRIORIDAD en IndexedDB:', transaction.error);
+                        reject(transaction.error);
+                    };
+                });
+            } catch (error) {
+                console.error('❌ Error en savePriorityToIndexedDB:', error);
+                throw error;
+            }
+        }
+
+        // Cargar PRIORIDAD desde IndexedDB
+        async function loadPriorityFromIndexedDB() {
+            try {
+                if (!FILE2_DB) {
+                    await initIndexedDB();
+                }
+
+                return new Promise((resolve, reject) => {
+                    const transaction = FILE2_DB.transaction([STORE_NAME_PRIORITY], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME_PRIORITY);
+
+                    const codesRequest = store.get('codes');
+                    const timestampRequest = store.get('timestamp');
+
+                    let codes = null;
+                    let timestamp = null;
+
+                    codesRequest.onsuccess = () => {
+                        codes = codesRequest.result;
+                    };
+
+                    timestampRequest.onsuccess = () => {
+                        timestamp = timestampRequest.result;
+                    };
+
+                    transaction.oncomplete = () => {
+                        if (codes && timestamp) {
+                            console.log(`🔴 PRIORIDAD cargada desde IndexedDB: ${codes.length} códigos`);
+                            resolve({ codes, timestamp });
+                        } else {
+                            console.log('ℹ️ No hay datos de PRIORIDAD en IndexedDB');
+                            resolve(null);
+                        }
+                    };
+
+                    transaction.onerror = () => {
+                        console.error('❌ Error leyendo PRIORIDAD desde IndexedDB:', transaction.error);
+                        reject(transaction.error);
+                    };
+                });
+            } catch (error) {
+                console.error('❌ Error en loadPriorityFromIndexedDB:', error);
                 return null;
             }
         }
@@ -2872,7 +2980,7 @@
                     <div class="popup-content" style="max-width: 450px;">
                         <div class="popup-header">
                             <span>📊 Estado de Sincronización</span>
-                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                            <button class="popup-close" data-action="close">×</button>
                         </div>
                         <div style="margin-bottom: 15px;">
                             <div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px; text-align: center;">
@@ -2889,19 +2997,27 @@
                         </div>
                         <div class="popup-buttons">
                             ${PENDING_SYNC.length > 0 && IS_ONLINE && gapi?.client?.getToken() ? `
-                                <button class="btn btn-success btn-full" onclick="this.closest('.popup-overlay').remove(); SyncManager.sync();">
+                                <button class="btn btn-success btn-full" data-action="sync">
                                     🔄 Sincronizar Ahora
                                 </button>
                             ` : ''}
-                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                            <button class="btn btn-secondary btn-full" data-action="close">
                                 Cerrar
                             </button>
                         </div>
                     </div>
                 `;
                 document.body.appendChild(overlay);
+                
+                const closePopup = () => overlay.remove();
+                
                 overlay.addEventListener('click', (e) => {
-                    if (e.target === overlay) overlay.remove();
+                    if (e.target === overlay) closePopup();
+                    if (e.target.dataset.action === 'close') closePopup();
+                    if (e.target.dataset.action === 'sync') {
+                        closePopup();
+                        SyncManager.sync();
+                    }
                 });
             }
         };
@@ -2944,10 +3060,11 @@
                 gapi.client.setToken(response);
                 await getUserProfile();
 
-                // Cargar AMBAS bases de datos en paralelo
+                // Cargar TODAS las bases de datos en paralelo
                 await Promise.all([
-                    loadInventory(),      // WMS - Base de datos principal
-                    loadFILE2Inventory()  // FILE2 - Base de datos secundaria
+                    loadInventory(),         // WMS - Base de datos principal
+                    loadFILE2Inventory(),    // FILE2 - Base de datos secundaria
+                    loadPriorityInventory()  // PRIORIDAD - Códigos prioritarios
                 ]);
 
                 SyncManager.init();
@@ -3358,6 +3475,120 @@
             }
         }
 
+        // ==================== PRIORITY LOADING (Validación de códigos prioritarios) ====================
+        async function loadPriorityInventory() {
+            // Verificar caché en IndexedDB (30 minutos de validez)
+            try {
+                const cachedData = await loadPriorityFromIndexedDB();
+
+                if (cachedData) {
+                    const cacheAge = Date.now() - cachedData.timestamp;
+                    const THIRTY_MINUTES = 30 * 60 * 1000;
+
+                    if (cacheAge < THIRTY_MINUTES) {
+                        PRIORITY_CODES = new Set(cachedData.codes);
+                        PRIORITY_LAST_UPDATE = new Date(cachedData.timestamp).toLocaleString();
+                        console.log(`🔴 PRIORIDAD: ${PRIORITY_CODES.size} códigos desde IndexedDB (${Math.round(cacheAge / 60000)} min)`);
+                        return;
+                    } else {
+                        console.log('⏰ Caché de PRIORIDAD expirado, recargando...');
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ Error leyendo caché PRIORIDAD de IndexedDB, recargando...', e);
+            }
+
+            // Cargar desde CSV
+            try {
+                console.log('🔄 Cargando PRIORIDAD desde CSV...');
+                const response = await fetch(CONFIG.PRIORITY_CSV_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+
+                console.log('📡 PRIORIDAD respuesta:', response.status, response.statusText);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const csv = await response.text();
+                console.log('📄 PRIORIDAD CSV recibido, tamaño:', csv.length, 'caracteres');
+                if (!csv || csv.trim().length === 0) throw new Error('PRIORIDAD CSV vacío');
+
+                // Parsear CSV de PRIORIDAD - Primera columna (índice 0)
+                const lines = csv.split('\n').filter(line => line.trim().length > 0);
+                PRIORITY_CODES.clear();
+
+                console.log('📊 PRIORIDAD: parseando', lines.length, 'líneas');
+
+                // Saltar header (línea 0) y procesar primera columna
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    if (cols.length >= 1) {
+                        const code = cols[0]?.toString().trim();  // Primera columna
+                        if (code && code.length > 0) {
+                            const normalized = normalizeCode(code);
+                            PRIORITY_CODES.add(normalized);
+                        }
+                    }
+                }
+
+                // Guardar en IndexedDB
+                const now = Date.now();
+                try {
+                    const codesArray = [...PRIORITY_CODES];
+                    await savePriorityToIndexedDB(codesArray, now);
+                    console.log(`💾 PRIORIDAD guardada en IndexedDB: ${codesArray.length} códigos`);
+                } catch (storageError) {
+                    console.warn('⚠️ No se pudo guardar PRIORIDAD en IndexedDB:', storageError.message);
+                }
+                PRIORITY_LAST_UPDATE = new Date(now).toLocaleString();
+
+                console.log(`✅ PRIORIDAD: ${PRIORITY_CODES.size} códigos únicos cargados`);
+
+                // Mostrar ejemplos
+                if (PRIORITY_CODES.size > 0) {
+                    const samples = Array.from(PRIORITY_CODES).slice(0, 3);
+                    console.log('🔴 PRIORIDAD ejemplos:', samples.join(', '));
+                }
+            } catch (error) {
+                console.error('❌ Error cargando PRIORIDAD:', error);
+            }
+        }
+
+        /**
+         * Verifica si un código es prioritario
+         * Retorna: { isPriority: boolean, variant: string }
+         */
+        async function checkIfPriority(rawCode) {
+            // Cargar códigos de prioridad si aún no están cargados
+            if (PRIORITY_CODES.size === 0) {
+                await loadPriorityInventory();
+            }
+
+            const normalized = normalizeCode(rawCode);
+
+            // Intentar búsqueda con variantes
+            const variants = [
+                normalized,
+                normalized.replace(/\//g, '-'),
+                normalized.replace(/-/g, '/')
+            ];
+
+            for (const variant of variants) {
+                if (PRIORITY_CODES.has(variant)) {
+                    return {
+                        isPriority: true,
+                        variant: variant
+                    };
+                }
+            }
+
+            return {
+                isPriority: false,
+                variant: null
+            };
+        }
+
         /**
          * Búsqueda de dos niveles: WMS (inventario principal) + FILE2 (base secundaria)
          * Retorna: { code: string, item: object|null, source: 'WMS'|'FILE2'|'UNKNOWN', variant: string }
@@ -3466,6 +3697,10 @@
             const item = result.item;
             const source = result.source;
 
+            // VALIDACIÓN DE PRIORIDAD (en paralelo)
+            const priorityCheck = await checkIfPriority(rawCode);
+            const isPriority = priorityCheck.isPriority;
+
             // Check duplicates across all pallets con info detallada
             const duplicateInfo = findDuplicate(code);
 
@@ -3478,7 +3713,7 @@
 
             if (!item) {
                 // Not found in both levels - show Code2 input
-                STATE.pendingCode1 = { raw: rawCode, code };
+                STATE.pendingCode1 = { raw: rawCode, code, isPriority };
                 showResultBox('error', code, 'NO ENCONTRADO',
                     'Código no encontrado en WMS ni Archivo 2. Ingresa Código 2 o usa INSERTADO.', null);
                 document.getElementById('code2-container').classList.add('show');
@@ -3492,18 +3727,23 @@
             document.getElementById('code2-container').classList.remove('show');
             STATE.pendingCode1 = null;
 
+            // MOSTRAR ALERTA SI ES PRIORIDAD
+            if (isPriority) {
+                showPriorityAlert(code);
+            }
+
             // Determine status and add to appropriate pallet
             if (item.isBlocked) {
-                addBox('blocked', createBoxData(rawCode, code, '', item, source));
+                addBox('blocked', createBoxData(rawCode, code, '', item, source, isPriority));
                 showResultBox('blocked', code, 'BLOQUEADO', 'Inventario bloqueado', item);
                 playSound('warning');
             } else if (item.isAvailable) {
-                addBox('ok', createBoxData(rawCode, code, '', item, source));
+                addBox('ok', createBoxData(rawCode, code, '', item, source, isPriority));
                 const statusMsg = source === 'FILE2' ? 'Validado en Archivo 2 (OK - No WMS)' : 'Validado correctamente';
                 showResultBox('success', code, 'OK', statusMsg, item);
                 playSound('success');
             } else {
-                addBox('blocked', createBoxData(rawCode, code, '', item, source));
+                addBox('blocked', createBoxData(rawCode, code, '', item, source, isPriority));
                 showResultBox('blocked', code, 'SIN STOCK', 'Sin stock disponible', item);
                 playSound('warning');
             }
@@ -3534,6 +3774,60 @@
             return null;
         }
 
+        // Mostrar alerta de prioridad
+        function showPriorityAlert(code) {
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay show priority-alert-overlay';
+            overlay.innerHTML = `
+                <div class="popup-content priority-alert-popup" style="border: 3px solid #7c69fd; max-width: 500px;">
+                    <div class="popup-header" style="background: linear-gradient(135deg, #7c69fd, #7B1FA2); color: white;">
+                        <span>🔴 ¡ATENCIÓN: CAJA DE PRIORIDAD!</span>
+                        <button class="popup-close" data-action="close" style="color: white;">×</button>
+                    </div>
+                    <div style="padding: 25px; text-align: center;">
+                        <div style="font-size: 4em; margin-bottom: 15px;">⚠️</div>
+                        <h3 style="color: #7c69fd; margin-bottom: 15px; font-size: 1.3em;">CÓDIGO PRIORITARIO DETECTADO</h3>
+                        <div style="background: #F3E5F5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Código:</div>
+                            <div style="font-size: 1.5em; font-weight: 700; color: #7c69fd; font-family: 'Courier New', monospace;">
+                                ${code}
+                            </div>
+                        </div>
+                        <div style="background: #ffffff; border-left: 4px solid #FF9800; padding: 15px; margin-bottom: 20px; text-align: left;">
+                            <strong style="color: #E65100;">⚡ ACCIÓN REQUERIDA:</strong><br>
+                            <span style="color: #666; font-size: 0.95em;">
+                                Separar de inmediato y notificar al encargado para su gestión oportuna.
+                            </span>
+                        </div>
+                        <button class="btn btn-primary btn-full" data-action="close" style="background: #7c69fd; font-size: 1.1em; padding: 12px;">
+                            ✓ Entendido
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay || e.target.dataset.action === 'close') {
+                    overlay.remove();
+                }
+            });
+
+            // Reproducir sonido de alerta (más fuerte)
+            playSound('warning');
+            setTimeout(() => playSound('warning'), 300);
+
+            // Auto-focus en el botón
+            setTimeout(() => {
+                const btn = overlay.querySelector('.btn-primary');
+                if (btn) btn.focus();
+            }, 100);
+
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
+        }
+
         // Mostrar popup de duplicado con opción de ingreso forzado
         function showDuplicatePopup(code, duplicateInfo, rawCode) {
             const overlay = document.createElement('div');
@@ -3542,7 +3836,7 @@
                 <div class="popup-content duplicate-popup">
                     <div class="popup-header">
                         <span>⚠️ Código Duplicado</span>
-                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        <button class="popup-close" data-action="close">×</button>
                     </div>
                     <div class="duplicate-info">
                         <div class="duplicate-info-row">
@@ -3566,18 +3860,26 @@
                         Este código ya fue escaneado anteriormente. ¿Deseas forzar un nuevo registro?
                     </p>
                     <div class="popup-buttons">
-                        <button class="btn btn-warning btn-full" onclick="forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();">
+                        <button class="btn btn-warning btn-full" data-action="force">
                             ⚡ Ingreso Forzado (Duplicado)
                         </button>
-                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                        <button class="btn btn-secondary btn-full" data-action="close">
                             Cancelar
                         </button>
                     </div>
                 </div>
             `;
             document.body.appendChild(overlay);
+            
+            const closePopup = () => overlay.remove();
+            
             overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) overlay.remove();
+                if (e.target === overlay) closePopup();
+                if (e.target.dataset.action === 'close') closePopup();
+                if (e.target.dataset.action === 'force') {
+                    forceInsertDuplicate(code, rawCode);
+                    closePopup();
+                }
             });
         }
 
@@ -3589,14 +3891,22 @@
             const item = result.item;
             const source = result.source;
 
+            // Validar prioridad
+            const priorityCheck = await checkIfPriority(rawCode);
+            const isPriority = priorityCheck.isPriority;
+
+            if (isPriority) {
+                showPriorityAlert(finalCode);
+            }
+
             if (!item) {
-                addBox('nowms', createBoxData(rawCode, finalCode, '', null, 'UNKNOWN'));
+                addBox('nowms', createBoxData(rawCode, finalCode, '', null, 'UNKNOWN', isPriority));
                 showNotification('⚡ Duplicado insertado en No WMS', 'warning');
             } else if (item.isBlocked) {
-                addBox('blocked', createBoxData(rawCode, finalCode, '', item, source));
+                addBox('blocked', createBoxData(rawCode, finalCode, '', item, source, isPriority));
                 showNotification('⚡ Duplicado insertado en Bloqueado', 'warning');
             } else {
-                addBox('ok', createBoxData(rawCode, finalCode, '', item, source));
+                addBox('ok', createBoxData(rawCode, finalCode, '', item, source, isPriority));
                 showNotification('⚡ Duplicado insertado en OK', 'warning');
             }
 
@@ -3613,21 +3923,28 @@
             const item = result.item;
             const source = result.source;
 
+            // Usar isPriority del código 1 si existe
+            const isPriority = STATE.pendingCode1.isPriority || false;
+
+            if (isPriority) {
+                showPriorityAlert(STATE.pendingCode1.code);
+            }
+
             document.getElementById('code2-container').classList.remove('show');
 
             if (!item) {
                 // Both codes failed - add to No WMS with BOTH codes
-                addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null, 'UNKNOWN'));
+                addBox('nowms', createBoxData(STATE.pendingCode1.raw, STATE.pendingCode1.code, rawCode2, null, 'UNKNOWN', isPriority));
                 showResultBox('error', STATE.pendingCode1.code, 'NO WMS',
                     `Ambos códigos no encontrados. Guardados: ${STATE.pendingCode1.code} y ${code2}`, null);
                 playSound('error');
             } else if (item.isBlocked) {
-                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source));
+                addBox('blocked', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
                 showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
                     'Validado con Código 2 - Bloqueado', item);
                 playSound('warning');
             } else {
-                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source));
+                addBox('ok', createBoxData(STATE.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
                 const statusMsg = source === 'FILE2' ? 'Validado con Código 2 en Archivo 2' : 'Validado correctamente con Código 2';
                 showResultBox('success', code2, 'OK (Código 2)', statusMsg, item);
                 playSound('success');
@@ -3645,6 +3962,11 @@
             }
 
             const code2Value = document.getElementById('code2-input').value.trim();
+            const isPriority = STATE.pendingCode1.isPriority || false;
+
+            if (isPriority) {
+                showPriorityAlert(STATE.pendingCode1.code);
+            }
 
             // Guardar AMBOS códigos
             addBox('nowms', createBoxData(
@@ -3652,7 +3974,8 @@
                 STATE.pendingCode1.code,
                 code2Value,  // Puede estar vacío o tener valor
                 null,
-                'UNKNOWN'
+                'UNKNOWN',
+                isPriority
             ));
 
             const msg = code2Value
@@ -3671,7 +3994,7 @@
             showNotification('⚡ Registro insertado forzosamente', 'warning');
         }
 
-        function createBoxData(raw, code, scan2, item, source = 'WMS') {
+        function createBoxData(raw, code, scan2, item, source = 'WMS', isPriority = false) {
             const cleanScan2 = scan2 ? normalizeCode(scan2) : '';
             return {
                 raw,
@@ -3683,7 +4006,8 @@
                 sku: item?.sku || '-',
                 product: item?.productName || '-',
                 timestamp: new Date().toLocaleTimeString(),
-                source: source  // 'WMS' | 'FILE2' | 'UNKNOWN'
+                source: source,  // 'WMS' | 'FILE2' | 'UNKNOWN'
+                isPriority: isPriority  // true si es un código prioritario
             };
         }
 
@@ -4019,6 +4343,12 @@
                     finalNote = 'Estatus: NO WMS';
                 }
 
+                // Si es PRIORIDAD, concatenar al estatus
+                if (box.isPriority) {
+                    finalStatus = finalStatus + ' - PRIORIDAD';
+                    finalNote = finalNote ? finalNote + ' | PRIORIDAD' : 'PRIORIDAD';
+                }
+
                 return {
                     date: dateStr,
                     time: timeStr,
@@ -4147,10 +4477,14 @@
                                  source === 'FILE2' ? 'OK - NO WMS' : 'NO WMS';
                 const sourceBadge = `<span class="inventory-badge badge-${source}">${badgeText}</span>`;
 
+                // Priority badge (si es prioritario)
+                const priorityBadge = box.isPriority ?
+                    `<span class="priority-badge">🔴 PRIORIDAD</span>` : '';
+
                 return `
                 <div class="box-item ${verifiedClass}">
                     <div class="box-info">
-                        <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}${sourceBadge}</div>
+                        <div class="box-code">${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}${sourceBadge}${priorityBadge}</div>
                         <div class="box-meta">${box.location} • ${box.timestamp}</div>
                     </div>
                     <div class="box-actions">
@@ -4193,7 +4527,7 @@
                 <div class="popup-content" style="max-width: 350px;">
                     <div class="popup-header">
                         <span>↔️ Mover Caja</span>
-                        <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                        <button class="popup-close" data-action="close">×</button>
                     </div>
                     <p style="margin-bottom: 15px; font-size: 0.9em;">
                         <strong>Código:</strong> <code>${box.code}</code><br>
@@ -4203,19 +4537,28 @@
                     <div class="popup-buttons">
                         ${categories.map(cat => `
                             <button class="btn btn-${cat === 'ok' ? 'success' : cat === 'blocked' ? 'warning' : 'danger'} btn-full"
-                                    onclick="moveBox('${fromCategory}', ${index}, '${cat}'); this.closest('.popup-overlay').remove();">
+                                    data-action="move" data-category="${cat}">
                                 ${categoryNames[cat]}
                             </button>
                         `).join('')}
-                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                        <button class="btn btn-secondary btn-full" data-action="close">
                             Cancelar
                         </button>
                     </div>
                 </div>
             `;
             document.body.appendChild(overlay);
+            
+            const closePopup = () => overlay.remove();
+            
             overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) overlay.remove();
+                if (e.target === overlay) closePopup();
+                if (e.target.dataset.action === 'close') closePopup();
+                if (e.target.dataset.action === 'move') {
+                    const targetCategory = e.target.dataset.category;
+                    moveBox(fromCategory, index, targetCategory);
+                    closePopup();
+                }
             });
         }
 
@@ -4266,7 +4609,7 @@
                                     <span class="counter-badge pending">○ ${pendingCount}</span>
                                 </div>
                             ` : ''}
-                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                            <button class="popup-close" data-action="close">×</button>
                         </div>
                     </div>
                     <div class="pallet-detail-filters">
@@ -4293,7 +4636,12 @@
             `;
             document.body.appendChild(overlay);
             renderDetailTable(category);
-            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay || e.target.dataset.action === 'close') {
+                    overlay.remove();
+                }
+            });
         }
 
         function renderDetailTable(category) {
@@ -5502,6 +5850,10 @@
                 const item = result.item;
                 const source = result.source;
 
+                // VALIDACIÓN DE PRIORIDAD (en paralelo)
+                const priorityCheck = await checkIfPriority(rawCode);
+                const isPriority = priorityCheck.isPriority;
+
                 // Check duplicates
                 const duplicateIndex = tab.boxes.findIndex(b => b.code === code);
                 if (duplicateIndex !== -1) {
@@ -5513,7 +5865,7 @@
 
                 if (!item) {
                     // Not found in both levels - show Code2 input
-                    this.pendingCode1 = { raw: rawCode, code };
+                    this.pendingCode1 = { raw: rawCode, code, isPriority };
                     this.showResultBox('error', code, 'NO ENCONTRADO',
                         'Código no encontrado en WMS ni Archivo 2. Ingresa Código 2 o usa INSERTADO.', null);
                     document.getElementById('unified-code2-container').classList.add('show');
@@ -5526,6 +5878,11 @@
                 // Hide code2 container
                 document.getElementById('unified-code2-container').classList.remove('show');
                 this.pendingCode1 = null;
+
+                // MOSTRAR ALERTA SI ES PRIORIDAD
+                if (isPriority) {
+                    showPriorityAlert(code);
+                }
 
                 // Determine status and add to pallet
                 let status;
@@ -5544,7 +5901,7 @@
                     playSound('warning');
                 }
 
-                this.addBox(status, this.createBoxData(rawCode, code, '', item, source));
+                this.addBox(status, this.createBoxData(rawCode, code, '', item, source, isPriority));
                 this.flashInput('success');
             },
 
@@ -5557,25 +5914,32 @@
                 const item = result.item;
                 const source = result.source;
 
+                // Usar isPriority del código 1 si existe
+                const isPriority = this.pendingCode1.isPriority || false;
+
+                if (isPriority) {
+                    showPriorityAlert(this.pendingCode1.code);
+                }
+
                 document.getElementById('unified-code2-container').classList.remove('show');
 
                 let status;
                 if (!item) {
                     // Both codes failed - add to No WMS
                     status = 'nowms';
-                    this.addBox('nowms', this.createBoxData(this.pendingCode1.raw, this.pendingCode1.code, rawCode2, null, 'UNKNOWN'));
+                    this.addBox('nowms', this.createBoxData(this.pendingCode1.raw, this.pendingCode1.code, rawCode2, null, 'UNKNOWN', isPriority));
                     this.showResultBox('error', this.pendingCode1.code, 'NO WMS',
                         `Ambos códigos no encontrados. Guardados: ${this.pendingCode1.code} y ${code2}`, null);
                     playSound('error');
                 } else if (item.isBlocked) {
                     status = 'blocked';
-                    this.addBox('blocked', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source));
+                    this.addBox('blocked', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
                     this.showResultBox('blocked', code2, 'BLOQUEADO (Código 2)',
                         'Validado con Código 2 - Bloqueado', item);
                     playSound('warning');
                 } else {
                     status = 'ok';
-                    this.addBox('ok', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source));
+                    this.addBox('ok', this.createBoxData(this.pendingCode1.raw, code2, rawCode2, item, source, isPriority));
                     const statusMsg = source === 'FILE2' ? 'Validado con Código 2 en Archivo 2' : 'Validado correctamente con Código 2';
                     this.showResultBox('success', code2, 'OK (Código 2)', statusMsg, item);
                     playSound('success');
@@ -5586,7 +5950,7 @@
                 document.getElementById('unified-scan-input').focus();
             },
 
-            createBoxData(raw, code, scan2, item, source = 'WMS') {
+            createBoxData(raw, code, scan2, item, source = 'WMS', isPriority = false) {
                 const cleanScan2 = scan2 ? normalizeCode(scan2) : '';
                 return {
                     raw,
@@ -5598,7 +5962,9 @@
                     sku: item?.sku || '-',
                     product: item?.productName || '-',
                     timestamp: new Date().toLocaleTimeString(),
-                    source: source  // 'WMS' | 'FILE2' | 'UNKNOWN'
+                    source: source,  // 'WMS' | 'FILE2' | 'UNKNOWN'
+                    isPriority: isPriority,  // true si es código prioritario
+                    status: item?.isBlocked ? 'blocked' : item?.isAvailable ? 'ok' : 'nowms'
                 };
             },
 
@@ -5635,7 +6001,7 @@
                     <div class="popup-content duplicate-popup">
                         <div class="popup-header">
                             <span>⚠️ Código Duplicado</span>
-                            <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+                            <button class="popup-close" data-action="close">×</button>
                         </div>
                         <div class="duplicate-info">
                             <div class="duplicate-info-row">
@@ -5655,18 +6021,26 @@
                             Este código ya fue escaneado. ¿Deseas forzar un nuevo registro?
                         </p>
                         <div class="popup-buttons">
-                            <button class="btn btn-warning btn-full" onclick="UnifiedModule.forceInsertDuplicate('${code}', '${rawCode}'); this.closest('.popup-overlay').remove();">
+                            <button class="btn btn-warning btn-full" data-action="force">
                                 ⚡ Ingreso Forzado
                             </button>
-                            <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove();">
+                            <button class="btn btn-secondary btn-full" data-action="close">
                                 Cancelar
                             </button>
                         </div>
                     </div>
                 `;
                 document.body.appendChild(overlay);
+                
+                const closePopup = () => overlay.remove();
+                
                 overlay.addEventListener('click', (e) => {
-                    if (e.target === overlay) overlay.remove();
+                    if (e.target === overlay) closePopup();
+                    if (e.target.dataset.action === 'close') closePopup();
+                    if (e.target.dataset.action === 'force') {
+                        UnifiedModule.forceInsertDuplicate(code, rawCode);
+                        closePopup();
+                    }
                 });
             },
 
@@ -5676,8 +6050,16 @@
                 const finalCode = result.code;
                 const item = result.item;
                 const source = result.source;
-                let status;
 
+                // Validar prioridad
+                const priorityCheck = await checkIfPriority(rawCode);
+                const isPriority = priorityCheck.isPriority;
+
+                if (isPriority) {
+                    showPriorityAlert(finalCode);
+                }
+
+                let status;
                 if (!item) {
                     status = 'nowms';
                     showNotification('⚡ Duplicado insertado en No WMS', 'warning');
@@ -5689,7 +6071,7 @@
                     showNotification('⚡ Duplicado insertado en OK', 'warning');
                 }
 
-                this.addBox(status, this.createBoxData(rawCode, finalCode, '', item, source));
+                this.addBox(status, this.createBoxData(rawCode, finalCode, '', item, source, isPriority));
                 playSound('warning');
                 document.getElementById('unified-scan-input').focus();
             },
@@ -5877,6 +6259,12 @@
                         }
                     }
 
+                    // Si es PRIORIDAD, concatenar al estatus
+                    if (box.isPriority) {
+                        finalStatus = finalStatus + ' - PRIORIDAD';
+                        finalNote = finalNote ? finalNote + ' | PRIORIDAD' : 'PRIORIDAD';
+                    }
+
                     return {
                         date: dateStr,
                         time: timeStr,
@@ -6013,6 +6401,10 @@
                         ? `<span class="inventory-badge badge-${source}">${badgeText}</span>`
                         : '';
 
+                    // Priority badge (si es prioritario)
+                    const priorityBadge = box.isPriority ?
+                        `<span class="priority-badge">🔴 PRIORIDAD</span>` : '';
+
                     return `
                         <div class="unified-box-item ${box.status} ${canceladoClass}">
                             <span class="unified-box-num">${index + 1}.</span>
@@ -6021,6 +6413,7 @@
                                 <div class="unified-box-code">
                                     ${box.code}${box.scan2 ? ` / ${box.scan2}` : ''}
                                     ${sourceBadge}
+                                    ${priorityBadge}
                                     ${canceladoBadge}
                                 </div>
                                 <div class="unified-box-meta">${box.location} • ${box.timestamp}</div>
