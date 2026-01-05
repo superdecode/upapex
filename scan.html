@@ -4712,6 +4712,17 @@
                                     <span class="counter-badge pending">○ ${pendingCount}</span>
                                 </div>
                             ` : ''}
+                            <button class="btn btn-danger btn-small" onclick="clearAllPalletBoxes('${category}')"
+                                    style="display: flex; align-items: center; gap: 6px; padding: 6px 12px;"
+                                    title="Limpiar todos los registros de este pallet">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                                Limpiar Todo
+                            </button>
                             <button class="popup-close" data-action="close">×</button>
                         </div>
                     </div>
@@ -4826,6 +4837,77 @@
                     showNotification('Caja eliminada', 'info');
                 }
             }
+        }
+
+        function clearAllPalletBoxes(category) {
+            const pallet = STATE.pallets[category];
+            const categoryNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
+            const boxCount = pallet.boxes.length;
+
+            if (boxCount === 0) {
+                showNotification('No hay cajas para eliminar', 'info');
+                return;
+            }
+
+            // Primera confirmación
+            const firstConfirm = confirm(
+                `⚠️ ADVERTENCIA: ELIMINACIÓN MASIVA ⚠️\n\n` +
+                `Estás a punto de ELIMINAR TODAS las cajas del pallet:\n\n` +
+                `📦 Pallet: ${pallet.id}\n` +
+                `📊 Categoría: ${categoryNames[category]}\n` +
+                `🔢 Total de cajas: ${boxCount}\n\n` +
+                `Esta acción NO se puede deshacer.\n\n` +
+                `¿Estás SEGURO que deseas continuar?`
+            );
+
+            if (!firstConfirm) {
+                return;
+            }
+
+            // Segunda confirmación (doble check)
+            const secondConfirm = confirm(
+                `⛔ CONFIRMACIÓN FINAL ⛔\n\n` +
+                `Por favor confirma NUEVAMENTE que deseas ELIMINAR PERMANENTEMENTE:\n\n` +
+                `${boxCount} cajas del pallet ${pallet.id}\n\n` +
+                `Esta es tu última oportunidad para cancelar.\n\n` +
+                `¿CONFIRMAS la eliminación total?`
+            );
+
+            if (!secondConfirm) {
+                showNotification('Operación cancelada', 'info');
+                return;
+            }
+
+            // Realizar la limpieza
+            console.log(`🗑️ Limpiando ${boxCount} cajas del pallet ${category} (${pallet.id})`);
+
+            STATE.pallets[category].boxes = [];
+            STATE.pallets[category].location = '';
+
+            // Guardar estado
+            saveToStorage();
+
+            // CRÍTICO: Guardar estado en el tab si existe
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                GlobalTabs.saveCurrentTabState();
+            }
+
+            // Actualizar tarjetas globales
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                GlobalTabs.updateGlobalSummary();
+            }
+
+            // Actualizar UI
+            updateUI();
+
+            // Cerrar el modal
+            document.getElementById('pallet-detail-modal')?.remove();
+
+            // Notificación de éxito
+            showNotification(`✅ ${boxCount} cajas eliminadas del pallet ${categoryNames[category]}`, 'success');
+            playSound('success');
+
+            console.log(`✅ Limpieza completada. Pallet ${category} ahora tiene ${STATE.pallets[category].boxes.length} cajas`);
         }
 
         function updateVerificationBadges() {
