@@ -5430,11 +5430,22 @@
                 this.tabs.push(newTab);
                 this.activeTabId = tabId;
 
-                // Save and render tabs first
-                this.saveToStorage();
+                // IMPORTANTE: NO llamar a saveToStorage() aquí porque llamaría a saveCurrentTabState()
+                // y sobrescribiría el estado vacío del nuevo tab con datos del STATE.pallets viejo
+                // En su lugar, guardar directamente sin llamar a saveCurrentTabState()
+                try {
+                    localStorage.setItem('pd_global_tabs', JSON.stringify({
+                        tabs: this.tabs,
+                        activeTabId: this.activeTabId
+                    }));
+                } catch (e) {
+                    console.error('Error saving tabs after creation:', e);
+                }
+
+                // Render tabs
                 this.renderTabs();
 
-                // Load the tab state
+                // Load the tab state (esto cargará el estado vacío del nuevo tab)
                 this.loadTabState();
 
                 // CRITICAL: Show the correct module for this tab
