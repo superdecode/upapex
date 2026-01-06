@@ -547,13 +547,18 @@ class SidebarComponent {
                 <div class="global-summary-section" id="global-summary-section">
                     <div class="summary-title">${title}</div>
                     <div class="summary-grid">
-                        ${items.map(item => `
-                            <div class="summary-item ${item.class || ''}">
+                        ${items.map(item => {
+                            const clickHandler = item.onClick ? `onclick="${item.onClick}"` : '';
+                            const cursorStyle = item.onClick ? 'cursor: pointer;' : '';
+                            const hoverTitle = item.onClick ? `title="Ir a ${item.label}"` : '';
+                            return `
+                            <div class="summary-item ${item.class || ''}" ${clickHandler} ${hoverTitle} style="${cursorStyle}">
                                 <span class="summary-icon">${item.icon}</span>
                                 <span class="summary-value" id="${item.id}">0</span>
                                 <span class="summary-label">${item.label}</span>
                             </div>
-                        `).join('')}
+                        `;
+                        }).join('')}
                     </div>
                 </div>
             `;
@@ -625,11 +630,11 @@ SidebarComponent.presets = {
         appIcon: '🚚',
         appSubtitle: 'Gestión de despachos',
         summaryConfig: {
-            title: '📊 Resumen del Día',
+            title: '📊 Resumen',
             items: [
-                { id: 'summary-total', icon: '📦', label: 'Total', class: 'total' },
-                { id: 'summary-validated', icon: '✅', label: 'Validadas', class: 'validated' },
-                { id: 'summary-pending', icon: '⏳', label: 'Pendientes', class: 'pending' }
+                { id: 'summary-total', icon: '📦', label: 'Total', class: 'total', onClick: 'switchValidationTab("todo")' },
+                { id: 'summary-validated', icon: '✅', label: 'Validadas', class: 'validated', onClick: 'switchValidationTab("validated")' },
+                { id: 'summary-pending', icon: '⏳', label: 'Pendientes', class: 'pending', onClick: 'switchValidationTab("pending")' }
             ]
         }
     }

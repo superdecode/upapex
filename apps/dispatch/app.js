@@ -2129,18 +2129,65 @@ function activateSearchPanelWithFilter() {
 }
 
 function backToStart() {
+    // Ocultar todos los paneles
     document.getElementById('search-panel').style.display = 'none';
     document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folios-content').style.display = 'none';
+    document.getElementById('folio-details-content').style.display = 'none';
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent) foliosMgmtContent.style.display = 'none';
     document.getElementById('welcome-state').style.display = 'flex';
+    
+    // ==================== LIMPIAR SESIÓN COMPLETA ====================
+    // Limpiar filtro de fecha
     STATE.dateFilter.active = false;
+    STATE.dateFilter.startDate = null;
+    STATE.dateFilter.endDate = null;
+    
+    // Limpiar datos filtrados
     STATE.obcDataFiltered.clear();
+    
+    // Limpiar datos de validación local (se recargarán en próxima sesión)
+    STATE.localValidated = [];
+    STATE.localPending = [];
+    
+    // Limpiar orden actual
+    STATE.currentOrder = null;
+    STATE.currentFolio = null;
+    STATE.exceptionOrder = null;
+    
+    // Limpiar flags
+    STATE.fromFolios = false;
+    STATE.fromFoliosManagement = false;
+    isInFoliosManagementView = false;
+    
     // Reset tabs to pending
     STATE.activeTab = 'pending';
     document.getElementById('tab-pending')?.classList.add('active');
+    document.getElementById('tab-validated')?.classList.remove('active');
+    
+    // Limpiar inputs de filtro de fecha
+    const dateStart = document.getElementById('date-start');
+    const dateEnd = document.getElementById('date-end');
+    if (dateStart) dateStart.value = '';
+    if (dateEnd) dateEnd.value = '';
+    
+    // Actualizar displays de filtro
+    updateDateFilterDisplay();
+    
+    // Limpiar contadores del sidebar
+    if (window.sidebarComponent) {
+        window.sidebarComponent.updateSummary({
+            summaryTotal: 0,
+            validated: 0,
+            pending: 0
+        });
+    }
 
     // CHANGE 1: Hide global navigation on welcome screen
     hideGlobalNavigation();
-    document.getElementById('tab-validated')?.classList.remove('active');
+    
+    console.log('🔄 Sesión de despacho cerrada - Datos limpiados');
 }
 
 /**
@@ -2172,29 +2219,46 @@ function executeExit() {
 }
 
 function updateSummary() {
-    const today = new Date().toISOString().slice(0, 10);
-    let totalToday = 0;
-    let validatedToday = 0;
-    let pendingToday = 0;
-
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
+    
+    // Contar órdenes totales (OBC)
+    let totalCount = dataToUse.size;
+    
+    // Contar validadas - usar la misma lógica que updateTabBadges
+    let validatedCount = 0;
+    let pendingCount = 0;
+    
+    // Filtrar validadas por fecha si hay filtro activo
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+        const startDate = parseDateLocal(STATE.dateFilter.startDate);
+        const endDate = parseDateLocal(STATE.dateFilter.endDate);
+        endDate.setHours(23, 59, 59, 999);
 
-    for (const [orden, data] of dataToUse.entries()) {
-        const validaciones = STATE.validacionData.get(orden);
-        if (validaciones && validaciones.length > 0) {
-            validatedToday++;
-        } else {
-            pendingToday++;
+        validatedCount = STATE.localValidated.filter(record => {
+            const orderData = STATE.obcData.get(record.orden) || {};
+            const dateStr = orderData.expectedArrival || record.fecha;
+            if (!dateStr) return false;
+            const orderDate = parseDateLocal(dateStr);
+            return orderDate && orderDate >= startDate && orderDate <= endDate;
+        }).length;
+    } else {
+        validatedCount = STATE.localValidated.length;
+    }
+    
+    // Contar pendientes desde OBC
+    for (const [orden] of dataToUse.entries()) {
+        const { validated: isValidated } = isOrderValidated(orden);
+        if (!isValidated) {
+            pendingCount++;
         }
-        totalToday++;
     }
 
     // Actualizar usando sidebarComponent
     if (window.sidebarComponent) {
         window.sidebarComponent.updateSummary({
-            summaryTotal: totalToday,
-            validated: validatedToday,
-            pending: pendingToday
+            summaryTotal: totalCount,
+            validated: validatedCount,
+            pending: pendingCount
         });
     }
 
@@ -6186,7 +6250,7 @@ let foliosMgmtSortColumn = 1;
 let foliosMgmtSortDirection = 'desc';
 
 /**
- * Muestra el panel de gestión de folios
+ * Muestra el panel de folios (pestaña dentro de navegación principal)
  */
 function showFoliosManagement() {
     // CHANGE 1: Show global navigation
@@ -6219,12 +6283,26 @@ function showFoliosManagement() {
         if (btn) btn.classList.add('active');
     });
 
-    // Ocultar todos los demás paneles
+    // Ocultar todos los demás paneles (incluyendo vista de gestión independiente)
     document.getElementById('welcome-state').style.display = 'none';
     document.getElementById('search-panel').style.display = 'none';
     document.getElementById('validated-content').style.display = 'none';
     document.getElementById('folio-details-content').style.display = 'none';
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent) foliosMgmtContent.style.display = 'none';
     document.getElementById('folios-content').style.display = 'block';
+    
+    // Actualizar texto del filtro de fecha según el filtro global
+    const filterText = document.getElementById('folios-date-filter-text');
+    if (filterText) {
+        if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+            const startFormatted = formatDateForDisplay(STATE.dateFilter.startDate);
+            const endFormatted = formatDateForDisplay(STATE.dateFilter.endDate);
+            filterText.textContent = `${startFormatted} → ${endFormatted}`;
+        } else {
+            filterText.textContent = 'Filtrar Fecha';
+        }
+    }
 
     // Renderizar la tabla de folios
     renderFoliosTable();
@@ -6306,12 +6384,12 @@ function renderFoliosTable() {
             return folioDate >= startDate && folioDate <= endDate;
         });
         
-        // Actualizar texto del botón de filtro de folios para mostrar que usa filtro global
+        // Actualizar texto del botón de filtro de folios (mismo formato que otras pestañas)
         const filterText = document.getElementById('folios-date-filter-text');
         if (filterText) {
             const startFormatted = formatDateForDisplay(STATE.dateFilter.startDate);
             const endFormatted = formatDateForDisplay(STATE.dateFilter.endDate);
-            filterText.textContent = `${startFormatted} → ${endFormatted} (Global)`;
+            filterText.textContent = `${startFormatted} → ${endFormatted}`;
         }
     } else if (useFoliosFilter) {
         // FIX: Usar parseDateLocal para evitar -1 día
@@ -7476,11 +7554,11 @@ function printFolioDelivery(folioCompleto) {
 
                 .codigo-base {
                     font-family: 'Courier New', monospace;
-                    background: #e2e8f0;
+                    background: #f97316;
                     padding: 2px 6px;
                     border-radius: 3px;
                     font-weight: 600;
-                    color: #1e293b;
+                    color: white;
                 }
 
                 .table-footer {
