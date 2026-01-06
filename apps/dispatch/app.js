@@ -2084,6 +2084,13 @@ function showSearchPanel() {
     // CHANGE 1: Show global navigation and enforce date filter
     showGlobalNavigation();
     
+    // Si venimos de la vista de Gestión de Folios, cerrarla primero con transición
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent && foliosMgmtContent.style.display !== 'none') {
+        isInFoliosManagementView = false;
+        foliosMgmtContent.style.display = 'none';
+    }
+    
     // Check if data is already loaded
     if (STATE.obcData.size === 0 && !STATE.dateFilter.active) {
         // No data loaded yet, show modal to select date
@@ -3312,6 +3319,13 @@ function switchValidationTab(tab) {
 
     // CHANGE 1: Show global navigation when switching tabs
     showGlobalNavigation();
+    
+    // Ocultar vista de Gestión de Folios si está visible (transición suave)
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent && foliosMgmtContent.style.display !== 'none') {
+        isInFoliosManagementView = false;
+        foliosMgmtContent.style.display = 'none';
+    }
 
     STATE.activeTab = tab;
 
@@ -6524,12 +6538,21 @@ function filterFoliosTable() {
 }
 
 /**
- * Muestra el modal de filtro de fechas para folios
+ * Muestra el modal de filtro de fechas para folios (pestaña regular)
+ * Este filtro usa FECHA DE ENTREGA de las órdenes
  */
 function showFoliosDateFilter() {
     const modal = document.getElementById('folios-date-filter-modal');
     if (modal) {
-        modal.classList.add('show');
+        modal.style.display = 'flex';
+        // Asegurar que NO está marcado como management
+        delete modal.dataset.target;
+        
+        // Restaurar título del modal para pestaña regular
+        const modalTitle = document.getElementById('folios-filter-modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = 'Filtrar Folios por Fecha de Entrega';
+        }
 
         // Establecer fecha máxima como hoy (no permitir fechas futuras)
         const today = new Date().toISOString().split('T')[0];
@@ -6552,65 +6575,112 @@ function showFoliosDateFilter() {
 function closeFoliosDateFilter() {
     const modal = document.getElementById('folios-date-filter-modal');
     if (modal) {
-        modal.classList.remove('show');
+        modal.style.display = 'none';
+        // Limpiar el target para próxima apertura
+        delete modal.dataset.target;
     }
 }
 
 /**
  * Aplica el filtro de fechas para folios
+ * Maneja tanto la pestaña regular como la vista de gestión (sidebar)
  */
 function applyFoliosDateFilter() {
     const startDate = document.getElementById('folios-date-start').value;
     const endDate = document.getElementById('folios-date-end').value;
+    const modal = document.getElementById('folios-date-filter-modal');
+    const isManagementView = modal?.dataset?.target === 'management';
 
     if (!startDate || !endDate) {
         showNotification('⚠️ Selecciona ambas fechas', 'warning');
         return;
     }
 
-    FOLIOS_DATE_FILTER.startDate = startDate;
-    FOLIOS_DATE_FILTER.endDate = endDate;
-    FOLIOS_DATE_FILTER.active = true;
+    if (isManagementView) {
+        // Aplicar filtro para vista de Gestión de Folios (sidebar)
+        FOLIOS_MGMT_DATE_FILTER.startDate = startDate;
+        FOLIOS_MGMT_DATE_FILTER.endDate = endDate;
+        FOLIOS_MGMT_DATE_FILTER.active = true;
 
-    // Actualizar texto y estilo del botón
-    const filterText = document.getElementById('folios-date-filter-text');
-    const filterBtn = document.getElementById('folios-date-filter-display');
-    if (filterText) {
-        filterText.textContent = `${formatDateDDMMYYYY(startDate)} → ${formatDateDDMMYYYY(endDate)}`;
-    }
-    if (filterBtn) {
-        filterBtn.classList.add('active-filter');
-    }
+        // Actualizar texto del botón de gestión
+        const filterText = document.getElementById('folios-mgmt-date-filter-text');
+        if (filterText) {
+            filterText.textContent = `${formatDateForDisplay(startDate)} → ${formatDateForDisplay(endDate)}`;
+        }
 
-    closeFoliosDateFilter();
-    renderFoliosTable();
-    showNotification('✅ Filtro aplicado', 'success');
+        // Cerrar modal y renderizar
+        closeFoliosDateFilter();
+        renderFoliosManagementTable();
+        showNotification('✅ Filtro aplicado', 'success');
+    } else {
+        // Aplicar filtro para pestaña regular de Folios
+        FOLIOS_DATE_FILTER.startDate = startDate;
+        FOLIOS_DATE_FILTER.endDate = endDate;
+        FOLIOS_DATE_FILTER.active = true;
+
+        // Actualizar texto y estilo del botón
+        const filterText = document.getElementById('folios-date-filter-text');
+        const filterBtn = document.getElementById('folios-date-filter-display');
+        if (filterText) {
+            filterText.textContent = `${formatDateForDisplay(startDate)} → ${formatDateForDisplay(endDate)}`;
+        }
+        if (filterBtn) {
+            filterBtn.classList.add('active-filter');
+        }
+
+        closeFoliosDateFilter();
+        renderFoliosTable();
+        showNotification('✅ Filtro aplicado', 'success');
+    }
 }
 
 /**
  * Limpia el filtro de fechas para folios
+ * Maneja tanto la pestaña regular como la vista de gestión (sidebar)
  */
 function clearFoliosDateFilter() {
-    FOLIOS_DATE_FILTER.startDate = null;
-    FOLIOS_DATE_FILTER.endDate = null;
-    FOLIOS_DATE_FILTER.active = false;
-
+    const modal = document.getElementById('folios-date-filter-modal');
+    const isManagementView = modal?.dataset?.target === 'management';
+    
+    // Limpiar inputs
     document.getElementById('folios-date-start').value = '';
     document.getElementById('folios-date-end').value = '';
 
-    // Restaurar texto y estilo del botón
-    const filterText = document.getElementById('folios-date-filter-text');
-    const filterBtn = document.getElementById('folios-date-filter-display');
-    if (filterText) {
-        filterText.textContent = 'Mostrando Todo';
-    }
-    if (filterBtn) {
-        filterBtn.classList.remove('active-filter');
-    }
+    if (isManagementView) {
+        // Limpiar filtro de vista de Gestión
+        FOLIOS_MGMT_DATE_FILTER.startDate = null;
+        FOLIOS_MGMT_DATE_FILTER.endDate = null;
+        FOLIOS_MGMT_DATE_FILTER.active = false;
 
-    closeFoliosDateFilter();
-    renderFoliosTable();
-    showNotification('✅ Filtro eliminado', 'success');
+        // Restaurar texto del botón de gestión
+        const filterText = document.getElementById('folios-mgmt-date-filter-text');
+        if (filterText) {
+            filterText.textContent = 'Mostrando Todo';
+        }
+
+        closeFoliosDateFilter();
+        renderFoliosManagementTable();
+        showNotification('✅ Filtro eliminado', 'success');
+    } else {
+        // Limpiar filtro de pestaña regular
+        FOLIOS_DATE_FILTER.startDate = null;
+        FOLIOS_DATE_FILTER.endDate = null;
+        FOLIOS_DATE_FILTER.active = false;
+
+        // Restaurar texto y estilo del botón
+        const filterText = document.getElementById('folios-date-filter-text');
+        const filterBtn = document.getElementById('folios-date-filter-display');
+        if (filterText) {
+            filterText.textContent = 'Mostrando Todo';
+        }
+        if (filterBtn) {
+            filterBtn.classList.remove('active-filter');
+        }
+
+        closeFoliosDateFilter();
+        renderFoliosTable();
+        showNotification('✅ Filtro eliminado', 'success');
+    }
 }
 
 /**
@@ -6908,13 +6978,19 @@ function filterFoliosManagementTable() {
 
 /**
  * Mostrar filtro de fecha para Gestión de Folios
+ * Este filtro usa FECHA DE CREACIÓN DEL FOLIO (no fecha de entrega)
  */
 function showFoliosManagementDateFilter() {
-    // Reutilizar el modal de filtro de folios pero con lógica diferente
     const modal = document.getElementById('folios-date-filter-modal');
     if (modal) {
         modal.style.display = 'flex';
         modal.dataset.target = 'management'; // Marcar que es para gestión
+        
+        // Cambiar título del modal para indicar que filtra por fecha de creación
+        const modalTitle = document.getElementById('folios-filter-modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = 'Filtro por Fecha de Creación';
+        }
     }
 }
 
