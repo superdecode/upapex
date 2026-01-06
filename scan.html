@@ -2305,8 +2305,8 @@
     <!-- LOADING OVERLAY -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner"></div>
-        <div class="loading-text">📦 Cargando Inventario...</div>
-        <div class="loading-subtext">Descargando base de datos desde Google Sheets</div>
+        <div class="loading-text" id="loading-text">📦 Inicializando Sistema...</div>
+        <div class="loading-subtext" id="loading-subtext">Preparando aplicación</div>
     </div>
 
     <!-- LOGIN SCREEN -->
@@ -3215,19 +3215,40 @@
 
         async function handleAuthCallback(response) {
             if (response?.access_token) {
-                gapi.client.setToken(response);
-                await getUserProfile();
+                try {
+                    // Mostrar preloader durante todo el proceso de carga
+                    showLoadingOverlay(true, '🔐 Autenticando...', 'Verificando credenciales');
 
-                // Cargar TODAS las bases de datos en paralelo
-                await Promise.all([
-                    loadInventory(),         // WMS - Base de datos principal
-                    loadFILE2Inventory(),    // FILE2 - Base de datos secundaria
-                    loadPriorityInventory()  // PRIORIDAD - Códigos prioritarios
-                ]);
+                    gapi.client.setToken(response);
 
-                SyncManager.init();
-                if (PENDING_SYNC.length > 0) SyncManager.sync();
-                showApp();
+                    showLoadingOverlay(true, '👤 Cargando perfil...', 'Obteniendo información del usuario');
+                    await getUserProfile();
+
+                    // Cargar TODAS las bases de datos en paralelo
+                    showLoadingOverlay(true, '📦 Cargando Inventarios...', 'Descargando bases de datos (WMS, FILE2, PRIORIDAD)');
+                    console.log('🔄 Iniciando carga de todas las bases de datos...');
+                    await Promise.all([
+                        loadInventory(),         // WMS - Base de datos principal
+                        loadFILE2Inventory(),    // FILE2 - Base de datos secundaria
+                        loadPriorityInventory()  // PRIORIDAD - Códigos prioritarios
+                    ]);
+                    console.log('✅ Todas las bases de datos cargadas');
+
+                    showLoadingOverlay(true, '⚙️ Finalizando...', 'Inicializando sistema de sincronización');
+                    SyncManager.init();
+                    if (PENDING_SYNC.length > 0) SyncManager.sync();
+
+                    // Solo mostrar la app después de que TODO esté listo
+                    showLoadingOverlay(true, '✅ ¡Listo!', 'Abriendo aplicación');
+                    setTimeout(() => {
+                        showApp();
+                        showLoadingOverlay(false);
+                    }, 500); // Pequeño delay para que el usuario vea el mensaje de "¡Listo!"
+                } catch (error) {
+                    console.error('❌ Error durante la inicialización:', error);
+                    showNotification('❌ Error al inicializar el sistema', 'error');
+                    showLoadingOverlay(false);
+                }
             }
         }
 
@@ -3448,11 +3469,19 @@
         }
 
         // ==================== INVENTORY ====================
-        function showLoadingOverlay(show = true) {
+        function showLoadingOverlay(show = true, message = null, subtext = null) {
             const overlay = document.getElementById('loading-overlay');
             if (overlay) {
                 if (show) {
                     overlay.classList.add('show');
+                    if (message) {
+                        const textEl = document.getElementById('loading-text');
+                        if (textEl) textEl.textContent = message;
+                    }
+                    if (subtext) {
+                        const subtextEl = document.getElementById('loading-subtext');
+                        if (subtextEl) subtextEl.textContent = subtext;
+                    }
                 } else {
                     overlay.classList.remove('show');
                 }
@@ -3461,39 +3490,36 @@
 
         async function loadInventory() {
             try {
-                showLoadingOverlay(true);
                 updateConnectionIndicator(true);
 
-                console.log('🔄 Cargando inventario desde CSV...');
+                console.log('🔄 Cargando inventario WMS desde CSV...');
                 const response = await fetch(CONFIG.INVENTORY_CSV_URL, {
                     method: 'GET',
                     mode: 'cors',
                     cache: 'no-cache'
                 });
 
-                console.log('📡 Respuesta recibida:', response.status, response.statusText);
+                console.log('📡 WMS - Respuesta recibida:', response.status, response.statusText);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const csv = await response.text();
-                console.log('📄 CSV recibido, tamaño:', csv.length, 'caracteres');
+                console.log('📄 WMS - CSV recibido, tamaño:', csv.length, 'caracteres');
                 if (!csv || csv.trim().length === 0) throw new Error('CSV vacío');
 
                 parseInventoryCSV(csv);
                 await saveToStorage();
-                console.log('✅ Inventario parseado:', STATE.inventory.size, 'códigos');
-                showNotification(`✅ ${STATE.inventory.size} códigos cargados`, 'success');
+                console.log('✅ WMS - Inventario parseado:', STATE.inventory.size, 'códigos');
                 updateBdInfo();
             } catch (e) {
-                console.error('❌ Error cargando inventario:', e);
-                showNotification(`⚠️ Error: ${e.message}`, 'warning');
+                console.error('❌ Error cargando inventario WMS:', e);
+                showNotification(`⚠️ Error WMS: ${e.message}`, 'warning');
 
                 if (STATE.inventory.size > 0) {
-                    showNotification(`Usando ${STATE.inventory.size} códigos en caché`, 'info');
+                    showNotification(`Usando ${STATE.inventory.size} códigos WMS en caché`, 'info');
                 } else {
-                    console.warn('⚠️ No hay códigos en caché. Inventario vacío.');
+                    console.warn('⚠️ No hay códigos WMS en caché. Inventario vacío.');
                 }
             } finally {
-                showLoadingOverlay(false);
                 updateConnectionIndicator();
             }
         }
