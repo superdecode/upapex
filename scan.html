@@ -4634,107 +4634,111 @@
                 const { dateStr, timeStr } = getLocalDateTime();
                 console.log('Using date/time:', { dateStr, timeStr });
 
-            // Incluye columna J: Ubicación Física de Origen
-            const records = pallet.boxes.map(box => {
-                // Determinar estatus y nota según source
-                let finalStatus = statusMap[category];
-                let finalNote = '';
+                // Incluye columna J: Ubicación Física de Origen
+                const records = pallet.boxes.map(box => {
+                    // Determinar estatus y nota según source
+                    let finalStatus = statusMap[category];
+                    let finalNote = '';
 
-                // Si es FILE2 y está en pallet OK, cambiar estatus a "OK - NO WMS"
-                if (box.source === 'FILE2' && category === 'ok') {
-                    finalStatus = 'OK - NO WMS';
-                    finalNote = 'Estatus: NO WMS';
-                } else if (box.source === 'FILE2' && category === 'blocked') {
-                    // Si es FILE2 y bloqueado, agregar nota también
-                    finalNote = 'Estatus: NO WMS';
+                    // Si es FILE2 y está en pallet OK, cambiar estatus a "OK - NO WMS"
+                    if (box.source === 'FILE2' && category === 'ok') {
+                        finalStatus = 'OK - NO WMS';
+                        finalNote = 'Estatus: NO WMS';
+                    } else if (box.source === 'FILE2' && category === 'blocked') {
+                        // Si es FILE2 y bloqueado, agregar nota también
+                        finalNote = 'Estatus: NO WMS';
+                    }
+
+                    // Si es PRIORIDAD, concatenar al estatus
+                    if (box.isPriority) {
+                        finalStatus = finalStatus + ' - PRIORIDAD';
+                        finalNote = finalNote ? finalNote + ' | PRIORIDAD' : 'PRIORIDAD';
+                    }
+
+                    // Si estamos en modo ajuste, agregar nota de edición
+                    if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                        finalNote = finalNote ? finalNote + ' | Informacion Editada' : 'Informacion Editada';
+                    }
+
+                    return {
+                        date: dateStr,
+                        time: timeStr,
+                        user: CURRENT_USER || 'Usuario',
+                        scan1: box.code || box.scan1,  // Usar código normalizado, con fallback
+                        scan2: box.scan2 || '',
+                        location: finalLocation,
+                        status: finalStatus,
+                        note: finalNote,
+                        pallet: pallet.id,
+                        originLocation: originLocation
+                    };
+                });
+
+                // Add to history
+                STATE.history = [...records, ...STATE.history].slice(0, 1000);
+
+                // Add to pending sync
+                PENDING_SYNC = [...PENDING_SYNC, ...records];
+                console.log('📝 Registros agregados a PENDING_SYNC:', records.length);
+                console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+                console.log('🔍 Ejemplo de registro:', records[0]);
+                SyncManager.save();
+
+                showNotification(`💾 ${records.length} registros agregados`, 'info');
+
+                // Try to sync immediately
+                console.log('🔌 Estado de conexión:');
+                console.log('  - IS_ONLINE:', IS_ONLINE);
+                console.log('  - gapi disponible:', !!gapi);
+                console.log('  - Token disponible:', !!gapi?.client?.getToken());
+
+                if (IS_ONLINE && gapi?.client?.getToken()) {
+                    console.log('✅ Intentando sincronizar automáticamente...');
+                    await SyncManager.sync();
+                } else {
+                    console.log('⚠️ No se puede sincronizar automáticamente (offline o sin token)');
+                    SyncManager.updateUI(false);
                 }
 
-                // Si es PRIORIDAD, concatenar al estatus
-                if (box.isPriority) {
-                    finalStatus = finalStatus + ' - PRIORIDAD';
-                    finalNote = finalNote ? finalNote + ' | PRIORIDAD' : 'PRIORIDAD';
-                }
-
-                // Si estamos en modo ajuste, agregar nota de edición
+                // If in adjustment mode, delete old records from database
                 if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                    finalNote = finalNote ? finalNote + ' | Informacion Editada' : 'Informacion Editada';
+                    await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
+                    showNotification('✅ Ajuste completado - Registros actualizados', 'success');
+                    // Clear adjustment mode
+                    window.ADJUSTMENT_MODE = { active: false };
                 }
 
-                return {
-                    date: dateStr,
-                    time: timeStr,
-                    user: CURRENT_USER || 'Usuario',
-                    scan1: box.code || box.scan1,  // Usar código normalizado, con fallback
-                    scan2: box.scan2 || '',
-                    location: finalLocation,
-                    status: finalStatus,
-                    note: finalNote,
-                    pallet: pallet.id,
-                    originLocation: originLocation
+                // Reset only this pallet
+                const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                STATE.pallets[category] = {
+                    id: generatePalletId(prefixes[category]),
+                    boxes: [],
+                    location: ''
                 };
-            });
+                locationInput.value = '';
 
-            // Add to history
-            STATE.history = [...records, ...STATE.history].slice(0, 1000);
+                saveToStorage();
 
-            // Add to pending sync
-            PENDING_SYNC = [...PENDING_SYNC, ...records];
-            console.log('📝 Registros agregados a PENDING_SYNC:', records.length);
-            console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-            console.log('🔍 Ejemplo de registro:', records[0]);
-            SyncManager.save();
+                // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
+                if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                    GlobalTabs.saveCurrentTabState();
+                }
 
-            showNotification(`💾 ${records.length} registros agregados`, 'info');
+                // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
+                if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                    GlobalTabs.updateGlobalSummary();
+                }
 
-            // Try to sync immediately
-            console.log('🔌 Estado de conexión:');
-            console.log('  - IS_ONLINE:', IS_ONLINE);
-            console.log('  - gapi disponible:', !!gapi);
-            console.log('  - Token disponible:', !!gapi?.client?.getToken());
+                updateUI();
+                playSound('success');
 
-            if (IS_ONLINE && gapi?.client?.getToken()) {
-                console.log('✅ Intentando sincronizar automáticamente...');
-                await SyncManager.sync();
-            } else {
-                console.log('⚠️ No se puede sincronizar automáticamente (offline o sin token)');
-                SyncManager.updateUI(false);
+                // Mover foco al campo de ubicación de origen para actualizar
+                originLocationInput.focus();
+                originLocationInput.select();
+            } catch (error) {
+                console.error('Error in confirmSendPallet:', error);
+                showNotification('❌ Error al enviar la tarima. Por favor, intente nuevamente.', 'error');
             }
-
-            // If in adjustment mode, delete old records from database
-            if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
-                showNotification('✅ Ajuste completado - Registros actualizados', 'success');
-                // Clear adjustment mode
-                window.ADJUSTMENT_MODE = { active: false };
-            }
-
-            // Reset only this pallet
-            const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-            STATE.pallets[category] = {
-                id: generatePalletId(prefixes[category]),
-                boxes: [],
-                location: ''
-            };
-            locationInput.value = '';
-
-            saveToStorage();
-
-            // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
-            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
-                GlobalTabs.saveCurrentTabState();
-            }
-
-            // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
-            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
-                GlobalTabs.updateGlobalSummary();
-            }
-
-            updateUI();
-            playSound('success');
-
-            // Mover foco al campo de ubicación de origen para actualizar
-            originLocationInput.focus();
-            originLocationInput.select();
         }
 
         async function deleteOldPalletRecords(palletCode, location) {
