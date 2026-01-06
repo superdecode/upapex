@@ -140,13 +140,17 @@ function normalizeLocation(location) {
 }
 
 /**
- * Valida el formato de una ubicación de almacén
- * Formato: [LETRA(S)][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
- * Ejemplos: A26-06-01-02, B11-11-02-01, A1-11-02-01, C9-11-02-01
+ * Valida el formato de una ubicación de almacén con reglas estrictas de negocio
+ * Formato: {Area}{Aisle}-{Rack}-{Level}-{Position}
  * 
- * Reglas de normalización:
- * - Zona (primer número después de letra): puede ser 1-999, NO requiere padding
- * - Pasillo, Rack, Nivel: deben ser 01-99, SÍ requieren padding con cero
+ * REGLAS ESTRICTAS:
+ * - Areas permitidas: A, B, C, D (solo mayúsculas)
+ * - Aisles (Pasillos): mínimo 1, máximo 32
+ * - Racks (Estantes): mínimo 01, máximo 20 (2 dígitos con padding)
+ * - Levels (Niveles): mínimo 01, máximo 06 (2 dígitos con padding)
+ * - Positions (Posiciones): mínimo 01, máximo 02 (2 dígitos con padding)
+ * 
+ * Ejemplo máximo válido: D32-20-06-02
  * 
  * @param {string} location - Ubicación a validar
  * @returns {Object} - {valid: boolean, normalized: string, parsed: object|null, message: string, original: string}
@@ -164,8 +168,8 @@ function validateLocation(location) {
     
     const normalized = normalizeLocation(location);
     
-    // Patrón: LETRA(S) + NÚMEROS (zona) + GUION + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS
-    const pattern = /^([A-Z]+)(\d+)-(\d+)-(\d+)-(\d+)$/;
+    // Patrón: AREA (A-D) + AISLE (número) + GUION + RACK + GUION + LEVEL + GUION + POSITION
+    const pattern = /^([A-D])(\d+)-(\d+)-(\d+)-(\d+)$/;
     const match = normalized.match(pattern);
     
     if (!match) {
@@ -173,52 +177,98 @@ function validateLocation(location) {
             valid: false,
             normalized: normalized,
             parsed: null,
-            message: 'Formato de ubicación incorrecto',
+            message: 'Formato incorrecto. Use: {Area}{Aisle}-{Rack}-{Level}-{Position} (ej: A1-01-01-01)',
             original: location
         };
     }
     
     // Extraer componentes
-    const [, area, zone, aisle, rack, level] = match;
+    const [, area, aisle, rack, level, position] = match;
     
-    // Validar rangos
-    const zoneNum = parseInt(zone, 10);
+    // Validar rangos numéricos
     const aisleNum = parseInt(aisle, 10);
     const rackNum = parseInt(rack, 10);
     const levelNum = parseInt(level, 10);
+    const positionNum = parseInt(position, 10);
     
-    if (zoneNum < 1 || zoneNum > 999) {
+    // Validar Area (solo A, B, C, D)
+    if (!['A', 'B', 'C', 'D'].includes(area)) {
         return {
             valid: false,
             normalized: normalized,
             parsed: null,
-            message: 'Zona debe estar entre 1 y 999',
+            message: 'Área inválida. Solo se permiten: A, B, C, D',
             original: location
         };
     }
     
-    if (aisleNum < 1 || aisleNum > 99 || rackNum < 1 || rackNum > 99 || levelNum < 1 || levelNum > 99) {
+    // Validar Aisle (1-32) - NO debe tener ceros a la izquierda
+    if (aisleNum < 1 || aisleNum > 32) {
         return {
             valid: false,
             normalized: normalized,
             parsed: null,
-            message: 'Pasillo, Rack y Nivel deben estar entre 01 y 99',
+            message: 'Pasillo inválido. Rango permitido: 1-32',
             original: location
         };
     }
     
-    // Formatear: zona SIN padding, resto CON padding
-    const formatted = `${area}${zone}-${aisle.padStart(2, '0')}-${rack.padStart(2, '0')}-${level.padStart(2, '0')}`;
+    // Rechazar si el pasillo tiene ceros a la izquierda (ej: 07, 01)
+    if (aisle.length > 1 && aisle[0] === '0') {
+        return {
+            valid: false,
+            normalized: normalized,
+            parsed: null,
+            message: 'Pasillo no debe tener ceros a la izquierda. Use: A7-11-02-01 (no A07-11-02-01)',
+            original: location
+        };
+    }
+    
+    // Validar Rack (01-20)
+    if (rackNum < 1 || rackNum > 20) {
+        return {
+            valid: false,
+            normalized: normalized,
+            parsed: null,
+            message: 'Rack inválido. Rango permitido: 01-20',
+            original: location
+        };
+    }
+    
+    // Validar Level (01-06)
+    if (levelNum < 1 || levelNum > 6) {
+        return {
+            valid: false,
+            normalized: normalized,
+            parsed: null,
+            message: 'Nivel inválido. Rango permitido: 01-06',
+            original: location
+        };
+    }
+    
+    // Validar Position (01-02)
+    if (positionNum < 1 || positionNum > 2) {
+        return {
+            valid: false,
+            normalized: normalized,
+            parsed: null,
+            message: 'Posición inválida. Rango permitido: 01-02',
+            original: location
+        };
+    }
+    
+    // Formatear: aisle SIN padding, resto CON padding de 2 dígitos
+    const formatted = `${area}${aisle}-${rack.padStart(2, '0')}-${level.padStart(2, '0')}-${position.padStart(2, '0')}`;
     
     return {
         valid: true,
         normalized: formatted,
         parsed: {
-            area,           // Letra(s): A, B, C, etc.
-            zone,           // Zona: 1, 2, 26, etc. (sin padding)
-            aisle: aisle.padStart(2, '0'),   // Pasillo: 01-99
-            rack: rack.padStart(2, '0'),     // Rack: 01-99
-            level: level.padStart(2, '0'),   // Nivel: 01-99
+            area,           // A, B, C, o D
+            aisle,          // 1-32 (sin padding)
+            rack: rack.padStart(2, '0'),       // 01-20
+            level: level.padStart(2, '0'),     // 01-06
+            position: position.padStart(2, '0'), // 01-02
             formatted
         },
         message: 'Ubicación válida',
@@ -346,19 +396,38 @@ function createNotificationContainer() {
 // ==================== UTILIDADES DE FECHA/HORA ====================
 
 /**
- * Obtiene la fecha actual en formato YYYY-MM-DD
+ * Obtiene la fecha actual en formato YYYY-MM-DD (LOCAL TIME)
  * @returns {string}
  */
 function getCurrentDate() {
-    return new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 /**
- * Obtiene la hora actual en formato HH:MM:SS
+ * Obtiene la hora actual en formato HH:MM:SS (LOCAL TIME)
  * @returns {string}
  */
 function getCurrentTime() {
-    return new Date().toTimeString().slice(0, 8);
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+}
+
+/**
+ * Obtiene fecha y hora local
+ * @returns {Object} - {dateStr: string, timeStr: string}
+ */
+function getLocalDateTime() {
+    return {
+        dateStr: getCurrentDate(),
+        timeStr: getCurrentTime()
+    };
 }
 
 /**
@@ -495,6 +564,78 @@ function checkOnlineStatus() {
     return isOnline;
 }
 
+// ==================== VALIDACIÓN DE USO DIARIO DE UBICACIONES ====================
+
+/**
+ * Valida si una ubicación ya fue usada hoy en la sesión local
+ * @param {string} location - Ubicación a validar
+ * @param {Array} history - Historial de registros locales
+ * @returns {Object} - {valid: boolean, message: string, usedAt: string|null}
+ */
+function validateLocationDailyUsage(location, history = []) {
+    const today = getCurrentDate();
+    const normalizedLocation = normalizeLocation(location);
+    
+    // Buscar si la ubicación fue usada hoy en el historial local
+    const usedToday = history.find(record => {
+        const recordDate = record.date || '';
+        const recordLocation = normalizeLocation(record.location || '');
+        return recordDate === today && recordLocation === normalizedLocation;
+    });
+    
+    if (usedToday) {
+        return {
+            valid: false,
+            message: `Esta ubicación ya fue usada hoy (${usedToday.time || 'hora desconocida'})`,
+            usedAt: usedToday.time || null
+        };
+    }
+    
+    return {
+        valid: true,
+        message: 'Ubicación disponible para uso hoy',
+        usedAt: null
+    };
+}
+
+/**
+ * Valida si una ubicación ya fue usada hoy en la base de datos
+ * @param {string} location - Ubicación a validar
+ * @param {Array} dbRecords - Registros de la base de datos (filas del sheet)
+ * @returns {Object} - {valid: boolean, message: string, usedAt: string|null, usedBy: string|null}
+ */
+function validateLocationDailyUsageDB(location, dbRecords = []) {
+    const today = getCurrentDate();
+    const normalizedLocation = normalizeLocation(location);
+    
+    // Buscar en registros de la BD (columnas: A=date, B=time, C=user, F=location)
+    for (let i = 1; i < dbRecords.length; i++) { // Skip header
+        const row = dbRecords[i];
+        if (!row || row.length < 6) continue;
+        
+        const recordDate = row[0] || '';
+        const recordTime = row[1] || '';
+        const recordUser = row[2] || '';
+        const recordLocation = normalizeLocation(row[5] || '');
+        
+        if (recordDate === today && recordLocation === normalizedLocation) {
+            return {
+                valid: false,
+                message: `Esta ubicación ya fue usada hoy por ${recordUser} a las ${recordTime}`,
+                usedAt: recordTime,
+                usedBy: recordUser
+            };
+        }
+    }
+    
+    return {
+        valid: true,
+        message: 'Ubicación disponible para uso hoy',
+        usedAt: null,
+        usedBy: null
+    };
+}
+
 // ==================== EXPORTAR FUNCIONES ====================
 
 // Si se usa como módulo ES6
@@ -507,11 +648,14 @@ if (typeof module !== 'undefined' && module.exports) {
         normalizeLocation,
         validateLocation,
         validateAndNormalizeLocation,
+        validateLocationDailyUsage,
+        validateLocationDailyUsageDB,
         initAudio,
         playSound,
         showNotification,
         getCurrentDate,
         getCurrentTime,
+        getLocalDateTime,
         getTimestamp,
         generatePalletId,
         generateTabId,

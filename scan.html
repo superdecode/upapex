@@ -860,6 +860,97 @@
             margin-bottom: 15px;
         }
 
+        /* Ajuste Module Styles */
+        .ajuste-search-container {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .ajuste-search-input {
+            width: 100%;
+            padding: 12px;
+            font-size: 1em;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .ajuste-search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .ajuste-pallets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .ajuste-pallet-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .ajuste-pallet-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .ajuste-pallet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .ajuste-pallet-code {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: monospace;
+        }
+
+        .ajuste-pallet-count {
+            background: var(--primary);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .ajuste-pallet-info {
+            font-size: 0.85em;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .ajuste-pallet-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .ajuste-pallet-label {
+            font-weight: 600;
+        }
+
+        .ajuste-empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
         .hidden { display: none !important; }
 
         /* Loading Overlay */
@@ -2568,6 +2659,7 @@
                 <button class="btn btn-primary btn-small" onclick="refreshInventory(); closeResumen();">🔄 Recargar BD</button>
                 <button class="btn btn-success btn-small" onclick="SyncManager.sync(); updateResumen();">🔄 Sincronizar</button>
                 <button class="btn btn-secondary btn-small" onclick="exportData();">📥 Exportar</button>
+                <button class="btn btn-warning btn-small" onclick="openAjusteModule();">🔧 Ajuste</button>
             </div>
 
             <h3 style="margin-bottom: 10px; font-size: 1em;">📋 Historial Reciente</h3>
@@ -2591,6 +2683,39 @@
         </div>
     </div>
 
+    <!-- AJUSTE MODULE POPUP -->
+    <div class="popup-overlay" id="ajuste-popup">
+        <div class="popup-content" style="max-width: 900px; width: 90vw;">
+            <div class="popup-header">
+                <span>🔧 Ajuste de Pallets</span>
+                <button class="popup-close" onclick="closeAjusteModule()">×</button>
+            </div>
+
+            <div class="ajuste-search-container">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                    🔍 Buscar por Ubicación:
+                </label>
+                <input 
+                    type="text" 
+                    id="ajuste-location-search" 
+                    class="ajuste-search-input" 
+                    placeholder="Ingresa la ubicación (ej: A1-12-03-02)"
+                    onkeyup="if(event.key === 'Enter') searchPalletsByLocation()"
+                />
+                <button class="btn btn-primary btn-full" onclick="searchPalletsByLocation()">
+                    🔍 Buscar Pallets
+                </button>
+            </div>
+
+            <div id="ajuste-results-container">
+                <div class="ajuste-empty-state">
+                    📦 Ingresa una ubicación para buscar pallets
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/js/wms-utils.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script>
@@ -2620,6 +2745,23 @@
             pendingCode1: null,
             history: []
         };
+
+        // Adjustment mode flag
+        window.ADJUSTMENT_MODE = { active: false };
+
+        // Helper function to get local date and time
+        function getLocalDateTime() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const timeStr = `${hours}:${minutes}:${seconds}`;
+            return { dateStr, timeStr };
+        }
 
         // FILE2 - Segundo nivel de búsqueda
         let BD_CODES_FILE2 = new Set();
@@ -4153,76 +4295,53 @@
         }
 
         // ==================== VALIDADOR DE UBICACIONES ====================
-        /**
-         * Valida el formato de ubicación del almacén
-         * Formato: [LETRA][NÚMERO]-[NÚMERO]-[NÚMERO]-[NÚMERO]
-         * Ejemplo: A21-06-05-01, B27-01-04-01
-         */
-        function validateLocation(location) {
-            const loc = location.trim().toUpperCase();
-
-            // Patrón: LETRA + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS + GUION + NÚMEROS
-            const pattern = /^([A-Z])(\d{1,3})-(\d{1,2})-(\d{1,2})-(\d{1,2})$/;
-            const match = loc.match(pattern);
-
-            if (!match) {
-                return {
-                    valid: false,
-                    message: '❌ Formato inválido',
-                    details: 'Ejemplo: A1-06-05-01',
-                    parsed: null
-                };
-            }
-
-            const [, area, pasillo, rack, nivel, palet] = match;
-
-            return {
-                valid: true,
-                message: '✅ Ubicación válida',
-                parsed: {
-                    area: area,
-                    pasillo: pasillo.padStart(2, '0'),
-                    rack: rack.padStart(2, '0'),
-                    nivel: nivel.padStart(2, '0'),
-                    palet: palet.padStart(2, '0'),
-                    formatted: `${area}${pasillo.padStart(2, '0')}-${rack.padStart(2, '0')}-${nivel.padStart(2, '0')}-${palet.padStart(2, '0')}`
-                }
-            };
-        }
+        // NOTE: Using shared validation from wms-utils.js
+        // validateLocation() is now imported from wms-utils.js
 
         /**
-         * Muestra diálogo de confirmación para ubicación inválida (doble confirmación)
+         * Valida ubicación con verificación de uso diario
+         * Incluye: formato, rangos, y validación de uso diario (local + BD)
          */
-        function confirmInvalidLocation(location) {
+        async function confirmInvalidLocation(location) {
+            // 1. Validar formato y rangos usando función compartida
             const validation = validateLocation(location);
 
-            if (validation.valid) {
-                return { confirmed: true, formatted: validation.parsed.formatted };
-            }
-
-            // Primera confirmación
-            const firstConfirm = confirm(
-                `⚠️ UBICACIÓN CON FORMATO INCORRECTO ⚠️\n\n` +
-                `Ubicación ingresada: "${location}"\n\n` +
-                `${validation.message}\n` +
-                `${validation.details}\n\n` +
-                `¿Estás seguro que deseas usar "${location}"?`
-            );
-
-            if (!firstConfirm) {
+            if (!validation.valid) {
+                // Ubicación inválida - mostrar error y rechazar
+                showNotification(`❌ ${validation.message}`, 'error');
                 return { confirmed: false, formatted: null };
             }
 
-            // Segunda confirmación (doble check)
-            const secondConfirm = confirm(
-                `⚠️ SEGUNDA CONFIRMACIÓN REQUERIDA ⚠️\n\n` +
-                `Confirma nuevamente que deseas registrar esta ubicación:\n\n` +
-                `"${location}"\n\n` +
-                `Esta ubicación NO cumple con el formato estándar del almacén.\n\n` +
-                `¿CONFIRMAS el uso de esta ubicación?`
-            );
+            // 2. Validar uso diario en historial local
+            const dailyUsageLocal = validateLocationDailyUsage(location, STATE.history);
+            if (!dailyUsageLocal.valid) {
+                showNotification(`❌ ${dailyUsageLocal.message}`, 'error');
+                return { confirmed: false, formatted: null };
+            }
 
-            return { confirmed: secondConfirm, formatted: secondConfirm ? location.toUpperCase() : null };
+            // 3. Validar uso diario en base de datos (si hay conexión)
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                try {
+                    const response = await gapi.client.sheets.spreadsheets.values.get({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: `${CONFIG.SHEET_NAME}!A:J`
+                    });
+                    
+                    const dbRecords = response.result.values || [];
+                    const dailyUsageDB = validateLocationDailyUsageDB(location, dbRecords);
+                    
+                    if (!dailyUsageDB.valid) {
+                        showNotification(`❌ ${dailyUsageDB.message}`, 'error');
+                        return { confirmed: false, formatted: null };
+                    }
+                } catch (error) {
+                    console.warn('⚠️ No se pudo validar uso diario en BD:', error);
+                    // Continuar si falla la validación de BD (modo offline)
+                }
+            }
+
+            // 4. Todo válido - retornar ubicación normalizada
+            return { confirmed: true, formatted: validation.normalized };
         }
 
         function showResultBox(type, code, title, message, item) {
@@ -4410,8 +4529,8 @@
             const originLocationInput = document.getElementById('origin-location');
             const originLocation = originLocationInput.value.trim().toUpperCase();
 
-            // Validar formato de ubicación con doble confirmación si es inválida
-            const locationCheck = confirmInvalidLocation(location);
+            // Validar formato de ubicación y uso diario
+            const locationCheck = await confirmInvalidLocation(location);
             if (!locationCheck.confirmed) {
                 showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
                 locationInput.focus();
@@ -4423,9 +4542,7 @@
             locationInput.value = finalLocation;
 
             const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-            const now = new Date();
-            const dateStr = now.toISOString().slice(0, 10);
-            const timeStr = now.toTimeString().slice(0, 8);
+            const { dateStr, timeStr } = getLocalDateTime();
 
             // Incluye columna J: Ubicación Física de Origen
             const records = pallet.boxes.map(box => {
@@ -4446,6 +4563,11 @@
                 if (box.isPriority) {
                     finalStatus = finalStatus + ' - PRIORIDAD';
                     finalNote = finalNote ? finalNote + ' | PRIORIDAD' : 'PRIORIDAD';
+                }
+
+                // Si estamos en modo ajuste, agregar nota de edición
+                if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                    finalNote = finalNote ? finalNote + ' | Informacion Editada' : 'Informacion Editada';
                 }
 
                 return {
@@ -4488,6 +4610,14 @@
                 SyncManager.updateUI(false);
             }
 
+            // If in adjustment mode, delete old records from database
+            if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
+                showNotification('✅ Ajuste completado - Registros actualizados', 'success');
+                // Clear adjustment mode
+                window.ADJUSTMENT_MODE = { active: false };
+            }
+
             // Reset only this pallet
             const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
             STATE.pallets[category] = {
@@ -4515,6 +4645,56 @@
             // Mover foco al campo de ubicación de origen para actualizar
             originLocationInput.focus();
             originLocationInput.select();
+        }
+
+        async function deleteOldPalletRecords(palletCode, location) {
+            try {
+                // Get all data from the sheet
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                    range: `${CONFIG.SHEET_NAME}!A:J`
+                });
+
+                const rows = response.result.values || [];
+                const header = rows[0];
+                
+                // Find rows that match the pallet code and location (excluding header)
+                const rowsToKeep = [header];
+                let deletedCount = 0;
+
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const rowPallet = row[8];
+                    const rowLocation = row[5];
+                    
+                    // Keep rows that don't match the pallet being edited
+                    if (rowPallet !== palletCode || !rowLocation || rowLocation.toUpperCase() !== location.toUpperCase()) {
+                        rowsToKeep.push(row);
+                    } else {
+                        deletedCount++;
+                    }
+                }
+
+                // Clear the sheet and write back only the rows we want to keep
+                await gapi.client.sheets.spreadsheets.values.clear({
+                    spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                    range: `${CONFIG.SHEET_NAME}!A:J`
+                });
+
+                if (rowsToKeep.length > 0) {
+                    await gapi.client.sheets.spreadsheets.values.update({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: `${CONFIG.SHEET_NAME}!A:J`,
+                        valueInputOption: 'USER_ENTERED',
+                        resource: { values: rowsToKeep }
+                    });
+                }
+
+                console.log(`🗑️ Eliminados ${deletedCount} registros antiguos del pallet ${palletCode}`);
+            } catch (error) {
+                console.error('Error deleting old pallet records:', error);
+                showNotification('⚠️ Error al eliminar registros antiguos', 'warning');
+            }
         }
 
         // ==================== UI UPDATES ====================
@@ -5042,9 +5222,30 @@
         }
 
         function updateResumen() {
-            document.getElementById('resumen-ok').textContent = STATE.pallets.ok.boxes.length;
-            document.getElementById('resumen-blocked').textContent = STATE.pallets.blocked.boxes.length;
-            document.getElementById('resumen-nowms').textContent = STATE.pallets.nowms.boxes.length;
+            // Get counts from GlobalTabs for accurate totals across all tabs
+            let totalOk = 0;
+            let totalBlocked = 0;
+            let totalNowms = 0;
+
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.tabs) {
+                GlobalTabs.tabs.forEach(tab => {
+                    // Count from classic module
+                    totalOk += tab.state.classic.pallets.ok.boxes.length;
+                    totalBlocked += tab.state.classic.pallets.blocked.boxes.length;
+                    totalNowms += tab.state.classic.pallets.nowms.boxes.length;
+
+                    // Count from unified module
+                    tab.state.unified.boxes.forEach(box => {
+                        if (box.status === 'ok') totalOk++;
+                        else if (box.status === 'blocked') totalBlocked++;
+                        else if (box.status === 'nowms') totalNowms++;
+                    });
+                });
+            }
+
+            document.getElementById('resumen-ok').textContent = totalOk;
+            document.getElementById('resumen-blocked').textContent = totalBlocked;
+            document.getElementById('resumen-nowms').textContent = totalNowms;
             document.getElementById('resumen-pending').textContent = PENDING_SYNC.length;
 
             // Update table
@@ -5066,6 +5267,227 @@
                     </tr>
                 `).join('');
             }
+        }
+
+        // ==================== AJUSTE MODULE ====================
+        function openAjusteModule() {
+            closeResumen();
+            document.getElementById('ajuste-popup').classList.add('show');
+            document.getElementById('ajuste-location-search').focus();
+        }
+
+        function closeAjusteModule() {
+            document.getElementById('ajuste-popup').classList.remove('show');
+            document.getElementById('ajuste-results-container').innerHTML = `
+                <div class="ajuste-empty-state">
+                    📦 Ingresa una ubicación para buscar pallets
+                </div>
+            `;
+        }
+
+        async function searchPalletsByLocation() {
+            const locationInput = document.getElementById('ajuste-location-search');
+            const location = locationInput.value.trim().toUpperCase();
+
+            if (!location) {
+                showNotification('⚠️ Ingresa una ubicación', 'warning');
+                return;
+            }
+
+            const resultsContainer = document.getElementById('ajuste-results-container');
+            resultsContainer.innerHTML = '<div class="ajuste-empty-state">🔄 Buscando pallets...</div>';
+
+            try {
+                // Query the database for records matching the location
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                    range: `${CONFIG.SHEET_NAME}!A:J`
+                });
+
+                const rows = response.result.values || [];
+                
+                // Filter rows by location (column F, index 5)
+                const matchingRows = rows.filter((row, index) => {
+                    if (index === 0) return false; // Skip header
+                    return row[5] && row[5].toUpperCase() === location;
+                });
+
+                if (matchingRows.length === 0) {
+                    resultsContainer.innerHTML = `
+                        <div class="ajuste-empty-state">
+                            ❌ No se encontraron pallets en la ubicación: <strong>${location}</strong>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Group by pallet code (column I, index 8)
+                const palletGroups = {};
+                matchingRows.forEach(row => {
+                    const palletCode = row[8] || 'SIN-PALLET';
+                    if (!palletGroups[palletCode]) {
+                        palletGroups[palletCode] = {
+                            palletCode: palletCode,
+                            boxes: [],
+                            date: row[0],
+                            time: row[1],
+                            user: row[2],
+                            location: row[5],
+                            originLocation: row[9] || '-'
+                        };
+                    }
+                    palletGroups[palletCode].boxes.push({
+                        date: row[0],
+                        time: row[1],
+                        user: row[2],
+                        scan1: row[3],
+                        scan2: row[4],
+                        location: row[5],
+                        status: row[6],
+                        note: row[7],
+                        pallet: row[8],
+                        originLocation: row[9] || ''
+                    });
+                });
+
+                // Display pallet cards
+                const palletCards = Object.values(palletGroups).map(group => `
+                    <div class="ajuste-pallet-card" onclick="selectPalletForAdjustment('${group.palletCode}', '${location}')">
+                        <div class="ajuste-pallet-header">
+                            <div class="ajuste-pallet-code">${group.palletCode}</div>
+                            <div class="ajuste-pallet-count">${group.boxes.length} cajas</div>
+                        </div>
+                        <div class="ajuste-pallet-info">
+                            <div class="ajuste-pallet-info-row">
+                                <span class="ajuste-pallet-label">📅 Fecha:</span>
+                                <span>${group.date}</span>
+                            </div>
+                            <div class="ajuste-pallet-info-row">
+                                <span class="ajuste-pallet-label">🕐 Hora:</span>
+                                <span>${group.time}</span>
+                            </div>
+                            <div class="ajuste-pallet-info-row">
+                                <span class="ajuste-pallet-label">👤 Usuario:</span>
+                                <span>${group.user}</span>
+                            </div>
+                            <div class="ajuste-pallet-info-row">
+                                <span class="ajuste-pallet-label">📍 Origen:</span>
+                                <span>${group.originLocation}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                resultsContainer.innerHTML = `
+                    <h3 style="margin-bottom: 15px; font-size: 1em; color: #333;">
+                        📦 Pallets encontrados en <strong>${location}</strong>: ${Object.keys(palletGroups).length}
+                    </h3>
+                    <div class="ajuste-pallets-grid">
+                        ${palletCards}
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error('Error searching pallets:', error);
+                resultsContainer.innerHTML = `
+                    <div class="ajuste-empty-state">
+                        ❌ Error al buscar pallets: ${error.message}
+                    </div>
+                `;
+                showNotification('❌ Error al buscar pallets', 'error');
+            }
+        }
+
+        async function selectPalletForAdjustment(palletCode, location) {
+            const confirmed = confirm(`¿Deseas hacer ajustes al pallet ${palletCode}?`);
+            if (!confirmed) return;
+
+            try {
+                // Get all boxes for this pallet
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                    range: `${CONFIG.SHEET_NAME}!A:J`
+                });
+
+                const rows = response.result.values || [];
+                const palletBoxes = rows.filter((row, index) => {
+                    if (index === 0) return false;
+                    return row[8] === palletCode && row[5] && row[5].toUpperCase() === location.toUpperCase();
+                });
+
+                if (palletBoxes.length === 0) {
+                    showNotification('❌ No se encontraron cajas para este pallet', 'error');
+                    return;
+                }
+
+                // Load boxes into the appropriate pallet sections
+                closeAjusteModule();
+                loadPalletForEditing(palletBoxes, palletCode, location);
+                showNotification(`✅ Pallet ${palletCode} cargado para edición`, 'success');
+
+            } catch (error) {
+                console.error('Error loading pallet:', error);
+                showNotification('❌ Error al cargar pallet', 'error');
+            }
+        }
+
+        function loadPalletForEditing(boxes, palletCode, location) {
+            // Clear current pallets
+            STATE.pallets.ok.boxes = [];
+            STATE.pallets.blocked.boxes = [];
+            STATE.pallets.nowms.boxes = [];
+
+            // Set the pallet ID to the one being edited
+            const firstBox = boxes[0];
+            const originLocation = firstBox[9] || '';
+
+            // Classify boxes by status
+            boxes.forEach(row => {
+                const status = row[6] || '';
+                const box = {
+                    code: row[3],
+                    scan1: row[3],
+                    scan2: row[4] || '',
+                    location: row[5],
+                    status: status,
+                    note: row[7] || '',
+                    originLocation: row[9] || '',
+                    source: 'ADJUSTMENT',
+                    isPriority: false,
+                    verified: false
+                };
+
+                // Classify based on status
+                if (status.includes('OK') && !status.includes('BLOQUEADO')) {
+                    STATE.pallets.ok.boxes.push(box);
+                } else if (status.includes('BLOQUEADO')) {
+                    STATE.pallets.blocked.boxes.push(box);
+                } else if (status.includes('NO WMS')) {
+                    STATE.pallets.nowms.boxes.push(box);
+                }
+            });
+
+            // Set pallet IDs and locations
+            STATE.pallets.ok.id = palletCode;
+            STATE.pallets.blocked.id = palletCode;
+            STATE.pallets.nowms.id = palletCode;
+
+            // Set locations
+            document.getElementById('location-ok').value = location;
+            document.getElementById('location-blocked').value = location;
+            document.getElementById('location-nowms').value = location;
+            document.getElementById('origin-location').value = originLocation;
+
+            // Mark that we're in adjustment mode
+            window.ADJUSTMENT_MODE = {
+                active: true,
+                originalPalletCode: palletCode,
+                originalLocation: location,
+                originalBoxes: boxes
+            };
+
+            updateUI();
+            showNotification('📝 Modo de ajuste activado. Puedes agregar, eliminar o modificar cajas.', 'info');
         }
 
         // ==================== CONNECTION ====================
@@ -6566,8 +6988,8 @@
                 const tab = this.getActiveTab();
                 if (!tab) return;
 
-                // Validate location format
-                const locationCheck = confirmInvalidLocation(location);
+                // Validate location format and daily usage
+                const locationCheck = await confirmInvalidLocation(location);
                 if (!locationCheck.confirmed) {
                     showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
                     document.getElementById('unified-location').focus();
@@ -6579,9 +7001,7 @@
 
                 const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
                 const statusMapDisplay = { ok: 'OK', blocked: 'Bloqueada', nowms: 'No WMS' };
-                const now = new Date();
-                const dateStr = now.toISOString().slice(0, 10);
-                const timeStr = now.toTimeString().slice(0, 8);
+                const { dateStr, timeStr } = getLocalDateTime();
 
                 // Check if cancelados mode is active
                 const isCancelados = this.isCanceladosMode();
@@ -6613,6 +7033,11 @@
                     if (box.isPriority) {
                         finalStatus = finalStatus + ' - PRIORIDAD';
                         finalNote = finalNote ? finalNote + ' | PRIORIDAD' : 'PRIORIDAD';
+                    }
+
+                    // Si estamos en modo ajuste, agregar nota de edición
+                    if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                        finalNote = finalNote ? finalNote + ' | Informacion Editada' : 'Informacion Editada';
                     }
 
                     return {
@@ -6655,6 +7080,14 @@
                 } else {
                     console.log('⚠️ [UNIFICADO] No se puede sincronizar automáticamente (offline o sin token)');
                     SyncManager.updateUI(false);
+                }
+
+                // If in adjustment mode, delete old records from database
+                if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                    await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
+                    showNotification('✅ Ajuste completado - Registros actualizados', 'success');
+                    // Clear adjustment mode
+                    window.ADJUSTMENT_MODE = { active: false };
                 }
 
                 // Reset tab (but keep canceladosMode as user preference)
