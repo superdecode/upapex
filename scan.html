@@ -2315,7 +2315,7 @@
             <div class="login-icon">📦</div>
             <h1 class="login-title">Inventario General </h1>
             <p class="login-subtitle">Enero 2026</p>
-            <button class="btn btn-google btn-full" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em;">
+            <button class="btn btn-google btn-full" id="login-button" style="padding: 15px; font-size: 1.1em;">
                 🔐 Iniciar sesión con Google
             </button>
         </div>
@@ -2715,7 +2715,16 @@
         </div>
     </div>
 
-    <script src="../shared/js/wms-utils.js"></script>
+    <script src="shared/js/wms-utils.js"></script>
+    <script>
+        // Verify that wms-utils.js loaded correctly
+        if (typeof validateLocation === 'undefined') {
+            console.error('CRITICAL: validateLocation not found after loading wms-utils.js');
+            console.error('Available on window:', Object.keys(window).filter(k => k.includes('validate')));
+        } else {
+            console.log('✅ wms-utils.js loaded successfully');
+        }
+    </script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script>
@@ -3847,6 +3856,12 @@
 
         // ==================== SCAN PROCESSING ====================
         function setupEventListeners() {
+            // Setup login button
+            const loginButton = document.getElementById('login-button');
+            if (loginButton) {
+                loginButton.addEventListener('click', handleLogin);
+            }
+
             const scanInput = document.getElementById('scan-input');
             scanInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && scanInput.value.trim()) {
@@ -4486,7 +4501,7 @@
                 <div class="popup-content send-validation-popup">
                     <div class="popup-header">
                         <span>📦 Validar Envío - ${categoryNames[category]}</span>
-                        <button class="popup-close" onclick="closeBlindValidationPopup()">×</button>
+                        <button class="popup-close" id="validation-close-btn">×</button>
                     </div>
                     <p style="margin-bottom: 15px; font-size: 0.9em;">
                         <strong>Destino:</strong> ${location}<br>
@@ -4494,16 +4509,14 @@
                     </p>
                     <div class="validation-input-group">
                         <label>¿Cuántas cajas físicas hay en la tarima?</label>
-                        <input type="number" id="physical-count-input" min="0" placeholder="" autofocus
-                               oninput="validateBoxCount(${boxCount})">
+                        <input type="number" id="physical-count-input" min="0" placeholder="" autofocus>
                     </div>
                     <div id="validation-status"></div>
                     <div class="popup-buttons">
-                        <button class="btn btn-success btn-full" id="confirm-send-btn" disabled
-                                onclick="confirmSendPallet('${category}', '${location}')">
+                        <button class="btn btn-success btn-full" id="confirm-send-btn" disabled>
                             📤 Confirmar Envío
                         </button>
-                        <button class="btn btn-secondary btn-full" onclick="closeBlindValidationPopup()">
+                        <button class="btn btn-secondary btn-full" id="validation-cancel-btn">
                             Cancelar
                         </button>
                     </div>
@@ -4511,11 +4524,21 @@
             `;
             document.body.appendChild(overlay);
 
-            // Enfocar el input
-            setTimeout(() => {
-                const input = document.getElementById('physical-count-input');
-                if (input) input.focus();
-            }, 100);
+            // Attach event listeners
+            const closeBtn = document.getElementById('validation-close-btn');
+            const cancelBtn = document.getElementById('validation-cancel-btn');
+            const confirmBtn = document.getElementById('confirm-send-btn');
+            const input = document.getElementById('physical-count-input');
+
+            if (closeBtn) closeBtn.addEventListener('click', closeBlindValidationPopup);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeBlindValidationPopup);
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', () => confirmSendPallet(category, location));
+            }
+            if (input) {
+                input.addEventListener('input', () => validateBoxCount(boxCount));
+                input.focus();
+            }
 
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) closeBlindValidationPopup();
@@ -6977,7 +7000,7 @@
                     <div class="popup-content send-validation-popup">
                         <div class="popup-header">
                             <span>📦 Validar Envío Unificado</span>
-                            <button class="popup-close" onclick="UnifiedModule.closeBlindValidationPopup()">×</button>
+                            <button class="popup-close" id="unified-validation-close-btn">×</button>
                         </div>
                         <p style="margin-bottom: 15px; font-size: 0.9em;">
                             <strong>Pallet:</strong> ${tab.palletId}<br>
@@ -6986,16 +7009,14 @@
                         </p>
                         <div class="validation-input-group">
                             <label>¿Cuántas cajas físicas hay en la tarima?</label>
-                            <input type="number" id="unified-physical-count-input" min="0" placeholder="" autofocus
-                                   oninput="UnifiedModule.validateBoxCount(${boxCount})">
+                            <input type="number" id="unified-physical-count-input" min="0" placeholder="" autofocus>
                         </div>
                         <div id="unified-validation-status"></div>
                         <div class="popup-buttons">
-                            <button class="btn btn-success btn-full" id="unified-confirm-send-btn" disabled
-                                    onclick="UnifiedModule.confirmSendPallet('${location}', '${originLocation}')">
+                            <button class="btn btn-success btn-full" id="unified-confirm-send-btn" disabled>
                                 📤 Confirmar Envío
                             </button>
-                            <button class="btn btn-secondary btn-full" onclick="UnifiedModule.closeBlindValidationPopup()">
+                            <button class="btn btn-secondary btn-full" id="unified-validation-cancel-btn">
                                 Cancelar
                             </button>
                         </div>
@@ -7003,10 +7024,21 @@
                 `;
                 document.body.appendChild(overlay);
 
-                setTimeout(() => {
-                    const input = document.getElementById('unified-physical-count-input');
-                    if (input) input.focus();
-                }, 100);
+                // Attach event listeners
+                const closeBtn = document.getElementById('unified-validation-close-btn');
+                const cancelBtn = document.getElementById('unified-validation-cancel-btn');
+                const confirmBtn = document.getElementById('unified-confirm-send-btn');
+                const input = document.getElementById('unified-physical-count-input');
+
+                if (closeBtn) closeBtn.addEventListener('click', () => this.closeBlindValidationPopup());
+                if (cancelBtn) cancelBtn.addEventListener('click', () => this.closeBlindValidationPopup());
+                if (confirmBtn) {
+                    confirmBtn.addEventListener('click', () => this.confirmSendPallet(location, originLocation));
+                }
+                if (input) {
+                    input.addEventListener('input', () => this.validateBoxCount(boxCount));
+                    input.focus();
+                }
 
                 overlay.addEventListener('click', (e) => {
                     if (e.target === overlay) this.closeBlindValidationPopup();
