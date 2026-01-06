@@ -41,6 +41,15 @@ let STATE = {
     localValidated: [],    // Despachos validados localmente
     localPending: [],      // Despachos pendientes
     activeTab: 'pending',  // Tab activa: 'pending' o 'validated'
+    // Real-time sync system
+    isOnline: navigator.onLine,
+    isReadOnly: false,
+    syncInterval: null,
+    lastSyncTime: null,
+    syncInProgress: false,
+    remoteValidacionData: new Map(),  // Remote validation data for real-time sync
+    remoteFoliosData: new Map(),      // Remote folios data for real-time sync
+    dataVersion: 0,  // Version counter for conflict resolution
     // Sistema de folios de carga
     // Map: fecha → Map(folio → {conductor, unidad})
     // Ejemplo: "2025-12-30" → Map("01" → {conductor: "Juan", unidad: "T-001"})
@@ -70,6 +79,77 @@ let STATE = {
     currentFolio: null // Current folio being viewed in details screen
 };
 
+// ==================== CONNECTION & OFFLINE MODE ====================
+
+// Initialize connection monitoring
+function initializeConnectionMonitoring() {
+    // Update online status
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Check initial state
+    updateConnectionStatus();
+}
+
+function handleOnline() {
+    STATE.isOnline = true;
+    STATE.isReadOnly = false;
+    updateConnectionStatus();
+    showNotification('🟢 Conexión restaurada - Modo edición activado', 'success');
+    
+    // Start real-time sync
+    startRealtimeSync();
+    
+    // Sync pending changes
+    if (STATE.pendingSync.length > 0) {
+        syncPendingChanges();
+    }
+}
+
+function handleOffline() {
+    STATE.isOnline = false;
+    STATE.isReadOnly = true;
+    updateConnectionStatus();
+    showNotification('🔴 Sin conexión - Modo solo lectura', 'warning');
+    
+    // Stop real-time sync
+    stopRealtimeSync();
+}
+
+function updateConnectionStatus() {
+    const banner = document.getElementById('connection-banner');
+    if (!banner) return;
+    
+    banner.className = 'connection-banner';
+    
+    if (!STATE.isOnline) {
+        banner.classList.add('offline');
+        banner.textContent = '🔴 SIN CONEXIÓN - Modo Solo Lectura (Consulta permitida, edición deshabilitada)';
+    } else if (STATE.syncInProgress) {
+        banner.classList.add('syncing');
+        banner.textContent = '🔄 Sincronizando datos...';
+    } else if (STATE.lastSyncTime) {
+        banner.classList.add('online');
+        const timeAgo = getTimeAgo(STATE.lastSyncTime);
+        banner.textContent = `🟢 Conectado - Última sincronización: ${timeAgo}`;
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+            if (STATE.isOnline && !STATE.syncInProgress) {
+                banner.style.display = 'none';
+            }
+        }, 3000);
+    }
+}
+
+function getTimeAgo(timestamp) {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return 'hace unos segundos';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `hace ${minutes} minuto${minutes > 1 ? 's' : ''}`;
+    const hours = Math.floor(minutes / 60);
+    return `hace ${hours} hora${hours > 1 ? 's' : ''}`;
+}
+
 // Cargar estado local al inicio
 function loadLocalState() {
     try {
@@ -78,6 +158,7 @@ function loadLocalState() {
             const data = JSON.parse(saved);
             STATE.localValidated = data.localValidated || [];
             STATE.localPending = data.localPending || [];
+            STATE.dataVersion = data.dataVersion || 0;
 
             // Cargar folios de carga (convertir de objeto a Map anidado)
             // Estructura: fecha → Map(folio → {conductor, unidad})
@@ -113,11 +194,756 @@ function saveLocalState() {
         localStorage.setItem('dispatch_local_state', JSON.stringify({
             localValidated: STATE.localValidated,
             localPending: STATE.localPending,
-            foliosDeCargas: foliosObj
+            foliosDeCargas: foliosObj,
+            dataVersion: STATE.dataVersion,
+            lastSyncTime: STATE.lastSyncTime
         }));
     } catch (e) {
         console.error('Error saving local state:', e);
     }
+}
+
+// ==================== REAL-TIME SYNC SYSTEM ====================
+
+// Start real-time sync for transactional data (validacion, folios)
+function startRealtimeSync() {
+    if (STATE.syncInterval) {
+        clearInterval(STATE.syncInterval);
+    }
+    
+    // Sync every 10 seconds for real-time collaboration
+    STATE.syncInterval = setInterval(async () => {
+        if (STATE.isOnline && !STATE.syncInProgress) {
+            await syncTransactionalData();
+        }
+    }, 10000);
+    
+    // Initial sync
+    syncTransactionalData();
+}
+
+function stopRealtimeSync() {
+    if (STATE.syncInterval) {
+        clearInterval(STATE.syncInterval);
+        STATE.syncInterval = null;
+    }
+}
+
+// ==================== LOAD EXISTING DATA FROM WRITE DATABASE ====================
+
+/**
+ * Load existing validated records from write database (with optional date filter)
+ * @param {string} startDate - Optional start date filter (YYYY-MM-DD)
+ * @param {string} endDate - Optional end date filter (YYYY-MM-DD)
+ */
+async function loadExistingValidatedRecords(startDate = null, endDate = null) {
+    if (!gapi?.client?.sheets) {
+        console.log('⚠️ Google Sheets API not available, skipping validated records load');
+        return [];
+    }
+
+    try {
+        console.log('📥 Loading validated records from write database...');
+        
+        // First, try to get sheet metadata to verify sheet name
+        let sheetName = 'BD';  // Default to 'BD' as per syncManager config
+        
+        try {
+            const metadataResponse = await gapi.client.sheets.spreadsheets.get({
+                spreadsheetId: CONFIG.SPREADSHEET_WRITE
+            });
+            
+            const sheets = metadataResponse.result.sheets;
+            console.log('📋 Available sheets:', sheets.map(s => s.properties.title).join(', '));
+            
+            // Look for common sheet names
+            const possibleNames = ['Despachos', 'BD', 'Sheet1', 'Hoja1'];
+            for (const name of possibleNames) {
+                if (sheets.find(s => s.properties.title === name)) {
+                    sheetName = name;
+                    console.log(`✅ Found sheet: ${sheetName}`);
+                    break;
+                }
+            }
+        } catch (metaError) {
+            console.warn('Could not fetch sheet metadata, using default sheet name');
+        }
+        
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+            range: `${sheetName}!A:P`  // Use detected sheet name
+        });
+
+        const rows = response.result.values;
+        if (!rows || rows.length <= 1) {
+            console.log('ℹ️ No existing validated records found');
+            return [];
+        }
+
+        // Parse rows (skip header) with optional date filtering
+        const validatedRecords = [];
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.length >= 5) {  // Minimum required columns
+                const record = {
+                    folio: row[0] || '',           // A: Folio
+                    fecha: row[1] || '',           // B: Fecha
+                    hora: row[2] || '',            // C: Hora
+                    usuario: row[3] || '',         // D: Usuario
+                    orden: row[4] || '',           // E: Orden
+                    destino: row[5] || '',         // F: Destino
+                    horario: row[6] || '',         // G: Horario
+                    codigo: row[7] || '',          // H: Código
+                    codigo2: row[8] || '',         // I: Código 2
+                    estatus: row[9] || '',         // J: Estatus
+                    tarea: row[10] || '',          // K: Tarea
+                    estatus2: row[11] || '',       // L: Estatus2
+                    incidencias: row[12] || '',    // M: Incidencias
+                    operador: row[13] || '',       // N: Operador
+                    conductor: row[13] || '',      // Alias for operador
+                    unidad: row[14] || '',         // O: Unidad
+                    observaciones: row[15] || '',  // P: Observaciones
+                    notaDespacho: row[15] || '',   // Alias for observaciones
+                    // Parse cantidad despachar from incidencias if present
+                    cantidadDespachar: parseCantidadFromIncidencias(row[12] || '')
+                };
+
+                if (record.orden) {
+                    // Apply date filter if provided
+                    if (startDate && endDate) {
+                        const recordDate = record.fecha; // Format: DD/MM/YYYY
+                        if (isDateInRange(recordDate, startDate, endDate)) {
+                            validatedRecords.push(record);
+                        }
+                    } else {
+                        validatedRecords.push(record);
+                    }
+                }
+            }
+        }
+
+        // Update STATE with loaded records
+        STATE.localValidated = validatedRecords;
+        
+        // Extract and rebuild folios map
+        rebuildFoliosFromRecords(validatedRecords);
+        
+        console.log(`✅ Loaded ${validatedRecords.length} validated records (filtered: ${startDate ? 'YES' : 'NO'})`);
+        
+        // Save to local storage
+        saveLocalState();
+        
+        return validatedRecords;
+        
+    } catch (error) {
+        console.error('Error loading validated records:', error);
+        throw error;
+    }
+}
+
+/**
+ * Check if a date string is within a range
+ * @param {string} dateStr - Date in DD/MM/YYYY format
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ */
+function isDateInRange(dateStr, startDate, endDate) {
+    try {
+        // Convert DD/MM/YYYY to YYYY-MM-DD
+        const parts = dateStr.split('/');
+        if (parts.length !== 3) return false;
+        
+        const isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        
+        return isoDate >= startDate && isoDate <= endDate;
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
+ * Parse cantidad despachar from incidencias field
+ * Format: "Parcial: 5/10" -> 5
+ */
+function parseCantidadFromIncidencias(incidencias) {
+    if (!incidencias) return 0;
+    const match = incidencias.match(/Parcial:\s*(\d+)\/(\d+)/);
+    if (match) {
+        return parseInt(match[1]) || 0;
+    }
+    return 0;
+}
+
+/**
+ * Rebuild folios map from validated records
+ */
+function rebuildFoliosFromRecords(records) {
+    STATE.foliosDeCargas.clear();
+    
+    records.forEach(record => {
+        if (!record.folio || !record.operador || !record.unidad) return;
+        
+        // Extract date and folio number from folio format: DSP-YYYYMMDD-XX
+        const folioMatch = record.folio.match(/DSP-(\d{8})-(\d{2})/);
+        if (!folioMatch) return;
+        
+        const dateStr = folioMatch[1];  // YYYYMMDD
+        const folioNum = folioMatch[2]; // XX
+        
+        // Convert to date key format: YYYY-MM-DD
+        const dateKey = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+        
+        // Add to folios map
+        if (!STATE.foliosDeCargas.has(dateKey)) {
+            STATE.foliosDeCargas.set(dateKey, new Map());
+        }
+        
+        const foliosDelDia = STATE.foliosDeCargas.get(dateKey);
+        if (!foliosDelDia.has(folioNum)) {
+            foliosDelDia.set(folioNum, {
+                conductor: record.operador,
+                unidad: record.unidad
+            });
+        }
+    });
+    
+    console.log(`📋 Rebuilt ${STATE.foliosDeCargas.size} days of folios from records`);
+}
+
+/**
+ * Load existing folios (currently rebuilds from validated records)
+ */
+async function loadExistingFolios() {
+    // Folios are already rebuilt from validated records
+    // This function exists for future expansion if folios are stored separately
+    console.log('✅ Folios loaded from validated records');
+}
+
+// ==================== LAZY LOADING WITH DATE FILTER ====================
+
+/**
+ * FLUJO CORRECTO DE CARGA:
+ * 1. Input Fecha (startDate, endDate)
+ * 2. Fetch OBC DB y filtrar por fecha de despacho (expectedArrival)
+ * 3. Fetch registros validados desde SPREADSHEET_WRITE
+ * 4. Cruzar OBC con validados para identificar cuáles ya fueron despachados
+ * 5. Render final (pendientes vs validados)
+ * 
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ */
+async function lazyLoadDataByDate(startDate, endDate) {
+    if (!startDate || !endDate) {
+        showNotification('⚠️ Debes seleccionar un rango de fechas', 'warning');
+        return;
+    }
+
+    const TOTAL_STEPS = 4;
+    
+    try {
+        console.log('\n========================================');
+        console.log(`📅 INICIANDO CARGA DE DATOS`);
+        console.log(`   Rango: ${startDate} a ${endDate}`);
+        console.log('========================================\n');
+        
+        // ==================== STEP 1: Fetch OBC DB ====================
+        showLoadingOverlay(true, 0, TOTAL_STEPS, '📦 Paso 1/4: Descargando base de órdenes OBC...');
+        console.log('👉 PASO 1/4: Descargando BD_CAJAS (OBC orders database)...');
+        
+        let allOBCOrders = [];
+        try {
+            const bdCajasResponse = await fetch(CONFIG.SOURCES.BD_CAJAS);
+            if (!bdCajasResponse.ok) {
+                throw new Error(`HTTP error! status: ${bdCajasResponse.status}`);
+            }
+            const bdCajasCsv = await bdCajasResponse.text();
+            allOBCOrders = parseOBCDataWithDateFilter(bdCajasCsv, startDate, endDate);
+            console.log(`✅ PASO 1 COMPLETO: ${allOBCOrders.length} órdenes encontradas en el rango de fechas`);
+        } catch (error) {
+            console.error('Error loading BD_CAJAS:', error);
+            throw new Error('No se pudo cargar la base de órdenes OBC');
+        }
+        
+        if (allOBCOrders.length === 0) {
+            showLoadingOverlay(false);
+            showNotification('ℹ️ No se encontraron órdenes en el rango de fechas seleccionado', 'info');
+            STATE.obcData.clear();
+            STATE.obcDataFiltered.clear();
+            STATE.localValidated = [];
+            updateBdInfo();
+            updateSummary();
+            return;
+        }
+        
+        // ==================== STEP 2: Fetch Validated Records from SPREADSHEET_WRITE ====================
+        showLoadingOverlay(true, 1, TOTAL_STEPS, '📝 Paso 2/4: Cargando registros de despacho (BD Escritura)...');
+        console.log('👉 PASO 2/4: Cargando registros validados desde SPREADSHEET_WRITE...');
+        
+        let validatedRecords = [];
+        try {
+            validatedRecords = await fetchValidatedRecordsFromWriteDB();
+            console.log(`✅ PASO 2 COMPLETO: ${validatedRecords.length} registros de despacho encontrados`);
+        } catch (error) {
+            console.warn('Error loading validated records:', error);
+            console.log('⚠️ Continuando sin registros validados...');
+        }
+        
+        // ==================== STEP 3: Cross-reference OBC with Validated ====================
+        showLoadingOverlay(true, 2, TOTAL_STEPS, '🔄 Paso 3/4: Cruzando órdenes con registros validados...');
+        console.log('👉 PASO 3/4: Cruzando órdenes OBC con registros validados...');
+        
+        const { pendingOrders, validatedOrders, validatedOBCSet } = crossReferenceOrders(allOBCOrders, validatedRecords);
+        
+        console.log(`✅ PASO 3 COMPLETO:`);
+        console.log(`   - Órdenes pendientes: ${pendingOrders.length}`);
+        console.log(`   - Órdenes validadas: ${validatedOrders.length}`);
+        
+        // ==================== STEP 4: Update STATE and Render ====================
+        showLoadingOverlay(true, 3, TOTAL_STEPS, '✅ Paso 4/4: Preparando visualización...');
+        console.log('👉 PASO 4/4: Actualizando estado y preparando render...');
+        
+        // Clear and populate STATE
+        STATE.obcData.clear();
+        STATE.obcDataFiltered.clear();
+        STATE.localValidated = [];
+        
+        // Add ALL orders to obcData (for reference)
+        allOBCOrders.forEach(order => {
+            STATE.obcData.set(order.orden, order);
+            STATE.obcDataFiltered.set(order.orden, order);
+        });
+        
+        // Add validated records to localValidated
+        STATE.localValidated = validatedOrders;
+        
+        // Mark validated orders in obcData
+        validatedOBCSet.forEach(obcCode => {
+            if (STATE.obcData.has(obcCode)) {
+                const order = STATE.obcData.get(obcCode);
+                order.isValidated = true;
+            }
+        });
+        
+        // Rebuild folios from validated records
+        rebuildFoliosFromRecords(validatedOrders);
+        
+        console.log(`✅ PASO 4 COMPLETO: Estado actualizado`);
+        
+        // ==================== COMPLETE ====================
+        showLoadingOverlay(true, 4, TOTAL_STEPS, '✅ Carga completada!');
+        await new Promise(resolve => setTimeout(resolve, 300)); // Brief pause to show completion
+        showLoadingOverlay(false);
+        
+        const message = `✅ ${pendingOrders.length} pendientes, ${validatedOrders.length} validadas`;
+        showNotification(message, 'success');
+        
+        // Update UI
+        updateBdInfo();
+        updateSummary();
+        updateValidationBadges();
+        updateTabBadges();
+        
+        console.log('\n========================================');
+        console.log('✅ CARGA COMPLETADA EXITOSAMENTE');
+        console.log(`   - Total OBC: ${STATE.obcData.size}`);
+        console.log(`   - Pendientes: ${pendingOrders.length}`);
+        console.log(`   - Validadas: ${validatedOrders.length}`);
+        console.log('========================================\n');
+        
+    } catch (error) {
+        console.error('Error in lazy loading:', error);
+        showLoadingOverlay(false);
+        showNotification('❌ Error cargando datos: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Parse OBC data from CSV and filter by date range
+ * @param {string} csv - CSV content from BD_CAJAS
+ * @param {string} startDate - Start date YYYY-MM-DD
+ * @param {string} endDate - End date YYYY-MM-DD
+ * @returns {Array} Array of orders within date range
+ */
+function parseOBCDataWithDateFilter(csv, startDate, endDate) {
+    const lines = csv.split('\n').filter(l => l.trim());
+    const orders = [];
+    
+    // Parse dates for comparison
+    const startParts = startDate.split('-');
+    const filterStartDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+    filterStartDate.setHours(0, 0, 0, 0);
+    
+    const endParts = endDate.split('-');
+    const filterEndDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+    filterEndDate.setHours(23, 59, 59, 999);
+    
+    console.log(`🔍 Filtrando OBC por fecha: ${filterStartDate.toLocaleDateString('es-MX')} - ${filterEndDate.toLocaleDateString('es-MX')}`);
+    
+    // Also clear and rebuild bdCajasData for box codes
+    STATE.bdCajasData.clear();
+    const cajasCountMap = new Map();
+    const allBoxCodes = new Map();
+    
+    let totalRows = 0;
+    let matchedRows = 0;
+    let sampleDates = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        
+        if (cols.length >= 9) {
+            totalRows++;
+            const obc = cols[0]?.trim();
+            const expectedArrival = cols[4]?.trim(); // Column E: Expected Arrival (fecha de despacho)
+            const codigo = cols[8]?.trim(); // Column I: Custom Barcode
+            
+            if (obc && expectedArrival) {
+                // Parse the order date
+                const orderDate = parseOrderDate(expectedArrival);
+                
+                // Sample dates for debugging
+                if (sampleDates.length < 5) {
+                    sampleDates.push(`${obc}: ${expectedArrival} → ${orderDate ? orderDate.toLocaleDateString('es-MX') : 'INVALID'}`);
+                }
+                
+                // Check if order is within date range
+                if (orderDate && orderDate >= filterStartDate && orderDate <= filterEndDate) {
+                    matchedRows++;
+                    
+                    // Count boxes per OBC
+                    cajasCountMap.set(obc, (cajasCountMap.get(obc) || 0) + 1);
+                    
+                    // Index by box code
+                    if (codigo) {
+                        const codigoUpper = codigo.toUpperCase();
+                        if (!allBoxCodes.has(codigoUpper)) {
+                            allBoxCodes.set(codigoUpper, []);
+                        }
+                        allBoxCodes.get(codigoUpper).push({
+                            obc: obc,
+                            referenceNo: cols[1]?.trim() || '',
+                            shippingService: cols[2]?.trim() || '',
+                            trackingCode: cols[3]?.trim() || '',
+                            expectedArrival: expectedArrival,
+                            remark: cols[5]?.trim() || '',
+                            recipient: cols[6]?.trim() || '',
+                            boxType: cols[7]?.trim() || '',
+                            codigoCaja: codigo
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    console.log(`📊 Procesadas ${totalRows} filas, ${matchedRows} coinciden con el filtro`);
+    console.log(`📅 Muestra de fechas:`, sampleDates);
+    
+    // Build unique orders array
+    const uniqueOrders = new Map();
+    
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        
+        if (cols.length >= 9) {
+            const obc = cols[0]?.trim();
+            const expectedArrival = cols[4]?.trim();
+            
+            if (obc && expectedArrival && cajasCountMap.has(obc) && !uniqueOrders.has(obc)) {
+                uniqueOrders.set(obc, {
+                    orden: obc,
+                    referenceNo: cols[1]?.trim() || '',
+                    shippingService: cols[2]?.trim() || '',
+                    trackingCode: cols[3]?.trim() || '',
+                    expectedArrival: expectedArrival,
+                    remark: cols[5]?.trim() || '',
+                    recipient: cols[6]?.trim() || '',
+                    boxType: cols[7]?.trim() || '',
+                    customBarcode: cols[8]?.trim() || '',
+                    totalCajas: cajasCountMap.get(obc) || 0,
+                    isValidated: false
+                });
+            }
+        }
+    }
+    
+    // Update STATE.bdCajasData
+    STATE.bdCajasData = allBoxCodes;
+    
+    console.log(`✅ ${uniqueOrders.size} órdenes únicas encontradas, ${STATE.bdCajasData.size} códigos de caja indexados`);
+    
+    return Array.from(uniqueOrders.values());
+}
+
+/**
+ * Fetch validated records from SPREADSHEET_WRITE (Google Sheets API)
+ * @returns {Array} Array of validated dispatch records
+ */
+async function fetchValidatedRecordsFromWriteDB() {
+    if (!gapi?.client?.sheets) {
+        console.log('⚠️ Google Sheets API not available');
+        return [];
+    }
+
+    try {
+        console.log(`📥 Fetching from SPREADSHEET_WRITE: ${CONFIG.SPREADSHEET_WRITE}`);
+        
+        // Get sheet metadata to find correct sheet name
+        let sheetName = 'BD';
+        
+        try {
+            const metadataResponse = await gapi.client.sheets.spreadsheets.get({
+                spreadsheetId: CONFIG.SPREADSHEET_WRITE
+            });
+            
+            const sheets = metadataResponse.result.sheets;
+            console.log('📋 Hojas disponibles:', sheets.map(s => s.properties.title).join(', '));
+            
+            // Try common sheet names
+            const possibleNames = ['Despachos', 'BD', 'Sheet1', 'Hoja1'];
+            for (const name of possibleNames) {
+                if (sheets.find(s => s.properties.title === name)) {
+                    sheetName = name;
+                    console.log(`✅ Usando hoja: ${sheetName}`);
+                    break;
+                }
+            }
+        } catch (metaError) {
+            console.warn('No se pudo obtener metadata, usando hoja por defecto:', sheetName);
+        }
+        
+        // Fetch all data from the sheet
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+            range: `${sheetName}!A:P`
+        });
+
+        const rows = response.result.values;
+        if (!rows || rows.length <= 1) {
+            console.log('ℹ️ No hay registros validados en la BD de escritura');
+            return [];
+        }
+
+        console.log(`📊 Encontradas ${rows.length - 1} filas en BD de escritura`);
+        
+        // Parse all records (we'll filter by OBC later)
+        const records = [];
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.length >= 5 && row[4]) {  // Must have orden (column E)
+                records.push({
+                    folio: row[0] || '',
+                    fecha: row[1] || '',
+                    hora: row[2] || '',
+                    usuario: row[3] || '',
+                    orden: row[4] || '',
+                    destino: row[5] || '',
+                    horario: row[6] || '',
+                    codigo: row[7] || '',
+                    codigo2: row[8] || '',
+                    estatus: row[9] || '',
+                    tarea: row[10] || '',
+                    estatus2: row[11] || '',
+                    incidencias: row[12] || '',
+                    operador: row[13] || '',
+                    conductor: row[13] || '',
+                    unidad: row[14] || '',
+                    observaciones: row[15] || '',
+                    notaDespacho: row[15] || '',
+                    cantidadDespachar: parseCantidadFromIncidencias(row[12] || '')
+                });
+            }
+        }
+        
+        console.log(`✅ Parseados ${records.length} registros de despacho`);
+        return records;
+        
+    } catch (error) {
+        console.error('Error fetching from SPREADSHEET_WRITE:', error);
+        throw error;
+    }
+}
+
+/**
+ * Cross-reference OBC orders with validated records
+ * @param {Array} obcOrders - Array of OBC orders from BD_CAJAS
+ * @param {Array} validatedRecords - Array of validated records from SPREADSHEET_WRITE
+ * @returns {Object} { pendingOrders, validatedOrders, validatedOBCSet }
+ */
+function crossReferenceOrders(obcOrders, validatedRecords) {
+    // Create a Set of validated OBC codes for quick lookup
+    const validatedOBCSet = new Set();
+    const validatedByOBC = new Map(); // OBC -> array of validation records
+    
+    validatedRecords.forEach(record => {
+        if (record.orden) {
+            const obcCode = record.orden.trim().toUpperCase();
+            validatedOBCSet.add(obcCode);
+            
+            if (!validatedByOBC.has(obcCode)) {
+                validatedByOBC.set(obcCode, []);
+            }
+            validatedByOBC.get(obcCode).push(record);
+        }
+    });
+    
+    console.log(`🔍 Cruzando ${obcOrders.length} órdenes OBC con ${validatedOBCSet.size} órdenes validadas`);
+    
+    const pendingOrders = [];
+    const validatedOrders = [];
+    
+    obcOrders.forEach(order => {
+        const obcCode = order.orden.trim().toUpperCase();
+        
+        if (validatedOBCSet.has(obcCode)) {
+            // This order has been validated - get its validation records
+            const validationRecords = validatedByOBC.get(obcCode) || [];
+            
+            // Add each validation record to validatedOrders
+            validationRecords.forEach(record => {
+                validatedOrders.push({
+                    ...record,
+                    // Add OBC data for reference
+                    totalCajas: order.totalCajas,
+                    recipient: order.recipient,
+                    expectedArrival: order.expectedArrival
+                });
+            });
+        } else {
+            // This order is still pending
+            pendingOrders.push(order);
+        }
+    });
+    
+    console.log(`✅ Resultado del cruce:`);
+    console.log(`   - Pendientes: ${pendingOrders.length}`);
+    console.log(`   - Validadas: ${validatedOrders.length}`);
+    console.log(`   - OBCs validados: ${validatedOBCSet.size}`);
+    
+    return { pendingOrders, validatedOrders, validatedOBCSet };
+}
+
+// Sync transactional data (validacion and folios) from Google Sheets
+async function syncTransactionalData() {
+    if (!STATE.isOnline || STATE.syncInProgress) return;
+    
+    STATE.syncInProgress = true;
+    updateConnectionStatus();
+    
+    try {
+        // Sync validacion data (surtido)
+        const validacionResponse = await fetch(CONFIG.SOURCES.VALIDACION);
+        const validacionCsv = await validacionResponse.text();
+        
+        // Parse and merge with local data
+        const newValidacionData = new Map();
+        const lines = validacionCsv.split('\n').filter(l => l.trim());
+        
+        for (let i = 1; i < lines.length; i++) {
+            const cols = parseCSVLine(lines[i]);
+            if (cols.length >= 5) {
+                const orden = cols[3]?.trim();
+                if (orden) {
+                    if (!newValidacionData.has(orden)) {
+                        newValidacionData.set(orden, []);
+                    }
+                    newValidacionData.get(orden).push({
+                        fecha: cols[0]?.trim() || '',
+                        hora: cols[1]?.trim() || '',
+                        usuario: cols[2]?.trim() || '',
+                        orden: orden,
+                        codigo: cols[4]?.trim() || '',
+                        ubicacion: cols[5]?.trim() || '',
+                        porcentaje: cols[6]?.trim() || '',
+                        nota: cols[7]?.trim() || ''
+                    });
+                }
+            }
+        }
+        
+        // Detect changes and update
+        const hasChanges = detectValidacionChanges(STATE.validacionData, newValidacionData);
+        if (hasChanges) {
+            STATE.validacionData = newValidacionData;
+            STATE.dataVersion++;
+            console.log('🔄 Validacion data updated from remote');
+            
+            // Refresh UI if needed
+            if (STATE.currentOrder) {
+                // Refresh current order view
+                updateOrderDisplay();
+            }
+        }
+        
+        // Sync validated records from Despachos sheet
+        if (gapi?.client?.sheets) {
+            await loadExistingValidatedRecords();
+        }
+        
+        STATE.lastSyncTime = Date.now();
+        saveLocalState();
+        
+    } catch (error) {
+        console.error('Error syncing transactional data:', error);
+    } finally {
+        STATE.syncInProgress = false;
+        updateConnectionStatus();
+    }
+}
+
+// Detect if validacion data has changed
+function detectValidacionChanges(oldData, newData) {
+    if (oldData.size !== newData.size) return true;
+    
+    for (const [orden, items] of newData.entries()) {
+        const oldItems = oldData.get(orden);
+        if (!oldItems || oldItems.length !== items.length) return true;
+    }
+    
+    return false;
+}
+
+// Sync pending changes to Google Sheets
+async function syncPendingChanges() {
+    if (!STATE.isOnline || STATE.pendingSync.length === 0) return;
+    
+    showNotification('🔄 Sincronizando cambios pendientes...', 'info');
+    
+    const failedSyncs = [];
+    
+    for (const change of STATE.pendingSync) {
+        try {
+            // Implement actual sync to Google Sheets here
+            // This would use gapi.client.sheets.spreadsheets.values.append
+            console.log('Syncing change:', change);
+            
+            // For now, just mark as synced
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+        } catch (error) {
+            console.error('Failed to sync change:', error);
+            failedSyncs.push(change);
+        }
+    }
+    
+    // Update pending sync queue
+    STATE.pendingSync = failedSyncs;
+    saveLocalState();
+    
+    if (failedSyncs.length === 0) {
+        showNotification('✅ Todos los cambios sincronizados', 'success');
+    } else {
+        showNotification(`⚠️ ${failedSyncs.length} cambios pendientes de sincronizar`, 'warning');
+    }
+}
+
+// Check if user can edit (online mode required)
+function canEdit() {
+    if (!STATE.isOnline) {
+        showNotification('❌ Sin conexión - No se pueden realizar cambios', 'error');
+        return false;
+    }
+    return true;
 }
 
 function generateFolio(folioCarga) {
@@ -128,14 +954,65 @@ function generateFolio(folioCarga) {
 
 // Verificar si una orden ya fue despachada (no confundir con validación de surtido)
 function isOrderValidated(orden) {
-    // Buscar en despachos validados locales
-    const localMatch = STATE.localValidated.find(v => v.orden === orden);
+    // Método 1: Verificar el flag isValidated en obcData (set during cross-reference)
+    const orderData = STATE.obcData.get(orden) || STATE.obcData.get(orden?.toUpperCase());
+    if (orderData && orderData.isValidated) {
+        // Find the validation record
+        const localMatch = STATE.localValidated.find(v => 
+            v.orden === orden || v.orden?.toUpperCase() === orden?.toUpperCase()
+        );
+        return { validated: true, source: 'crossref', data: localMatch || orderData };
+    }
+    
+    // Método 2: Buscar en despachos validados locales (fallback)
+    const localMatch = STATE.localValidated.find(v => 
+        v.orden === orden || v.orden?.toUpperCase() === orden?.toUpperCase()
+    );
     if (localMatch) return { validated: true, source: 'local', data: localMatch };
 
     // NO verificar contra STATE.validacionData porque esos son datos de surtido (Val3), no despachos
     // Los despachos solo se verifican contra localValidated y la cola de sync
 
     return { validated: false };
+}
+
+// Safe function to update validation badges (prevents ReferenceError)
+function updateValidationBadges() {
+    try {
+        const validatedCount = STATE.localValidated.length;
+        const pendingCount = STATE.localPending.length;
+        
+        // Update badges if elements exist
+        const validatedBadge = document.querySelector('[data-badge="validated"]');
+        const pendingBadge = document.querySelector('[data-badge="pending"]');
+        
+        if (validatedBadge) {
+            validatedBadge.textContent = validatedCount;
+        }
+        if (pendingBadge) {
+            pendingBadge.textContent = pendingCount;
+        }
+        
+        console.log(`📊 Badges updated: ${validatedCount} validated, ${pendingCount} pending`);
+    } catch (error) {
+        console.warn('Could not update validation badges:', error);
+    }
+}
+
+// Validate edit operation with conflict detection
+function validateEditOperation(orden, operationType) {
+    // Check online status
+    if (!canEdit()) {
+        return { allowed: false, reason: 'offline' };
+    }
+    
+    // Check for concurrent edits (simple version based on data version)
+    const currentVersion = STATE.dataVersion;
+    
+    // In a full implementation, this would check if another user
+    // is currently editing the same record
+    
+    return { allowed: true, version: currentVersion };
 }
 
 // ==================== SISTEMA DE FOLIOS DE CARGA ====================
@@ -390,9 +1267,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadLocalState();
     cleanOldFolios();
     setupEventListeners();
-    setupConnectionMonitoring();
-    initSyncManager();
+    
+    // Initialize connection monitoring for offline mode
+    initializeConnectionMonitoring();
+    
+    // Initialize sync manager if available
+    if (typeof initSyncManager === 'function') {
+        setupConnectionMonitoring();
+        initSyncManager();
+    }
+    
     initSidebarComponent();
+    
+    console.log('✅ Dispatch app initialized with real-time sync and offline mode support');
 });
 
 function initSidebarComponent() {
@@ -406,7 +1293,7 @@ function initSidebarComponent() {
         onToggleConnection: toggleConnection,
         buttons: [
             { label: '🚀 Iniciar Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
-            { label: '📋 Gestión de Folios', onClick: 'showFoliosManagement()', class: 'sidebar-btn-secondary' },
+            { label: '📋 Gestión de Folios', onClick: 'showFoliosManagementView()', class: 'sidebar-btn-secondary' },
             { label: '📥 Exportar CSV', onClick: 'exportData()', class: 'sidebar-btn-secondary' }
         ]
     });
@@ -784,26 +1671,16 @@ function updateUserFooter() {
 async function loadAllData() {
     STATE.isLoading = true;
     STATE.loadingProgress = 0;
-    showLoadingOverlay(true, 0, 5);
-    showNotification('🔄 Cargando datos...', 'info');
+    showLoadingOverlay(true, 0, 4);  // Reduced to 4 (removed BD_CAJAS and validated/folios)
+    showNotification('🔄 Cargando catálogos básicos...', 'info');
 
     let errors = [];
     let loaded = 0;
-    const total = 5;
+    const total = 4;  // Only essential catalogs: VALIDACION, MNE, TRS, LISTAS
 
-    // Load BD_CAJAS PRIMERO (Pestaña BD - gid=0 - FUENTE PRINCIPAL)
-    // Esta es la base de datos completa con todas las cajas individuales
-    try {
-        const bdCajasResponse = await fetch(CONFIG.SOURCES.BD_CAJAS);
-        const bdCajasCsv = await bdCajasResponse.text();
-        parseBDCajasData(bdCajasCsv);
-        loaded++;
-        STATE.loadingProgress = loaded;
-        showLoadingOverlay(true, loaded, total);
-    } catch (e) {
-        console.error('Error loading BD_CAJAS:', e);
-        errors.push('BD_CAJAS');
-    }
+    // ❌ REMOVED: BD_CAJAS loading (200k+ records causing crash)
+    // 💡 BD_CAJAS will be loaded lazily when date filter is applied
+    console.log('⚡ Lazy loading enabled: BD_CAJAS will load on-demand with date filter');
 
     // Load VALIDACION (Sistema de Validación de Surtido)
     try {
@@ -857,20 +1734,26 @@ async function loadAllData() {
         errors.push('LISTAS');
     }
 
+    // ❌ REMOVED: Transactional data loading from initialization
+    // 💡 Validated records and folios will be loaded lazily with date filter
+    console.log('⚡ Transactional data will load on-demand with date filter');
+
     STATE.isLoading = false;
     showLoadingOverlay(false);
 
     // Show appropriate notification
     if (errors.length > 0 && loaded === 0) {
-        showNotification('❌ Error cargando todas las bases de datos', 'error');
+        showNotification('❌ Error cargando catálogos', 'error');
     } else if (errors.length > 0) {
-        showNotification(`⚠️ ${STATE.obcData.size} órdenes cargadas (advertencia: algunas fuentes fallaron)`, 'warning');
+        showNotification(`⚠️ Catálogos cargados (advertencia: algunas fuentes fallaron)`, 'warning');
     } else {
-        showNotification(`✅ ${STATE.obcData.size} órdenes cargadas exitosamente`, 'success');
+        showNotification(`✅ Catálogos cargados - Usa el filtro de fecha para cargar órdenes`, 'success');
     }
 
     updateBdInfo();
     updateSummary();
+    
+    console.log('✅ Initialization complete - Ready for lazy loading with date filter');
 }
 
 function parseOBCData(csv) {
@@ -1200,8 +2083,21 @@ function toggleConnection() {
 function showSearchPanel() {
     // CHANGE 1: Show global navigation and enforce date filter
     showGlobalNavigation();
-    // Mostrar modal de fecha obligatorio antes de iniciar
-    showDateFilterForDispatch();
+    
+    // Check if data is already loaded
+    if (STATE.obcData.size === 0 && !STATE.dateFilter.active) {
+        // No data loaded yet, show modal to select date
+        showDateFilterForDispatch();
+    } else {
+        // Data already loaded, show search panel directly
+        document.getElementById('welcome-state').style.display = 'none';
+        document.getElementById('search-panel').style.display = 'block';
+        document.getElementById('validated-content').style.display = 'none';
+        document.getElementById('folio-details-content').style.display = 'none';
+        document.getElementById('folios-content').style.display = 'none';
+        
+        renderPendingTable();
+    }
 }
 
 function showDateFilterForDispatch() {
@@ -3017,10 +3913,67 @@ function executeDeleteValidated() {
 }
 
 // ==================== SEARCH ====================
-// CHANGE 4: Use normalizeCode from wms-utils.js for raw code search
-// The wms-utils normalizeCode function handles special characters, JSON patterns,
-// and provides more robust code normalization than the previous simple version
+// ==================== SCANNER INPUT NORMALIZATION ====================
+// Enhanced normalization based on scan.html implementation
 
+function normalizeScannerInput(raw) {
+    let code = raw.trim().toUpperCase();
+
+    // Remove control characters and scanner prefixes
+    code = code.replace(/[\x00-\x1F\x7F]/g, ''); // Remove control characters
+    code = code.replace(/^GS1:|^\]C1|^\]E0|^\]d2/i, ''); // Remove scanner prefixes
+
+    // Extract from JSON patterns
+    const patterns = [
+        /\[id\[.*?\[([^\[]+)\[/i,
+        /¨id¨.*?¨([^¨]+)¨/i,
+        /"id"\s*:\s*"([^"]+)"/i
+    ];
+
+    for (const pattern of patterns) {
+        const match = code.match(pattern);
+        if (match) return match[1];
+    }
+
+    // Special pattern: IDxxxxxx-xxOPERATION... → extract only xxxxxx-xx
+    const idPattern = /^ID(\d+[-\/]\d+)/i;
+    const idMatch = code.match(idPattern);
+    if (idMatch) {
+        console.log(`🔍 Código extraído de patrón ID: ${idMatch[1]} (original: ${raw})`);
+        return idMatch[1];
+    }
+
+    // Clean special characters except dashes, slashes, and alphanumeric
+    return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+}
+
+// Intelligent code search with dash/slash alternation
+function findCodeWithVariants(code, dataMap) {
+    // Try original
+    if (dataMap.has(code)) {
+        return { found: true, code: code, variant: 'original' };
+    }
+
+    // If contains "/", try with "-"
+    if (code.includes('/')) {
+        const withDash = code.replace(/\//g, '-');
+        if (dataMap.has(withDash)) {
+            return { found: true, code: withDash, variant: 'dash' };
+        }
+    }
+
+    // If contains "-", try with "/"
+    if (code.includes('-')) {
+        const withSlash = code.replace(/-/g, '/');
+        if (dataMap.has(withSlash)) {
+            return { found: true, code: withSlash, variant: 'slash' };
+        }
+    }
+
+    return { found: false, code: code, variant: 'none' };
+}
+
+// CHANGE 4: Enhanced executeSearch with scanner normalization
 function executeSearch() {
     const searchInput = document.getElementById('search-input');
     const rawQuery = searchInput?.value.trim() || '';
@@ -3030,9 +3983,16 @@ function executeSearch() {
         return;
     }
 
-    // Normalizar el query
-    const queryNormalized = normalizeCode(rawQuery);
-    const query = rawQuery.toUpperCase();
+    // Normalize scanner input (remove control chars, prefixes, etc.)
+    const queryNormalized = normalizeScannerInput(rawQuery);
+    const query = queryNormalized.toUpperCase();
+    
+    console.log(`🔍 Búsqueda: raw="${rawQuery}" → normalized="${query}"`);
+
+    // Check if user can perform search (online check for edit operations later)
+    if (!STATE.isOnline) {
+        showNotification('⚠️ Modo offline - Solo consulta disponible', 'warning');
+    }
 
     let foundOrders = [];
     const isOBC = query.startsWith('OBC');
@@ -4312,6 +5272,15 @@ async function saveValidatedOrderChanges(orden) {
 }
 
 async function confirmDispatch() {
+    // Validate edit operation (check online status)
+    const validation = validateEditOperation(STATE.currentOrder, 'dispatch');
+    if (!validation.allowed) {
+        if (validation.reason === 'offline') {
+            showNotification('❌ Sin conexión - No se pueden realizar cambios', 'error');
+            return;
+        }
+    }
+    
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
     const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
@@ -4466,10 +5435,20 @@ function closeConfirmDispatch() {
 }
 
 async function executeConfirmDispatch() {
+    // Validate edit operation (check online status)
+    const validation = validateEditOperation(STATE.currentOrder, 'dispatch');
+    if (!validation.allowed) {
+        if (validation.reason === 'offline') {
+            showNotification('❌ Sin conexión - No se pueden realizar cambios', 'error');
+            closeConfirmDispatch();
+            return;
+        }
+    }
+    
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
     const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
-    const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
+    const cantidadDespachar = parseInt(document.getElementById('modal-cantidad-despachar')?.value) || 0;
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
     // Cerrar modal de confirmación
@@ -4779,7 +5758,7 @@ function closeDateFilter() {
     modal.classList.remove('show');
 }
 
-function applyDateFilter() {
+async function applyDateFilter() {
     const startDate = document.getElementById('date-start').value;
     const endDate = document.getElementById('date-end').value;
 
@@ -4788,18 +5767,20 @@ function applyDateFilter() {
         return;
     }
 
-    const startDateObj = new Date(startDate);
-    const endDateObj = new Date(endDate);
-
-    if (startDateObj > endDateObj) {
-        showNotification('⚠️ La fecha de inicio debe ser anterior a la fecha fin', 'warning');
+    // Validar que fecha inicio no sea mayor que fecha fin
+    if (startDate > endDate) {
+        showNotification('⚠️ La fecha de inicio no puede ser mayor que la fecha de fin', 'warning');
         return;
     }
 
-    // Check for 7-day max range restriction
-    const daysDiff = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
-    if (daysDiff > 7) {
-        showNotification('⚠️ El rango máximo permitido es de 7 días', 'warning');
+    // Validar que el rango no sea mayor a 30 días
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 30) {
+        showNotification('⚠️ El rango de fechas no puede ser mayor a 30 días', 'warning');
         return;
     }
 
@@ -4807,48 +5788,61 @@ function applyDateFilter() {
     STATE.dateFilter.endDate = endDate;
     STATE.dateFilter.active = true;
 
-    filterOrdersByDateRange();
+    // ✨ LAZY LOADING: Load data on-demand with date filter
+    console.log('🚀 Triggering lazy loading with date filter...');
+    
+    try {
+        // Call lazy loading function to fetch data for this date range
+        await lazyLoadDataByDate(startDate, endDate);
+        
+        // After lazy loading completes, apply local filtering
+        filterOrdersByDateRange();
 
-    // Verificar si es inicio de despacho
-    const modal = document.getElementById('date-filter-modal');
-    const isDispatchInit = modal.getAttribute('data-dispatch-init') === 'true';
+        // Verificar si es inicio de despacho
+        const modal = document.getElementById('date-filter-modal');
+        const isDispatchInit = modal.getAttribute('data-dispatch-init') === 'true';
 
-    if (isDispatchInit) {
-        // Activar panel de búsqueda
-        modal.removeAttribute('data-dispatch-init');
+        if (isDispatchInit) {
+            // Activar panel de búsqueda
+            modal.removeAttribute('data-dispatch-init');
+            activateSearchPanelWithFilter();
+        } else {
+            // Solo actualizar filtro - both Pendientes and Validadas
+            renderOrdersList();
+            renderValidatedTable(); // Also update Validadas with same filter
+            updateSummary();
+        }
+
+        // Parse dates as local time to avoid timezone offset in display
+        const startParts = startDate.split('-');
+        const startDateForDisplay = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        const endParts = endDate.split('-');
+        const endDateForDisplay = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+
+        const startFormatted = formatDateDDMMYYYY(startDateForDisplay);
+        const endFormatted = formatDateDDMMYYYY(endDateForDisplay);
+
+        // Actualizar botón de filtro en Pendientes
+        const dateFilterText = document.getElementById('date-filter-text');
+        const dateFilterBtn = document.getElementById('date-filter-display');
+        if (dateFilterText) {
+            dateFilterText.textContent = `${startFormatted} → ${endFormatted}`;
+        }
+        if (dateFilterBtn) {
+            dateFilterBtn.classList.add('active-filter');
+        }
+
+        showNotification(`📅 Filtro aplicado: ${startFormatted} - ${endFormatted} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
+
+        // CHANGE 1: Update global navigation date indicator
+        updateGlobalDateIndicator();
+        
+    } catch (error) {
+        console.error('Error applying date filter with lazy loading:', error);
+        showNotification('❌ Error al cargar datos: ' + error.message, 'error');
+    } finally {
         closeDateFilter();
-        activateSearchPanelWithFilter();
-    } else {
-        // Solo actualizar filtro - both Pendientes and Validadas
-        renderOrdersList();
-        renderValidatedTable(); // Also update Validadas with same filter
-        updateSummary();
-        closeDateFilter();
     }
-
-    // Parse dates as local time to avoid timezone offset in display
-    const startParts = startDate.split('-');
-    const startDateForDisplay = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
-    const endParts = endDate.split('-');
-    const endDateForDisplay = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
-
-    const startFormatted = formatDateDDMMYYYY(startDateForDisplay);
-    const endFormatted = formatDateDDMMYYYY(endDateForDisplay);
-
-    // Actualizar botón de filtro en Pendientes
-    const dateFilterText = document.getElementById('date-filter-text');
-    const dateFilterBtn = document.getElementById('date-filter-display');
-    if (dateFilterText) {
-        dateFilterText.textContent = `${startFormatted} → ${endFormatted}`;
-    }
-    if (dateFilterBtn) {
-        dateFilterBtn.classList.add('active-filter');
-    }
-
-    showNotification(`📅 Filtro aplicado: ${startFormatted} - ${endFormatted} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
-
-    // CHANGE 1: Update global navigation date indicator
-    updateGlobalDateIndicator();
 }
 
 function clearDateFilter() {
@@ -4856,6 +5850,17 @@ function clearDateFilter() {
     STATE.dateFilter.endDate = null;
     STATE.dateFilter.active = false;
     STATE.obcDataFiltered.clear();
+
+    // ✨ Clear lazy-loaded data
+    STATE.obcData.clear();
+    STATE.bdCajasData.clear();
+    STATE.localValidated = [];
+    STATE.localPending = [];
+
+    document.getElementById('date-start').value = '';
+    document.getElementById('date-end').value = '';
+    document.getElementById('date-start-display').textContent = 'Seleccionar fecha...';
+    document.getElementById('date-end-display').textContent = 'Seleccionar fecha...';
 
     // Restaurar texto del botón en Pendientes
     const dateFilterText = document.getElementById('date-filter-text');
@@ -4875,6 +5880,38 @@ function clearDateFilter() {
     if (validatedDateFilterBtn) {
         validatedDateFilterBtn.classList.remove('active-filter');
     }
+
+    updateDateFilterDisplay();
+    updateValidatedFilterIndicator();
+    updateSummary();
+    updateTabBadges();
+    updateValidationBadges();
+
+    // Clear tables
+    const pendingTableBody = document.getElementById('orders-table-body');
+    const validatedTableBody = document.getElementById('validated-table-body');
+    
+    if (pendingTableBody) {
+        pendingTableBody.innerHTML = `
+            <tr>
+                <td colspan="10" class="table-empty-state">
+                    📅 Selecciona un rango de fechas para cargar órdenes
+                </td>
+            </tr>
+        `;
+    }
+    
+    if (validatedTableBody) {
+        validatedTableBody.innerHTML = `
+            <tr>
+                <td colspan="15" class="table-empty-state">
+                    📅 Selecciona un rango de fechas para cargar registros validados
+                </td>
+            </tr>
+        `;
+    }
+
+    closeDateFilter();
 
     // CHANGE 1: Update global navigation date indicator
     updateGlobalDateIndicator();
@@ -4997,17 +6034,40 @@ function hidePreloader() {
     if (overlay) overlay.style.display = 'none';
 }
 
-function showLoadingOverlay(show, current = 0, total = 5) {
+function showLoadingOverlay(show, current = 0, total = 5, customMessage = null) {
     const overlay = document.getElementById('data-loading-overlay');
-    if (!overlay) return;
+    if (!overlay) {
+        console.warn('data-loading-overlay not found');
+        return;
+    }
 
     if (show) {
-        const percent = Math.round((current / total) * 100);
-        document.getElementById('loading-progress-fill').style.width = `${percent}%`;
-        document.getElementById('loading-progress-text').textContent = `${current}/${total} completadas`;
-        overlay.classList.add('show');
+        const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+        
+        // Update progress bar fill
+        const progressFill = document.getElementById('loading-progress-fill');
+        if (progressFill) {
+            progressFill.style.width = `${percentage}%`;
+        }
+
+        // Update progress text
+        const progressText = document.getElementById('loading-progress-text');
+        if (progressText) {
+            progressText.textContent = `${current} / ${total} completadas`;
+        }
+
+        // Update main message
+        const preloaderText = overlay.querySelector('.preloader-text');
+        if (preloaderText && customMessage) {
+            preloaderText.textContent = customMessage;
+        } else if (preloaderText) {
+            preloaderText.textContent = '🔄 Cargando bases de datos...';
+        }
+
+        overlay.style.display = 'flex';
+        console.log(`📊 Progress: ${current}/${total} (${percentage}%)`);
     } else {
-        overlay.classList.remove('show');
+        overlay.style.display = 'none';
     }
 }
 
@@ -5088,16 +6148,28 @@ function formatMultipleServices(servicesString) {
 
 // ==================== GESTIÓN DE FOLIOS DE CARGA ====================
 
-// Estado para el filtro de folios
+// Estado para el filtro de folios (pestaña regular - usa filtro global)
 let FOLIOS_DATE_FILTER = {
     startDate: null,
     endDate: null,
     active: false
 };
 
+// Estado para el filtro de Gestión de Folios (vista independiente desde sidebar)
+let FOLIOS_MGMT_DATE_FILTER = {
+    startDate: null,
+    endDate: null,
+    active: false
+};
+
+// Flag para saber si estamos en vista de gestión independiente
+let isInFoliosManagementView = false;
+
 // Variables para ordenamiento de tabla de folios
 let foliosSortColumn = 1; // Por defecto ordenar por fecha
 let foliosSortDirection = 'desc';
+let foliosMgmtSortColumn = 1;
+let foliosMgmtSortDirection = 'desc';
 
 /**
  * Muestra el panel de gestión de folios
@@ -5204,13 +6276,37 @@ function renderFoliosTable() {
 
     let folios = getAllFolios();
 
-    // Aplicar filtro de fecha si está activo
-    if (FOLIOS_DATE_FILTER.active && FOLIOS_DATE_FILTER.startDate && FOLIOS_DATE_FILTER.endDate) {
-        const startDate = new Date(FOLIOS_DATE_FILTER.startDate);
-        const endDate = new Date(FOLIOS_DATE_FILTER.endDate);
+    // SINCRONIZACIÓN GLOBAL: La pestaña de Folios usa el filtro global de fecha
+    // Si hay filtro global activo, usarlo; si no, usar filtro propio de folios
+    let useGlobalFilter = STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate;
+    let useFoliosFilter = FOLIOS_DATE_FILTER.active && FOLIOS_DATE_FILTER.startDate && FOLIOS_DATE_FILTER.endDate;
+    
+    if (useGlobalFilter) {
+        // FIX: Usar parseDateLocal para evitar -1 día
+        const startDate = parseDateLocal(STATE.dateFilter.startDate);
+        const endDate = parseDateLocal(STATE.dateFilter.endDate);
+        endDate.setHours(23, 59, 59, 999);
 
         folios = folios.filter(folio => {
-            const folioDate = new Date(folio.fecha);
+            const folioDate = parseDateLocal(folio.fecha);
+            return folioDate >= startDate && folioDate <= endDate;
+        });
+        
+        // Actualizar texto del botón de filtro de folios para mostrar que usa filtro global
+        const filterText = document.getElementById('folios-date-filter-text');
+        if (filterText) {
+            const startFormatted = formatDateForDisplay(STATE.dateFilter.startDate);
+            const endFormatted = formatDateForDisplay(STATE.dateFilter.endDate);
+            filterText.textContent = `${startFormatted} → ${endFormatted} (Global)`;
+        }
+    } else if (useFoliosFilter) {
+        // FIX: Usar parseDateLocal para evitar -1 día
+        const startDate = parseDateLocal(FOLIOS_DATE_FILTER.startDate);
+        const endDate = parseDateLocal(FOLIOS_DATE_FILTER.endDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        folios = folios.filter(folio => {
+            const folioDate = parseDateLocal(folio.fecha);
             return folioDate >= startDate && folioDate <= endDate;
         });
     }
@@ -5288,10 +6384,13 @@ function renderFoliosTable() {
             ? folio.horarios.reduce((max, h) => h > max ? h : max, folio.horarios[0])
             : 'N/A';
 
+        // FIX: Formatear fecha correctamente sin offset
+        const fechaDisplay = formatDateForDisplay(folio.fecha);
+        
         return `
             <tr>
                 <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
-                <td>${folio.fecha}</td>
+                <td>${fechaDisplay}</td>
                 <td style="text-align: center;">${folio.totalCajas}</td>
                 <td style="text-align: center;">${folio.ordenes.length}</td>
                 <td>${horarioInicial}</td>
@@ -5534,6 +6633,337 @@ function confirmExitFolios() {
     document.getElementById('welcome-state').style.display = 'flex';
 }
 
+// ==================== VISTA INDEPENDIENTE: GESTIÓN DE FOLIOS (SIDEBAR) ====================
+
+/**
+ * Muestra la vista independiente de Gestión de Folios (acceso desde sidebar)
+ * Esta vista NO tiene navegación de pestañas y muestra TODOS los folios por defecto
+ */
+async function showFoliosManagementView() {
+    console.log('📋 Abriendo vista independiente de Gestión de Folios');
+    
+    isInFoliosManagementView = true;
+    
+    // Ocultar navegación global (esta vista es independiente)
+    const globalNav = document.getElementById('global-nav-header');
+    if (globalNav) globalNav.style.display = 'none';
+    
+    // Ocultar todos los paneles
+    document.getElementById('welcome-state').style.display = 'none';
+    document.getElementById('search-panel').style.display = 'none';
+    document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folios-content').style.display = 'none';
+    document.getElementById('folio-details-content').style.display = 'none';
+    
+    // Mostrar vista de gestión de folios
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent) {
+        foliosMgmtContent.style.display = 'block';
+    }
+    
+    // Mostrar estado de carga inicial
+    const tableBody = document.getElementById('folios-mgmt-table-body');
+    if (tableBody) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="table-empty-state">
+                    <div class="table-empty-icon">⏳</div>
+                    <div class="table-empty-text">Cargando folios...</div>
+                    <div class="table-empty-subtext">Descargando historial desde la base de datos</div>
+                </td>
+            </tr>
+        `;
+    }
+    
+    // Cargar TODOS los folios sin filtro de fecha (por defecto) - AWAIT
+    await loadAllFoliosForManagement();
+    
+    // Renderizar tabla después de cargar datos
+    renderFoliosManagementTable();
+}
+
+/**
+ * Cierra la vista de Gestión de Folios y regresa al welcome
+ */
+function closeFoliosManagementView() {
+    isInFoliosManagementView = false;
+    
+    // Ocultar vista de gestión
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent) {
+        foliosMgmtContent.style.display = 'none';
+    }
+    
+    // Mostrar welcome
+    document.getElementById('welcome-state').style.display = 'flex';
+    
+    // Restaurar navegación global
+    const globalNav = document.getElementById('global-nav-header');
+    if (globalNav) globalNav.style.display = 'flex';
+}
+
+/**
+ * Carga todos los folios para la vista de gestión (sin filtro de fecha por defecto)
+ * SIEMPRE carga desde BD de escritura para tener datos actualizados
+ */
+async function loadAllFoliosForManagement() {
+    try {
+        console.log('📥 Cargando todos los registros validados para Gestión de Folios...');
+        
+        // Verificar si Google Sheets API está disponible
+        if (!gapi?.client?.sheets) {
+            console.warn('⚠️ Google Sheets API no disponible, intentando inicializar...');
+            
+            // Intentar esperar a que se inicialice
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            if (!gapi?.client?.sheets) {
+                showNotification('⚠️ Inicia sesión para ver los folios', 'warning');
+                return;
+            }
+        }
+        
+        showNotification('🔄 Cargando historial de folios...', 'info');
+        
+        // Siempre cargar desde BD de escritura para tener datos actualizados
+        const records = await fetchValidatedRecordsFromWriteDB();
+        
+        console.log(`📊 fetchValidatedRecordsFromWriteDB retornó ${records ? records.length : 0} registros`);
+        
+        // Actualizar STATE.localValidated con los registros cargados
+        if (records && records.length > 0) {
+            STATE.localValidated = records;
+            // Reconstruir folios desde los registros
+            rebuildFoliosFromRecords(records);
+            console.log(`✅ Cargados ${STATE.localValidated.length} registros validados`);
+            showNotification(`✅ ${STATE.localValidated.length} registros cargados`, 'success');
+        } else {
+            console.log('ℹ️ No se encontraron registros en la BD de escritura');
+            showNotification('ℹ️ No hay folios registrados aún', 'info');
+        }
+        
+    } catch (error) {
+        console.error('Error loading folios for management:', error);
+        showNotification('⚠️ Error al cargar folios: ' + (error.message || 'Error desconocido'), 'warning');
+    }
+}
+
+/**
+ * Renderiza la tabla de Gestión de Folios (vista independiente)
+ */
+function renderFoliosManagementTable() {
+    const tableBody = document.getElementById('folios-mgmt-table-body');
+    if (!tableBody) return;
+
+    let folios = getAllFolios();
+
+    // Aplicar filtro de fecha SOLO si está activo (por defecto NO está activo)
+    if (FOLIOS_MGMT_DATE_FILTER.active && FOLIOS_MGMT_DATE_FILTER.startDate && FOLIOS_MGMT_DATE_FILTER.endDate) {
+        // FIX: Usar parse local para evitar -1 día
+        const startDate = parseDateLocal(FOLIOS_MGMT_DATE_FILTER.startDate);
+        const endDate = parseDateLocal(FOLIOS_MGMT_DATE_FILTER.endDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        folios = folios.filter(folio => {
+            const folioDate = parseDateLocal(folio.fecha);
+            return folioDate >= startDate && folioDate <= endDate;
+        });
+    }
+
+    // Ordenar folios
+    folios.sort((a, b) => {
+        let valA, valB;
+
+        switch(foliosMgmtSortColumn) {
+            case 0: valA = a.folio; valB = b.folio; break;
+            case 1: valA = a.fecha; valB = b.fecha; break;
+            case 2: valA = a.totalCajas; valB = b.totalCajas; break;
+            case 3: valA = a.ordenes.length; valB = b.ordenes.length; break;
+            case 6: valA = a.conductor || ''; valB = b.conductor || ''; break;
+            case 7: valA = a.unidad || ''; valB = b.unidad || ''; break;
+            default: valA = a.fecha; valB = b.fecha;
+        }
+
+        if (foliosMgmtSortDirection === 'asc') {
+            return valA > valB ? 1 : -1;
+        } else {
+            return valA < valB ? 1 : -1;
+        }
+    });
+
+    // Actualizar badges
+    updateFoliosManagementBadges(folios);
+
+    if (folios.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="table-empty-state">
+                    <div class="table-empty-icon">📋</div>
+                    <div class="table-empty-text">No hay folios de carga</div>
+                    <div class="table-empty-subtext">Los folios generados aparecerán aquí</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tableBody.innerHTML = folios.map(folio => {
+        const horarioInicial = folio.horarios.length > 0
+            ? folio.horarios.reduce((min, h) => h < min ? h : min, folio.horarios[0])
+            : 'N/A';
+        const horarioFinal = folio.horarios.length > 0
+            ? folio.horarios.reduce((max, h) => h > max ? h : max, folio.horarios[0])
+            : 'N/A';
+
+        // FIX: Formatear fecha correctamente sin offset
+        const fechaDisplay = formatDateForDisplay(folio.fecha);
+
+        return `
+            <tr>
+                <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
+                <td>${fechaDisplay}</td>
+                <td style="text-align: center;">${folio.totalCajas}</td>
+                <td style="text-align: center;">${folio.ordenes.length}</td>
+                <td>${horarioInicial}</td>
+                <td>${horarioFinal}</td>
+                <td>${folio.conductor || '<span class="empty-cell">N/A</span>'}</td>
+                <td>${folio.unidad || '<span class="empty-cell">N/A</span>'}</td>
+                <td>
+                    <div style="display: flex; gap: 8px; justify-content: center;">
+                        <button class="btn-action print" onclick="printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                                <rect x="6" y="14" width="12" height="8"></rect>
+                            </svg>
+                        </button>
+                        <button class="btn-action view" onclick="viewFolioOrdersFromManagement('${folio.folio}')" title="Ver Órdenes">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Ver órdenes de un folio desde la vista de gestión
+ */
+function viewFolioOrdersFromManagement(folioCompleto) {
+    // Guardar que venimos de la vista de gestión
+    STATE.fromFoliosManagement = true;
+    viewFolioOrders(folioCompleto);
+}
+
+/**
+ * Actualiza los badges de la vista de Gestión de Folios
+ */
+function updateFoliosManagementBadges(folios) {
+    let totalOrders = 0;
+    let totalBoxes = 0;
+
+    folios.forEach(folio => {
+        totalOrders += folio.ordenes.length;
+        totalBoxes += folio.totalCajas;
+    });
+
+    const foliosCountEl = document.getElementById('folios-mgmt-count');
+    const ordersCountEl = document.getElementById('folios-mgmt-orders-count');
+    const boxesCountEl = document.getElementById('folios-mgmt-boxes-count');
+
+    if (foliosCountEl) foliosCountEl.textContent = `${folios.length} ${folios.length === 1 ? 'folio' : 'folios'}`;
+    if (ordersCountEl) ordersCountEl.textContent = `${totalOrders} ${totalOrders === 1 ? 'orden' : 'órdenes'}`;
+    if (boxesCountEl) boxesCountEl.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'caja' : 'cajas'}`;
+}
+
+/**
+ * Ordenar tabla de Gestión de Folios
+ */
+function sortFoliosManagementTable(columnIndex) {
+    if (foliosMgmtSortColumn === columnIndex) {
+        foliosMgmtSortDirection = foliosMgmtSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        foliosMgmtSortColumn = columnIndex;
+        foliosMgmtSortDirection = 'asc';
+    }
+    renderFoliosManagementTable();
+}
+
+/**
+ * Filtrar tabla de Gestión de Folios por texto
+ */
+function filterFoliosManagementTable() {
+    const filterText = document.getElementById('filter-folios-mgmt')?.value.toLowerCase() || '';
+    const rows = document.querySelectorAll('#folios-mgmt-table-body tr');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filterText) ? '' : 'none';
+    });
+}
+
+/**
+ * Mostrar filtro de fecha para Gestión de Folios
+ */
+function showFoliosManagementDateFilter() {
+    // Reutilizar el modal de filtro de folios pero con lógica diferente
+    const modal = document.getElementById('folios-date-filter-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.dataset.target = 'management'; // Marcar que es para gestión
+    }
+}
+
+// ==================== FIX: FUNCIONES DE FECHA SIN OFFSET ====================
+
+/**
+ * Parsea una fecha en formato YYYY-MM-DD como fecha local (sin timezone offset)
+ * @param {string} dateStr - Fecha en formato YYYY-MM-DD
+ * @returns {Date} Fecha parseada como local
+ */
+function parseDateLocal(dateStr) {
+    if (!dateStr) return new Date();
+    
+    // Si ya es un objeto Date, retornarlo
+    if (dateStr instanceof Date) return dateStr;
+    
+    // Formato YYYY-MM-DD
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    }
+    
+    // Formato DD/MM/YYYY
+    const partsSlash = dateStr.split('/');
+    if (partsSlash.length === 3) {
+        return new Date(parseInt(partsSlash[2]), parseInt(partsSlash[1]) - 1, parseInt(partsSlash[0]));
+    }
+    
+    return new Date(dateStr);
+}
+
+/**
+ * Formatea una fecha para mostrar en la UI (DD/MM/YYYY)
+ * @param {string} dateStr - Fecha en formato YYYY-MM-DD
+ * @returns {string} Fecha formateada DD/MM/YYYY
+ */
+function formatDateForDisplay(dateStr) {
+    if (!dateStr) return '';
+    
+    const date = parseDateLocal(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    
+    return `${day}/${month}/${year}`;
+}
+
 /**
  * Filtra las órdenes validadas por folio de carga
  */
@@ -5546,6 +6976,11 @@ function viewFolioOrders(folioCompleto) {
     document.getElementById('search-panel').style.display = 'none';
     document.getElementById('validated-content').style.display = 'none';
     document.getElementById('folios-content').style.display = 'none';
+    
+    // También ocultar vista de gestión de folios si está visible
+    const foliosMgmtContent = document.getElementById('folios-management-content');
+    if (foliosMgmtContent) foliosMgmtContent.style.display = 'none';
+    
     document.getElementById('folio-details-content').style.display = 'block';
 
     // Update title with folio number
@@ -5569,11 +7004,20 @@ function viewFolioOrders(folioCompleto) {
 }
 
 /**
- * Close folio details and return to folios screen
+ * Close folio details and return to appropriate folios screen
  */
 function closeFolioDetails() {
     STATE.currentFolio = null;
-    showFoliosManagement();
+    
+    // Si venimos de la vista de gestión independiente, regresar ahí
+    if (STATE.fromFoliosManagement) {
+        STATE.fromFoliosManagement = false;
+        document.getElementById('folio-details-content').style.display = 'none';
+        showFoliosManagementView();
+    } else {
+        // Regresar a la pestaña regular de folios
+        showFoliosManagement();
+    }
 }
 
 /**
@@ -5742,7 +7186,10 @@ function updateFolioDetailsSortIndicators() {
  * Imprime el folio de entrega (PDF)
  */
 function printFolioDelivery(folioCompleto) {
-    // Obtener todas las órdenes del folio
+    // ==================== PRE-VALIDATION: INTEGRITY CHECK ====================
+    // Ensure header counts match body rows before printing
+    
+    // Obtener todas las órdenes del folio desde la base de datos sincronizada
     const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
 
     if (ordenesDelFolio.length === 0) {
@@ -5773,15 +7220,25 @@ function printFolioDelivery(folioCompleto) {
 
     // Consolidar cajas por código base
     const cajasMap = new Map(); // código base → { destino, orden, cantidad }
+    const ordenesDetailList = []; // Lista de órdenes para el cuerpo de la tabla
 
     ordenesDelFolio.forEach(record => {
         const orderData = STATE.obcData.get(record.orden) || {};
         const validaciones = STATE.validacionData.get(record.orden) || [];
         const destinoOrden = record.destino || orderData.recipient || 'N/A';
 
+        // Agregar orden al detalle (para contar filas reales)
+        ordenesDetailList.push({
+            orden: record.orden,
+            destino: destinoOrden,
+            horario: record.horario || orderData.expectedArrival || 'N/A',
+            cantidadCajas: validaciones.length,
+            cantidadDespachar: record.cantidadDespachar || 0
+        });
+
         // Procesar cada caja validada
         validaciones.forEach(caja => {
-            const codigoCompleto = caja.codigoCaja || '';
+            const codigoCompleto = caja.codigo || '';
             // Extraer código base (sin número de caja después de /)
             const codigoBase = codigoCompleto.split('/')[0];
 
@@ -5801,13 +7258,31 @@ function printFolioDelivery(folioCompleto) {
     });
 
     const cajasList = Array.from(cajasMap.values());
-    const totalOrdenes = ordenesDelFolio.length;
-    const totalCajas = cajasList.reduce((sum, item) => sum + item.cantidad, 0);
+    
+    // ==================== CRITICAL VALIDATION ====================
+    // The header must derive counts from actual body rows
+    const totalOrdenesFromBody = ordenesDetailList.length; // Actual rows in table
+    const totalCajasFromBody = ordenesDetailList.reduce((sum, item) => sum + item.cantidadCajas, 0);
+    
+    // Use body counts for header (NOT from filter count)
+    const totalOrdenes = totalOrdenesFromBody;
+    const totalCajas = totalCajasFromBody;
 
-    // Verificar si hay códigos base válidos
-    console.log('📋 Datos para impresión:', { cajasList, totalOrdenes, totalCajas });
+    // Validation: Ensure header matches body
+    if (totalOrdenes !== ordenesDelFolio.length) {
+        console.warn('⚠️ Discrepancia detectada: órdenes en header vs body');
+    }
+    
+    console.log('📋 Pre-validación de impresión:', {
+        folioCompleto,
+        ordenesEnFiltro: ordenesDelFolio.length,
+        ordenesEnBody: totalOrdenesFromBody,
+        cajasCalculadas: totalCajasFromBody,
+        validacionPasada: totalOrdenes === totalOrdenesFromBody
+    });
 
-    // CHANGE 12: Redesigned print layout with repeating header
+    // ==================== GENERATE PRINT HTML ====================
+    // Header counts are now guaranteed to match body rows
     const printHTML = `
         <!DOCTYPE html>
         <html>

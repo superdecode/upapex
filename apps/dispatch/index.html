@@ -164,6 +164,65 @@
                     </div>
                 </div>
 
+                <!-- INDEPENDENT FOLIOS MANAGEMENT VIEW (accessed from sidebar) -->
+                <div id="folios-management-content" class="tab-content" style="display: none;">
+                    <div class="header">
+                        <div class="header-left">
+                            <h1>📋 Gestión General de Folios</h1>
+                            <button class="btn btn-secondary date-filter-btn" onclick="showFoliosManagementDateFilter()" id="folios-mgmt-date-filter-display" style="margin-left: 20px;">
+                                📅 <span id="folios-mgmt-date-filter-text">Mostrando Todo</span>
+                            </button>
+                        </div>
+                        <div class="header-right">
+                            <button class="btn-close-modern" onclick="closeFoliosManagementView()" title="Cerrar">×</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="section-header-inline">
+                            <div class="header-with-badges">
+                                <h3>📋 Historial Completo de Folios</h3>
+                                <span class="badge badge-primary" id="folios-mgmt-count">0 folios</span>
+                                <span class="badge badge-success" id="folios-mgmt-orders-count">0 órdenes</span>
+                                <span class="badge badge-success" id="folios-mgmt-boxes-count">0 cajas</span>
+                            </div>
+                            <div class="filter-controls">
+                                <div class="advanced-filter-wrapper">
+                                    <select id="filter-folios-mgmt-criterion" class="filter-criterion-select" onchange="showFilterDropdown('folios-mgmt')">
+                                        <option value="">🔽 Filtrar por...</option>
+                                        <option value="destino">🏢 Destino</option>
+                                        <option value="conductor">👤 Conductor</option>
+                                        <option value="unidad">🚛 Unidad</option>
+                                    </select>
+                                    <div id="active-filters-folios-mgmt" class="active-filters-container"></div>
+                                    <div id="filter-folios-mgmt-dropdown" class="filter-dropdown" style="display: none;"></div>
+                                </div>
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-folios-mgmt" class="filter-input" placeholder="🔍 Buscar..." oninput="filterFoliosManagementTable()">
+                                    <button class="clear-search-btn" id="clear-filter-folios-mgmt" onclick="clearSearchInput('filter-folios-mgmt')" style="display: none;">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="orders-table-container">
+                            <table class="orders-table" id="folios-mgmt-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortFoliosManagementTable(0)">Folio <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(1)">Fecha <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(2)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(3)">Cant. Órdenes <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(4)">Horario Inicial <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(5)">Horario Final <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(6)">Conductor <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortFoliosManagementTable(7)">Unidad <span class="sort-indicator">⇅</span></th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="folios-mgmt-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- FOLIO DETAILS SCREEN -->
                 <div id="folio-details-content" class="tab-content" style="display: none;">
                     <div class="header">
