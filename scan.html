@@ -4303,45 +4303,85 @@
          * Incluye: formato, rangos, y validación de uso diario (local + BD)
          */
         async function confirmInvalidLocation(location) {
-            // 1. Validar formato y rangos usando función compartida
-            const validation = validateLocation(location);
-
-            if (!validation.valid) {
-                // Ubicación inválida - mostrar error y rechazar
-                showNotification(`❌ ${validation.message}`, 'error');
-                return { confirmed: false, formatted: null };
-            }
-
-            // 2. Validar uso diario en historial local
-            const dailyUsageLocal = validateLocationDailyUsage(location, STATE.history);
-            if (!dailyUsageLocal.valid) {
-                showNotification(`❌ ${dailyUsageLocal.message}`, 'error');
-                return { confirmed: false, formatted: null };
-            }
-
-            // 3. Validar uso diario en base de datos (si hay conexión)
-            if (IS_ONLINE && gapi?.client?.getToken()) {
-                try {
-                    const response = await gapi.client.sheets.spreadsheets.values.get({
-                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                        range: `${CONFIG.SHEET_NAME}!A:J`
-                    });
-                    
-                    const dbRecords = response.result.values || [];
-                    const dailyUsageDB = validateLocationDailyUsageDB(location, dbRecords);
-                    
-                    if (!dailyUsageDB.valid) {
-                        showNotification(`❌ ${dailyUsageDB.message}`, 'error');
-                        return { confirmed: false, formatted: null };
-                    }
-                } catch (error) {
-                    console.warn('⚠️ No se pudo validar uso diario en BD:', error);
-                    // Continuar si falla la validación de BD (modo offline)
+            try {
+                console.log('Validating location:', location);
+                
+                // 1. Validar formato y rangos usando función compartida
+                if (typeof validateLocation !== 'function') {
+                    console.error('validateLocation is not a function');
+                    showNotification('❌ Error: Función de validación no disponible', 'error');
+                    return { confirmed: false, formatted: null };
                 }
-            }
+                
+                const validation = validateLocation(location);
+                console.log('Location validation result:', validation);
 
-            // 4. Todo válido - retornar ubicación normalizada
-            return { confirmed: true, formatted: validation.normalized };
+                if (!validation.valid) {
+                    // Ubicación inválida - mostrar error y rechazar
+                    showNotification(`❌ ${validation.message}`, 'error');
+                    return { confirmed: false, formatted: null };
+                }
+
+                // 2. Validar uso diario en historial local
+                if (typeof validateLocationDailyUsage !== 'function') {
+                    console.error('validateLocationDailyUsage is not a function');
+                    showNotification('❌ Error: Función de validación diaria no disponible', 'error');
+                    return { confirmed: false, formatted: null };
+                }
+                
+                const dailyUsageLocal = validateLocationDailyUsage(location, window.STATE?.history || []);
+                console.log('Daily usage local check:', dailyUsageLocal);
+                
+                if (!dailyUsageLocal.valid) {
+                    showNotification(`❌ ${dailyUsageLocal.message}`, 'error');
+                    return { confirmed: false, formatted: null };
+                }
+
+                // 3. Validar uso diario en base de datos (si hay conexión)
+                if (window.IS_ONLINE && window.gapi?.client?.getToken) {
+                    try {
+                        console.log('Checking online database for location usage...');
+                        const response = await window.gapi.client.sheets.spreadsheets.values.get({
+                            spreadsheetId: window.CONFIG?.SPREADSHEET_WRITE,
+                            range: `${window.CONFIG?.SHEET_NAME || 'BD'}!A:J`
+                        });
+                        
+                        const dbRecords = response.result.values || [];
+                        console.log('Retrieved', dbRecords.length, 'records from database');
+                        
+                        if (typeof validateLocationDailyUsageDB !== 'function') {
+                            console.error('validateLocationDailyUsageDB is not a function');
+                            showNotification('❌ Error: Función de validación de BD no disponible', 'error');
+                            return { confirmed: false, formatted: null };
+                        }
+                        
+                        const dailyUsageDB = validateLocationDailyUsageDB(location, dbRecords);
+                        console.log('Daily usage DB check:', dailyUsageDB);
+                        
+                        if (!dailyUsageDB.valid) {
+                            showNotification(`❌ ${dailyUsageDB.message}`, 'error');
+                            return { confirmed: false, formatted: null };
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ No se pudo validar uso diario en BD:', error);
+                        // Continuar si falla la validación de BD (modo offline)
+                    }
+                } else {
+                    console.log('Skipping DB validation - offline or no auth token');
+                }
+
+                // 4. Todo válido - retornar ubicación normalizada
+                console.log('Location validation successful, normalized:', validation.normalized);
+                return { 
+                    confirmed: true, 
+                    formatted: validation.normalized 
+                };
+                
+            } catch (error) {
+                console.error('Error in confirmInvalidLocation:', error);
+                showNotification('❌ Error al validar la ubicación. Por favor, intente nuevamente.', 'error');
+                return { confirmed: false, formatted: null };
+            }
         }
 
         function showResultBox(type, code, title, message, item) {
@@ -4520,29 +4560,56 @@
 
         // Confirmar envío después de validación
         async function confirmSendPallet(category, location) {
-            // Cerrar popup de validación y disable blind mode
-            document.body.classList.remove('blind-mode');
-            document.getElementById('send-validation-popup')?.remove();
+            try {
+                console.log('confirmSendPallet called with:', { category, location });
+                
+                // Cerrar popup de validación y disable blind mode
+                document.body.classList.remove('blind-mode');
+                const popup = document.getElementById('send-validation-popup');
+                if (popup) popup.remove();
 
-            const pallet = STATE.pallets[category];
-            const locationInput = document.getElementById(`location-${category}`);
-            const originLocationInput = document.getElementById('origin-location');
-            const originLocation = originLocationInput.value.trim().toUpperCase();
+                const pallet = STATE.pallets[category];
+                if (!pallet) {
+                    console.error('Pallet not found for category:', category);
+                    showNotification('❌ Error: No se encontró la tarima', 'error');
+                    return;
+                }
 
-            // Validar formato de ubicación y uso diario
-            const locationCheck = await confirmInvalidLocation(location);
-            if (!locationCheck.confirmed) {
-                showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-                locationInput.focus();
-                return;
-            }
+                const locationInput = document.getElementById(`location-${category}`);
+                const originLocationInput = document.getElementById('origin-location');
+                const originLocation = originLocationInput ? originLocationInput.value.trim().toUpperCase() : '';
 
-            // Usar la ubicación formateada (normalizada si es válida)
-            const finalLocation = locationCheck.formatted;
-            locationInput.value = finalLocation;
+                console.log('Validating location:', location);
+                
+                // Validar formato de ubicación y uso diario
+                if (typeof confirmInvalidLocation !== 'function') {
+                    console.error('confirmInvalidLocation is not a function');
+                    showNotification('❌ Error: Función de validación no disponible', 'error');
+                    return;
+                }
 
-            const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
-            const { dateStr, timeStr } = getLocalDateTime();
+                const locationCheck = await confirmInvalidLocation(location);
+                console.log('Location check result:', locationCheck);
+                
+                if (!locationCheck || !locationCheck.confirmed) {
+                    const errorMsg = locationCheck?.message || 'Ubicación inválida o en uso';
+                    console.error('Location validation failed:', errorMsg);
+                    showNotification(`❌ ${errorMsg}`, 'error');
+                    if (locationInput) locationInput.focus();
+                    return;
+                }
+
+                // Usar la ubicación formateada (normalizada si es válida)
+                const finalLocation = locationCheck.formatted;
+                console.log('Using normalized location:', finalLocation);
+                
+                if (locationInput) {
+                    locationInput.value = finalLocation;
+                }
+
+                const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
+                const { dateStr, timeStr } = getLocalDateTime();
+                console.log('Using date/time:', { dateStr, timeStr });
 
             // Incluye columna J: Ubicación Física de Origen
             const records = pallet.boxes.map(box => {

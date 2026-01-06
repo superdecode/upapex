@@ -638,32 +638,40 @@ function validateLocationDailyUsageDB(location, dbRecords = []) {
 
 // ==================== EXPORTAR FUNCIONES ====================
 
-// Si se usa como módulo ES6
+// Exponer funciones al ámbito global (window) para compatibilidad
+const WMS_UTILS = {
+    normalizeCode,
+    extractBaseCode,
+    generateCodeVariations,
+    findCodeInInventory,
+    normalizeLocation,
+    validateLocation,
+    validateAndNormalizeLocation,
+    validateLocationDailyUsage,
+    validateLocationDailyUsageDB,
+    initAudio,
+    playSound,
+    showNotification,
+    getCurrentDate,
+    getCurrentTime,
+    getLocalDateTime,
+    getTimestamp,
+    generatePalletId,
+    generateTabId,
+    copyToClipboard,
+    parseCSVLine,
+    arrayToCSV,
+    downloadCSV,
+    setupConnectionMonitor,
+    checkOnlineStatus
+};
+
+// Si se usa en un navegador, exponer al objeto window
+if (typeof window !== 'undefined') {
+    Object.assign(window, WMS_UTILS);
+}
+
+// Si se usa como módulo ES6/CommonJS
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        normalizeCode,
-        extractBaseCode,
-        generateCodeVariations,
-        findCodeInInventory,
-        normalizeLocation,
-        validateLocation,
-        validateAndNormalizeLocation,
-        validateLocationDailyUsage,
-        validateLocationDailyUsageDB,
-        initAudio,
-        playSound,
-        showNotification,
-        getCurrentDate,
-        getCurrentTime,
-        getLocalDateTime,
-        getTimestamp,
-        generatePalletId,
-        generateTabId,
-        copyToClipboard,
-        parseCSVLine,
-        arrayToCSV,
-        downloadCSV,
-        setupConnectionMonitor,
-        checkOnlineStatus
-    };
+    module.exports = WMS_UTILS;
 }
