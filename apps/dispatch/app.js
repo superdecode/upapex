@@ -5851,14 +5851,14 @@ async function applyDateFilter() {
         return;
     }
 
-    // Validar que el rango no sea mayor a 30 días
+    // Validar que el rango no sea mayor a 7 días para tabs principales
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffTime = Math.abs(end - start);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays > 30) {
-        showNotification('⚠️ El rango de fechas no puede ser mayor a 30 días', 'warning');
+    if (diffDays > 7) {
+        showNotification('⚠️ El rango de fechas no puede ser mayor a 7 días', 'warning');
         return;
     }
 
@@ -5909,6 +5909,16 @@ async function applyDateFilter() {
         if (dateFilterBtn) {
             dateFilterBtn.classList.add('active-filter');
         }
+        
+        // También actualizar botón de filtro en Folios tab
+        const foliosDateFilterText = document.getElementById('folios-date-filter-text');
+        const foliosDateFilterBtn = document.getElementById('folios-date-filter-display');
+        if (foliosDateFilterText) {
+            foliosDateFilterText.textContent = `${startFormatted} → ${endFormatted}`;
+        }
+        if (foliosDateFilterBtn) {
+            foliosDateFilterBtn.classList.add('active-filter');
+        }
 
         showNotification(`📅 Filtro aplicado: ${startFormatted} - ${endFormatted} (${STATE.obcDataFiltered.size} órdenes)`, 'success');
 
@@ -5945,6 +5955,8 @@ function clearDateFilter() {
     const dateFilterBtn = document.getElementById('date-filter-display');
     const validatedDateFilterText = document.getElementById('validated-date-filter-text');
     const validatedDateFilterBtn = document.getElementById('validated-date-filter-display');
+    const foliosDateFilterText = document.getElementById('folios-date-filter-text');
+    const foliosDateFilterBtn = document.getElementById('folios-date-filter-display');
 
     if (dateFilterText) {
         dateFilterText.textContent = 'Mostrando Todo';
@@ -5957,6 +5969,13 @@ function clearDateFilter() {
     }
     if (validatedDateFilterBtn) {
         validatedDateFilterBtn.classList.remove('active-filter');
+    }
+    // También actualizar el botón de folios tab
+    if (foliosDateFilterText) {
+        foliosDateFilterText.textContent = 'Mostrando Todo';
+    }
+    if (foliosDateFilterBtn) {
+        foliosDateFilterBtn.classList.remove('active-filter');
     }
 
     updateDateFilterDisplay();
@@ -6292,15 +6311,18 @@ function showFoliosManagement() {
     if (foliosMgmtContent) foliosMgmtContent.style.display = 'none';
     document.getElementById('folios-content').style.display = 'block';
     
-    // Actualizar texto del filtro de fecha según el filtro global
+    // Actualizar texto del filtro de fecha según el filtro global (mismo diseño que validated)
     const filterText = document.getElementById('folios-date-filter-text');
+    const filterBtn = document.getElementById('folios-date-filter-display');
     if (filterText) {
         if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
             const startFormatted = formatDateForDisplay(STATE.dateFilter.startDate);
             const endFormatted = formatDateForDisplay(STATE.dateFilter.endDate);
             filterText.textContent = `${startFormatted} → ${endFormatted}`;
+            if (filterBtn) filterBtn.classList.add('active-filter');
         } else {
-            filterText.textContent = 'Filtrar Fecha';
+            filterText.textContent = 'Mostrando Todo';
+            if (filterBtn) filterBtn.classList.remove('active-filter');
         }
     }
 
@@ -6672,6 +6694,25 @@ function applyFoliosDateFilter() {
     if (!startDate || !endDate) {
         showNotification('⚠️ Selecciona ambas fechas', 'warning');
         return;
+    }
+    
+    // Validar que fecha inicio no sea mayor que fecha fin
+    if (startDate > endDate) {
+        showNotification('⚠️ La fecha de inicio no puede ser mayor que la fecha de fin', 'warning');
+        return;
+    }
+    
+    // Solo validar rango máximo de 7 días para pestaña regular (NO para gestión sidebar)
+    if (!isManagementView) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays > 7) {
+            showNotification('⚠️ El rango de fechas no puede ser mayor a 7 días', 'warning');
+            return;
+        }
     }
 
     if (isManagementView) {
@@ -8393,6 +8434,10 @@ window.filterAgendaTable = filterAgendaTable;
 window.exportAgendaToExcel = exportAgendaToExcel;
 window.printAgenda = printAgenda;
 window.openDispatchFromAgenda = openDispatchFromAgenda;
+// Exponer funciones para sidebar cards
+window.switchValidationTab = switchValidationTab;
+window.showFoliosManagement = showFoliosManagement;
+window.showSearchPanel = showSearchPanel;
 
 // ==================== CLOSE DROPDOWN ON OUTSIDE CLICK ====================
 document.addEventListener('click', function(event) {
