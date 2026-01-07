@@ -5417,64 +5417,71 @@
                 const finalLocation = locationCheck.formatted;
                 console.log('Using normalized location:', finalLocation);
 
-                // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
-                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                // BYPASS: Si estamos en modo AJUSTE, saltar validación de ubicación duplicada
+                const isAdjustmentMode = window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active;
                 
-                // 1. Verificar en PENDING_SYNC (registros locales pendientes)
-                const usedInPending = PENDING_SYNC.some(record => {
-                    const recordDate = record.date; // YYYY-MM-DD
-                    return recordDate === today && record.location === finalLocation;
-                });
+                if (!isAdjustmentMode) {
+                    // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
+                    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                    
+                    // 1. Verificar en PENDING_SYNC (registros locales pendientes)
+                    const usedInPending = PENDING_SYNC.some(record => {
+                        const recordDate = record.date; // YYYY-MM-DD
+                        return recordDate === today && record.location === finalLocation;
+                    });
 
-                if (usedInPending) {
-                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
-                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
-                    if (locationInput) locationInput.focus();
-                    return;
-                }
-
-                // 2. Verificar en STATE.history (registros locales del historial)
-                const usedInHistory = STATE.history.some(record => {
-                    const recordDate = record.date; // YYYY-MM-DD
-                    return recordDate === today && record.location === finalLocation;
-                });
-
-                if (usedInHistory) {
-                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
-                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
-                    if (locationInput) locationInput.focus();
-                    return;
-                }
-
-                // 3. Verificar en base de datos remota (si hay conexión)
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    try {
-                        console.log('🔍 Verificando ubicación en base de datos...');
-                        const response = await gapi.client.sheets.spreadsheets.values.get({
-                            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                            range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
-                        });
-
-                        const rows = response.result.values || [];
-                        const usedInDB = rows.some(row => {
-                            const dbDate = row[0]; // Columna A = fecha
-                            const dbLocation = row[5]; // Columna F = ubicación
-                            return dbDate === today && dbLocation === finalLocation;
-                        });
-
-                        if (usedInDB) {
-                            console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
-                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
-                            if (locationInput) locationInput.focus();
-                            return;
-                        }
-                    } catch (error) {
-                        console.warn('⚠️ No se pudo verificar ubicación en BD:', error);
-                        // Continuar si falla la verificación remota (modo offline)
+                    if (usedInPending) {
+                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
+                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                        if (locationInput) locationInput.focus();
+                        return;
                     }
-                }
 
-                console.log('✅ Ubicación validada - no ha sido usada hoy');
+                    // 2. Verificar en STATE.history (registros locales del historial)
+                    const usedInHistory = STATE.history.some(record => {
+                        const recordDate = record.date; // YYYY-MM-DD
+                        return recordDate === today && record.location === finalLocation;
+                    });
+
+                    if (usedInHistory) {
+                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
+                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                        if (locationInput) locationInput.focus();
+                        return;
+                    }
+
+                    // 3. Verificar en base de datos remota (si hay conexión)
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        try {
+                            console.log('🔍 Verificando ubicación en base de datos...');
+                            const response = await gapi.client.sheets.spreadsheets.values.get({
+                                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                                range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
+                            });
+
+                            const rows = response.result.values || [];
+                            const usedInDB = rows.some(row => {
+                                const dbDate = row[0]; // Columna A = fecha
+                                const dbLocation = row[5]; // Columna F = ubicación
+                                return dbDate === today && dbLocation === finalLocation;
+                            });
+
+                            if (usedInDB) {
+                                console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
+                                showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
+                                if (locationInput) locationInput.focus();
+                                return;
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ No se pudo verificar ubicación en BD:', error);
+                            // Continuar si falla la verificación remota (modo offline)
+                        }
+                    }
+
+                    console.log('✅ Ubicación validada - no ha sido usada hoy');
+                } else {
+                    console.log('🔧 [AJUSTE] Bypass de validación de ubicación duplicada activado');
+                }
                 
                 if (locationInput) {
                     locationInput.value = finalLocation;
@@ -5607,41 +5614,70 @@
                     PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
                     SyncManager.save();
 
-                    // SINCRONIZACIÓN INMEDIATA CON TIMEOUT DE 5 SEGUNDOS
+                    // SINCRONIZACIÓN CON TIMEOUT DE 15 SEGUNDOS Y RETRY AUTOMÁTICO
                     let syncResult = { success: false, confirmed: false };
-                    console.log('🔄 [ATOMIC] Sincronizando con timeout de 5s...');
+                    const maxRetries = 2;
+                    let lastError = null;
                     
-                    try {
-                        // Crear promesa con timeout
-                        const syncPromise = SyncManager.sync(false);
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Timeout: El servidor no respondió en 5 segundos')), 5000)
-                        );
-                        
-                        syncResult = await Promise.race([syncPromise, timeoutPromise]);
-                    } catch (err) {
-                        console.error('❌ [ATOMIC] Error en sincronización:', err);
-                        
-                        // Determinar tipo de error
-                        let errorMessage = '❌ Error al enviar pallet: ';
-                        if (err.message?.includes('Timeout')) {
-                            errorMessage += 'El servidor no respondió a tiempo. Verifica tu conexión e intenta nuevamente.';
-                        } else if (err.message?.includes('Invalid Credentials') || err.status === 401) {
-                            errorMessage = '❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.';
-                        } else if (err.message?.includes('Network') || !navigator.onLine) {
-                            errorMessage += 'Sin conexión a internet. Verifica tu red e intenta nuevamente.';
-                        } else {
-                            errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
+                    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                            console.log(`🔄 [ATOMIC] Intento ${attempt}/${maxRetries} - Sincronizando con timeout de 15s...`);
+                            
+                            if (attempt > 1) {
+                                showNotification(`🔄 Reintentando conexión con Google (intento ${attempt}/${maxRetries})...`, 'info');
+                            }
+                            
+                            // Crear promesa con timeout de 15 segundos
+                            const syncPromise = SyncManager.sync(false);
+                            const timeoutPromise = new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Timeout: El servidor no respondió en 15 segundos')), 15000)
+                            );
+                            
+                            syncResult = await Promise.race([syncPromise, timeoutPromise]);
+                            
+                            // Si llegamos aquí, la sincronización fue exitosa
+                            console.log(`✅ [ATOMIC] Sincronización exitosa en intento ${attempt}`);
+                            break; // Salir del loop de reintentos
+                            
+                        } catch (err) {
+                            lastError = err;
+                            console.error(`❌ [ATOMIC] Error en intento ${attempt}:`, err);
+                            
+                            // Si es el último intento, procesar el error
+                            if (attempt === maxRetries) {
+                                // Determinar tipo de error con mensajes específicos
+                                let errorMessage = '❌ Error al enviar pallet: ';
+                                
+                                if (err.message?.includes('Timeout')) {
+                                    errorMessage += 'El servidor no respondió a tiempo. Verifica tu conexión e intenta nuevamente.';
+                                } else if (err.message?.includes('Invalid Credentials') || err.status === 401) {
+                                    errorMessage = '❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.';
+                                } else if (err.message?.includes('Network') || err.message?.includes('ERR_NETWORK_IO_SUSPENDED') || err.message?.includes('ERR_TIMED_OUT') || !navigator.onLine) {
+                                    errorMessage = '❌ Problema de conexión con Google. Verifica tu red e intenta nuevamente.';
+                                } else {
+                                    errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
+                                }
+                                
+                                // ROLLBACK COMPLETO
+                                console.error('❌ [ROLLBACK] Restaurando estado anterior después de todos los intentos...');
+                                PENDING_SYNC = backupPendingSync;
+                                STATE.history = backupHistory;
+                                SyncManager.save();
+                                
+                                // Cerrar cualquier modal o popup para desbloquear UI
+                                document.body.classList.remove('blind-mode');
+                                const popup = document.getElementById('send-validation-popup');
+                                if (popup) popup.remove();
+                                
+                                showNotification(errorMessage, 'error');
+                                return; // MANTENER DATOS EN PANTALLA
+                            }
+                            
+                            // Esperar 2 segundos antes del siguiente reintento
+                            if (attempt < maxRetries) {
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                            }
                         }
-                        
-                        // ROLLBACK COMPLETO
-                        console.error('❌ [ROLLBACK] Restaurando estado anterior...');
-                        PENDING_SYNC = backupPendingSync;
-                        STATE.history = backupHistory;
-                        SyncManager.save();
-                        
-                        showNotification(errorMessage, 'error');
-                        return; // MANTENER DATOS EN PANTALLA
                     }
 
                     // VALIDACIÓN ATÓMICA: Solo limpiar pantalla si HTTP 200 confirmado
@@ -8345,64 +8381,71 @@
                 const finalLocation = locationCheck.formatted;
                 document.getElementById('unified-location').value = finalLocation;
 
-                // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
-                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                // BYPASS: Si estamos en modo AJUSTE, saltar validación de ubicación duplicada
+                const isAdjustmentMode = window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active;
                 
-                // 1. Verificar en PENDING_SYNC (registros locales pendientes)
-                const usedInPending = PENDING_SYNC.some(record => {
-                    const recordDate = record.date; // YYYY-MM-DD
-                    return recordDate === today && record.location === finalLocation;
-                });
+                if (!isAdjustmentMode) {
+                    // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
+                    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                    
+                    // 1. Verificar en PENDING_SYNC (registros locales pendientes)
+                    const usedInPending = PENDING_SYNC.some(record => {
+                        const recordDate = record.date; // YYYY-MM-DD
+                        return recordDate === today && record.location === finalLocation;
+                    });
 
-                if (usedInPending) {
-                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
-                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
-                    document.getElementById('unified-location').focus();
-                    return;
-                }
-
-                // 2. Verificar en STATE.history (registros locales del historial)
-                const usedInHistory = STATE.history.some(record => {
-                    const recordDate = record.date; // YYYY-MM-DD
-                    return recordDate === today && record.location === finalLocation;
-                });
-
-                if (usedInHistory) {
-                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
-                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
-                    document.getElementById('unified-location').focus();
-                    return;
-                }
-
-                // 3. Verificar en base de datos remota (si hay conexión)
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    try {
-                        console.log('🔍 [UNIFICADO] Verificando ubicación en base de datos...');
-                        const response = await gapi.client.sheets.spreadsheets.values.get({
-                            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                            range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
-                        });
-
-                        const rows = response.result.values || [];
-                        const usedInDB = rows.some(row => {
-                            const dbDate = row[0]; // Columna A = fecha
-                            const dbLocation = row[5]; // Columna F = ubicación
-                            return dbDate === today && dbLocation === finalLocation;
-                        });
-
-                        if (usedInDB) {
-                            console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
-                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
-                            document.getElementById('unified-location').focus();
-                            return;
-                        }
-                    } catch (error) {
-                        console.warn('⚠️ [UNIFICADO] No se pudo verificar ubicación en BD:', error);
-                        // Continuar si falla la verificación remota (modo offline)
+                    if (usedInPending) {
+                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
+                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                        document.getElementById('unified-location').focus();
+                        return;
                     }
-                }
 
-                console.log('✅ [UNIFICADO] Ubicación validada - no ha sido usada hoy');
+                    // 2. Verificar en STATE.history (registros locales del historial)
+                    const usedInHistory = STATE.history.some(record => {
+                        const recordDate = record.date; // YYYY-MM-DD
+                        return recordDate === today && record.location === finalLocation;
+                    });
+
+                    if (usedInHistory) {
+                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
+                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                        document.getElementById('unified-location').focus();
+                        return;
+                    }
+
+                    // 3. Verificar en base de datos remota (si hay conexión)
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        try {
+                            console.log('🔍 [UNIFICADO] Verificando ubicación en base de datos...');
+                            const response = await gapi.client.sheets.spreadsheets.values.get({
+                                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                                range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
+                            });
+
+                            const rows = response.result.values || [];
+                            const usedInDB = rows.some(row => {
+                                const dbDate = row[0]; // Columna A = fecha
+                                const dbLocation = row[5]; // Columna F = ubicación
+                                return dbDate === today && dbLocation === finalLocation;
+                            });
+
+                            if (usedInDB) {
+                                console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
+                                showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
+                                document.getElementById('unified-location').focus();
+                                return;
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ [UNIFICADO] No se pudo verificar ubicación en BD:', error);
+                            // Continuar si falla la verificación remota (modo offline)
+                        }
+                    }
+
+                    console.log('✅ [UNIFICADO] Ubicación validada - no ha sido usada hoy');
+                } else {
+                    console.log('🔧 [AJUSTE-UNIFICADO] Bypass de validación de ubicación duplicada activado');
+                }
 
                 const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
                 const statusMapDisplay = { ok: 'OK', blocked: 'Bloqueada', nowms: 'No WMS' };
@@ -8527,39 +8570,70 @@
                     PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
                     SyncManager.save();
 
-                    // SINCRONIZACIÓN INMEDIATA CON TIMEOUT DE 5 SEGUNDOS
+                    // SINCRONIZACIÓN CON TIMEOUT DE 15 SEGUNDOS Y RETRY AUTOMÁTICO
                     let syncResult = { success: false, confirmed: false };
-                    console.log('🔄 [ATOMIC-UNIFICADO] Sincronizando con timeout de 5s...');
+                    const maxRetries = 2;
+                    let lastError = null;
                     
-                    try {
-                        const syncPromise = SyncManager.sync(false);
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Timeout: El servidor no respondió en 5 segundos')), 5000)
-                        );
-                        
-                        syncResult = await Promise.race([syncPromise, timeoutPromise]);
-                    } catch (err) {
-                        console.error('❌ [ATOMIC-UNIFICADO] Error en sincronización:', err);
-                        
-                        let errorMessage = '❌ Error al enviar pallet: ';
-                        if (err.message?.includes('Timeout')) {
-                            errorMessage += 'El servidor no respondió a tiempo. Verifica tu conexión e intenta nuevamente.';
-                        } else if (err.message?.includes('Invalid Credentials') || err.status === 401) {
-                            errorMessage = '❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.';
-                        } else if (err.message?.includes('Network') || !navigator.onLine) {
-                            errorMessage += 'Sin conexión a internet. Verifica tu red e intenta nuevamente.';
-                        } else {
-                            errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
+                    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                            console.log(`🔄 [ATOMIC-UNIFICADO] Intento ${attempt}/${maxRetries} - Sincronizando con timeout de 15s...`);
+                            
+                            if (attempt > 1) {
+                                showNotification(`🔄 Reintentando conexión con Google (intento ${attempt}/${maxRetries})...`, 'info');
+                            }
+                            
+                            // Crear promesa con timeout de 15 segundos
+                            const syncPromise = SyncManager.sync(false);
+                            const timeoutPromise = new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Timeout: El servidor no respondió en 15 segundos')), 15000)
+                            );
+                            
+                            syncResult = await Promise.race([syncPromise, timeoutPromise]);
+                            
+                            // Si llegamos aquí, la sincronización fue exitosa
+                            console.log(`✅ [ATOMIC-UNIFICADO] Sincronización exitosa en intento ${attempt}`);
+                            break; // Salir del loop de reintentos
+                            
+                        } catch (err) {
+                            lastError = err;
+                            console.error(`❌ [ATOMIC-UNIFICADO] Error en intento ${attempt}:`, err);
+                            
+                            // Si es el último intento, procesar el error
+                            if (attempt === maxRetries) {
+                                // Determinar tipo de error con mensajes específicos
+                                let errorMessage = '❌ Error al enviar pallet: ';
+                                
+                                if (err.message?.includes('Timeout')) {
+                                    errorMessage += 'El servidor no respondió a tiempo. Verifica tu conexión e intenta nuevamente.';
+                                } else if (err.message?.includes('Invalid Credentials') || err.status === 401) {
+                                    errorMessage = '❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.';
+                                } else if (err.message?.includes('Network') || err.message?.includes('ERR_NETWORK_IO_SUSPENDED') || err.message?.includes('ERR_TIMED_OUT') || !navigator.onLine) {
+                                    errorMessage = '❌ Problema de conexión con Google. Verifica tu red e intenta nuevamente.';
+                                } else {
+                                    errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
+                                }
+                                
+                                // ROLLBACK COMPLETO
+                                console.error('❌ [ROLLBACK-UNIFICADO] Restaurando estado anterior después de todos los intentos...');
+                                PENDING_SYNC = backupPendingSync;
+                                STATE.history = backupHistory;
+                                SyncManager.save();
+                                
+                                // Cerrar cualquier modal o popup para desbloquear UI
+                                document.body.classList.remove('blind-mode');
+                                const popup = document.getElementById('unified-send-validation-popup');
+                                if (popup) popup.remove();
+                                
+                                showNotification(errorMessage, 'error');
+                                return; // MANTENER DATOS EN PANTALLA
+                            }
+                            
+                            // Esperar 2 segundos antes del siguiente reintento
+                            if (attempt < maxRetries) {
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                            }
                         }
-                        
-                        // ROLLBACK COMPLETO
-                        console.error('❌ [ROLLBACK-UNIFICADO] Restaurando estado anterior...');
-                        PENDING_SYNC = backupPendingSync;
-                        STATE.history = backupHistory;
-                        SyncManager.save();
-                        
-                        showNotification(errorMessage, 'error');
-                        return; // MANTENER DATOS EN PANTALLA
                     }
 
                     // VALIDACIÓN ATÓMICA: Solo limpiar pantalla si HTTP 200 confirmado
