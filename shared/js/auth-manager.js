@@ -68,30 +68,92 @@ const AuthManager = {
         const savedUser = localStorage.getItem('wms_current_user');
         const savedEmail = localStorage.getItem('wms_user_email');
         const savedName = localStorage.getItem('wms_google_name');
-        
-        if (savedToken && savedExpiry && Date.now() < parseInt(savedExpiry)) {
-            // Token válido, restaurar sesión
-            gapi.client.setToken({ access_token: savedToken });
-            this.currentUser = savedUser;
-            this.userEmail = savedEmail;
-            this.userName = savedName;
-            
-            console.log('✅ AuthManager: Sesión restaurada desde localStorage');
-            
-            if (this.onAuthSuccess) {
-                this.onAuthSuccess({
-                    user: savedUser,
-                    email: savedEmail,
-                    name: savedName
-                });
+
+        if (savedToken && savedExpiry) {
+            const expiryTime = parseInt(savedExpiry);
+            const timeUntilExpiry = expiryTime - Date.now();
+
+            // Si el token expira en menos de 5 minutos, renovarlo
+            if (timeUntilExpiry < 5 * 60 * 1000) {
+                console.log('⚠️ AuthManager: Token próximo a expirar, renovando...');
+                this.renewToken();
+                return false;
             }
-            
-            return true;
-        } else {
-            // Token expirado o no existe
-            this.clearSession();
-            return false;
+
+            // Token válido, restaurar sesión
+            if (timeUntilExpiry > 0) {
+                gapi.client.setToken({ access_token: savedToken });
+                this.currentUser = savedUser;
+                this.userEmail = savedEmail;
+                this.userName = savedName;
+
+                console.log(`✅ AuthManager: Sesión restaurada (expira en ${Math.floor(timeUntilExpiry / 60000)} min)`);
+
+                // Programar renovación automática
+                this.scheduleTokenRenewal(timeUntilExpiry - 5 * 60 * 1000); // 5 min antes
+
+                if (this.onAuthSuccess) {
+                    this.onAuthSuccess({
+                        user: savedUser,
+                        email: savedEmail,
+                        name: savedName
+                    });
+                }
+
+                return true;
+            }
         }
+
+        // Token expirado o no existe
+        this.clearSession();
+        return false;
+    },
+
+    /**
+     * Programar renovación automática de token
+     */
+    scheduleTokenRenewal(delay) {
+        if (this.renewalTimeout) {
+            clearTimeout(this.renewalTimeout);
+        }
+
+        this.renewalTimeout = setTimeout(() => {
+            console.log('🔄 AuthManager: Renovando token automáticamente...');
+            this.renewToken();
+        }, Math.max(delay, 0));
+    },
+
+    /**
+     * Renovar token silenciosamente
+     */
+    renewToken() {
+        if (!this.tokenClient) {
+            console.error('❌ AuthManager: No se puede renovar, tokenClient no disponible');
+            return;
+        }
+
+        this.tokenClient.callback = async (resp) => {
+            if (resp.error) {
+                console.error('❌ AuthManager: Error renovando token:', resp);
+                this.clearSession();
+                return;
+            }
+
+            // Guardar nuevo token
+            const expiryTime = Date.now() + (3600 * 1000);
+            localStorage.setItem('google_access_token', resp.access_token);
+            localStorage.setItem('google_token_expiry', expiryTime.toString());
+
+            gapi.client.setToken({ access_token: resp.access_token });
+
+            // Programar siguiente renovación
+            this.scheduleTokenRenewal(55 * 60 * 1000); // 55 minutos
+
+            console.log('✅ AuthManager: Token renovado exitosamente');
+        };
+
+        // Intentar renovación silenciosa (sin prompt)
+        this.tokenClient.requestAccessToken({ prompt: '' });
     },
 
     /**
@@ -132,15 +194,20 @@ const AuthManager = {
                 }
                 return;
             }
-            
+
             // Guardar token con tiempo de expiración (1 hora)
             const expiryTime = Date.now() + (3600 * 1000);
             localStorage.setItem('google_access_token', resp.access_token);
             localStorage.setItem('google_token_expiry', expiryTime.toString());
-            
+
+            gapi.client.setToken({ access_token: resp.access_token });
+
+            // Programar renovación automática (55 minutos)
+            this.scheduleTokenRenewal(55 * 60 * 1000);
+
             // Obtener perfil de usuario
             await this.getUserProfile();
-            
+
             if (this.onAuthSuccess) {
                 this.onAuthSuccess({
                     user: this.currentUser,
@@ -149,7 +216,7 @@ const AuthManager = {
                 });
             }
         };
-        
+
         this.tokenClient.requestAccessToken({ prompt: 'consent' });
     },
 

@@ -429,7 +429,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Modo normal: Inicializar AuthManager
-    gapi.load('client', async () => {
+    // Esperar a que GAPI y Google Identity Services estén cargados
+    const initAuth = async () => {
+        if (!window.gapi) {
+            console.log('⏳ Esperando GAPI...');
+            setTimeout(initAuth, 100);
+            return;
+        }
+
+        gapi.load('client', async () => {
+            // Esperar a que Google Identity Services esté disponible
+            let retries = 0;
+            const waitForGIS = () => {
+                if (window.google && google.accounts && google.accounts.oauth2) {
+                    console.log('✅ Google Identity Services disponible');
+                    initAuthManager();
+                } else if (retries < 50) { // Máximo 5 segundos
+                    retries++;
+                    setTimeout(waitForGIS, 100);
+                } else {
+                    console.error('❌ Timeout esperando Google Identity Services');
+                    showNotification('❌ Error cargando sistema de autenticación. Recarga la página.', 'error');
+                }
+            };
+            waitForGIS();
+        });
+    };
+
+    const initAuthManager = async () => {
         await AuthManager.init(
             // onAuthSuccess
             async (userData) => {
@@ -456,9 +483,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             // onAuthError
             (error) => {
                 console.error('Auth error:', error);
+                showNotification('❌ Error de autenticación', 'error');
             }
         );
-    });
+    };
+
+    initAuth();
 });
 
 function initAudio() {
@@ -2152,5 +2182,3 @@ function testLocationValidator() {
         console.log(`Input: "${test}" => Valid: ${result.valid}, Normalized: "${result.normalized}"`);
     });
 }
-
-window.addEventListener('load', initializeApp);
