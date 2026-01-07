@@ -2983,6 +2983,10 @@
 
         // ==================== DEDUPLICATION MANAGER ====================
         const DeduplicationManager = {
+            // Flag para evitar race conditions durante envío
+            _sendingInProgress: false,
+            _currentSendingPalletId: null,
+
             // Genera una clave única para un registro basada en pallet + scan1 + location
             generateRecordKey(record) {
                 return `${record.pallet}|${record.scan1}|${record.location}`;
@@ -2993,10 +2997,29 @@
                 return `${palletId}|${location}`;
             },
 
-            // Verifica si un pallet ya fue sincronizado
+            // Verifica si un pallet ya fue sincronizado (excluyendo el pallet actualmente en envío)
             isPalletSynced(palletId, location) {
+                // Si este pallet está actualmente siendo enviado, NO es duplicado
+                if (this._sendingInProgress && this._currentSendingPalletId === palletId) {
+                    console.log(`🟢 [DEDUP] Pallet ${palletId} está en proceso de envío - NO es duplicado`);
+                    return false;
+                }
                 const key = this.generatePalletKey(palletId, location);
                 return SYNCED_PALLETS.has(key);
+            },
+
+            // Marca el inicio de un envío para evitar falsos positivos
+            startSending(palletId) {
+                this._sendingInProgress = true;
+                this._currentSendingPalletId = palletId;
+                console.log(`🟡 [DEDUP] Iniciando envío de pallet: ${palletId}`);
+            },
+
+            // Marca el fin de un envío
+            endSending() {
+                this._sendingInProgress = false;
+                this._currentSendingPalletId = null;
+                console.log(`🟢 [DEDUP] Envío finalizado`);
             },
 
             // Marca un pallet como sincronizado
@@ -3014,19 +3037,36 @@
             },
 
             // Filtra registros duplicados antes de agregar a PENDING_SYNC
-            filterDuplicateRecords(records) {
+            // IMPORTANTE: Excluye registros del pallet actualmente en envío para evitar falsos positivos
+            filterDuplicateRecords(records, currentPalletId = null) {
                 const uniqueRecords = [];
                 const seenKeys = new Set();
 
                 for (const record of records) {
                     const key = this.generateRecordKey(record);
                     
-                    // Verificar si ya está en PENDING_SYNC o en los nuevos registros
-                    if (!this.isRecordInPendingSync(record) && !seenKeys.has(key)) {
+                    // Si el registro pertenece al pallet actual en envío, verificar solo duplicados internos
+                    const isCurrentPallet = currentPalletId && record.pallet === currentPalletId;
+                    
+                    // Verificar si ya está en los nuevos registros (duplicado interno)
+                    if (seenKeys.has(key)) {
+                        console.warn(`⚠️ [DEDUP] Registro duplicado interno filtrado: ${key}`);
+                        continue;
+                    }
+                    
+                    // Si es del pallet actual, solo verificar duplicados internos, NO contra PENDING_SYNC
+                    // Esto evita falsos positivos cuando se reintenta un envío fallido
+                    if (isCurrentPallet) {
                         uniqueRecords.push(record);
                         seenKeys.add(key);
                     } else {
-                        console.warn(`⚠️ [DEDUP] Registro duplicado filtrado: ${key}`);
+                        // Para otros pallets, verificar también contra PENDING_SYNC
+                        if (!this.isRecordInPendingSync(record)) {
+                            uniqueRecords.push(record);
+                            seenKeys.add(key);
+                        } else {
+                            console.warn(`⚠️ [DEDUP] Registro duplicado en PENDING_SYNC filtrado: ${key}`);
+                        }
                     }
                 }
 
@@ -3034,11 +3074,20 @@
             },
 
             // Verifica contra la BD de escritura si el pallet ya existe
+            // IMPORTANTE: Solo retorna true si hay una coincidencia EXACTA del ID completo
             async checkPalletExistsInDatabase(palletId) {
                 if (!gapi?.client?.getToken()) {
                     console.warn('⚠️ [DEDUP] No hay token de Google, no se puede verificar BD');
                     return false;
                 }
+
+                if (!palletId || palletId.trim() === '') {
+                    console.warn('⚠️ [DEDUP] ID de pallet vacío, no se puede verificar');
+                    return false;
+                }
+
+                const cleanPalletId = palletId.toString().trim().toUpperCase();
+                console.log(`🔍 [DEDUP] Verificando pallet en BD: "${cleanPalletId}"`);
 
                 try {
                     const response = await gapi.client.sheets.spreadsheets.values.get({
@@ -3047,16 +3096,25 @@
                     });
 
                     const rows = response.result.values || [];
-                    const existingPallets = rows.flat().filter(p => p);
-                    const exists = existingPallets.includes(palletId);
+                    // Limpiar y normalizar todos los IDs de la BD para comparación exacta
+                    const existingPallets = rows
+                        .flat()
+                        .filter(p => p && p.toString().trim() !== '')
+                        .map(p => p.toString().trim().toUpperCase());
+                    
+                    // Comparación EXACTA (no parcial)
+                    const exists = existingPallets.some(p => p === cleanPalletId);
                     
                     if (exists) {
-                        console.log(`🔍 [DEDUP] Pallet ${palletId} YA EXISTE en la BD de escritura`);
+                        console.log(`🔍 [DEDUP] Pallet "${cleanPalletId}" ENCONTRADO en BD (${existingPallets.length} pallets totales)`);
+                    } else {
+                        console.log(`✅ [DEDUP] Pallet "${cleanPalletId}" NO existe en BD - OK para enviar`);
                     }
                     
                     return exists;
                 } catch (error) {
                     console.error('❌ [DEDUP] Error verificando pallet en BD:', error);
+                    // En caso de error, permitir el envío (no bloquear por error de red)
                     return false;
                 }
             },
@@ -3075,19 +3133,28 @@
                 try {
                     const saved = localStorage.getItem('pd_synced_pallets');
                     if (saved) {
-                        SYNCED_PALLETS = new Set(JSON.parse(saved));
-                        console.log(`📂 [DEDUP] Cargados ${SYNCED_PALLETS.size} pallets sincronizados`);
+                        const parsed = JSON.parse(saved);
+                        // Validar que sea un array antes de crear el Set
+                        if (Array.isArray(parsed)) {
+                            SYNCED_PALLETS = new Set(parsed);
+                            console.log(`📂 [DEDUP] Cargados ${SYNCED_PALLETS.size} pallets sincronizados`);
+                        } else {
+                            console.warn('⚠️ [DEDUP] Datos corruptos en localStorage, limpiando...');
+                            SYNCED_PALLETS = new Set();
+                            this.saveSyncedPallets();
+                        }
                     }
                 } catch (e) {
-                    console.error('❌ [DEDUP] Error cargando pallets sincronizados:', e);
+                    console.error('❌ [DEDUP] Error cargando pallets sincronizados, limpiando:', e);
+                    SYNCED_PALLETS = new Set();
+                    localStorage.removeItem('pd_synced_pallets');
                 }
             },
 
-            // Limpia registros antiguos (más de 7 días)
+            // Limpia registros antiguos (más de 24 horas para evitar acumulación)
             cleanOldRecords() {
-                // Los pallets tienen timestamp en su ID, podemos limpiar los viejos
                 const now = Date.now();
-                const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+                const oneDayAgo = now - (24 * 60 * 60 * 1000); // 24 horas en lugar de 7 días
                 let cleaned = 0;
 
                 for (const key of SYNCED_PALLETS) {
@@ -3097,17 +3164,30 @@
                     if (parts.length >= 2) {
                         const timestampBase36 = parts[1];
                         const timestamp = parseInt(timestampBase36, 36);
-                        if (timestamp < sevenDaysAgo) {
+                        // Si el timestamp es inválido o muy antiguo, limpiar
+                        if (isNaN(timestamp) || timestamp < oneDayAgo) {
                             SYNCED_PALLETS.delete(key);
                             cleaned++;
                         }
+                    } else {
+                        // Formato inválido, eliminar
+                        SYNCED_PALLETS.delete(key);
+                        cleaned++;
                     }
                 }
 
                 if (cleaned > 0) {
-                    console.log(`🧹 [DEDUP] Limpiados ${cleaned} registros antiguos`);
+                    console.log(`🧹 [DEDUP] Limpiados ${cleaned} registros antiguos/inválidos`);
                     this.saveSyncedPallets();
                 }
+            },
+
+            // Función para limpiar completamente el cache de pallets sincronizados
+            // Útil para resolver problemas de falsos positivos
+            clearSyncedPallets() {
+                SYNCED_PALLETS.clear();
+                localStorage.removeItem('pd_synced_pallets');
+                console.log('🧹 [DEDUP] Cache de pallets sincronizados limpiado completamente');
             }
         };
 
@@ -3123,6 +3203,17 @@
             SYNC_INTERVAL: 60 * 60 * 1000, // 1 hora
             intervalId: null,
             isLoading: false,
+
+            // Función de limpieza profunda de códigos - elimina caracteres invisibles y normaliza
+            cleanCode(code) {
+                if (code === null || code === undefined) return '';
+                return code
+                    .toString()
+                    .replace(/[\u200B\uFEFF\u00A0\u2000-\u200F\u2028\u2029]/g, '') // Caracteres invisibles
+                    .replace(/[\r\n\t]/g, '') // Saltos de línea y tabs
+                    .trim()
+                    .toUpperCase();
+            },
 
             async init() {
                 await this.openDatabase();
@@ -3169,8 +3260,15 @@
                     
                     if (dataResult?.value) {
                         const entries = dataResult.value;
-                        PROCESSED_BOXES_MAP = new Map(entries);
-                        console.log(`📂 [PROCESSED] Cargadas ${PROCESSED_BOXES_MAP.size} cajas desde IndexedDB`);
+                        // IMPORTANTE: Reconstruir Map con claves normalizadas para evitar falsos positivos
+                        PROCESSED_BOXES_MAP = new Map();
+                        for (const [key, value] of entries) {
+                            const cleanKey = this.cleanCode(key);
+                            if (cleanKey && cleanKey.length > 0) {
+                                PROCESSED_BOXES_MAP.set(cleanKey, value);
+                            }
+                        }
+                        console.log(`📂 [PROCESSED] Cargadas ${PROCESSED_BOXES_MAP.size} cajas desde IndexedDB (normalizadas)`);
                     }
                     
                     // Cargar timestamp de última actualización
@@ -3252,16 +3350,17 @@
                         const row = rows[i];
                         if (!row || !row[3]) continue; // Columna D (scan1) es requerida
 
-                        const scan1 = row[3]?.toString().trim().toUpperCase();
-                        const scan2 = row[4]?.toString().trim().toUpperCase() || '';
+                        // Usar cleanCode para normalización consistente
+                        const scan1 = this.cleanCode(row[3]);
+                        const scan2 = this.cleanCode(row[4]);
                         const pallet = row[8]?.toString().trim() || '';
                         const date = row[0]?.toString().trim() || '';
                         const time = row[1]?.toString().trim() || '';
                         const user = row[2]?.toString().trim() || '';
                         const location = row[5]?.toString().trim() || '';
 
-                        if (scan1) {
-                            PROCESSED_BOXES_MAP.set(scan1, {
+                        if (scan1 && scan1.length > 0) {
+                            const boxData = {
                                 scan1,
                                 scan2,
                                 pallet,
@@ -3269,19 +3368,13 @@
                                 time,
                                 user,
                                 location
-                            });
+                            };
 
-                            // También indexar por scan2 si existe
-                            if (scan2) {
-                                PROCESSED_BOXES_MAP.set(scan2, {
-                                    scan1,
-                                    scan2,
-                                    pallet,
-                                    date,
-                                    time,
-                                    user,
-                                    location
-                                });
+                            PROCESSED_BOXES_MAP.set(scan1, boxData);
+
+                            // También indexar por scan2 si existe y es diferente
+                            if (scan2 && scan2.length > 0 && scan2 !== scan1) {
+                                PROCESSED_BOXES_MAP.set(scan2, boxData);
                             }
                         }
                     }
@@ -3305,21 +3398,27 @@
 
             // Busca una caja en los registros procesados del servidor
             findInProcessed(code) {
-                const normalizedCode = code?.toString().trim().toUpperCase();
-                if (!normalizedCode) return null;
-                return PROCESSED_BOXES_MAP.get(normalizedCode) || null;
+                const normalizedCode = this.cleanCode(code);
+                if (!normalizedCode || normalizedCode.length === 0) return null;
+                
+                const result = PROCESSED_BOXES_MAP.get(normalizedCode);
+                if (result) {
+                    console.log(`🔍 [PROCESSED] Encontrado en cache: ${normalizedCode}`);
+                }
+                return result || null;
             },
 
             // Busca una caja en PENDING_SYNC (registros locales no sincronizados)
             findInPendingSync(code) {
-                const normalizedCode = code?.toString().trim().toUpperCase();
-                if (!normalizedCode) return null;
+                const normalizedCode = this.cleanCode(code);
+                if (!normalizedCode || normalizedCode.length === 0) return null;
 
                 for (const record of PENDING_SYNC) {
-                    const scan1 = record.scan1?.toString().trim().toUpperCase();
-                    const scan2 = record.scan2?.toString().trim().toUpperCase();
+                    const scan1 = this.cleanCode(record.scan1);
+                    const scan2 = this.cleanCode(record.scan2);
                     
-                    if (scan1 === normalizedCode || scan2 === normalizedCode) {
+                    if ((scan1 && scan1 === normalizedCode) || (scan2 && scan2 === normalizedCode)) {
+                        console.log(`🔍 [PENDING] Encontrado en pendientes: ${normalizedCode}`);
                         return {
                             scan1: record.scan1,
                             scan2: record.scan2,
@@ -3367,10 +3466,11 @@
 
                 let added = 0;
                 for (const record of records) {
-                    const scan1 = record.scan1?.toString().trim().toUpperCase();
-                    const scan2 = record.scan2?.toString().trim().toUpperCase() || '';
+                    // Usar cleanCode para normalización consistente
+                    const scan1 = this.cleanCode(record.scan1);
+                    const scan2 = this.cleanCode(record.scan2);
 
-                    if (scan1) {
+                    if (scan1 && scan1.length > 0) {
                         const boxData = {
                             scan1,
                             scan2,
@@ -3385,8 +3485,8 @@
                         PROCESSED_BOXES_MAP.set(scan1, boxData);
                         added++;
 
-                        // También indexar por scan2 si existe
-                        if (scan2) {
+                        // También indexar por scan2 si existe y es diferente
+                        if (scan2 && scan2.length > 0 && scan2 !== scan1) {
                             PROCESSED_BOXES_MAP.set(scan2, boxData);
                             added++;
                         }
@@ -4473,7 +4573,13 @@
                 return null;
             }
 
-            const normalizedCode = code?.toString().trim().toUpperCase();
+            // Usar limpieza profunda para evitar falsos positivos
+            const normalizedCode = ProcessedBoxesManager.cleanCode(code);
+            if (!normalizedCode || normalizedCode.length === 0) {
+                console.log('⚠️ [DUPLICATE] Código vacío después de limpieza, saltando validación');
+                return null;
+            }
+
             const categories = ['ok', 'blocked', 'nowms'];
             const categoryNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
 
@@ -4481,9 +4587,9 @@
             for (const cat of categories) {
                 const boxes = STATE.pallets[cat].boxes;
                 const index = boxes.findIndex(b => {
-                    const boxCode = b.code?.toString().trim().toUpperCase();
-                    const boxScan2 = b.scan2?.toString().trim().toUpperCase();
-                    return boxCode === normalizedCode || boxScan2 === normalizedCode;
+                    const boxCode = ProcessedBoxesManager.cleanCode(b.code);
+                    const boxScan2 = ProcessedBoxesManager.cleanCode(b.scan2);
+                    return (boxCode && boxCode === normalizedCode) || (boxScan2 && boxScan2 === normalizedCode);
                 });
                 if (index !== -1) {
                     const box = boxes[index];
@@ -5244,90 +5350,102 @@
                 // Add to history
                 STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-                // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
-                const palletKey = DeduplicationManager.generatePalletKey(pallet.id, finalLocation);
-                if (DeduplicationManager.isPalletSynced(pallet.id, finalLocation)) {
-                    console.warn(`⚠️ [DEDUP] Pallet ${pallet.id} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
-                    // Generar nuevo ID de pallet para evitar conflicto
-                    const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-                    const newPalletId = generatePalletId(prefixes[category]);
-                    records.forEach(r => r.pallet = newPalletId);
-                    pallet.id = newPalletId;
-                    showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
-                }
+                // PROTECCIÓN: Marcar inicio de envío para evitar falsos positivos
+                DeduplicationManager.startSending(pallet.id);
 
-                // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar
-                const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records);
-                
-                if (uniqueRecords.length === 0) {
-                    console.warn('⚠️ [DEDUP] Todos los registros ya existen en PENDING_SYNC');
-                    showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
-                } else {
-                    // Add to pending sync
-                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                    console.log('📝 Registros agregados a PENDING_SYNC:', uniqueRecords.length);
-                    console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-                    console.log('🔍 Ejemplo de registro:', uniqueRecords[0]);
-                    SyncManager.save();
-
-                    if (uniqueRecords.length < records.length) {
-                        showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
-                    } else {
-                        showNotification(`💾 ${uniqueRecords.length} registros agregados`, 'info');
+                try {
+                    // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
+                    const palletKey = DeduplicationManager.generatePalletKey(pallet.id, finalLocation);
+                    if (DeduplicationManager.isPalletSynced(pallet.id, finalLocation)) {
+                        console.warn(`⚠️ [DEDUP] Pallet ${pallet.id} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
+                        // Generar nuevo ID de pallet para evitar conflicto
+                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                        const newPalletId = generatePalletId(prefixes[category]);
+                        records.forEach(r => r.pallet = newPalletId);
+                        pallet.id = newPalletId;
+                        showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
                     }
+
+                    // Limpiar registros previos del mismo pallet en PENDING_SYNC (evita duplicados por reintentos)
+                    PENDING_SYNC = PENDING_SYNC.filter(r => r.pallet !== pallet.id);
+
+                    // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar (pasando el pallet actual)
+                    const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records, pallet.id);
+                    
+                    if (uniqueRecords.length === 0) {
+                        console.warn('⚠️ [DEDUP] Todos los registros ya existen en PENDING_SYNC');
+                        showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
+                    } else {
+                        // Add to pending sync
+                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                        console.log('📝 Registros agregados a PENDING_SYNC:', uniqueRecords.length);
+                        console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+                        console.log('🔍 Ejemplo de registro:', uniqueRecords[0]);
+                        SyncManager.save();
+
+                        if (uniqueRecords.length < records.length) {
+                            showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
+                        } else {
+                            showNotification(`💾 ${uniqueRecords.length} registros agregados`, 'info');
+                        }
+                    }
+
+                    // Try to sync immediately
+                    console.log('🔌 Estado de conexión:');
+                    console.log('  - IS_ONLINE:', IS_ONLINE);
+                    console.log('  - gapi disponible:', !!gapi);
+                    console.log('  - Token disponible:', !!gapi?.client?.getToken());
+
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        console.log('✅ Intentando sincronizar automáticamente...');
+                        await SyncManager.sync();
+                    } else {
+                        console.log('⚠️ No se puede sincronizar automáticamente (offline o sin token)');
+                        SyncManager.updateUI(false);
+                    }
+
+                    // If in adjustment mode, delete old records from database
+                    if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                        await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
+                        showNotification('✅ Ajuste completado - Registros actualizados', 'success');
+                        // Clear adjustment mode
+                        window.ADJUSTMENT_MODE = { active: false };
+                    }
+
+                    // Reset only this pallet
+                    const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                    STATE.pallets[category] = {
+                        id: generatePalletId(prefixes[category]),
+                        boxes: [],
+                        location: ''
+                    };
+                    locationInput.value = '';
+
+                    saveToStorage();
+
+                    // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
+                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                        GlobalTabs.saveCurrentTabState();
+                    }
+
+                    // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
+                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                        GlobalTabs.updateGlobalSummary();
+                    }
+
+                    updateUI();
+                    playSound('success');
+
+                    // Mover foco al campo de ubicación de origen para actualizar
+                    originLocationInput.focus();
+                    originLocationInput.select();
+                } finally {
+                    // PROTECCIÓN: Siempre marcar fin de envío
+                    DeduplicationManager.endSending();
                 }
-
-                // Try to sync immediately
-                console.log('🔌 Estado de conexión:');
-                console.log('  - IS_ONLINE:', IS_ONLINE);
-                console.log('  - gapi disponible:', !!gapi);
-                console.log('  - Token disponible:', !!gapi?.client?.getToken());
-
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    console.log('✅ Intentando sincronizar automáticamente...');
-                    await SyncManager.sync();
-                } else {
-                    console.log('⚠️ No se puede sincronizar automáticamente (offline o sin token)');
-                    SyncManager.updateUI(false);
-                }
-
-                // If in adjustment mode, delete old records from database
-                if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                    await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
-                    showNotification('✅ Ajuste completado - Registros actualizados', 'success');
-                    // Clear adjustment mode
-                    window.ADJUSTMENT_MODE = { active: false };
-                }
-
-                // Reset only this pallet
-                const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-                STATE.pallets[category] = {
-                    id: generatePalletId(prefixes[category]),
-                    boxes: [],
-                    location: ''
-                };
-                locationInput.value = '';
-
-                saveToStorage();
-
-                // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
-                if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
-                    GlobalTabs.saveCurrentTabState();
-                }
-
-                // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
-                if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
-                    GlobalTabs.updateGlobalSummary();
-                }
-
-                updateUI();
-                playSound('success');
-
-                // Mover foco al campo de ubicación de origen para actualizar
-                originLocationInput.focus();
-                originLocationInput.select();
             } catch (error) {
                 console.error('Error in confirmSendPallet:', error);
+                DeduplicationManager.endSending();
                 showNotification('❌ Error al enviar la tarima. Por favor, intente nuevamente.', 'error');
             }
         }
@@ -7460,15 +7578,21 @@
                     return null;
                 }
 
-                const normalizedCode = code?.toString().trim().toUpperCase();
+                // Usar limpieza profunda para evitar falsos positivos
+                const normalizedCode = ProcessedBoxesManager.cleanCode(code);
+                if (!normalizedCode || normalizedCode.length === 0) {
+                    console.log('⚠️ [DUPLICATE-GLOBAL] Código vacío después de limpieza, saltando validación');
+                    return null;
+                }
+
                 const statusNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
 
                 // PASO 1: Buscar en todos los tabs (sesiones actuales)
                 for (const tab of GlobalTabs.tabs) {
                     const index = tab.state.unified.boxes.findIndex(b => {
-                        const boxCode = b.code?.toString().trim().toUpperCase();
-                        const boxScan2 = b.scan2?.toString().trim().toUpperCase();
-                        return boxCode === normalizedCode || boxScan2 === normalizedCode;
+                        const boxCode = ProcessedBoxesManager.cleanCode(b.code);
+                        const boxScan2 = ProcessedBoxesManager.cleanCode(b.scan2);
+                        return (boxCode && boxCode === normalizedCode) || (boxScan2 && boxScan2 === normalizedCode);
                     });
                     if (index !== -1) {
                         const box = tab.state.unified.boxes[index];
@@ -7918,74 +8042,85 @@
                 // Add to history
                 STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-                // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
-                if (DeduplicationManager.isPalletSynced(tab.palletId, finalLocation)) {
-                    console.warn(`⚠️ [DEDUP-UNIFICADO] Pallet ${tab.palletId} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
-                    // Generar nuevo ID de pallet para evitar conflicto
-                    const newPalletId = this.generatePalletId();
-                    records.forEach(r => r.pallet = newPalletId);
-                    tab.palletId = newPalletId;
-                    showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
-                }
+                // PROTECCIÓN: Marcar inicio de envío para evitar falsos positivos
+                DeduplicationManager.startSending(tab.palletId);
 
-                // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar
-                const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records);
-                
-                if (uniqueRecords.length === 0) {
-                    console.warn('⚠️ [DEDUP-UNIFICADO] Todos los registros ya existen en PENDING_SYNC');
-                    showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
-                } else {
-                    // Add to pending sync
-                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                    console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', uniqueRecords.length);
-                    console.log('📊 [UNIFICADO] Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-                    console.log('🔍 [UNIFICADO] Ejemplo de registro:', uniqueRecords[0]);
-                    SyncManager.save();
-
-                    // Show appropriate notification
-                    const modeText = isCancelados ? ' como CANCELADOS' : '';
-                    if (uniqueRecords.length < records.length) {
-                        showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados${modeText} (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
-                    } else {
-                        showNotification(`💾 ${uniqueRecords.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
+                try {
+                    // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
+                    if (DeduplicationManager.isPalletSynced(tab.palletId, finalLocation)) {
+                        console.warn(`⚠️ [DEDUP-UNIFICADO] Pallet ${tab.palletId} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
+                        // Generar nuevo ID de pallet para evitar conflicto
+                        const newPalletId = this.generatePalletId();
+                        records.forEach(r => r.pallet = newPalletId);
+                        tab.palletId = newPalletId;
+                        showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
                     }
+
+                    // Limpiar registros previos del mismo pallet en PENDING_SYNC (evita duplicados por reintentos)
+                    PENDING_SYNC = PENDING_SYNC.filter(r => r.pallet !== tab.palletId);
+
+                    // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar (pasando el pallet actual)
+                    const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records, tab.palletId);
+                    
+                    if (uniqueRecords.length === 0) {
+                        console.warn('⚠️ [DEDUP-UNIFICADO] Todos los registros ya existen en PENDING_SYNC');
+                        showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
+                    } else {
+                        // Add to pending sync
+                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                        console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', uniqueRecords.length);
+                        console.log('📊 [UNIFICADO] Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+                        console.log('🔍 [UNIFICADO] Ejemplo de registro:', uniqueRecords[0]);
+                        SyncManager.save();
+
+                        // Show appropriate notification
+                        const modeText = isCancelados ? ' como CANCELADOS' : '';
+                        if (uniqueRecords.length < records.length) {
+                            showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados${modeText} (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
+                        } else {
+                            showNotification(`💾 ${uniqueRecords.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
+                        }
+                    }
+
+                    // Try to sync immediately
+                    console.log('🔌 [UNIFICADO] Estado de conexión:');
+                    console.log('  - IS_ONLINE:', IS_ONLINE);
+                    console.log('  - gapi disponible:', !!gapi);
+                    console.log('  - Token disponible:', !!gapi?.client?.getToken());
+
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        console.log('✅ [UNIFICADO] Intentando sincronizar automáticamente...');
+                        await SyncManager.sync();
+                    } else {
+                        console.log('⚠️ [UNIFICADO] No se puede sincronizar automáticamente (offline o sin token)');
+                        SyncManager.updateUI(false);
+                    }
+
+                    // If in adjustment mode, delete old records from database
+                    if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                        await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
+                        showNotification('✅ Ajuste completado - Registros actualizados', 'success');
+                        // Clear adjustment mode
+                        window.ADJUSTMENT_MODE = { active: false };
+                    }
+
+                    // Reset tab (but keep canceladosMode as user preference)
+                    tab.palletId = this.generatePalletId();
+                    tab.boxes = [];
+                    tab.location = '';
+                    document.getElementById('unified-location').value = '';
+
+                    GlobalTabs.saveToStorage();
+                    this.updateUI();
+                    // Asegurar actualización de tarjetas globales
+                    GlobalTabs.updateGlobalSummary();
+                    playSound('success');
+
+                    document.getElementById('unified-origin-location').focus();
+                } finally {
+                    // PROTECCIÓN: Siempre marcar fin de envío
+                    DeduplicationManager.endSending();
                 }
-
-                // Try to sync immediately
-                console.log('🔌 [UNIFICADO] Estado de conexión:');
-                console.log('  - IS_ONLINE:', IS_ONLINE);
-                console.log('  - gapi disponible:', !!gapi);
-                console.log('  - Token disponible:', !!gapi?.client?.getToken());
-
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    console.log('✅ [UNIFICADO] Intentando sincronizar automáticamente...');
-                    await SyncManager.sync();
-                } else {
-                    console.log('⚠️ [UNIFICADO] No se puede sincronizar automáticamente (offline o sin token)');
-                    SyncManager.updateUI(false);
-                }
-
-                // If in adjustment mode, delete old records from database
-                if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                    await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
-                    showNotification('✅ Ajuste completado - Registros actualizados', 'success');
-                    // Clear adjustment mode
-                    window.ADJUSTMENT_MODE = { active: false };
-                }
-
-                // Reset tab (but keep canceladosMode as user preference)
-                tab.palletId = this.generatePalletId();
-                tab.boxes = [];
-                tab.location = '';
-                document.getElementById('unified-location').value = '';
-
-                GlobalTabs.saveToStorage();
-                this.updateUI();
-                // Asegurar actualización de tarjetas globales
-                GlobalTabs.updateGlobalSummary();
-                playSound('success');
-
-                document.getElementById('unified-origin-location').focus();
             },
 
             updateUI() {
