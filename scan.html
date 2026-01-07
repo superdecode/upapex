@@ -759,7 +759,7 @@
             background: white;
             padding: 25px;
             border-radius: 12px;
-            max-width: 700px;
+            max-width: 1000px;
             width: 95%;
             max-height: 85vh;
             overflow-y: auto;
@@ -2772,6 +2772,12 @@
             return { dateStr, timeStr };
         }
 
+        // Helper function to get full datetime string (YYYY-MM-DD HH:mm:ss)
+        function getFullDateTime() {
+            const { dateStr, timeStr } = getLocalDateTime();
+            return `${dateStr} ${timeStr}`;
+        }
+
         // FILE2 - Segundo nivel de búsqueda
         let BD_CODES_FILE2 = new Set();
         let FILE2_LAST_UPDATE = null;
@@ -3618,31 +3624,44 @@
                         resource: { values }
                     });
 
-                    console.log('✅ Respuesta de Google Sheets:', response);
-                    console.log('  - Updates:', response.result?.updates);
-                    console.log('  - SpreadsheetId respuesta:', response.result?.spreadsheetId);
-                    console.log('  - Rango actualizado:', response.result?.updates?.updatedRange);
-                    console.log('  - Filas actualizadas:', response.result?.updates?.updatedRows);
-                    console.log('  - Columnas actualizadas:', response.result?.updates?.updatedColumns);
+                    // HANDSHAKE: Validar respuesta del servidor (status 200 + datos confirmados)
+                    if (!response || response.status !== 200) {
+                        throw new Error(`Servidor retornó status ${response?.status || 'desconocido'} - Sincronización fallida`);
+                    }
+
+                    const updatedRows = response.result?.updates?.updatedRows;
+                    const updatedRange = response.result?.updates?.updatedRange;
+                    
+                    if (!updatedRows || updatedRows !== recordsToSync.length) {
+                        throw new Error(`Handshake fallido: Se enviaron ${recordsToSync.length} registros pero el servidor confirmó ${updatedRows || 0}`);
+                    }
+
+                    console.log('✅ HANDSHAKE CONFIRMADO:');
+                    console.log('  - Status:', response.status);
+                    console.log('  - Registros enviados:', recordsToSync.length);
+                    console.log('  - Registros confirmados:', updatedRows);
+                    console.log('  - Rango actualizado:', updatedRange);
+                    console.log('  - SpreadsheetId:', response.result?.spreadsheetId);
 
                     const synced = recordsToSync.length;
                     
-                    // DEDUPLICACIÓN: Marcar pallets como sincronizados ANTES de limpiar
+                    // SOLO si handshake exitoso: Marcar pallets como sincronizados
                     for (const palletKey of palletLocationPairs) {
                         SYNCED_PALLETS.add(palletKey);
                     }
                     DeduplicationManager.saveSyncedPallets();
                     console.log(`✅ [DEDUP-SYNC] Marcados ${palletLocationPairs.size} pallets como sincronizados`);
                     
-                    // VALIDACIÓN DUAL: Agregar registros sincronizados al cache de cajas procesadas
+                    // VALIDACIÓN DUAL: Agregar registros sincronizados al cache
                     ProcessedBoxesManager.addSyncedRecords(recordsToSync);
                     
+                    // SOLO si handshake exitoso: Limpiar PENDING_SYNC
                     PENDING_SYNC = [];
                     this.save();
                     this.updateUI(true);
 
-                    if (showMessages) showNotification(`✅ ${synced} registros sincronizados`, 'success');
-                    return { success: true, synced };
+                    if (showMessages) showNotification(`✅ ${synced} registros sincronizados y confirmados`, 'success');
+                    return { success: true, synced, confirmed: true };
                 } catch (e) {
                     console.error('❌ Error completo de sincronización:', e);
                     console.error('  - Mensaje:', e.message);
@@ -3659,15 +3678,120 @@
 
             async save() {
                 try {
+                    // Guardar en localStorage (primario)
                     localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
-                } catch (e) {}
+                    
+                    // Guardar también en IndexedDB como respaldo (más robusto)
+                    await this.saveToIndexedDB();
+                    
+                    console.log(`💾 [SYNC] Guardados ${PENDING_SYNC.length} registros pendientes`);
+                } catch (e) {
+                    console.error('❌ [SYNC] Error guardando pendientes:', e);
+                }
             },
 
             async load() {
                 try {
+                    // Intentar cargar de localStorage primero
                     const saved = localStorage.getItem('pd_pending_sync');
-                    if (saved) PENDING_SYNC = JSON.parse(saved);
-                } catch (e) {}
+                    if (saved) {
+                        PENDING_SYNC = JSON.parse(saved);
+                        console.log(`📂 [SYNC] Cargados ${PENDING_SYNC.length} registros de localStorage`);
+                    }
+                    
+                    // Verificar si hay más datos en IndexedDB (respaldo)
+                    const idbData = await this.loadFromIndexedDB();
+                    if (idbData && idbData.length > PENDING_SYNC.length) {
+                        console.log(`📂 [SYNC] Recuperados ${idbData.length} registros de IndexedDB (más que localStorage)`);
+                        PENDING_SYNC = idbData;
+                        // Sincronizar localStorage con IndexedDB
+                        localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
+                    }
+                } catch (e) {
+                    console.error('❌ [SYNC] Error cargando pendientes:', e);
+                }
+            },
+
+            // Guardar en IndexedDB como respaldo
+            async saveToIndexedDB() {
+                return new Promise((resolve) => {
+                    try {
+                        const request = indexedDB.open('PendingSyncDB', 1);
+                        
+                        request.onupgradeneeded = (e) => {
+                            const db = e.target.result;
+                            if (!db.objectStoreNames.contains('pending')) {
+                                db.createObjectStore('pending', { keyPath: 'id', autoIncrement: true });
+                            }
+                        };
+                        
+                        request.onsuccess = (e) => {
+                            const db = e.target.result;
+                            const tx = db.transaction('pending', 'readwrite');
+                            const store = tx.objectStore('pending');
+                            
+                            // Limpiar y guardar todos los registros
+                            store.clear();
+                            PENDING_SYNC.forEach((record, index) => {
+                                store.put({ ...record, id: index });
+                            });
+                            
+                            tx.oncomplete = () => {
+                                db.close();
+                                resolve(true);
+                            };
+                            tx.onerror = () => {
+                                db.close();
+                                resolve(false);
+                            };
+                        };
+                        
+                        request.onerror = () => resolve(false);
+                    } catch (e) {
+                        resolve(false);
+                    }
+                });
+            },
+
+            // Cargar desde IndexedDB
+            async loadFromIndexedDB() {
+                return new Promise((resolve) => {
+                    try {
+                        const request = indexedDB.open('PendingSyncDB', 1);
+                        
+                        request.onupgradeneeded = (e) => {
+                            const db = e.target.result;
+                            if (!db.objectStoreNames.contains('pending')) {
+                                db.createObjectStore('pending', { keyPath: 'id', autoIncrement: true });
+                            }
+                        };
+                        
+                        request.onsuccess = (e) => {
+                            const db = e.target.result;
+                            const tx = db.transaction('pending', 'readonly');
+                            const store = tx.objectStore('pending');
+                            const getAll = store.getAll();
+                            
+                            getAll.onsuccess = () => {
+                                db.close();
+                                // Remover el campo 'id' que agregamos para IndexedDB
+                                const records = (getAll.result || []).map(r => {
+                                    const { id, ...record } = r;
+                                    return record;
+                                });
+                                resolve(records);
+                            };
+                            getAll.onerror = () => {
+                                db.close();
+                                resolve([]);
+                            };
+                        };
+                        
+                        request.onerror = () => resolve([]);
+                    } catch (e) {
+                        resolve([]);
+                    }
+                });
             },
 
             updateUI(synced) {
@@ -5120,6 +5244,7 @@
         }
 
         // ==================== SEND INDIVIDUAL PALLET ====================
+        // OPTIMIZADO: Validación rápida usando cache local, sin consultas remotas bloqueantes
         async function sendPallet(category) {
             const pallet = STATE.pallets[category];
             const locationInput = document.getElementById(`location-${category}`);
@@ -5136,40 +5261,18 @@
                 return;
             }
 
-            // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión) - con timeout de 3 segundos
-            if (IS_ONLINE && gapi?.client?.getToken()) {
-                showNotification('🔍 Verificando...', 'info');
-                try {
-                    // Timeout de 3 segundos para no bloquear el flujo
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('timeout')), 3000)
-                    );
-                    const checkPromise = DeduplicationManager.checkPalletExistsInDatabase(pallet.id);
-                    const existsInDB = await Promise.race([checkPromise, timeoutPromise]).catch(() => false);
-                    
-                    if (existsInDB) {
-                        const confirmSend = confirm(
-                            `⚠️ ADVERTENCIA: El pallet ${pallet.id} ya existe en la base de datos.\n\n` +
-                            `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
-                            `¿Deseas generar un NUEVO código de pallet y continuar?`
-                        );
-                        if (confirmSend) {
-                            const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-                            pallet.id = generatePalletId(prefixes[category]);
-                            document.getElementById(`${category}-pallet`).textContent = pallet.id;
-                            saveToStorage();
-                            showNotification(`✅ Nuevo pallet generado: ${pallet.id}`, 'success');
-                        } else {
-                            showNotification('❌ Envío cancelado', 'warning');
-                            return;
-                        }
-                    }
-                } catch (e) {
-                    console.warn('⚠️ Verificación de BD omitida por timeout o error:', e);
-                }
+            // OPTIMIZADO: Validación LOCAL rápida (sin consulta remota)
+            // La verificación contra BD se hace en background después del envío
+            const localDuplicate = DeduplicationManager.isPalletSynced(pallet.id, location);
+            if (localDuplicate) {
+                const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                pallet.id = generatePalletId(prefixes[category]);
+                document.getElementById(`${category}-pallet`).textContent = pallet.id;
+                saveToStorage();
+                console.log(`🔄 [DEDUP] Pallet duplicado local detectado, nuevo ID: ${pallet.id}`);
             }
 
-            // Pre-validación: confirmar cantidad física
+            // Pre-validación: confirmar cantidad física (inmediato)
             showSendValidationPopup(category, location);
         }
 
@@ -5390,77 +5493,91 @@
                     if (uniqueRecords.length === 0) {
                         console.warn('⚠️ [DEDUP] Todos los registros ya existen en PENDING_SYNC');
                         showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
-                    } else {
-                        // Add to pending sync
-                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                        console.log('📝 Registros agregados a PENDING_SYNC:', uniqueRecords.length);
-                        console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-                        console.log('🔍 Ejemplo de registro:', uniqueRecords[0]);
-                        SyncManager.save();
+                        return;
+                    }
 
-                        if (uniqueRecords.length < records.length) {
-                            showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
-                        } else {
-                            showNotification(`💾 ${uniqueRecords.length} registros agregados`, 'info');
+                    // TRANSACCIÓN ATÓMICA: Guardar estado ANTES de modificar UI
+                    const backupPallet = JSON.parse(JSON.stringify(pallet));
+                    const backupPendingSync = [...PENDING_SYNC];
+                    
+                    // Add to pending sync
+                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                    console.log('📝 Registros agregados a PENDING_SYNC:', uniqueRecords.length);
+                    SyncManager.save();
+
+                    // OPTIMIZADO: Sincronización INMEDIATA con handshake
+                    let syncResult = { success: false, confirmed: false };
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        console.log('🔄 [ATOMIC] Sincronizando inmediatamente...');
+                        try {
+                            syncResult = await SyncManager.sync(false); // false = sin mostrar notificaciones intermedias
+                        } catch (err) {
+                            console.warn('⚠️ [ATOMIC] Error en sincronización:', err);
                         }
                     }
 
-                    // Try to sync immediately
-                    console.log('🔌 Estado de conexión:');
-                    console.log('  - IS_ONLINE:', IS_ONLINE);
-                    console.log('  - gapi disponible:', !!gapi);
-                    console.log('  - Token disponible:', !!gapi?.client?.getToken());
+                    // VALIDACIÓN ATÓMICA: Solo resetear pallet si sincronización fue exitosa O si estamos offline
+                    if (syncResult.confirmed || !IS_ONLINE) {
+                        // Reset pallet (transacción exitosa)
+                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                        STATE.pallets[category] = {
+                            id: generatePalletId(prefixes[category]),
+                            boxes: [],
+                            location: ''
+                        };
+                        locationInput.value = '';
 
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
-                        console.log('✅ Intentando sincronizar automáticamente...');
-                        await SyncManager.sync();
+                        saveToStorage();
+
+                        if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                            GlobalTabs.saveCurrentTabState();
+                        }
+
+                        if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                            GlobalTabs.updateGlobalSummary();
+                        }
+
+                        updateUI();
+                        playSound('success');
+
+                        originLocationInput.focus();
+                        originLocationInput.select();
+
+                        // NOTIFICACIÓN CONSOLIDADA
+                        if (syncResult.confirmed) {
+                            showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros procesados y confirmados`, 'success');
+                        } else {
+                            showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros (se sincronizará cuando haya conexión)`, 'info');
+                        }
                     } else {
-                        console.log('⚠️ No se puede sincronizar automáticamente (offline o sin token)');
-                        SyncManager.updateUI(false);
+                        // ROLLBACK: Sincronización falló, restaurar estado
+                        console.error('❌ [ATOMIC] Sincronización falló, haciendo rollback...');
+                        PENDING_SYNC = backupPendingSync;
+                        SyncManager.save();
+                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Intente nuevamente.`, 'error');
+                        return;
                     }
 
-                    // If in adjustment mode, delete old records from database
+                    // If in adjustment mode, delete old records in background
                     if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                        await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
-                        showNotification('✅ Ajuste completado - Registros actualizados', 'success');
-                        // Clear adjustment mode
+                        const origPallet = window.ADJUSTMENT_MODE.originalPalletCode;
+                        const origLocation = window.ADJUSTMENT_MODE.originalLocation;
                         window.ADJUSTMENT_MODE = { active: false };
+                        
+                        // Ejecutar en background
+                        deleteOldPalletRecords(origPallet, origLocation).then(() => {
+                            showNotification('✅ Ajuste completado', 'success');
+                        }).catch(err => {
+                            console.warn('⚠️ Error eliminando registros antiguos:', err);
+                        });
                     }
-
-                    // Reset only this pallet
-                    const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-                    STATE.pallets[category] = {
-                        id: generatePalletId(prefixes[category]),
-                        boxes: [],
-                        location: ''
-                    };
-                    locationInput.value = '';
-
-                    saveToStorage();
-
-                    // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
-                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
-                        GlobalTabs.saveCurrentTabState();
-                    }
-
-                    // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
-                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
-                        GlobalTabs.updateGlobalSummary();
-                    }
-
-                    updateUI();
-                    playSound('success');
-
-                    // Mover foco al campo de ubicación de origen para actualizar
-                    originLocationInput.focus();
-                    originLocationInput.select();
                 } finally {
                     // PROTECCIÓN: Siempre marcar fin de envío
                     DeduplicationManager.endSending();
                 }
             } catch (error) {
                 console.error('Error in confirmSendPallet:', error);
-                DeduplicationManager.endSending();
+                // endSending ya se llamó en finally, no duplicar
                 showNotification('❌ Error al enviar la tarima. Por favor, intente nuevamente.', 'error');
             }
         }
@@ -6460,10 +6577,27 @@
                     STATE.inventoryLastUpdate = data.inventoryLastUpdate;
                     if (data.pallets) STATE.pallets = data.pallets;
                     STATE.history = data.history || [];
-                    console.log('📦 Datos cargados desde storage:', {
+                    console.log('📦 Datos cargados desde localStorage:', {
                         pallets: STATE.pallets,
                         historyItems: STATE.history.length
                     });
+                } else {
+                    // Si localStorage está vacío, intentar recuperar de IndexedDB
+                    console.log('⚠️ localStorage vacío, intentando recuperar de IndexedDB...');
+                    const idbPallets = await loadPalletsFromIndexedDB();
+                    if (idbPallets && (idbPallets.ok || idbPallets.blocked || idbPallets.nowms)) {
+                        STATE.pallets = {
+                            ok: idbPallets.ok || STATE.pallets.ok,
+                            blocked: idbPallets.blocked || STATE.pallets.blocked,
+                            nowms: idbPallets.nowms || STATE.pallets.nowms
+                        };
+                        console.log('✅ Pallets recuperados de IndexedDB:', STATE.pallets);
+                        // Guardar en localStorage para próxima vez
+                        localStorage.setItem('pd_system_state', JSON.stringify({
+                            pallets: STATE.pallets,
+                            history: []
+                        }));
+                    }
                 }
                 updateBdInfo();
                 // Actualizar botones de envío con delay para asegurar DOM listo
@@ -6476,6 +6610,20 @@
                 }, 50);
             } catch (e) {
                 console.error('Error loading from storage:', e);
+                // Intentar recuperar de IndexedDB como último recurso
+                try {
+                    const idbPallets = await loadPalletsFromIndexedDB();
+                    if (idbPallets) {
+                        STATE.pallets = {
+                            ok: idbPallets.ok || STATE.pallets.ok,
+                            blocked: idbPallets.blocked || STATE.pallets.blocked,
+                            nowms: idbPallets.nowms || STATE.pallets.nowms
+                        };
+                        console.log('✅ Pallets recuperados de IndexedDB (fallback):', STATE.pallets);
+                    }
+                } catch (e2) {
+                    console.error('❌ Error recuperando de IndexedDB:', e2);
+                }
             }
         }
 
@@ -6489,6 +6637,9 @@
                     history: STATE.history.slice(0, 500)  // Reducido de 1000 a 500
                 };
                 localStorage.setItem('pd_system_state', JSON.stringify(data));
+                
+                // RESPALDO: Guardar pallets en IndexedDB para mayor seguridad
+                savePalletsToIndexedDB(STATE.pallets);
             } catch (e) {
                 console.error('Error saving to storage:', e);
                 // Si falla, intentar guardar solo lo esencial
@@ -6498,10 +6649,86 @@
                     };
                     localStorage.setItem('pd_system_state', JSON.stringify(minimalData));
                     console.warn('⚠️ Guardado solo pallets (storage lleno)');
+                    // Intentar respaldo en IndexedDB
+                    savePalletsToIndexedDB(STATE.pallets);
                 } catch (e2) {
                     console.error('❌ Error crítico guardando estado mínimo:', e2);
                 }
             }
+        }
+
+        // Guardar pallets en IndexedDB como respaldo
+        function savePalletsToIndexedDB(pallets) {
+            try {
+                const request = indexedDB.open('PalletsBackupDB', 1);
+                
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('pallets')) {
+                        db.createObjectStore('pallets', { keyPath: 'key' });
+                    }
+                };
+                
+                request.onsuccess = (e) => {
+                    const db = e.target.result;
+                    const tx = db.transaction('pallets', 'readwrite');
+                    const store = tx.objectStore('pallets');
+                    
+                    // Guardar cada categoría de pallet
+                    store.put({ key: 'ok', data: pallets.ok });
+                    store.put({ key: 'blocked', data: pallets.blocked });
+                    store.put({ key: 'nowms', data: pallets.nowms });
+                    store.put({ key: 'timestamp', data: new Date().toISOString() });
+                    
+                    tx.oncomplete = () => db.close();
+                    tx.onerror = () => db.close();
+                };
+            } catch (e) {
+                console.warn('⚠️ Error guardando respaldo en IndexedDB:', e);
+            }
+        }
+
+        // Cargar pallets desde IndexedDB (respaldo)
+        async function loadPalletsFromIndexedDB() {
+            return new Promise((resolve) => {
+                try {
+                    const request = indexedDB.open('PalletsBackupDB', 1);
+                    
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('pallets')) {
+                            db.createObjectStore('pallets', { keyPath: 'key' });
+                        }
+                    };
+                    
+                    request.onsuccess = (e) => {
+                        const db = e.target.result;
+                        const tx = db.transaction('pallets', 'readonly');
+                        const store = tx.objectStore('pallets');
+                        const getAll = store.getAll();
+                        
+                        getAll.onsuccess = () => {
+                            db.close();
+                            const results = getAll.result || [];
+                            const pallets = {};
+                            results.forEach(item => {
+                                if (item.key !== 'timestamp') {
+                                    pallets[item.key] = item.data;
+                                }
+                            });
+                            resolve(pallets);
+                        };
+                        getAll.onerror = () => {
+                            db.close();
+                            resolve(null);
+                        };
+                    };
+                    
+                    request.onerror = () => resolve(null);
+                } catch (e) {
+                    resolve(null);
+                }
+            });
         }
 
         // ==================== EXPORT ====================
@@ -7867,39 +8094,16 @@
                     return;
                 }
 
-                // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión) - con timeout de 3 segundos
-                if (IS_ONLINE && gapi?.client?.getToken()) {
-                    showNotification('🔍 Verificando...', 'info');
-                    try {
-                        // Timeout de 3 segundos para no bloquear el flujo
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('timeout')), 3000)
-                        );
-                        const checkPromise = DeduplicationManager.checkPalletExistsInDatabase(tab.palletId);
-                        const existsInDB = await Promise.race([checkPromise, timeoutPromise]).catch(() => false);
-                        
-                        if (existsInDB) {
-                            const confirmSend = confirm(
-                                `⚠️ ADVERTENCIA: El pallet ${tab.palletId} ya existe en la base de datos.\n\n` +
-                                `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
-                                `¿Deseas generar un NUEVO código de pallet y continuar?`
-                            );
-                            if (confirmSend) {
-                                tab.palletId = this.generatePalletId();
-                                document.getElementById('unified-pallet-id').textContent = tab.palletId;
-                                GlobalTabs.saveToStorage();
-                                showNotification(`✅ Nuevo pallet generado: ${tab.palletId}`, 'success');
-                            } else {
-                                showNotification('❌ Envío cancelado', 'warning');
-                                return;
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('⚠️ Verificación de BD omitida por timeout o error:', e);
-                    }
+                // OPTIMIZADO: Validación LOCAL rápida (sin consulta remota)
+                const localDuplicate = DeduplicationManager.isPalletSynced(tab.palletId, location);
+                if (localDuplicate) {
+                    tab.palletId = this.generatePalletId();
+                    document.getElementById('unified-pallet-id').textContent = tab.palletId;
+                    GlobalTabs.saveToStorage();
+                    console.log(`🔄 [DEDUP] Pallet duplicado local detectado, nuevo ID: ${tab.palletId}`);
                 }
 
-                // Show validation popup
+                // Show validation popup (inmediato)
                 this.showSendValidationPopup(tab, location, originLocation);
             },
 
@@ -8095,60 +8299,73 @@
                     if (uniqueRecords.length === 0) {
                         console.warn('⚠️ [DEDUP-UNIFICADO] Todos los registros ya existen en PENDING_SYNC');
                         showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
-                    } else {
-                        // Add to pending sync
-                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                        console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', uniqueRecords.length);
-                        console.log('📊 [UNIFICADO] Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-                        console.log('🔍 [UNIFICADO] Ejemplo de registro:', uniqueRecords[0]);
-                        SyncManager.save();
+                        return;
+                    }
 
-                        // Show appropriate notification
-                        const modeText = isCancelados ? ' como CANCELADOS' : '';
-                        if (uniqueRecords.length < records.length) {
-                            showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados${modeText} (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
-                        } else {
-                            showNotification(`💾 ${uniqueRecords.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
+                    // TRANSACCIÓN ATÓMICA: Guardar estado ANTES de modificar UI
+                    const backupTab = JSON.parse(JSON.stringify(tab));
+                    const backupPendingSync = [...PENDING_SYNC];
+                    
+                    // Add to pending sync
+                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                    console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', uniqueRecords.length);
+                    SyncManager.save();
+
+                    // OPTIMIZADO: Sincronización INMEDIATA con handshake
+                    let syncResult = { success: false, confirmed: false };
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        console.log('🔄 [ATOMIC-UNIFICADO] Sincronizando inmediatamente...');
+                        try {
+                            syncResult = await SyncManager.sync(false);
+                        } catch (err) {
+                            console.warn('⚠️ [ATOMIC-UNIFICADO] Error en sincronización:', err);
                         }
                     }
 
-                    // Try to sync immediately
-                    console.log('🔌 [UNIFICADO] Estado de conexión:');
-                    console.log('  - IS_ONLINE:', IS_ONLINE);
-                    console.log('  - gapi disponible:', !!gapi);
-                    console.log('  - Token disponible:', !!gapi?.client?.getToken());
+                    // VALIDACIÓN ATÓMICA: Solo resetear tab si sincronización fue exitosa O si estamos offline
+                    if (syncResult.confirmed || !IS_ONLINE) {
+                        // Reset tab (transacción exitosa)
+                        tab.palletId = this.generatePalletId();
+                        tab.boxes = [];
+                        tab.location = '';
+                        document.getElementById('unified-location').value = '';
 
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
-                        console.log('✅ [UNIFICADO] Intentando sincronizar automáticamente...');
-                        await SyncManager.sync();
+                        GlobalTabs.saveToStorage();
+                        this.updateUI();
+                        GlobalTabs.updateGlobalSummary();
+                        playSound('success');
+
+                        document.getElementById('unified-origin-location').focus();
+
+                        // NOTIFICACIÓN CONSOLIDADA
+                        const modeText = isCancelados ? ' como CANCELADOS' : '';
+                        if (syncResult.confirmed) {
+                            showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros${modeText} procesados y confirmados`, 'success');
+                        } else {
+                            showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros${modeText} (se sincronizará cuando haya conexión)`, 'info');
+                        }
                     } else {
-                        console.log('⚠️ [UNIFICADO] No se puede sincronizar automáticamente (offline o sin token)');
-                        SyncManager.updateUI(false);
+                        // ROLLBACK: Sincronización falló, restaurar estado
+                        console.error('❌ [ATOMIC-UNIFICADO] Sincronización falló, haciendo rollback...');
+                        PENDING_SYNC = backupPendingSync;
+                        SyncManager.save();
+                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Intente nuevamente.`, 'error');
+                        return;
                     }
 
-                    // If in adjustment mode, delete old records from database
+                    // If in adjustment mode, delete old records in background
                     if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                        await deleteOldPalletRecords(window.ADJUSTMENT_MODE.originalPalletCode, window.ADJUSTMENT_MODE.originalLocation);
-                        showNotification('✅ Ajuste completado - Registros actualizados', 'success');
-                        // Clear adjustment mode
+                        const origPallet = window.ADJUSTMENT_MODE.originalPalletCode;
+                        const origLocation = window.ADJUSTMENT_MODE.originalLocation;
                         window.ADJUSTMENT_MODE = { active: false };
+                        
+                        deleteOldPalletRecords(origPallet, origLocation).then(() => {
+                            showNotification('✅ Ajuste completado', 'success');
+                        }).catch(err => {
+                            console.warn('⚠️ Error eliminando registros antiguos:', err);
+                        });
                     }
-
-                    // Reset tab (but keep canceladosMode as user preference)
-                    tab.palletId = this.generatePalletId();
-                    tab.boxes = [];
-                    tab.location = '';
-                    document.getElementById('unified-location').value = '';
-
-                    GlobalTabs.saveToStorage();
-                    this.updateUI();
-                    // Asegurar actualización de tarjetas globales
-                    GlobalTabs.updateGlobalSummary();
-                    playSound('success');
-
-                    document.getElementById('unified-origin-location').focus();
                 } finally {
-                    // PROTECCIÓN: Siempre marcar fin de envío
                     DeduplicationManager.endSending();
                 }
             },
