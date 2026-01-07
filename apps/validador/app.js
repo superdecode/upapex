@@ -34,6 +34,210 @@ let lastScanned = null;
 let pendingReloadOBC = null;
 let RECONTEO_STATE = { obc: null, scans: [], stats: { ok: 0, dup: 0, missing: 0, extra: 0 } };
 
+// ==================== INDEXEDDB CACHE SYSTEM ====================
+// Sistema avanzado de cache con IndexedDB para sincronización y validación de duplicados
+let HISTORY_DB = null;
+let HISTORY_LAST_UPDATE = null;
+const HISTORY_DB_NAME = 'WMS_Validador_HistoryDB';
+const HISTORY_STORE = 'validations';
+
+const HistoryIndexedDBManager = {
+    SYNC_INTERVAL: 30 * 60 * 1000,  // 30 minutos - Sincronización periódica desde servidor
+    intervalId: null,
+    isLoading: false,
+
+    async init() {
+        await this.openDatabase();
+        await this.loadFromIndexedDB();
+        this.startAutoSync();
+        console.log(`📦 [HISTORY-CACHE] Inicializado con ${HISTORY.size} validaciones en cache`);
+    },
+
+    async openDatabase() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(HISTORY_DB_NAME, 1);
+
+            request.onerror = () => {
+                console.error('❌ [HISTORY-CACHE] Error abriendo IndexedDB');
+                reject(request.error);
+            };
+
+            request.onsuccess = () => {
+                HISTORY_DB = request.result;
+                console.log('✅ [HISTORY-CACHE] IndexedDB abierto correctamente');
+                resolve();
+            };
+
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+                    const store = db.createObjectStore(HISTORY_STORE, { keyPath: 'key' });
+                    store.createIndex('timestamp', 'timestamp', { unique: false });
+                    console.log('✅ [HISTORY-CACHE] Object store creado');
+                }
+            };
+        });
+    },
+
+    async loadFromIndexedDB() {
+        if (!HISTORY_DB) return;
+
+        try {
+            // Cargar datos de historial de validaciones
+            const dataResult = await new Promise((resolve, reject) => {
+                const transaction = HISTORY_DB.transaction([HISTORY_STORE], 'readonly');
+                const store = transaction.objectStore(HISTORY_STORE);
+                const request = store.get('history');
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            if (dataResult?.value) {
+                const entries = dataResult.value;
+                HISTORY = new Map(entries);
+                console.log(`📂 [HISTORY-CACHE] Cargadas ${HISTORY.size} validaciones desde IndexedDB`);
+            }
+
+            // Cargar timestamp de última actualización
+            const timestampResult = await new Promise((resolve, reject) => {
+                const transaction = HISTORY_DB.transaction([HISTORY_STORE], 'readonly');
+                const store = transaction.objectStore(HISTORY_STORE);
+                const request = store.get('lastUpdate');
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            if (timestampResult?.value) {
+                HISTORY_LAST_UPDATE = new Date(timestampResult.value);
+                console.log(`📅 [HISTORY-CACHE] Última actualización: ${HISTORY_LAST_UPDATE.toLocaleString('es-MX')}`);
+            }
+        } catch (error) {
+            console.error('❌ [HISTORY-CACHE] Error cargando desde IndexedDB:', error);
+        }
+    },
+
+    async saveToIndexedDB() {
+        if (!HISTORY_DB) return;
+
+        try {
+            const transaction = HISTORY_DB.transaction([HISTORY_STORE], 'readwrite');
+            const store = transaction.objectStore(HISTORY_STORE);
+
+            // Guardar solo los últimos 30 días de historial para no exceder límites
+            const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            const filteredEntries = Array.from(HISTORY.entries()).filter(([key, val]) => {
+                const date = new Date(val.date + ' ' + val.timestamp);
+                return date.getTime() > thirtyDaysAgo;
+            });
+
+            store.put({ key: 'history', value: filteredEntries });
+            store.put({ key: 'lastUpdate', value: Date.now() });
+
+            await new Promise((resolve, reject) => {
+                transaction.oncomplete = resolve;
+                transaction.onerror = reject;
+            });
+
+            console.log(`💾 [HISTORY-CACHE] Guardadas ${filteredEntries.length} validaciones en IndexedDB`);
+        } catch (error) {
+            console.error('❌ [HISTORY-CACHE] Error guardando en IndexedDB:', error);
+        }
+    },
+
+    startAutoSync() {
+        if (this.intervalId) clearInterval(this.intervalId);
+        this.intervalId = setInterval(() => {
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                this.syncFromServer(false);  // sincronización silenciosa
+            }
+        }, this.SYNC_INTERVAL);  // 30 minutos
+        console.log('🔄 [HISTORY-CACHE] Auto-sync iniciado (cada 30 minutos)');
+    },
+
+    async syncFromServer(showNotification = true) {
+        if (this.isLoading) {
+            console.log('⏳ [HISTORY-CACHE] Sincronización ya en progreso...');
+            return;
+        }
+
+        if (!IS_ONLINE || !gapi?.client?.getToken()) {
+            console.log('⚠️ [HISTORY-CACHE] Sin conexión o sin token');
+            return;
+        }
+
+        this.isLoading = true;
+        if (showNotification) {
+            window.showNotification?.('🔄 Sincronizando historial de validaciones...', 'info');
+        }
+
+        try {
+            // Descargar historial de validaciones desde Google Sheets Val3
+            // Columnas: A(date), B(timestamp), C(user), D(obc), E(raw), F(code), G(reason), H(location), I(note)
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: SPREADSHEET_WRITE,
+                range: 'Val3!A:I'
+            });
+
+            const rows = response.result.values || [];
+            const newHistory = new Map();
+
+            // Saltar header (fila 0) y procesar datos
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || !row[3] || !row[5]) continue; // Requiere obc y code
+
+                const obc = row[3]?.toString().trim().toUpperCase();
+                const code = row[5]?.toString().trim().toUpperCase();
+                const concatenated = code + obc.toLowerCase();
+
+                if (concatenated) {
+                    newHistory.set(concatenated, {
+                        date: row[0]?.toString().trim() || '',
+                        timestamp: row[1]?.toString().trim() || '',
+                        user: row[2]?.toString().trim() || '',
+                        obc: obc,
+                        raw: row[4]?.toString().trim() || '',
+                        code: code,
+                        reason: row[6]?.toString().trim() || '',
+                        location: row[7]?.toString().trim() || '',
+                        note: row[8]?.toString().trim() || ''
+                    });
+                }
+            }
+
+            // Actualizar HISTORY global con merge (mantener datos locales nuevos)
+            const beforeSize = HISTORY.size;
+            for (const [key, value] of newHistory) {
+                if (!HISTORY.has(key)) {
+                    HISTORY.set(key, value);
+                }
+            }
+            const added = HISTORY.size - beforeSize;
+
+            HISTORY_LAST_UPDATE = new Date();
+            await this.saveToIndexedDB();
+
+            console.log(`✅ [HISTORY-CACHE] Sincronizadas ${newHistory.size} validaciones del servidor (+${added} nuevas)`);
+            if (showNotification) {
+                window.showNotification?.(`✅ Historial sincronizado (+${added} nuevas)`, 'success');
+            }
+        } catch (error) {
+            console.error('❌ [HISTORY-CACHE] Error sincronizando desde servidor:', error);
+            if (showNotification) {
+                window.showNotification?.('❌ Error sincronizando historial', 'error');
+            }
+        } finally {
+            this.isLoading = false;
+        }
+    },
+
+    async addValidation(concatenated, validationData) {
+        if (!concatenated) return;
+        HISTORY.set(concatenated, validationData);
+        await this.saveToIndexedDB();
+    }
+};
+
 // ==================== SYNC MANAGER ====================
 // Usar el módulo compartido SyncManager
 let syncManager = null;
@@ -97,9 +301,112 @@ async function loadPendingSync() {
     // El syncManager carga automáticamente al init
 }
 
+// ==================== FUNCIONES DE STORAGE ====================
+// Sistema de almacenamiento compatible con window.storage (localStorage con API async)
+window.storage = {
+    async get(key) {
+        try {
+            const value = localStorage.getItem(key);
+            return value ? { value } : null;
+        } catch (e) {
+            console.error(`Error getting ${key}:`, e);
+            return null;
+        }
+    },
+
+    async set(key, value) {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            console.error(`Error setting ${key}:`, e);
+        }
+    }
+};
+
+async function loadFromStorage() {
+    try {
+        const stateRes = await window.storage.get('wms_validador_state');
+        if (stateRes?.value) {
+            const loaded = JSON.parse(stateRes.value);
+            STATE.tabs = loaded.tabs || {};
+            STATE.closedTabs = loaded.closedTabs || {};
+            STATE.activeOBC = loaded.activeOBC;
+            STATE.sessionStats = loaded.sessionStats || { total: 0, valid: 0, invalid: 0 };
+            console.log('📂 Estado cargado desde storage');
+        }
+
+        const bdRes = await window.storage.get('wms_validador_bd');
+        if (bdRes?.value) {
+            const cached = JSON.parse(bdRes.value);
+            BD_CODES = new Set(cached.codes || []);
+            OBC_MAP = new Map((cached.obcMap || []).map(([k, v]) => [k, new Set(v)]));
+            OBC_TOTALS = new Map(cached.totals || []);
+            OBC_INFO = new Map(cached.info || []);
+            LAST_BD_UPDATE = cached.lastUpdate;
+            console.log(`📂 BD cargada: ${BD_CODES.size} códigos`);
+        }
+
+        // El historial ahora se carga desde IndexedDB en HistoryIndexedDBManager.init()
+    } catch (e) {
+        console.error('Error cargando desde storage:', e);
+    }
+}
+
+async function saveState() {
+    try {
+        await window.storage.set('wms_validador_state', JSON.stringify(STATE));
+    } catch (e) {
+        console.error('Error guardando estado:', e);
+    }
+}
+
+async function saveBD() {
+    try {
+        await window.storage.set('wms_validador_bd', JSON.stringify({
+            codes: Array.from(BD_CODES),
+            obcMap: Array.from(OBC_MAP.entries()).map(([k, v]) => [k, Array.from(v)]),
+            totals: Array.from(OBC_TOTALS.entries()),
+            info: Array.from(OBC_INFO.entries()),
+            lastUpdate: LAST_BD_UPDATE
+        }));
+    } catch (e) {
+        console.error('Error guardando BD:', e);
+    }
+}
+
+async function saveHistory() {
+    // El historial ahora se guarda automáticamente en IndexedDB por HistoryIndexedDBManager
+    // Esta función se mantiene por compatibilidad pero ya no hace nada
+}
+
+async function loadPrerecData() {
+    try {
+        const res = await window.storage.get('wms_validador_prerec');
+        if (res?.value) {
+            const arr = JSON.parse(res.value);
+            PREREC_DATA = new Map(arr);
+            console.log(`📂 Precepción cargada: ${PREREC_DATA.size} registros`);
+        }
+    } catch (e) {
+        console.error('Error cargando prerecepción:', e);
+    }
+}
+
+async function savePrerecData() {
+    try {
+        await window.storage.set('wms_validador_prerec', JSON.stringify(Array.from(PREREC_DATA.entries())));
+    } catch (e) {
+        console.error('Error guardando prerecepción:', e);
+    }
+}
+
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', async () => {
     initAudio();
+
+    // Inicializar sistema de cache IndexedDB PRIMERO
+    await HistoryIndexedDBManager.init();
+
     await loadFromStorage();
     await loadPrerecData();
     setupListeners();
@@ -125,13 +432,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     gapi.load('client', async () => {
         await AuthManager.init(
             // onAuthSuccess
-            (userData) => {
-                CURRENT_USER = userData.user;
+            async (userData) => {
                 USER_EMAIL = userData.email;
                 USER_GOOGLE_NAME = userData.name;
+
+                // Verificar si hay alias guardado
+                const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                if (savedAlias) {
+                    CURRENT_USER = savedAlias;
+                } else {
+                    CURRENT_USER = userData.user;
+                }
+
                 showMainApp();
                 updateUserFooter();
                 loadDatabase();
+
+                // Si no hay alias guardado, mostrar popup de configuración
+                if (!savedAlias) {
+                    setTimeout(() => showAliasPopup(), 500);
+                }
             },
             // onAuthError
             (error) => {
@@ -189,18 +509,128 @@ function toggleGoogleConnection() {
     }
 }
 
+// ==================== GESTIÓN DE ALIAS DE USUARIO ====================
+async function getUserProfile() {
+    try {
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${gapi.client.getToken().access_token}` }
+        });
+        const data = await response.json();
+        USER_EMAIL = data.email || '';
+        USER_GOOGLE_NAME = data.name || 'Usuario';
+
+        // Verificar si hay alias guardado para este email
+        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+        if (savedAlias) {
+            CURRENT_USER = savedAlias;
+            showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
+            updateUserFooter();
+        } else {
+            // Primera vez - mostrar popup de alias
+            showAliasPopup();
+        }
+    } catch (e) {
+        console.error('Error obteniendo perfil:', e);
+        CURRENT_USER = 'Usuario';
+        updateUserFooter();
+    }
+}
+
+function showAliasPopup() {
+    document.querySelectorAll('.alias-popup-overlay').forEach(e => e.remove());
+
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay alias-popup-overlay';
+    overlay.style.display = 'flex';
+
+    overlay.innerHTML = `
+        <div class="popup-content" style="max-width: 400px;">
+            <div class="popup-header" style="color: var(--primary);">
+                👤 Configura tu Nombre
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <div style="width: 60px; height: 60px; border-radius: 50%; background: var(--primary); margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 1.8em; color: white;">
+                    ${USER_GOOGLE_NAME.charAt(0).toUpperCase()}
+                </div>
+                <p style="color: #666; font-size: 0.9em;">${USER_EMAIL}</p>
+            </div>
+
+            <p style="margin-bottom: 15px; text-align: center;">
+                ¿Cómo quieres que te identifiquemos en el sistema?
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                <button class="btn btn-primary" onclick="saveUserAlias('${USER_GOOGLE_NAME}', true)">
+                    ✅ Usar mi nombre: ${USER_GOOGLE_NAME}
+                </button>
+
+                <div style="text-align: center; color: #999; font-size: 0.85em;">o</div>
+
+                <div style="display: flex; gap: 8px;">
+                    <input id="custom-alias-input" type="text" placeholder="Escribe un alias personalizado"
+                           style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1em;"
+                           onkeypress="if(event.key==='Enter') saveUserAlias(this.value, false)">
+                    <button class="btn btn-secondary" onclick="saveUserAlias(document.getElementById('custom-alias-input').value, false)">
+                        Guardar
+                    </button>
+                </div>
+            </div>
+
+            <p style="text-align: center; font-size: 0.8em; color: #888;">
+                💡 Podrás cambiar tu nombre más tarde haciendo click en tu avatar
+            </p>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    setTimeout(() => document.getElementById('custom-alias-input')?.focus(), 100);
+}
+
+function saveUserAlias(alias, isGoogleName = false) {
+    const finalAlias = alias?.trim() || USER_GOOGLE_NAME;
+    if (!finalAlias) {
+        showNotification('⚠️ Ingresa un nombre válido', 'warning');
+        return;
+    }
+
+    CURRENT_USER = finalAlias;
+    localStorage.setItem(`wms_alias_${USER_EMAIL}`, finalAlias);
+
+    document.querySelectorAll('.alias-popup-overlay').forEach(e => e.remove());
+    showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
+    updateUserFooter();
+}
+
+function changeUserAlias() {
+    showAliasPopup();
+}
+
 function updateUserFooter() {
     const avatarEl = document.getElementById('user-avatar');
     const nameEl = document.getElementById('user-name-display');
     const authBtn = document.getElementById('sidebar-auth-btn');
 
-    if (avatarEl) avatarEl.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
-    if (nameEl) nameEl.textContent = CURRENT_USER || 'No conectado';
+    if (avatarEl) {
+        avatarEl.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
+        avatarEl.title = USER_EMAIL || 'No conectado';
+        avatarEl.style.cursor = 'pointer';
+        avatarEl.onclick = changeUserAlias;
+    }
+    if (nameEl) {
+        nameEl.textContent = CURRENT_USER || 'No conectado';
+        nameEl.title = `Click para cambiar alias\n${USER_EMAIL}`;
+        nameEl.style.cursor = 'pointer';
+        nameEl.onclick = changeUserAlias;
+    }
     if (authBtn) authBtn.textContent = gapi?.client?.getToken() ? '🚪 Salir' : '🔗 Conectar';
 
     updateConnectionIndicator();
     updateBdInfo();
 }
+
+// Hacer funciones globales para que funcionen desde el HTML inline
+window.saveUserAlias = saveUserAlias;
+window.changeUserAlias = changeUserAlias;
 
 function updateConnectionIndicator(syncing = false) {
     const dot = document.getElementById('connection-dot');
@@ -404,6 +834,38 @@ function validateLocationInput(location) {
     );
 }
 
+// Función adicional para mostrar popup de ubicación inválida con justificación
+let pendingInvalidLocation = null;
+
+function showInvalidLocationPopup(location, errorMessage) {
+    pendingInvalidLocation = location;
+    document.getElementById('invalid-location-code').textContent = location;
+    document.getElementById('invalid-location-message').textContent = errorMessage;
+    document.getElementById('invalid-location-justification').value = '';
+    showPopup('invalid-location');
+}
+
+function forceInvalidLocation() {
+    if (!pendingInvalidLocation) return;
+
+    const justification = document.getElementById('invalid-location-justification').value.trim();
+    const finalLocation = justification
+        ? `${pendingInvalidLocation} (FORZADO: ${justification})`
+        : `${pendingInvalidLocation} (FORZADO)`;
+
+    const locationInput = document.getElementById('location-input');
+    if (locationInput) {
+        locationInput.value = finalLocation;
+        STATE.currentLocation = finalLocation;
+    }
+
+    closePopup('invalid-location');
+    showNotification(`⚠️ Ubicación forzada: ${pendingInvalidLocation}`, 'warning');
+    pendingInvalidLocation = null;
+}
+
+window.forceInvalidLocation = forceInvalidLocation;
+
 function showConnectionBanner(status) {
     const banner = document.getElementById('connection-banner');
     if (!banner) return;
@@ -492,7 +954,12 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
     };
 
     STATE.tabs[obc].validations.push(log);
-    HISTORY.set(code + obc.toLowerCase(), { date: log.date, timestamp: log.timestamp, user: log.user, obc });
+    const concatenated = code + obc.toLowerCase();
+    const historyData = { date: log.date, timestamp: log.timestamp, user: log.user, obc, code, raw, location, note: log.note };
+    HISTORY.set(concatenated, historyData);
+
+    // Guardar en IndexedDB para cache persistente
+    await HistoryIndexedDBManager.addValidation(concatenated, historyData);
 
     addToPendingSync('Validaciones', log);
     await saveState();
@@ -1542,6 +2009,128 @@ function showMiniAlert(message) {
     document.body.appendChild(alert);
     setTimeout(() => alert.remove(), 400);
 }
+
+// ==================== EXPORTACIÓN DE DATOS ====================
+function exportData() {
+    const rows = [];
+    rows.push('Fecha,Hora,Usuario,Orden,Código,Ubicación,Nota');
+
+    const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+    for (const obc in allOrders) {
+        const order = allOrders[obc];
+        if (order.validations) {
+            order.validations.forEach(log => {
+                // Escapar comas en los datos para CSV
+                const escapeCsv = (str) => {
+                    if (!str) return '';
+                    str = String(str);
+                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                        return `"${str.replace(/"/g, '""')}"`;
+                    }
+                    return str;
+                };
+
+                rows.push([
+                    escapeCsv(log.date),
+                    escapeCsv(log.timestamp),
+                    escapeCsv(log.user),
+                    escapeCsv(log.obc),
+                    escapeCsv(log.code),
+                    escapeCsv(log.location || ''),
+                    escapeCsv(log.note || '')
+                ].join(','));
+            });
+        }
+    }
+
+    if (rows.length === 1) {
+        showNotification('⚠️ No hay datos para exportar', 'warning');
+        return;
+    }
+
+    const csv = '\ufeff' + rows.join('\n'); // BOM para UTF-8
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `validaciones_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+
+    showNotification(`📥 Exportadas ${rows.length - 1} validaciones`, 'success');
+}
+
+window.exportData = exportData;
+
+// ==================== ESTADÍSTICAS DE USUARIO ====================
+function showUserStats() {
+    const allOrders = { ...STATE.tabs, ...STATE.closedTabs };
+    const userStats = {};
+    let total = 0;
+
+    for (const obc in allOrders) {
+        const order = allOrders[obc];
+        if (order.validations) {
+            order.validations.forEach(val => {
+                const user = val.user || 'Usuario';
+                if (!userStats[user]) userStats[user] = 0;
+                userStats[user]++;
+                total++;
+            });
+        }
+    }
+
+    const sortedUsers = Object.entries(userStats).sort((a, b) => b[1] - a[1]);
+    const content = document.getElementById('user-stats-content');
+    if (!content) {
+        showNotification('⚠️ Popup de estadísticas no disponible', 'warning');
+        return;
+    }
+
+    content.innerHTML = '';
+
+    if (sortedUsers.length === 0) {
+        content.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">No hay validaciones registradas</p>';
+    } else {
+        sortedUsers.forEach(([user, count]) => {
+            const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+            const div = document.createElement('div');
+            div.className = 'user-stat-item';
+            div.style.cssText = 'margin-bottom: 20px;';
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 1.1em;">${user}</div>
+                        <div style="color: #666; font-size: 0.9em;">${percentage}% del total</div>
+                    </div>
+                    <div style="font-size: 1.5em; font-weight: 700; color: var(--primary);">${count}</div>
+                </div>
+                <div style="background: #e0e0e0; height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="width: ${percentage}%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-dark)); border-radius: 4px; transition: width 0.3s;"></div>
+                </div>
+            `;
+            content.appendChild(div);
+        });
+
+        const totalDiv = document.createElement('div');
+        totalDiv.style.cssText = 'margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px; text-align: center; font-weight: 700;';
+        totalDiv.innerHTML = `Total: <span style="color: var(--primary); font-size: 1.5em;">${total}</span> validaciones`;
+        content.appendChild(totalDiv);
+    }
+
+    const popup = document.getElementById('user-stats-popup');
+    const overlay = document.getElementById('user-stats-overlay');
+    if (popup) popup.classList.add('active');
+    if (overlay) overlay.classList.add('active');
+}
+
+function closeUserStats() {
+    const popup = document.getElementById('user-stats-popup');
+    const overlay = document.getElementById('user-stats-overlay');
+    if (popup) popup.classList.remove('active');
+    if (overlay) overlay.classList.remove('active');
+}
+
+window.showUserStats = showUserStats;
+window.closeUserStats = closeUserStats;
 
 function testLocationValidator() {
     console.log('🧪 Testing Location Validator (usando wms-utils.js)...');

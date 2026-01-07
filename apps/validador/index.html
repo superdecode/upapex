@@ -534,6 +534,28 @@
         </div>
     </div>
 
+    <!-- POPUP UBICACIÓN INVÁLIDA -->
+    <div id="popup-invalid-location" class="popup-overlay">
+        <div class="popup-content" style="max-width: 500px;">
+            <button class="popup-close-x" onclick="closePopup('invalid-location')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ UBICACIÓN INVÁLIDA</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Ubicación ingresada:</strong> <span id="invalid-location-code" style="color: var(--error); font-weight: 700;"></span><br>
+                <strong>Error:</strong> <span id="invalid-location-message"></span><br><br>
+                <strong>Formato esperado:</strong> A1-01-01-01<br>
+                <strong>Ejemplos válidos:</strong> A26-06-01-02, B11-11-02-01
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Justificación (opcional):</label>
+                <textarea id="invalid-location-justification" rows="3" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-family: inherit;" placeholder="¿Por qué necesitas forzar esta ubicación?"></textarea>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('invalid-location')">← Corregir</button>
+                <button class="btn btn-warning" onclick="forceInvalidLocation()">⚠️ Forzar de Todos Modos</button>
+            </div>
+        </div>
+    </div>
+
     </div>
     <!-- End MAIN APP -->
 
