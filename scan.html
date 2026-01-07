@@ -2667,7 +2667,7 @@
                 <table class="resumen-table">
                     <thead>
                         <tr>
-                            <th>Hora</th>
+                            <th>Fecha</th>
                             <th>Código</th>
                             <th>Código 2</th>
                             <th>Estatus</th>
@@ -5416,6 +5416,65 @@
                 // Usar la ubicación formateada (normalizada si es válida)
                 const finalLocation = locationCheck.formatted;
                 console.log('Using normalized location:', finalLocation);
+
+                // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
+                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                
+                // 1. Verificar en PENDING_SYNC (registros locales pendientes)
+                const usedInPending = PENDING_SYNC.some(record => {
+                    const recordDate = record.date; // YYYY-MM-DD
+                    return recordDate === today && record.location === finalLocation;
+                });
+
+                if (usedInPending) {
+                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
+                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                    if (locationInput) locationInput.focus();
+                    return;
+                }
+
+                // 2. Verificar en STATE.history (registros locales del historial)
+                const usedInHistory = STATE.history.some(record => {
+                    const recordDate = record.date; // YYYY-MM-DD
+                    return recordDate === today && record.location === finalLocation;
+                });
+
+                if (usedInHistory) {
+                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
+                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                    if (locationInput) locationInput.focus();
+                    return;
+                }
+
+                // 3. Verificar en base de datos remota (si hay conexión)
+                if (IS_ONLINE && gapi?.client?.getToken()) {
+                    try {
+                        console.log('🔍 Verificando ubicación en base de datos...');
+                        const response = await gapi.client.sheets.spreadsheets.values.get({
+                            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                            range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
+                        });
+
+                        const rows = response.result.values || [];
+                        const usedInDB = rows.some(row => {
+                            const dbDate = row[0]; // Columna A = fecha
+                            const dbLocation = row[5]; // Columna F = ubicación
+                            return dbDate === today && dbLocation === finalLocation;
+                        });
+
+                        if (usedInDB) {
+                            console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
+                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
+                            if (locationInput) locationInput.focus();
+                            return;
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ No se pudo verificar ubicación en BD:', error);
+                        // Continuar si falla la verificación remota (modo offline)
+                    }
+                }
+
+                console.log('✅ Ubicación validada - no ha sido usada hoy');
                 
                 if (locationInput) {
                     locationInput.value = finalLocation;
@@ -5496,28 +5555,100 @@
                         return;
                     }
 
+                    // VALIDACIÓN DE CONECTIVIDAD ANTES DE ENVÍO
+                    if (!IS_ONLINE) {
+                        // Modo offline - guardar localmente
+                        console.log('📴 [OFFLINE] Guardando datos localmente...');
+                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                        SyncManager.save();
+                        
+                        // Agregar a historial local SOLO en modo offline
+                        STATE.history = [...records, ...STATE.history].slice(0, 1000);
+                        
+                        // Reset pallet
+                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                        STATE.pallets[category] = {
+                            id: generatePalletId(prefixes[category]),
+                            boxes: [],
+                            location: ''
+                        };
+                        locationInput.value = '';
+                        saveToStorage();
+                        
+                        if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                            GlobalTabs.saveCurrentTabState();
+                        }
+                        if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                            GlobalTabs.updateGlobalSummary();
+                        }
+                        
+                        updateUI();
+                        playSound('success');
+                        originLocationInput.focus();
+                        originLocationInput.select();
+                        
+                        showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros (se sincronizará cuando haya conexión)`, 'info');
+                        return;
+                    }
+
+                    // Verificar token de Google antes de intentar envío
+                    if (!gapi?.client?.getToken()) {
+                        console.error('❌ [AUTH] Token de Google no disponible');
+                        showNotification(`❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.`, 'error');
+                        return;
+                    }
+
                     // TRANSACCIÓN ATÓMICA: Guardar estado ANTES de modificar UI
                     const backupPallet = JSON.parse(JSON.stringify(pallet));
                     const backupPendingSync = [...PENDING_SYNC];
+                    const backupHistory = [...STATE.history];
                     
-                    // Add to pending sync
+                    // Add to pending sync temporalmente
                     PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                    console.log('📝 Registros agregados a PENDING_SYNC:', uniqueRecords.length);
                     SyncManager.save();
 
-                    // OPTIMIZADO: Sincronización INMEDIATA con handshake
+                    // SINCRONIZACIÓN INMEDIATA CON TIMEOUT DE 5 SEGUNDOS
                     let syncResult = { success: false, confirmed: false };
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
-                        console.log('🔄 [ATOMIC] Sincronizando inmediatamente...');
-                        try {
-                            syncResult = await SyncManager.sync(false); // false = sin mostrar notificaciones intermedias
-                        } catch (err) {
-                            console.warn('⚠️ [ATOMIC] Error en sincronización:', err);
+                    console.log('🔄 [ATOMIC] Sincronizando con timeout de 5s...');
+                    
+                    try {
+                        // Crear promesa con timeout
+                        const syncPromise = SyncManager.sync(false);
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Timeout: El servidor no respondió en 5 segundos')), 5000)
+                        );
+                        
+                        syncResult = await Promise.race([syncPromise, timeoutPromise]);
+                    } catch (err) {
+                        console.error('❌ [ATOMIC] Error en sincronización:', err);
+                        
+                        // Determinar tipo de error
+                        let errorMessage = '❌ Error al enviar pallet: ';
+                        if (err.message?.includes('Timeout')) {
+                            errorMessage += 'El servidor no respondió a tiempo. Verifica tu conexión e intenta nuevamente.';
+                        } else if (err.message?.includes('Invalid Credentials') || err.status === 401) {
+                            errorMessage = '❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.';
+                        } else if (err.message?.includes('Network') || !navigator.onLine) {
+                            errorMessage += 'Sin conexión a internet. Verifica tu red e intenta nuevamente.';
+                        } else {
+                            errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
                         }
+                        
+                        // ROLLBACK COMPLETO
+                        console.error('❌ [ROLLBACK] Restaurando estado anterior...');
+                        PENDING_SYNC = backupPendingSync;
+                        STATE.history = backupHistory;
+                        SyncManager.save();
+                        
+                        showNotification(errorMessage, 'error');
+                        return; // MANTENER DATOS EN PANTALLA
                     }
 
-                    // VALIDACIÓN ATÓMICA: Solo resetear pallet si sincronización fue exitosa O si estamos offline
-                    if (syncResult.confirmed || !IS_ONLINE) {
+                    // VALIDACIÓN ATÓMICA: Solo limpiar pantalla si HTTP 200 confirmado
+                    if (syncResult.confirmed) {
+                        // ✅ ÉXITO: Agregar a historial local SOLO si confirmado en servidor
+                        STATE.history = [...records, ...STATE.history].slice(0, 1000);
+                        
                         // Reset pallet (transacción exitosa)
                         const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
                         STATE.pallets[category] = {
@@ -5543,19 +5674,15 @@
                         originLocationInput.focus();
                         originLocationInput.select();
 
-                        // NOTIFICACIÓN CONSOLIDADA
-                        if (syncResult.confirmed) {
-                            showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros procesados y confirmados`, 'success');
-                        } else {
-                            showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros (se sincronizará cuando haya conexión)`, 'info');
-                        }
+                        showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros procesados y confirmados`, 'success');
                     } else {
-                        // ROLLBACK: Sincronización falló, restaurar estado
-                        console.error('❌ [ATOMIC] Sincronización falló, haciendo rollback...');
+                        // ❌ FALLO: ROLLBACK COMPLETO - mantener datos en pantalla
+                        console.error('❌ [ROLLBACK] Sincronización falló, restaurando estado...');
                         PENDING_SYNC = backupPendingSync;
+                        STATE.history = backupHistory;
                         SyncManager.save();
-                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Intente nuevamente.`, 'error');
-                        return;
+                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Los datos permanecen en pantalla. Intenta nuevamente.`, 'error');
+                        return; // MANTENER DATOS EN PANTALLA
                     }
 
                     // If in adjustment mode, delete old records in background
@@ -6192,7 +6319,7 @@
             } else {
                 tbody.innerHTML = recentHistory.map(r => `
                     <tr>
-                        <td>${r.time}</td>
+                        <td>${r.date} ${r.time}</td>
                         <td><code>${r.scan1}</code></td>
                         <td><code>${r.scan2 || '-'}</code></td>
                         <td><span style="color: ${r.status === 'OK' ? 'var(--success)' : r.status === 'BLOQUEADO' ? 'var(--blocked)' : 'var(--error)'}">${r.status}</span></td>
@@ -7778,7 +7905,7 @@
                     location: item?.cellNo || '-',
                     sku: item?.sku || '-',
                     product: item?.productName || '-',
-                    timestamp: new Date().toLocaleTimeString(),
+                    timestamp: getFullDateTime(),
                     source: source,  // 'WMS' | 'FILE2' | 'UNKNOWN'
                     isPriority: isPriority,  // true si es código prioritario
                     status: item?.isBlocked ? 'blocked' : item?.isAvailable ? 'ok' : 'nowms'
@@ -8218,6 +8345,65 @@
                 const finalLocation = locationCheck.formatted;
                 document.getElementById('unified-location').value = finalLocation;
 
+                // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
+                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                
+                // 1. Verificar en PENDING_SYNC (registros locales pendientes)
+                const usedInPending = PENDING_SYNC.some(record => {
+                    const recordDate = record.date; // YYYY-MM-DD
+                    return recordDate === today && record.location === finalLocation;
+                });
+
+                if (usedInPending) {
+                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
+                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                    document.getElementById('unified-location').focus();
+                    return;
+                }
+
+                // 2. Verificar en STATE.history (registros locales del historial)
+                const usedInHistory = STATE.history.some(record => {
+                    const recordDate = record.date; // YYYY-MM-DD
+                    return recordDate === today && record.location === finalLocation;
+                });
+
+                if (usedInHistory) {
+                    console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
+                    showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                    document.getElementById('unified-location').focus();
+                    return;
+                }
+
+                // 3. Verificar en base de datos remota (si hay conexión)
+                if (IS_ONLINE && gapi?.client?.getToken()) {
+                    try {
+                        console.log('🔍 [UNIFICADO] Verificando ubicación en base de datos...');
+                        const response = await gapi.client.sheets.spreadsheets.values.get({
+                            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                            range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
+                        });
+
+                        const rows = response.result.values || [];
+                        const usedInDB = rows.some(row => {
+                            const dbDate = row[0]; // Columna A = fecha
+                            const dbLocation = row[5]; // Columna F = ubicación
+                            return dbDate === today && dbLocation === finalLocation;
+                        });
+
+                        if (usedInDB) {
+                            console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
+                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
+                            document.getElementById('unified-location').focus();
+                            return;
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ [UNIFICADO] No se pudo verificar ubicación en BD:', error);
+                        // Continuar si falla la verificación remota (modo offline)
+                    }
+                }
+
+                console.log('✅ [UNIFICADO] Ubicación validada - no ha sido usada hoy');
+
                 const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
                 const statusMapDisplay = { ok: 'OK', blocked: 'Bloqueada', nowms: 'No WMS' };
                 const { dateStr, timeStr } = getLocalDateTime();
@@ -8273,9 +8459,6 @@
                     };
                 });
 
-                // Add to history
-                STATE.history = [...records, ...STATE.history].slice(0, 1000);
-
                 // PROTECCIÓN: Marcar inicio de envío para evitar falsos positivos
                 DeduplicationManager.startSending(tab.palletId);
 
@@ -8283,17 +8466,16 @@
                     // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
                     if (DeduplicationManager.isPalletSynced(tab.palletId, finalLocation)) {
                         console.warn(`⚠️ [DEDUP-UNIFICADO] Pallet ${tab.palletId} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
-                        // Generar nuevo ID de pallet para evitar conflicto
                         const newPalletId = this.generatePalletId();
                         records.forEach(r => r.pallet = newPalletId);
                         tab.palletId = newPalletId;
                         showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
                     }
 
-                    // Limpiar registros previos del mismo pallet en PENDING_SYNC (evita duplicados por reintentos)
+                    // Limpiar registros previos del mismo pallet en PENDING_SYNC
                     PENDING_SYNC = PENDING_SYNC.filter(r => r.pallet !== tab.palletId);
 
-                    // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar (pasando el pallet actual)
+                    // DEDUPLICACIÓN: Filtrar registros duplicados
                     const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records, tab.palletId);
                     
                     if (uniqueRecords.length === 0) {
@@ -8302,28 +8484,89 @@
                         return;
                     }
 
+                    // VALIDACIÓN DE CONECTIVIDAD ANTES DE ENVÍO
+                    if (!IS_ONLINE) {
+                        // Modo offline - guardar localmente
+                        console.log('📴 [OFFLINE-UNIFICADO] Guardando datos localmente...');
+                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                        SyncManager.save();
+                        
+                        // Agregar a historial local SOLO en modo offline
+                        STATE.history = [...records, ...STATE.history].slice(0, 1000);
+                        
+                        // Reset tab
+                        tab.palletId = this.generatePalletId();
+                        tab.boxes = [];
+                        tab.location = '';
+                        document.getElementById('unified-location').value = '';
+                        
+                        GlobalTabs.saveToStorage();
+                        this.updateUI();
+                        GlobalTabs.updateGlobalSummary();
+                        playSound('success');
+                        document.getElementById('unified-origin-location').focus();
+                        
+                        const modeText = isCancelados ? ' como CANCELADOS' : '';
+                        showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros${modeText} (se sincronizará cuando haya conexión)`, 'info');
+                        return;
+                    }
+
+                    // Verificar token de Google antes de intentar envío
+                    if (!gapi?.client?.getToken()) {
+                        console.error('❌ [AUTH-UNIFICADO] Token de Google no disponible');
+                        showNotification(`❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.`, 'error');
+                        return;
+                    }
+
                     // TRANSACCIÓN ATÓMICA: Guardar estado ANTES de modificar UI
                     const backupTab = JSON.parse(JSON.stringify(tab));
                     const backupPendingSync = [...PENDING_SYNC];
+                    const backupHistory = [...STATE.history];
                     
-                    // Add to pending sync
+                    // Add to pending sync temporalmente
                     PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                    console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', uniqueRecords.length);
                     SyncManager.save();
 
-                    // OPTIMIZADO: Sincronización INMEDIATA con handshake
+                    // SINCRONIZACIÓN INMEDIATA CON TIMEOUT DE 5 SEGUNDOS
                     let syncResult = { success: false, confirmed: false };
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
-                        console.log('🔄 [ATOMIC-UNIFICADO] Sincronizando inmediatamente...');
-                        try {
-                            syncResult = await SyncManager.sync(false);
-                        } catch (err) {
-                            console.warn('⚠️ [ATOMIC-UNIFICADO] Error en sincronización:', err);
+                    console.log('🔄 [ATOMIC-UNIFICADO] Sincronizando con timeout de 5s...');
+                    
+                    try {
+                        const syncPromise = SyncManager.sync(false);
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Timeout: El servidor no respondió en 5 segundos')), 5000)
+                        );
+                        
+                        syncResult = await Promise.race([syncPromise, timeoutPromise]);
+                    } catch (err) {
+                        console.error('❌ [ATOMIC-UNIFICADO] Error en sincronización:', err);
+                        
+                        let errorMessage = '❌ Error al enviar pallet: ';
+                        if (err.message?.includes('Timeout')) {
+                            errorMessage += 'El servidor no respondió a tiempo. Verifica tu conexión e intenta nuevamente.';
+                        } else if (err.message?.includes('Invalid Credentials') || err.status === 401) {
+                            errorMessage = '❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.';
+                        } else if (err.message?.includes('Network') || !navigator.onLine) {
+                            errorMessage += 'Sin conexión a internet. Verifica tu red e intenta nuevamente.';
+                        } else {
+                            errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
                         }
+                        
+                        // ROLLBACK COMPLETO
+                        console.error('❌ [ROLLBACK-UNIFICADO] Restaurando estado anterior...');
+                        PENDING_SYNC = backupPendingSync;
+                        STATE.history = backupHistory;
+                        SyncManager.save();
+                        
+                        showNotification(errorMessage, 'error');
+                        return; // MANTENER DATOS EN PANTALLA
                     }
 
-                    // VALIDACIÓN ATÓMICA: Solo resetear tab si sincronización fue exitosa O si estamos offline
-                    if (syncResult.confirmed || !IS_ONLINE) {
+                    // VALIDACIÓN ATÓMICA: Solo limpiar pantalla si HTTP 200 confirmado
+                    if (syncResult.confirmed) {
+                        // ✅ ÉXITO: Agregar a historial local SOLO si confirmado en servidor
+                        STATE.history = [...records, ...STATE.history].slice(0, 1000);
+                        
                         // Reset tab (transacción exitosa)
                         tab.palletId = this.generatePalletId();
                         tab.boxes = [];
@@ -8337,20 +8580,16 @@
 
                         document.getElementById('unified-origin-location').focus();
 
-                        // NOTIFICACIÓN CONSOLIDADA
                         const modeText = isCancelados ? ' como CANCELADOS' : '';
-                        if (syncResult.confirmed) {
-                            showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros${modeText} procesados y confirmados`, 'success');
-                        } else {
-                            showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros${modeText} (se sincronizará cuando haya conexión)`, 'info');
-                        }
+                        showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros${modeText} procesados y confirmados`, 'success');
                     } else {
-                        // ROLLBACK: Sincronización falló, restaurar estado
-                        console.error('❌ [ATOMIC-UNIFICADO] Sincronización falló, haciendo rollback...');
+                        // ❌ FALLO: ROLLBACK COMPLETO - mantener datos en pantalla
+                        console.error('❌ [ROLLBACK-UNIFICADO] Sincronización falló, restaurando estado...');
                         PENDING_SYNC = backupPendingSync;
+                        STATE.history = backupHistory;
                         SyncManager.save();
-                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Intente nuevamente.`, 'error');
-                        return;
+                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Los datos permanecen en pantalla. Intenta nuevamente.`, 'error');
+                        return; // MANTENER DATOS EN PANTALLA
                     }
 
                     // If in adjustment mode, delete old records in background
