@@ -5071,8 +5071,13 @@
 
         function flashInput(type) {
             const input = document.getElementById('scan-input');
+            if (!input) return;
             input.classList.remove('success', 'error');
-            input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
+            if (type === 'success') {
+                input.classList.add('success');
+            } else if (type === 'error') {
+                input.classList.add('error');
+            }
             setTimeout(() => input.classList.remove('success', 'error'), 500);
         }
 
@@ -5131,26 +5136,36 @@
                 return;
             }
 
-            // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión)
+            // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión) - con timeout de 3 segundos
             if (IS_ONLINE && gapi?.client?.getToken()) {
-                showNotification('🔍 Verificando duplicados...', 'info');
-                const existsInDB = await DeduplicationManager.checkPalletExistsInDatabase(pallet.id);
-                if (existsInDB) {
-                    const confirmSend = confirm(
-                        `⚠️ ADVERTENCIA: El pallet ${pallet.id} ya existe en la base de datos.\n\n` +
-                        `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
-                        `¿Deseas generar un NUEVO código de pallet y continuar?`
+                showNotification('🔍 Verificando...', 'info');
+                try {
+                    // Timeout de 3 segundos para no bloquear el flujo
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('timeout')), 3000)
                     );
-                    if (confirmSend) {
-                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
-                        pallet.id = generatePalletId(prefixes[category]);
-                        document.getElementById(`${category}-pallet`).textContent = pallet.id;
-                        saveToStorage();
-                        showNotification(`✅ Nuevo pallet generado: ${pallet.id}`, 'success');
-                    } else {
-                        showNotification('❌ Envío cancelado', 'warning');
-                        return;
+                    const checkPromise = DeduplicationManager.checkPalletExistsInDatabase(pallet.id);
+                    const existsInDB = await Promise.race([checkPromise, timeoutPromise]).catch(() => false);
+                    
+                    if (existsInDB) {
+                        const confirmSend = confirm(
+                            `⚠️ ADVERTENCIA: El pallet ${pallet.id} ya existe en la base de datos.\n\n` +
+                            `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
+                            `¿Deseas generar un NUEVO código de pallet y continuar?`
+                        );
+                        if (confirmSend) {
+                            const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                            pallet.id = generatePalletId(prefixes[category]);
+                            document.getElementById(`${category}-pallet`).textContent = pallet.id;
+                            saveToStorage();
+                            showNotification(`✅ Nuevo pallet generado: ${pallet.id}`, 'success');
+                        } else {
+                            showNotification('❌ Envío cancelado', 'warning');
+                            return;
+                        }
                     }
+                } catch (e) {
+                    console.warn('⚠️ Verificación de BD omitida por timeout o error:', e);
                 }
             }
 
@@ -7824,8 +7839,13 @@
 
             flashInput(type) {
                 const input = document.getElementById('unified-scan-input');
+                if (!input) return;
                 input.classList.remove('success', 'error');
-                input.classList.add(type === 'success' ? 'success' : type === 'error' ? 'error' : '');
+                if (type === 'success') {
+                    input.classList.add('success');
+                } else if (type === 'error') {
+                    input.classList.add('error');
+                }
                 setTimeout(() => input.classList.remove('success', 'error'), 500);
             },
 
@@ -7847,25 +7867,35 @@
                     return;
                 }
 
-                // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión)
+                // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión) - con timeout de 3 segundos
                 if (IS_ONLINE && gapi?.client?.getToken()) {
-                    showNotification('🔍 Verificando duplicados...', 'info');
-                    const existsInDB = await DeduplicationManager.checkPalletExistsInDatabase(tab.palletId);
-                    if (existsInDB) {
-                        const confirmSend = confirm(
-                            `⚠️ ADVERTENCIA: El pallet ${tab.palletId} ya existe en la base de datos.\n\n` +
-                            `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
-                            `¿Deseas generar un NUEVO código de pallet y continuar?`
+                    showNotification('🔍 Verificando...', 'info');
+                    try {
+                        // Timeout de 3 segundos para no bloquear el flujo
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('timeout')), 3000)
                         );
-                        if (confirmSend) {
-                            tab.palletId = this.generatePalletId();
-                            document.getElementById('unified-pallet-id').textContent = tab.palletId;
-                            GlobalTabs.saveToStorage();
-                            showNotification(`✅ Nuevo pallet generado: ${tab.palletId}`, 'success');
-                        } else {
-                            showNotification('❌ Envío cancelado', 'warning');
-                            return;
+                        const checkPromise = DeduplicationManager.checkPalletExistsInDatabase(tab.palletId);
+                        const existsInDB = await Promise.race([checkPromise, timeoutPromise]).catch(() => false);
+                        
+                        if (existsInDB) {
+                            const confirmSend = confirm(
+                                `⚠️ ADVERTENCIA: El pallet ${tab.palletId} ya existe en la base de datos.\n\n` +
+                                `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
+                                `¿Deseas generar un NUEVO código de pallet y continuar?`
+                            );
+                            if (confirmSend) {
+                                tab.palletId = this.generatePalletId();
+                                document.getElementById('unified-pallet-id').textContent = tab.palletId;
+                                GlobalTabs.saveToStorage();
+                                showNotification(`✅ Nuevo pallet generado: ${tab.palletId}`, 'success');
+                            } else {
+                                showNotification('❌ Envío cancelado', 'warning');
+                                return;
+                            }
                         }
+                    } catch (e) {
+                        console.warn('⚠️ Verificación de BD omitida por timeout o error:', e);
                     }
                 }
 
