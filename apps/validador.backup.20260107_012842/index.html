@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Validación WMS</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <link rel="stylesheet" href="../../shared/css/variables.css">
+    <link rel="stylesheet" href="../../shared/css/base.css">
+    <link rel="stylesheet" href="../../shared/css/layout.css">
+    <link rel="stylesheet" href="../../shared/css/components.css">
+    <link rel="stylesheet" href="../../shared/css/sidebar.css">
+    <link rel="stylesheet" href="../../shared/css/avatar-system.css">
+    <link rel="stylesheet" href="../../shared/css/validador.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="../../shared/js/debug-mode.js"></script>
+    <script src="../../shared/js/auth-manager.js"></script>
+    <script src="../../shared/js/wms-utils.js"></script>
+    <script src="../../shared/js/sync-manager.js"></script>
+    <script src="../../shared/js/sidebar-component.js"></script>
+    <script src="../../shared/js/avatar-system.js"></script>
+    <script src="../../shared/js/location-validator-ui.js"></script>
+</head>
+<body>
+    <div class="connection-banner" id="connection-banner"></div>
+    <div class="notification-container" id="notifications"></div>
+
+    <div class="preloader-overlay" id="loading-overlay">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <div class="preloader-text" style="color: #333;">🎯 Cargando Validador...</div>
+            <div class="preloader-subtext" style="color: #666;">Descargando base de datos desde Google Sheets</div>
+        </div>
+    </div>
+
+    <div class="popup-overlay-dark" id="user-stats-overlay" onclick="closeUserStats()"></div>
+
+    <!-- User Stats Popup -->
+    <div class="user-stats-popup" id="user-stats-popup">
+        <button class="popup-close-x" onclick="closeUserStats()">×</button>
+        <h2 style="margin-bottom: 20px; color: var(--primary);">📊 Validaciones por Usuario</h2>
+        <div id="user-stats-content"></div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🎯</div>
+            <h1 class="login-title">Sistema de Validación WMS</h1>
+            <p class="login-subtitle">Validación de códigos en tiempo real</p>
+            <button class="btn btn-google" onclick="handleLogin()" style="padding: 15px; font-size: 1.1em; width: 100%;">
+                🔐 Iniciar sesión con Google
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="main-app" class="hidden">
+
+    <!-- VALIDATION SCREEN -->
+    <div id="validation" style="display: block;">
+        <div class="container">
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>🎯 Validador</h2>
+                    <p>Validación de cajas WMS</p>
+                </div>
+
+                <div id="sync-status" class="sync-status sync-ok" onclick="window.syncManager?.showPanel()">
+                    ✅ Sincronizado
+                </div>
+
+                <!-- Resumen Global -->
+                <div class="global-summary-section" id="global-summary-section">
+                    <div class="summary-title">📊 Resumen de Sesión</div>
+                    <div class="summary-grid">
+                        <div class="summary-item validated">
+                            <span class="summary-icon">✅</span>
+                            <span class="summary-value" id="summary-validated">0</span>
+                            <span class="summary-label">Validadas</span>
+                        </div>
+                        <div class="summary-item pending">
+                            <span class="summary-icon">⏳</span>
+                            <span class="summary-value" id="summary-pending">0</span>
+                            <span class="summary-label">Pendientes</span>
+                        </div>
+                        <div class="summary-item nowms">
+                            <span class="summary-icon">❌</span>
+                            <span class="summary-value" id="summary-rejected">0</span>
+                            <span class="summary-label">Rechazadas</span>
+                        </div>
+                        <div class="summary-item total">
+                            <span class="summary-icon">📦</span>
+                            <span class="summary-value" id="summary-total">0</span>
+                            <span class="summary-label">Total</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <button class="sidebar-btn sidebar-btn-primary" onclick="addOBC()">
+                        ➕ Nueva Orden
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showResumen()">
+                        📋 Resumen <span id="pending-badge" class="pending-badge"></span>
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showFaltantes()">
+                        🔍 Faltantes
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showPrerecepcion()">
+                        📋 Prerecepción
+                    </button>
+                    <button class="sidebar-btn sidebar-btn-secondary" onclick="showConsulta()">
+                        🔎 Consulta
+                    </button>
+                </div>
+
+                <hr>
+                <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
+
+                <!-- User Footer -->
+                <div class="user-footer" id="user-footer">
+                    <div class="user-info">
+                        <div class="user-avatar" id="user-avatar">?</div>
+                        <div class="user-details">
+                            <div class="user-name" id="user-name-display">No conectado</div>
+                            <div class="connection-indicator">
+                                <div class="connection-dot" id="connection-dot"></div>
+                                <span id="connection-text">Offline</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-footer-actions">
+                        <button class="btn btn-secondary btn-small" onclick="reloadBD()" title="Actualizar BD">🔄 BD</button>
+                        <button class="btn btn-secondary btn-small" onclick="toggleGoogleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗</button>
+                        <button class="btn btn-secondary btn-small" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
+                    </div>
+                    <div class="bd-info">
+                        <div><span id="bd-count">0</span> códigos cargados</div>
+                        <div id="bd-update-time">Sin actualizar</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <div class="header">
+                    <h1>🔍 Validación de Cajas</h1>
+                    <button class="btn btn-secondary btn-small" onclick="exportData()">📥 CSV</button>
+                </div>
+
+                <div id="content-area">
+                    <div id="empty-state" class="empty-state module-visible">
+                        <div class="empty-state-content">
+                            <div class="empty-state-icon">🎯</div>
+                            <h2 class="empty-state-title">Sistema de Validación</h2>
+                            <p class="empty-state-subtitle">Comienza agregando una nueva orden para validar</p>
+                            <button class="btn btn-success btn-start" onclick="addOBC()">
+                                🚀 Iniciar Validación
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="validation-content" style="display: none;">
+                        <div class="tab-bar" id="tab-bar"></div>
+
+                        <div class="progress-card">
+                            <div class="progress-header">
+                                <div class="progress-obc-name" id="prog-obc">-</div>
+                                <div class="progress-percentage" id="prog-pct">0%</div>
+                            </div>
+                            <div class="progress-counts">
+                                <div class="progress-count-item">
+                                    <div class="progress-count-number" id="prog-scan">0</div>
+                                    <div class="progress-count-label">Escaneadas</div>
+                                </div>
+                                <div class="progress-count-item">
+                                    <div class="progress-count-number" id="prog-total">0</div>
+                                    <div class="progress-count-label">Total</div>
+                                </div>
+                                <div class="progress-count-item">
+                                    <div class="progress-count-number" id="prog-rest">0</div>
+                                    <div class="progress-count-label">Faltantes</div>
+                                </div>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" id="prog-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="inline-inputs">
+                                <div class="input-group">
+                                    <label>📦 Orden:</label>
+                                    <input type="text" id="obc-display" disabled>
+                                </div>
+                                <div class="input-group">
+                                    <label>🏢 Destino:</label>
+                                    <input type="text" id="recipient-display" disabled>
+                                </div>
+                                <div class="input-group">
+                                    <label>🕐 Horario:</label>
+                                    <input type="text" id="time-display" disabled>
+                                </div>
+                                <div class="input-group">
+                                    <label>📍 Ubicación:</label>
+                                    <input type="text" id="location-input" placeholder="Ej: PLEC123" onchange="updateState()">
+                                </div>
+                            </div>
+                            <div class="scanner-section">
+                                <div class="scanner-wrapper">
+                                    <div class="input-group">
+                                        <label style="font-size: 1.1em; color: var(--primary);">📷 ESCANEAR CÓDIGO:</label>
+                                        <input type="text" id="scanner" class="scanner-input" placeholder="Escanea aquí..." autofocus>
+                                    </div>
+                                </div>
+                                <button class="btn-manual" onclick="openManualInput()">✏️ Manual</button>
+                                <button class="btn-reconteo" onclick="openReconteo()">🔄 Reconteo</button>
+                            </div>
+                        </div>
+
+                        <div class="logs-container">
+                            <div class="card">
+                                <div class="log-header-with-badge">
+                                    <h3>✅ Validaciones OK</h3>
+                                    <span class="log-count-badge ok" id="stat-ok">0</span>
+                                </div>
+                                <ul id="log-ok" class="log-list"></ul>
+                            </div>
+                            <div class="card">
+                                <div class="log-header-with-badge">
+                                    <h3>❌ Rechazos</h3>
+                                    <span class="log-count-badge error" id="stat-error">0</span>
+                                </div>
+                                <ul id="log-reject" class="log-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESUMEN MODULE -->
+    <div id="resumen-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>📋 Resumen de Órdenes</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideResumen()">← Volver</button>
+                </div>
+                <div class="card">
+                    <input type="text" id="search-resumen" class="search-bar" placeholder="🔍 Buscar orden..." oninput="filterResumen()">
+                    <div style="overflow-x: auto;">
+                        <table class="resumen-table">
+                            <thead>
+                                <tr>
+                                    <th>Orden</th>
+                                    <th>Total</th>
+                                    <th>Validadas</th>
+                                    <th>Progreso</th>
+                                    <th>Destino</th>
+                                    <th>Horario</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resumen-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FALTANTES MODULE -->
+    <div id="faltantes-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔍 Códigos Faltantes</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideFaltantes()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="faltantes-controls">
+                        <select id="faltantes-order-select" onchange="renderFaltantes()">
+                            <option value="">Seleccionar orden...</option>
+                        </select>
+                        <input type="text" id="search-faltantes" class="search-bar" placeholder="🔍 Buscar código..." oninput="filterFaltantes()">
+                    </div>
+                    <p style="margin-bottom: 15px;"><span style="color: var(--success);">✅ Validados</span> | <span style="color: var(--error);">❌ Faltantes</span></p>
+                    <div class="faltantes-grid" id="faltantes-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONSULTA RAPIDA MODULE -->
+    <div id="consulta-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔎 Consulta Rápida de Trazabilidad</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideConsulta()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="input-group">
+                        <label style="font-size: 1.1em; color: var(--primary);">📦 Escanear código de caja:</label>
+                        <input type="text" id="consulta-scanner" class="scanner-input" placeholder="Escanea o ingresa el código..." onkeydown="handleConsultaScan(event)">
+                    </div>
+                    <button class="btn btn-primary" onclick="executeConsulta()" style="margin-top: 15px;">🔍 Consultar</button>
+                </div>
+                <div id="consulta-result" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECONTEO MODULE -->
+    <div id="reconteo-module">
+        <div class="container">
+            <div class="main-content" style="max-width: 100%;">
+                <div class="header">
+                    <h1>🔄 Reconteo de Orden</h1>
+                    <button class="btn btn-secondary btn-small" onclick="hideReconteo()">← Volver</button>
+                </div>
+                <div class="card">
+                    <div class="faltantes-controls">
+                        <select id="reconteo-order-select" onchange="initReconteo()">
+                            <option value="">Seleccionar orden...</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" onclick="clearReconteo()">🗑️ Limpiar Reconteo</button>
+                    </div>
+                </div>
+                <div id="reconteo-content" style="display: none;">
+                    <div class="card">
+                        <div class="input-group">
+                            <label style="font-size: 1.1em; color: #9c27b0;">📦 Escanear para reconteo:</label>
+                            <input type="text" id="reconteo-scanner" class="scanner-input" placeholder="Escanea aquí..." onkeydown="handleReconteoScan(event)" style="background: #f3e5f5 !important;">
+                        </div>
+                    </div>
+                    <div class="reconteo-stats" id="reconteo-stats">
+                        <div class="reconteo-stat ok">
+                            <div class="reconteo-stat-number" id="reconteo-ok">0</div>
+                            <div class="reconteo-stat-label">OK</div>
+                        </div>
+                        <div class="reconteo-stat dup">
+                            <div class="reconteo-stat-number" id="reconteo-dup">0</div>
+                            <div class="reconteo-stat-label">Duplicados</div>
+                        </div>
+                        <div class="reconteo-stat missing">
+                            <div class="reconteo-stat-number" id="reconteo-missing">0</div>
+                            <div class="reconteo-stat-label">Faltantes BD</div>
+                        </div>
+                        <div class="reconteo-stat extra">
+                            <div class="reconteo-stat-number" id="reconteo-extra">0</div>
+                            <div class="reconteo-stat-label">No en Orden</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin-bottom: 15px;">📋 Registro de Escaneos</h3>
+                        <div class="reconteo-table-container">
+                            <table class="reconteo-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Código</th>
+                                        <th>Estatus</th>
+                                        <th>Hora</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reconteo-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card" style="margin-top: 15px;">
+                        <h3 style="margin-bottom: 15px; color: var(--error);">❌ Códigos NO escaneados en Reconteo</h3>
+                        <p style="margin-bottom: 10px; color: #666;">Códigos validados previamente que no han sido escaneados en este reconteo:</p>
+                        <div class="faltantes-grid" id="reconteo-not-scanned"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUPS -->
+    <div id="popup-error" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('error')">×</button>
+            <div class="popup-header" style="color: var(--error);">❌ CÓDIGO RECHAZADO</div>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="err-code"></span><br>
+                <strong>Motivo:</strong> <span id="err-reason" style="color: var(--error);"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="closePopup('error')">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-history" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('history')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ CÓDIGO YA VALIDADO EN HISTORIAL</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="hist-code"></span><br>
+                <strong>Orden Original:</strong> <span id="hist-obc"></span><br>
+                <strong>Validado:</strong> <span id="hist-when"></span><br>
+                <strong>Usuario:</strong> <span id="hist-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('history')">Cancelar</button>
+                <button class="btn btn-primary" onclick="forceHistoryValidation()">Forzar Validación con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-dup" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('dup')">×</button>
+            <div class="popup-header" style="color: var(--warning);">⚠️ DUPLICADO</div>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Código:</strong> <span id="dup-code"></span><br>
+                <strong>Validado:</strong> <span id="dup-when"></span><br>
+                <strong>Usuario:</strong> <span id="dup-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('dup')">Ignorar</button>
+                <button class="btn btn-primary" onclick="forceDuplicate()">Forzar con Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-completed" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="continueViewing()">×</button>
+            <div class="popup-header" style="color: var(--success);">✅ ORDEN COMPLETADA</div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                <div style="font-size: 1.8em; font-weight: 700; color: var(--success); margin-bottom: 10px;">🎉</div>
+                <strong>Orden:</strong> <span id="completed-obc"></span><br>
+                <strong>Cajas validadas:</strong> <span id="completed-count"></span><br>
+                <strong>Usuario:</strong> <span id="completed-user"></span>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="continueToNewOrder()" style="background: var(--warning);">Nueva Orden</button>
+                <button class="btn btn-success" onclick="saveAndContinue()">Guardar y Continuar</button>
+                <button class="btn btn-secondary" onclick="saveAndClose()">Cerrar Validación</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-manual" class="popup-overlay">
+        <div class="popup-content">
+            <button class="popup-close-x" onclick="closePopup('manual')">×</button>
+            <div class="popup-header" style="color: var(--warning);">✏️ INGRESO MANUAL DE CÓDIGO</div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <p style="margin-bottom: 15px; color: #e65100;"><strong>⚠️ Advertencia:</strong> Solo usar para casos excepcionales</p>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Código:</label>
+                    <input type="text" id="manual-code" placeholder="Ingresa el código">
+                </div>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Motivo:</label>
+                    <select id="manual-reason" onchange="toggleManualOtherNote()">
+                        <option value="">Seleccionar motivo...</option>
+                        <option value="Codigo Borroso">Código Borroso</option>
+                        <option value="Etiqueta Dañada">Etiqueta Dañada</option>
+                        <option value="Error Surtido">Error Surtido</option>
+                        <option value="Mercancia Reetiquetada">Mercancía Reetiquetada</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="input-group" id="manual-other-container" style="display: none;">
+                    <label>Especificar motivo (obligatorio):</label>
+                    <textarea id="manual-other-note" rows="3" placeholder="Describe el motivo..."></textarea>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePopup('manual')">Cancelar</button>
+                <button class="btn btn-primary" onclick="submitManualCode()">Validar Código</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-reload-order" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color: var(--primary);">📦 ORDEN PARCIALMENTE VALIDADA</div>
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <strong>Orden:</strong> <span id="reload-obc"></span><br>
+                <strong>Ya validadas:</strong> <span id="reload-validated"></span><br>
+                <strong>Total:</strong> <span id="reload-total"></span><br>
+                <strong>Pendientes:</strong> <span id="reload-pending"></span>
+            </div>
+            <p style="margin: 15px 0; color: #666;">Esta orden ya tiene validaciones previas. ¿Deseas continuar donde se dejó?</p>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="cancelReloadOrder()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmReloadOrder()">Continuar Validación</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="popup-already-complete" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header" style="color: var(--success);">✅ ORDEN YA COMPLETADA</div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                <div style="font-size: 1.8em; margin-bottom: 10px;">🎉</div>
+                <strong>Orden:</strong> <span id="complete-obc"></span><br>
+                <strong>Validadas:</strong> <span id="complete-count"></span><br>
+                <p style="margin-top: 10px; color: #666;">Esta orden ya fue validada al 100%</p>
+            </div>
+            <div class="popup-buttons">
+                <button class="btn btn-primary" onclick="closePopup('already-complete')">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRERECEPCION POPUP -->
+    <div id="popup-prerec" class="popup-overlay">
+        <div class="popup-content" style="max-width: 600px;">
+            <button class="popup-close-x" onclick="closePrerecepcion()">×</button>
+            <div class="popup-header" style="color: var(--primary);">📋 Prerecepción de Orden</div>
+            <div class="card" style="margin: 15px 0;">
+                <div class="input-group">
+                    <label style="font-size: 1.1em; color: var(--primary);">📦 Escanear OBC:</label>
+                    <input type="text" id="prerec-scanner" class="scanner-input" placeholder="Escanea aquí..." onkeydown="handlePrerecScan(event)">
+                </div>
+            </div>
+            <div id="prerec-order-info" style="display: none;"></div>
+            <div class="popup-buttons">
+                <button class="btn btn-secondary" onclick="closePrerecepcion()">Cancelar</button>
+                <button class="btn btn-success" id="prerec-confirm-btn" onclick="confirmPrerecepcion()" disabled>✅ Confirmar Prerecepción</button>
+            </div>
+            <div style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 6px;">
+                <strong>Hoy:</strong> <span id="prerec-today-count">0</span> órdenes prerecibidas
+            </div>
+        </div>
+    </div>
+
+    </div>
+    <!-- End MAIN APP -->
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -445,9 +445,7 @@ async function processScan(raw, isManual = false) {
 
     const obc = STATE.activeOBC;
     const location = tab.location || '';
-    // Primero extraer el código usando extractCode, luego normalizarlo
-    const extractedCode = extractCode(raw);
-    const code = normalizeCode(extractedCode);
+    const code = normalizeCode(raw);
     const concatenated = code + obc.toLowerCase();
 
     // Verificar si existe en BD
@@ -536,120 +534,6 @@ async function handleRejection(reason, raw, code, obc) {
     renderValidation();
 
     if (syncManager) syncManager.sync(false);
-}
-
-// ==================== EXTRACCIÓN Y NORMALIZACIÓN DE CÓDIGOS ====================
-// extractCode - Versión avanzada para parsear códigos en múltiples formatos
-function extractCode(raw) {
-    if (raw === null || raw === undefined) return '';
-    let code = String(raw).trim();
-
-    // Remover caracteres invisibles
-    code = code.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '').trim();
-
-    // IMPORTANTE: Convertir *, & y - (entre números) a / ANTES de cualquier extracción
-    code = code.replace(/\'/g, '/');
-    code = code.replace(/\'/g, '/');
-    code = code.replace(/\*/g, '/');
-    code = code.replace(/&/g, '/');
-    code = code.replace(/(\d)-(\d)/g, '$1/$2'); // 37843434-1 → 37843434/1
-
-    // Normalizar comillas raras
-    code = code.replace(/[""«»„‟‚‛''¨]/g, '"');
-
-    // Eliminar caracteres intermedios problemáticos como ñ[, ?
-    code = code.replace(/ñ\[/g, '');
-    code = code.replace(/\?/g, '');
-
-    // 1) Intento de extraer JSON válido dentro del texto
-    try {
-        const first = (() => {
-            const a = code.indexOf('{');
-            const b = code.indexOf('[');
-            const aa = a !== -1 ? a : Infinity;
-            const bb = b !== -1 ? b : Infinity;
-            return Math.min(aa, bb);
-        })();
-
-        const last = Math.max(code.lastIndexOf('}'), code.lastIndexOf(']'));
-
-        let candidate = code;
-        if (first !== Infinity && last > first) {
-            candidate = code.slice(first, last + 1);
-        }
-
-        const parsed = JSON.parse(candidate);
-
-        function findKey(obj) {
-            if (!obj) return null;
-            if (typeof obj === 'string' || typeof obj === 'number') return null;
-
-            if (Array.isArray(obj)) {
-                for (const item of obj) {
-                    const r = findKey(item);
-                    if (r) return r;
-                }
-                return null;
-            }
-
-            if (typeof obj === 'object') {
-                for (const k of Object.keys(obj)) {
-                    const val = obj[k];
-                    const kl = k.toLowerCase();
-                    if (['id', 'codigo', 'code', 'cod'].includes(kl)) {
-                        if (typeof val === 'string' || typeof val === 'number') {
-                            return String(val).trim();
-                        }
-                    }
-                }
-                // Búsqueda profunda
-                for (const k of Object.keys(obj)) {
-                    const r = findKey(obj[k]);
-                    if (r) return r;
-                }
-            }
-            return null;
-        }
-        const found = findKey(parsed);
-        if (found) return found;
-
-    } catch (e) {
-        // No es JSON válido, continuar con patrones regex
-    }
-
-    // 2) Patrones regex para extraer códigos
-    const patterns = [
-        // [id[ CODE [ - Prioridad alta: formato con slash (49987997/1)
-        /\[id\[\s*([A-Za-z0-9]+\/[A-Za-z0-9\/\-\._:]+)\s*\[/i,
-
-        // [id[ CODE [ - formato general
-        /\[id\[\s*([A-Za-z0-9\/\-\._:]{3,})\s*\[/i,
-
-        // "id": "CODE" o "id" CODE
-        /(?:"|["'])?id(?:"|["'])?\s*[:=]?\s*["']?([A-Za-z0-9]+\/[A-Za-z0-9\/\-\._:]+)["']?/i,
-        /(?:"|["'])?id(?:"|["'])?\s*[:=]?\s*["']?([A-Za-z0-9\/\-\._:]{3,})["']?/i,
-
-        // id = CODE
-        /\bid\s*[:=]\s*([A-Za-z0-9]+\/[A-Za-z0-9\/\-\._:]+)/i,
-        /\bid\s*[:=]\s*([A-Za-z0-9\/\-\._:]{3,})/i,
-
-        // Formatos con slash ABC/123 (alta prioridad)
-        /([0-9]+\/[0-9]+)/,
-        /([A-Za-z0-9]{2,}\/[A-Za-z0-9\/\-\._:]{1,})/,
-
-        // Cualquier token alfanumérico largo dentro de texto
-        /.*?([A-Za-z0-9]{6,}).*/,
-
-        // Super fallback: números largos (000123456)
-        /([0-9]{6,})/
-    ];
-
-    for (const p of patterns) {
-        const m = code.match(p);
-        if (m && m[1]) return m[1].trim();
-    }
-
-    return code.trim();
 }
 
 function normalizeCode(code) {

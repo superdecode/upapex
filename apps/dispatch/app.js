@@ -7234,23 +7234,25 @@ function renderFolioDetailsTable(folioCompleto) {
     const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
 
     if (ordenesDelFolio.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="11" class="table-empty-state"><div class="table-empty-icon">📋</div><div class="table-empty-text">No hay órdenes en este folio</div></td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="13" class="table-empty-state"><div class="table-empty-icon">📋</div><div class="table-empty-text">No hay órdenes en este folio</div></td></tr>';
         updateFolioDetailsBadges(0, 0);
         return;
     }
 
-    let totalCajas = 0;
+    let totalCajasDespachar = 0;
 
     tableBody.innerHTML = ordenesDelFolio.map(record => {
         const orderData = STATE.obcData.get(record.orden) || {};
-        const validaciones = STATE.validacionData.get(record.orden) || [];
-
-        const cantCajas = validaciones.length;
-        totalCajas += cantCajas;
+        
+        // Get reference and tracking codes
+        const referencia = orderData.referenceNo || record.codigo || 'N/A';
+        const tracking = orderData.trackingCode || record.track || 'N/A';
 
         const destino = record.destino || orderData.recipient || 'N/A';
-        const horario = record.horario || orderData.delivery || 'N/A';
-        const cantDespachar = record.cantidadDespachar || cantCajas;
+        const horario = record.horario || orderData.expectedArrival || 'N/A';
+        const cantDespachar = record.cantidadDespachar || 0;
+        totalCajasDespachar += cantDespachar;
+        
         const estatus = record.estatus || 'Pendiente';
         const calidad = record.calidad || 'N/A';
         const conductor = record.conductor || record.operador || 'N/A';
@@ -7265,8 +7267,9 @@ function renderFolioDetailsTable(folioCompleto) {
                 <td>${fechaValidacion}</td>
                 <td>${destino}</td>
                 <td>${horario}</td>
-                <td style="text-align: center;">${cantCajas}</td>
-                <td style="text-align: center;">${cantDespachar}</td>
+                <td>${referencia}</td>
+                <td>${tracking}</td>
+                <td style="text-align: center;"><strong>${cantDespachar}</strong></td>
                 <td>
                     <span class="status-badge ${estatus === 'Completo' ? 'validated' : 'pending'}">${estatus}</span>
                 </td>
@@ -7293,8 +7296,8 @@ function renderFolioDetailsTable(folioCompleto) {
         `;
     }).join('');
 
-    // Update badges
-    updateFolioDetailsBadges(ordenesDelFolio.length, totalCajas);
+    // Update badges with Cantidad a Despachar
+    updateFolioDetailsBadges(ordenesDelFolio.length, totalCajasDespachar);
 }
 
 /**
@@ -7427,7 +7430,8 @@ function printFolioDelivery(folioCompleto) {
             orden: record.orden,
             destino: destinoOrden,
             horario: record.horario || orderData.expectedArrival || 'N/A',
-            cantidadCajas: validaciones.length,
+            referencia: orderData.referenceNo || record.codigo || 'N/A',
+            tracking: orderData.trackingCode || record.track || 'N/A',
             cantidadDespachar: record.cantidadDespachar || 0
         });
 
@@ -7457,7 +7461,7 @@ function printFolioDelivery(folioCompleto) {
     // ==================== CRITICAL VALIDATION ====================
     // The header must derive counts from actual body rows
     const totalOrdenesFromBody = ordenesDetailList.length; // Actual rows in table
-    const totalCajasFromBody = ordenesDetailList.reduce((sum, item) => sum + item.cantidadCajas, 0);
+    const totalCajasFromBody = ordenesDetailList.reduce((sum, item) => sum + item.cantidadDespachar, 0);
     
     // Use body counts for header (NOT from filter count)
     const totalOrdenes = totalOrdenesFromBody;
@@ -7491,24 +7495,24 @@ function printFolioDelivery(folioCompleto) {
                 }
 
                 body {
-                    font-family: Arial, sans-serif;
-                    font-size: 11pt;
-                    line-height: 1.4;
-                    color: #1e293b;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    font-size: 10pt;
+                    line-height: 1.3;
+                    color: #334155;
                     background: white;
                 }
 
-                /* FIXED: Compact header with folio inside header lines */
+                /* Eco-friendly header with pastel orange */
                 .header {
-                    border: 2px solid #1e293b;
-                    margin-bottom: 15px;
+                    border: 1px solid #fed7aa;
+                    margin-bottom: 12px;
                     padding: 0;
                     page-break-inside: avoid;
                 }
 
                 .header-row {
                     display: flex;
-                    border-bottom: 1px solid #cbd5e1;
+                    border-bottom: 1px solid #fed7aa;
                     line-height: 1.2;
                 }
 
@@ -7517,8 +7521,8 @@ function printFolioDelivery(folioCompleto) {
                 }
 
                 .header-cell {
-                    padding: 6px 10px;
-                    border-right: 1px solid #cbd5e1;
+                    padding: 5px 8px;
+                    border-right: 1px solid #fed7aa;
                     flex: 1;
                     display: flex;
                     align-items: center;
@@ -7529,33 +7533,33 @@ function printFolioDelivery(folioCompleto) {
                 }
 
                 .header-label {
-                    font-weight: 700;
-                    color: #475569;
-                    font-size: 9pt;
-                    margin-right: 5px;
+                    font-weight: 600;
+                    color: #78716c;
+                    font-size: 8.5pt;
+                    margin-right: 4px;
                 }
 
                 .header-value {
-                    color: #1e293b;
+                    color: #292524;
                     font-weight: 600;
-                    font-size: 10pt;
+                    font-size: 9pt;
                 }
 
                 .header-title {
-                    background: #1e293b;
-                    color: white;
-                    padding: 8px;
+                    background: #ffedd5;
+                    color: #9a3412;
+                    padding: 6px;
                     text-align: center;
                     font-weight: 700;
-                    font-size: 11pt;
-                    letter-spacing: 1px;
+                    font-size: 10pt;
+                    letter-spacing: 0.5px;
                 }
 
                 table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin-top: 15px;
-                    border: 1px solid #e2e8f0;
+                    margin-top: 10px;
+                    border: 1px solid #fed7aa;
                 }
 
                 thead {
@@ -7567,53 +7571,53 @@ function printFolioDelivery(folioCompleto) {
                 }
 
                 th {
-                    background: #f1f5f9;
-                    color: #475569;
-                    padding: 10px 8px;
+                    background: #fff7ed;
+                    color: #78716c;
+                    padding: 6px 5px;
                     text-align: left;
-                    font-size: 10pt;
+                    font-size: 8.5pt;
                     font-weight: 600;
-                    border-bottom: 2px solid #cbd5e1;
+                    border-bottom: 1px solid #fed7aa;
                     text-transform: uppercase;
-                    letter-spacing: 0.5px;
+                    letter-spacing: 0.3px;
                 }
 
                 td {
-                    padding: 8px;
-                    border-bottom: 1px solid #e2e8f0;
-                    font-size: 10pt;
-                    color: #334155;
+                    padding: 5px;
+                    border-bottom: 1px solid #fef3c7;
+                    font-size: 9pt;
+                    color: #292524;
                 }
 
                 tbody tr:nth-child(even) {
-                    background: #f8fafc;
+                    background: #fffbeb;
                 }
 
                 tbody tr:hover {
-                    background: #f1f5f9;
+                    background: #fef3c7;
                 }
 
                 .codigo-base {
                     font-family: 'Courier New', monospace;
-                    background: #f97316;
-                    padding: 2px 6px;
-                    border-radius: 3px;
+                    background: #fed7aa;
+                    padding: 2px 4px;
+                    border-radius: 2px;
                     font-weight: 600;
-                    color: white;
+                    color: #9a3412;
                 }
 
                 .table-footer {
-                    margin-top: 20px;
-                    padding-top: 15px;
-                    border-top: 2px solid #cbd5e1;
+                    margin-top: 15px;
+                    padding-top: 10px;
+                    border-top: 1px solid #fed7aa;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
                 }
 
                 .footer-info {
-                    font-size: 9pt;
-                    color: #64748b;
+                    font-size: 8pt;
+                    color: #78716c;
                 }
 
                 @media print {
@@ -7622,15 +7626,35 @@ function printFolioDelivery(folioCompleto) {
                         -webkit-print-color-adjust: exact;
                     }
 
-                    .info-grid {
-                        background: #f8fafc;
+                    /* Eco-friendly: pastel colors optimized for B&W printing */
+                    .header-title {
+                        background: #ffedd5 !important;
+                        color: #9a3412 !important;
+                    }
+
+                    th {
+                        background: #fff7ed !important;
+                        color: #78716c !important;
                     }
 
                     tbody tr:nth-child(even) {
-                        background: #f8fafc;
+                        background: #fffbeb !important;
                     }
 
-                    /* CHANGE 12: Repeat header on each page */
+                    .codigo-base {
+                        background: #fed7aa !important;
+                        color: #9a3412 !important;
+                    }
+
+                    /* Minimize borders for toner savings */
+                    .header,
+                    table,
+                    th,
+                    td {
+                        border-color: #fed7aa !important;
+                    }
+
+                    /* Repeat header on each page */
                     thead {
                         display: table-header-group;
                     }
@@ -7678,21 +7702,25 @@ function printFolioDelivery(folioCompleto) {
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 50px;">#</th>
+                        <th style="width: 35px;">#</th>
                         <th>Destino</th>
                         <th>Orden</th>
-                        <th>Código de Caja</th>
-                        <th style="width: 120px; text-align: center;">Cantidad de Cajas</th>
+                        <th>Horario</th>
+                        <th>Referencia</th>
+                        <th>Tracking</th>
+                        <th style="width: 80px; text-align: center;">Cant. Despachar</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${cajasList.map((item, index) => `
+                    ${ordenesDetailList.map((item, index) => `
                         <tr>
                             <td>${index + 1}</td>
                             <td>${item.destino || 'N/A'}</td>
-                            <td>${item.orden || 'N/A'}</td>
-                            <td><span class="codigo-base">${item.codigoBase || 'N/A'}</span></td>
-                            <td style="text-align: center;"><strong>${item.cantidad || 0}</strong></td>
+                            <td><strong>${item.orden || 'N/A'}</strong></td>
+                            <td>${item.horario || 'N/A'}</td>
+                            <td><span class="codigo-base">${item.referencia || 'N/A'}</span></td>
+                            <td><span class="codigo-base">${item.tracking || 'N/A'}</span></td>
+                            <td style="text-align: center;"><strong>${item.cantidadDespachar || 0}</strong></td>
                         </tr>
                     `).join('')}
                 </tbody>

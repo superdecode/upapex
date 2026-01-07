@@ -1503,7 +1503,7 @@
 
         .unified-tab-new {
             padding: 8px 14px;
-            background: #4CAF50;
+            background: #76747f;
             color: white;
             border: none;
             border-radius: 8px;
@@ -1517,7 +1517,7 @@
         }
 
         .unified-tab-new:hover {
-            background: #43a047;
+            background: #7783ec;
             transform: translateY(-1px);
         }
 
@@ -2977,8 +2977,427 @@
         let USER_GOOGLE_NAME = '';
         let IS_ONLINE = navigator.onLine;
         let PENDING_SYNC = [];
+        let SYNCED_PALLETS = new Set(); // Registro de pallets ya sincronizados para evitar duplicados
         let TOKEN_CLIENT = null;
         let audioCtx = null;
+
+        // ==================== DEDUPLICATION MANAGER ====================
+        const DeduplicationManager = {
+            // Genera una clave única para un registro basada en pallet + scan1 + location
+            generateRecordKey(record) {
+                return `${record.pallet}|${record.scan1}|${record.location}`;
+            },
+
+            // Genera una clave única para un pallet completo
+            generatePalletKey(palletId, location) {
+                return `${palletId}|${location}`;
+            },
+
+            // Verifica si un pallet ya fue sincronizado
+            isPalletSynced(palletId, location) {
+                const key = this.generatePalletKey(palletId, location);
+                return SYNCED_PALLETS.has(key);
+            },
+
+            // Marca un pallet como sincronizado
+            markPalletAsSynced(palletId, location) {
+                const key = this.generatePalletKey(palletId, location);
+                SYNCED_PALLETS.add(key);
+                this.saveSyncedPallets();
+                console.log(`✅ [DEDUP] Pallet marcado como sincronizado: ${key}`);
+            },
+
+            // Verifica si un registro ya existe en PENDING_SYNC
+            isRecordInPendingSync(record) {
+                const key = this.generateRecordKey(record);
+                return PENDING_SYNC.some(r => this.generateRecordKey(r) === key);
+            },
+
+            // Filtra registros duplicados antes de agregar a PENDING_SYNC
+            filterDuplicateRecords(records) {
+                const uniqueRecords = [];
+                const seenKeys = new Set();
+
+                for (const record of records) {
+                    const key = this.generateRecordKey(record);
+                    
+                    // Verificar si ya está en PENDING_SYNC o en los nuevos registros
+                    if (!this.isRecordInPendingSync(record) && !seenKeys.has(key)) {
+                        uniqueRecords.push(record);
+                        seenKeys.add(key);
+                    } else {
+                        console.warn(`⚠️ [DEDUP] Registro duplicado filtrado: ${key}`);
+                    }
+                }
+
+                return uniqueRecords;
+            },
+
+            // Verifica contra la BD de escritura si el pallet ya existe
+            async checkPalletExistsInDatabase(palletId) {
+                if (!gapi?.client?.getToken()) {
+                    console.warn('⚠️ [DEDUP] No hay token de Google, no se puede verificar BD');
+                    return false;
+                }
+
+                try {
+                    const response = await gapi.client.sheets.spreadsheets.values.get({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: `${CONFIG.SHEET_NAME}!I:I` // Columna I = pallet
+                    });
+
+                    const rows = response.result.values || [];
+                    const existingPallets = rows.flat().filter(p => p);
+                    const exists = existingPallets.includes(palletId);
+                    
+                    if (exists) {
+                        console.log(`🔍 [DEDUP] Pallet ${palletId} YA EXISTE en la BD de escritura`);
+                    }
+                    
+                    return exists;
+                } catch (error) {
+                    console.error('❌ [DEDUP] Error verificando pallet en BD:', error);
+                    return false;
+                }
+            },
+
+            // Guarda el registro de pallets sincronizados en localStorage
+            saveSyncedPallets() {
+                try {
+                    localStorage.setItem('pd_synced_pallets', JSON.stringify([...SYNCED_PALLETS]));
+                } catch (e) {
+                    console.error('❌ [DEDUP] Error guardando pallets sincronizados:', e);
+                }
+            },
+
+            // Carga el registro de pallets sincronizados desde localStorage
+            loadSyncedPallets() {
+                try {
+                    const saved = localStorage.getItem('pd_synced_pallets');
+                    if (saved) {
+                        SYNCED_PALLETS = new Set(JSON.parse(saved));
+                        console.log(`📂 [DEDUP] Cargados ${SYNCED_PALLETS.size} pallets sincronizados`);
+                    }
+                } catch (e) {
+                    console.error('❌ [DEDUP] Error cargando pallets sincronizados:', e);
+                }
+            },
+
+            // Limpia registros antiguos (más de 7 días)
+            cleanOldRecords() {
+                // Los pallets tienen timestamp en su ID, podemos limpiar los viejos
+                const now = Date.now();
+                const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+                let cleaned = 0;
+
+                for (const key of SYNCED_PALLETS) {
+                    const palletId = key.split('|')[0];
+                    // Extraer timestamp del pallet ID (formato: PREFIX-TIMESTAMP-RANDOM)
+                    const parts = palletId.split('-');
+                    if (parts.length >= 2) {
+                        const timestampBase36 = parts[1];
+                        const timestamp = parseInt(timestampBase36, 36);
+                        if (timestamp < sevenDaysAgo) {
+                            SYNCED_PALLETS.delete(key);
+                            cleaned++;
+                        }
+                    }
+                }
+
+                if (cleaned > 0) {
+                    console.log(`🧹 [DEDUP] Limpiados ${cleaned} registros antiguos`);
+                    this.saveSyncedPallets();
+                }
+            }
+        };
+
+        // ==================== PROCESSED BOXES MANAGER (Lazy Load) ====================
+        // Almacena cajas ya procesadas del servidor para validación dual
+        let PROCESSED_BOXES_MAP = new Map(); // Map<scan1, {scan2, pallet, date, time, user, location}>
+        let PROCESSED_BOXES_LAST_UPDATE = null;
+        const PROCESSED_BOXES_DB_NAME = 'ProcessedBoxesDB';
+        const PROCESSED_BOXES_STORE = 'boxes';
+        let PROCESSED_BOXES_DB = null;
+
+        const ProcessedBoxesManager = {
+            SYNC_INTERVAL: 60 * 60 * 1000, // 1 hora
+            intervalId: null,
+            isLoading: false,
+
+            async init() {
+                await this.openDatabase();
+                await this.loadFromIndexedDB();
+                this.startAutoSync();
+                console.log(`📦 [PROCESSED] Inicializado con ${PROCESSED_BOXES_MAP.size} cajas procesadas`);
+            },
+
+            async openDatabase() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(PROCESSED_BOXES_DB_NAME, 1);
+                    
+                    request.onerror = () => {
+                        console.error('❌ [PROCESSED] Error abriendo IndexedDB');
+                        reject(request.error);
+                    };
+                    
+                    request.onsuccess = () => {
+                        PROCESSED_BOXES_DB = request.result;
+                        resolve();
+                    };
+                    
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(PROCESSED_BOXES_STORE)) {
+                            db.createObjectStore(PROCESSED_BOXES_STORE, { keyPath: 'key' });
+                        }
+                    };
+                });
+            },
+
+            async loadFromIndexedDB() {
+                if (!PROCESSED_BOXES_DB) return;
+                
+                try {
+                    // Cargar datos de cajas procesadas
+                    const dataResult = await new Promise((resolve, reject) => {
+                        const transaction = PROCESSED_BOXES_DB.transaction([PROCESSED_BOXES_STORE], 'readonly');
+                        const store = transaction.objectStore(PROCESSED_BOXES_STORE);
+                        const request = store.get('processedBoxes');
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                    
+                    if (dataResult?.value) {
+                        const entries = dataResult.value;
+                        PROCESSED_BOXES_MAP = new Map(entries);
+                        console.log(`📂 [PROCESSED] Cargadas ${PROCESSED_BOXES_MAP.size} cajas desde IndexedDB`);
+                    }
+                    
+                    // Cargar timestamp de última actualización
+                    const timestampResult = await new Promise((resolve, reject) => {
+                        const transaction = PROCESSED_BOXES_DB.transaction([PROCESSED_BOXES_STORE], 'readonly');
+                        const store = transaction.objectStore(PROCESSED_BOXES_STORE);
+                        const request = store.get('lastUpdate');
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                    
+                    if (timestampResult?.value) {
+                        PROCESSED_BOXES_LAST_UPDATE = new Date(timestampResult.value);
+                    }
+                } catch (error) {
+                    console.error('❌ [PROCESSED] Error cargando desde IndexedDB:', error);
+                }
+            },
+
+            async saveToIndexedDB() {
+                if (!PROCESSED_BOXES_DB) return;
+                
+                try {
+                    const transaction = PROCESSED_BOXES_DB.transaction([PROCESSED_BOXES_STORE], 'readwrite');
+                    const store = transaction.objectStore(PROCESSED_BOXES_STORE);
+                    
+                    const entries = [...PROCESSED_BOXES_MAP.entries()];
+                    store.put({ key: 'processedBoxes', value: entries });
+                    store.put({ key: 'lastUpdate', value: Date.now() });
+                    
+                    await new Promise((resolve, reject) => {
+                        transaction.oncomplete = resolve;
+                        transaction.onerror = reject;
+                    });
+                    
+                    console.log(`💾 [PROCESSED] Guardadas ${PROCESSED_BOXES_MAP.size} cajas en IndexedDB`);
+                } catch (error) {
+                    console.error('❌ [PROCESSED] Error guardando en IndexedDB:', error);
+                }
+            },
+
+            startAutoSync() {
+                if (this.intervalId) clearInterval(this.intervalId);
+                this.intervalId = setInterval(() => {
+                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                        this.syncFromServer(false);
+                    }
+                }, this.SYNC_INTERVAL);
+            },
+
+            async syncFromServer(showNotification = true) {
+                if (this.isLoading) {
+                    console.log('⏳ [PROCESSED] Sincronización ya en progreso...');
+                    return;
+                }
+
+                if (!IS_ONLINE || !gapi?.client?.getToken()) {
+                    console.log('⚠️ [PROCESSED] Sin conexión o sin token');
+                    return;
+                }
+
+                this.isLoading = true;
+                if (showNotification) {
+                    window.showNotification?.('🔄 Sincronizando cajas procesadas...', 'info');
+                }
+
+                try {
+                    // Descargar columnas ligeras: D(scan1), E(scan2), I(pallet), A(fecha), B(hora), C(usuario), F(location)
+                    const response = await gapi.client.sheets.spreadsheets.values.get({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: `${CONFIG.SHEET_NAME}!A:I`
+                    });
+
+                    const rows = response.result.values || [];
+                    PROCESSED_BOXES_MAP.clear();
+
+                    // Saltar header (fila 0)
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row || !row[3]) continue; // Columna D (scan1) es requerida
+
+                        const scan1 = row[3]?.toString().trim().toUpperCase();
+                        const scan2 = row[4]?.toString().trim().toUpperCase() || '';
+                        const pallet = row[8]?.toString().trim() || '';
+                        const date = row[0]?.toString().trim() || '';
+                        const time = row[1]?.toString().trim() || '';
+                        const user = row[2]?.toString().trim() || '';
+                        const location = row[5]?.toString().trim() || '';
+
+                        if (scan1) {
+                            PROCESSED_BOXES_MAP.set(scan1, {
+                                scan1,
+                                scan2,
+                                pallet,
+                                date,
+                                time,
+                                user,
+                                location
+                            });
+
+                            // También indexar por scan2 si existe
+                            if (scan2) {
+                                PROCESSED_BOXES_MAP.set(scan2, {
+                                    scan1,
+                                    scan2,
+                                    pallet,
+                                    date,
+                                    time,
+                                    user,
+                                    location
+                                });
+                            }
+                        }
+                    }
+
+                    PROCESSED_BOXES_LAST_UPDATE = new Date();
+                    await this.saveToIndexedDB();
+
+                    console.log(`✅ [PROCESSED] Sincronizadas ${PROCESSED_BOXES_MAP.size} cajas del servidor`);
+                    if (showNotification) {
+                        window.showNotification?.(`✅ ${PROCESSED_BOXES_MAP.size} cajas procesadas cargadas`, 'success');
+                    }
+                } catch (error) {
+                    console.error('❌ [PROCESSED] Error sincronizando desde servidor:', error);
+                    if (showNotification) {
+                        window.showNotification?.('❌ Error sincronizando cajas procesadas', 'error');
+                    }
+                } finally {
+                    this.isLoading = false;
+                }
+            },
+
+            // Busca una caja en los registros procesados del servidor
+            findInProcessed(code) {
+                const normalizedCode = code?.toString().trim().toUpperCase();
+                if (!normalizedCode) return null;
+                return PROCESSED_BOXES_MAP.get(normalizedCode) || null;
+            },
+
+            // Busca una caja en PENDING_SYNC (registros locales no sincronizados)
+            findInPendingSync(code) {
+                const normalizedCode = code?.toString().trim().toUpperCase();
+                if (!normalizedCode) return null;
+
+                for (const record of PENDING_SYNC) {
+                    const scan1 = record.scan1?.toString().trim().toUpperCase();
+                    const scan2 = record.scan2?.toString().trim().toUpperCase();
+                    
+                    if (scan1 === normalizedCode || scan2 === normalizedCode) {
+                        return {
+                            scan1: record.scan1,
+                            scan2: record.scan2,
+                            pallet: record.pallet,
+                            date: record.date,
+                            time: record.time,
+                            user: record.user,
+                            location: record.location,
+                            source: 'pending_sync'
+                        };
+                    }
+                }
+                return null;
+            },
+
+            // Validación dual: busca en PENDING_SYNC y en cajas procesadas del servidor
+            findProcessedBox(code) {
+                // Paso A: Buscar en registros locales pendientes de sincronizar
+                const pendingResult = this.findInPendingSync(code);
+                if (pendingResult) {
+                    return { ...pendingResult, source: 'local_pending' };
+                }
+
+                // Paso B: Buscar en listado descargado del servidor
+                const serverResult = this.findInProcessed(code);
+                if (serverResult) {
+                    return { ...serverResult, source: 'server' };
+                }
+
+                return null;
+            },
+
+            getLastUpdateText() {
+                if (!PROCESSED_BOXES_LAST_UPDATE) return 'Nunca';
+                return PROCESSED_BOXES_LAST_UPDATE.toLocaleString();
+            },
+
+            getCount() {
+                return PROCESSED_BOXES_MAP.size;
+            },
+
+            // Agregar registros recién sincronizados al cache local para validación inmediata
+            async addSyncedRecords(records) {
+                if (!records || records.length === 0) return;
+
+                let added = 0;
+                for (const record of records) {
+                    const scan1 = record.scan1?.toString().trim().toUpperCase();
+                    const scan2 = record.scan2?.toString().trim().toUpperCase() || '';
+
+                    if (scan1) {
+                        const boxData = {
+                            scan1,
+                            scan2,
+                            pallet: record.pallet || '',
+                            date: record.date || '',
+                            time: record.time || '',
+                            user: record.user || '',
+                            location: record.location || ''
+                        };
+
+                        // Indexar por scan1
+                        PROCESSED_BOXES_MAP.set(scan1, boxData);
+                        added++;
+
+                        // También indexar por scan2 si existe
+                        if (scan2) {
+                            PROCESSED_BOXES_MAP.set(scan2, boxData);
+                            added++;
+                        }
+                    }
+                }
+
+                // Guardar en IndexedDB para persistencia
+                await this.saveToIndexedDB();
+                console.log(`📦 [PROCESSED] Agregados ${added} registros sincronizados al cache local`);
+            }
+        };
 
         // ==================== SYNC MANAGER ====================
         const SyncManager = {
@@ -2989,6 +3408,8 @@
 
             init() {
                 this.load();
+                DeduplicationManager.loadSyncedPallets();
+                DeduplicationManager.cleanOldRecords();
                 this.startAutoSync();
                 this.setupExitProtection();
                 this.updateUI(PENDING_SYNC.length === 0);
@@ -3050,8 +3471,34 @@
                 if (showMessages) showNotification('🔄 Sincronizando...', 'info');
 
                 try {
+                    // DEDUPLICACIÓN: Filtrar registros que ya fueron sincronizados
+                    const recordsToSync = [];
+                    const palletLocationPairs = new Set();
+                    
+                    for (const record of PENDING_SYNC) {
+                        const palletKey = DeduplicationManager.generatePalletKey(record.pallet, record.location);
+                        
+                        // Verificar si este pallet+location ya fue sincronizado
+                        if (!SYNCED_PALLETS.has(palletKey)) {
+                            recordsToSync.push(record);
+                            palletLocationPairs.add(palletKey);
+                        } else {
+                            console.warn(`⚠️ [DEDUP-SYNC] Registro omitido (pallet ya sincronizado): ${palletKey}`);
+                        }
+                    }
+
+                    // Si todos los registros ya fueron sincronizados, limpiar y salir
+                    if (recordsToSync.length === 0) {
+                        console.log('✅ [DEDUP-SYNC] Todos los registros pendientes ya fueron sincronizados previamente');
+                        PENDING_SYNC = [];
+                        this.save();
+                        this.updateUI(true);
+                        if (showMessages) showNotification('✅ Todo sincronizado (sin duplicados)', 'success');
+                        return { success: true, synced: 0 };
+                    }
+
                     // Columnas: A-J (incluye Ubicación Física de Origen en columna J)
-                    const values = PENDING_SYNC.map(r => [
+                    const values = recordsToSync.map(r => [
                         r.date, r.time, r.user, r.scan1, r.scan2,
                         r.location, r.status, r.note, r.pallet, r.originLocation || ''
                     ]);
@@ -3078,7 +3525,18 @@
                     console.log('  - Filas actualizadas:', response.result?.updates?.updatedRows);
                     console.log('  - Columnas actualizadas:', response.result?.updates?.updatedColumns);
 
-                    const synced = PENDING_SYNC.length;
+                    const synced = recordsToSync.length;
+                    
+                    // DEDUPLICACIÓN: Marcar pallets como sincronizados ANTES de limpiar
+                    for (const palletKey of palletLocationPairs) {
+                        SYNCED_PALLETS.add(palletKey);
+                    }
+                    DeduplicationManager.saveSyncedPallets();
+                    console.log(`✅ [DEDUP-SYNC] Marcados ${palletLocationPairs.size} pallets como sincronizados`);
+                    
+                    // VALIDACIÓN DUAL: Agregar registros sincronizados al cache de cajas procesadas
+                    ProcessedBoxesManager.addSyncedRecords(recordsToSync);
+                    
                     PENDING_SYNC = [];
                     this.save();
                     this.updateUI(true);
@@ -3236,6 +3694,12 @@
 
                     showLoadingOverlay(true, '⚙️ Finalizando...', 'Inicializando sistema de sincronización');
                     SyncManager.init();
+                    
+                    // Inicializar ProcessedBoxesManager para validación de cajas ya procesadas
+                    await ProcessedBoxesManager.init();
+                    // Sincronizar cajas procesadas del servidor (sin notificación en inicio)
+                    ProcessedBoxesManager.syncFromServer(false);
+                    
                     if (PENDING_SYNC.length > 0) SyncManager.sync();
 
                     // Solo mostrar la app después de que TODO esté listo
@@ -3348,8 +3812,10 @@
             localStorage.removeItem('pd_system_state');
             localStorage.removeItem('pd_global_tabs');
             localStorage.removeItem('pd_pending_sync');
+            localStorage.removeItem('pd_synced_pallets');
+            SYNCED_PALLETS = new Set();
 
-            console.log('✅ Cache limpiado completamente');
+            console.log('✅ Cache limpiado completamente (incluyendo registro de pallets sincronizados)');
 
             // Revocar token de Google
             if (gapi?.client?.getToken()) {
@@ -3999,26 +4465,78 @@
             flashInput('success');
         }
 
-        // Buscar duplicado con información detallada
+        // Buscar duplicado con información detallada - VALIDACIÓN DUAL
         function findDuplicate(code) {
+            // BYPASS: Si estamos en modo ajuste, saltar toda la validación de duplicados
+            if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                console.log('🔧 [AJUSTE] Modo ajuste activo - Saltando validación de duplicados');
+                return null;
+            }
+
+            const normalizedCode = code?.toString().trim().toUpperCase();
             const categories = ['ok', 'blocked', 'nowms'];
             const categoryNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
 
+            // PASO 1: Buscar en pallets de la sesión actual (STATE.pallets)
             for (const cat of categories) {
                 const boxes = STATE.pallets[cat].boxes;
-                const index = boxes.findIndex(b => b.code === code);
+                const index = boxes.findIndex(b => {
+                    const boxCode = b.code?.toString().trim().toUpperCase();
+                    const boxScan2 = b.scan2?.toString().trim().toUpperCase();
+                    return boxCode === normalizedCode || boxScan2 === normalizedCode;
+                });
                 if (index !== -1) {
                     const box = boxes[index];
                     return {
+                        source: 'current_session',
                         category: cat,
                         categoryName: categoryNames[cat],
                         index,
                         box,
                         timestamp: box.timestamp,
-                        user: CURRENT_USER
+                        user: CURRENT_USER,
+                        pallet: STATE.pallets[cat].id,
+                        location: STATE.pallets[cat].location || 'Sin ubicación'
                     };
                 }
             }
+
+            // PASO 2: Buscar en PENDING_SYNC (registros locales pendientes de sincronizar)
+            const pendingResult = ProcessedBoxesManager.findInPendingSync(normalizedCode);
+            if (pendingResult) {
+                return {
+                    source: 'pending_sync',
+                    category: null,
+                    categoryName: 'Pendiente de sincronizar',
+                    index: -1,
+                    box: null,
+                    timestamp: `${pendingResult.date} ${pendingResult.time}`,
+                    user: pendingResult.user,
+                    pallet: pendingResult.pallet,
+                    location: pendingResult.location,
+                    scan1: pendingResult.scan1,
+                    scan2: pendingResult.scan2
+                };
+            }
+
+            // PASO 3: Buscar en cajas procesadas del servidor (Lazy Load)
+            const serverResult = ProcessedBoxesManager.findInProcessed(normalizedCode);
+            if (serverResult) {
+                return {
+                    source: 'server',
+                    category: null,
+                    categoryName: 'Base de datos',
+                    index: -1,
+                    box: null,
+                    timestamp: `${serverResult.date} ${serverResult.time}`,
+                    user: serverResult.user,
+                    pallet: serverResult.pallet,
+                    location: serverResult.location,
+                    scan1: serverResult.scan1,
+                    scan2: serverResult.scan2
+                };
+            }
+
             return null;
         }
 
@@ -4076,44 +4594,44 @@
             });
         }
 
-        // Mostrar popup de duplicado con opción de ingreso forzado
+        // Mostrar popup de duplicado con opción de ingreso forzado - ALERTA DETALLADA
         function showDuplicatePopup(code, duplicateInfo, rawCode) {
+            // Determinar el origen del duplicado para mostrar mensaje apropiado
+            const sourceLabels = {
+                'current_session': '📋 Sesión Actual',
+                'pending_sync': '⏳ Pendiente de Sincronizar',
+                'server': '🗄️ Base de Datos Central'
+            };
+            const sourceLabel = sourceLabels[duplicateInfo.source] || 'Registro Previo';
+            
+            // Determinar si permitir ingreso forzado (solo para sesión actual)
+            const allowForceInsert = duplicateInfo.source === 'current_session';
+            
             const overlay = document.createElement('div');
             overlay.className = 'popup-overlay show';
             overlay.innerHTML = `
-                <div class="popup-content duplicate-popup">
-                    <div class="popup-header">
-                        <span>⚠️ Código Duplicado</span>
-                        <button class="popup-close" data-action="close">×</button>
+                <div class="popup-content duplicate-popup" style="border: 2px solid #F44336; max-width: 320px; padding: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #FFEBEE; border-bottom: 1px solid #FFCDD2;">
+                        <span style="font-weight: 600; color: #D32F2F; font-size: 0.85em;">⛔ Caja Duplicada</span>
+                        <button class="popup-close" data-action="close" style="color: #D32F2F; font-size: 1.2em; background: none; border: none; cursor: pointer;">×</button>
                     </div>
-                    <div class="duplicate-info">
-                        <div class="duplicate-info-row">
-                            <span class="duplicate-info-label">Código:</span>
-                            <span class="duplicate-info-value"><code>${code}</code></span>
+                    <div style="padding: 12px;">
+                        <div style="background: #fff; padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #eee;">
+                            <div style="font-size: 0.75em; color: #999;">Código:</div>
+                            <div style="font-size: 1em; font-weight: 700; color: #333; font-family: monospace; word-break: break-all;">${code}</div>
                         </div>
-                        <div class="duplicate-info-row">
-                            <span class="duplicate-info-label">Ya registrado en:</span>
-                            <span class="duplicate-info-value">${duplicateInfo.categoryName}</span>
+                        <div style="font-size: 0.75em; color: #E65100; font-weight: 600; margin-bottom: 6px;">${sourceLabel}</div>
+                        <div style="font-size: 0.8em; line-height: 1.6;">
+                            <div><span style="color: #888;">📦</span> ${duplicateInfo.pallet || 'N/A'}</div>
+                            <div><span style="color: #888;">👤</span> ${duplicateInfo.user || '-'}</div>
+                            <div><span style="color: #888;">🕐</span> ${duplicateInfo.timestamp || '-'}</div>
+                            <div><span style="color: #888;">📍</span> ${duplicateInfo.location || '-'}</div>
                         </div>
-                        <div class="duplicate-info-row">
-                            <span class="duplicate-info-label">Hora de registro:</span>
-                            <span class="duplicate-info-value">${duplicateInfo.timestamp}</span>
+                        ${!allowForceInsert ? `<div style="background: #FFCDD2; padding: 6px; border-radius: 4px; margin-top: 10px; text-align: center; font-size: 0.75em; color: #C62828;">⚠️ Sin ingreso forzado</div>` : ''}
+                        <div style="margin-top: 10px;">
+                            ${allowForceInsert ? `<button class="btn btn-warning btn-full" data-action="force" style="padding: 8px; font-size: 0.85em; margin-bottom: 6px;">⚡ Forzar</button>` : ''}
+                            <button class="btn btn-secondary btn-full" data-action="close" style="padding: 8px; font-size: 0.85em;">${allowForceInsert ? 'Cancelar' : 'OK'}</button>
                         </div>
-                        <div class="duplicate-info-row">
-                            <span class="duplicate-info-label">Registrado por:</span>
-                            <span class="duplicate-info-value">${duplicateInfo.user || 'Usuario'}</span>
-                        </div>
-                    </div>
-                    <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
-                        Este código ya fue escaneado anteriormente. ¿Deseas forzar un nuevo registro?
-                    </p>
-                    <div class="popup-buttons">
-                        <button class="btn btn-warning btn-full" data-action="force">
-                            ⚡ Ingreso Forzado (Duplicado)
-                        </button>
-                        <button class="btn btn-secondary btn-full" data-action="close">
-                            Cancelar
-                        </button>
                     </div>
                 </div>
             `;
@@ -4507,6 +5025,29 @@
                 return;
             }
 
+            // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión)
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                showNotification('🔍 Verificando duplicados...', 'info');
+                const existsInDB = await DeduplicationManager.checkPalletExistsInDatabase(pallet.id);
+                if (existsInDB) {
+                    const confirmSend = confirm(
+                        `⚠️ ADVERTENCIA: El pallet ${pallet.id} ya existe en la base de datos.\n\n` +
+                        `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
+                        `¿Deseas generar un NUEVO código de pallet y continuar?`
+                    );
+                    if (confirmSend) {
+                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                        pallet.id = generatePalletId(prefixes[category]);
+                        document.getElementById(`${category}-pallet`).textContent = pallet.id;
+                        saveToStorage();
+                        showNotification(`✅ Nuevo pallet generado: ${pallet.id}`, 'success');
+                    } else {
+                        showNotification('❌ Envío cancelado', 'warning');
+                        return;
+                    }
+                }
+            }
+
             // Pre-validación: confirmar cantidad física
             showSendValidationPopup(category, location);
         }
@@ -4703,14 +5244,38 @@
                 // Add to history
                 STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-                // Add to pending sync
-                PENDING_SYNC = [...PENDING_SYNC, ...records];
-                console.log('📝 Registros agregados a PENDING_SYNC:', records.length);
-                console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-                console.log('🔍 Ejemplo de registro:', records[0]);
-                SyncManager.save();
+                // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
+                const palletKey = DeduplicationManager.generatePalletKey(pallet.id, finalLocation);
+                if (DeduplicationManager.isPalletSynced(pallet.id, finalLocation)) {
+                    console.warn(`⚠️ [DEDUP] Pallet ${pallet.id} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
+                    // Generar nuevo ID de pallet para evitar conflicto
+                    const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                    const newPalletId = generatePalletId(prefixes[category]);
+                    records.forEach(r => r.pallet = newPalletId);
+                    pallet.id = newPalletId;
+                    showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
+                }
 
-                showNotification(`💾 ${records.length} registros agregados`, 'info');
+                // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar
+                const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records);
+                
+                if (uniqueRecords.length === 0) {
+                    console.warn('⚠️ [DEDUP] Todos los registros ya existen en PENDING_SYNC');
+                    showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
+                } else {
+                    // Add to pending sync
+                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                    console.log('📝 Registros agregados a PENDING_SYNC:', uniqueRecords.length);
+                    console.log('📊 Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+                    console.log('🔍 Ejemplo de registro:', uniqueRecords[0]);
+                    SyncManager.save();
+
+                    if (uniqueRecords.length < records.length) {
+                        showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
+                    } else {
+                        showNotification(`💾 ${uniqueRecords.length} registros agregados`, 'info');
+                    }
+                }
 
                 // Try to sync immediately
                 console.log('🔌 Estado de conexión:');
@@ -5518,7 +6083,87 @@
             }
         }
 
+        // Modal de clave para acceso a ajustes
+        function showAdjustmentPasswordModal() {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.innerHTML = `
+                    <div class="popup-content" style="max-width: 300px; padding: 0;">
+                        <div style="padding: 12px 15px; background: #f5f5f5; border-bottom: 1px solid #ddd;">
+                            <span style="font-weight: 600; font-size: 0.9em;">🔐 Acceso a Ajustes</span>
+                        </div>
+                        <div style="padding: 20px;">
+                            <p style="font-size: 0.85em; color: #666; margin-bottom: 15px; text-align: center;">
+                                Ingresa la clave de acceso para realizar ajustes
+                            </p>
+                            <input type="password" id="adjustment-password-input" 
+                                   placeholder="••••••" 
+                                   style="width: 100%; padding: 12px; font-size: 1.1em; text-align: center; border: 2px solid #ddd; border-radius: 6px; letter-spacing: 4px;"
+                                   autocomplete="off">
+                            <div id="adjustment-password-error" style="color: #D32F2F; font-size: 0.8em; text-align: center; margin-top: 8px; display: none;">
+                                ❌ Clave incorrecta
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 15px;">
+                                <button class="btn btn-secondary" data-action="cancel" style="flex: 1; padding: 10px;">Cancelar</button>
+                                <button class="btn btn-primary" data-action="confirm" style="flex: 1; padding: 10px;">Confirmar</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+
+                const passwordInput = overlay.querySelector('#adjustment-password-input');
+                const errorDiv = overlay.querySelector('#adjustment-password-error');
+                
+                const closeModal = (result) => {
+                    overlay.remove();
+                    resolve(result);
+                };
+
+                const validatePassword = () => {
+                    const password = passwordInput.value;
+                    if (password === 'up2026') {
+                        closeModal(true);
+                    } else {
+                        errorDiv.style.display = 'block';
+                        passwordInput.value = '';
+                        passwordInput.focus();
+                        passwordInput.style.borderColor = '#D32F2F';
+                        setTimeout(() => {
+                            passwordInput.style.borderColor = '#ddd';
+                        }, 1000);
+                    }
+                };
+
+                passwordInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        validatePassword();
+                    }
+                    if (e.key === 'Escape') {
+                        closeModal(false);
+                    }
+                });
+
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) closeModal(false);
+                    if (e.target.dataset.action === 'cancel') closeModal(false);
+                    if (e.target.dataset.action === 'confirm') validatePassword();
+                });
+
+                setTimeout(() => passwordInput.focus(), 100);
+            });
+        }
+
         async function selectPalletForAdjustment(palletCode, location) {
+            // Solicitar clave de acceso para ajustes
+            const accessGranted = await showAdjustmentPasswordModal();
+            if (!accessGranted) {
+                showNotification('❌ Acceso denegado', 'error');
+                return;
+            }
+
             const confirmed = confirm(`¿Deseas hacer ajustes al pallet ${palletCode}?`);
             if (!confirmed) return;
 
@@ -6035,6 +6680,12 @@
 
                 const tab = this.tabs.find(t => t.id === tabId);
                 if (!tab) return;
+
+                // Deshabilitar modo ajuste al cerrar sesión
+                if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                    window.ADJUSTMENT_MODE = { active: false };
+                    console.log('🔧 [AJUSTE] Modo ajuste deshabilitado por cierre de sesión');
+                }
 
                 // Verificar si hay cajas sin enviar
                 const classicBoxes = Object.values(tab.state.classic.pallets).reduce((sum, p) => sum + p.boxes.length, 0);
@@ -6801,15 +7452,28 @@
                 }
             },
 
-            // Buscar duplicado globalmente en TODOS los tabs
+            // Buscar duplicado globalmente en TODOS los tabs + PENDING_SYNC + servidor (VALIDACIÓN DUAL)
             findDuplicateGlobal(code) {
+                // BYPASS: Si estamos en modo ajuste, saltar toda la validación de duplicados
+                if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
+                    console.log('🔧 [AJUSTE-UNIFICADO] Modo ajuste activo - Saltando validación de duplicados');
+                    return null;
+                }
+
+                const normalizedCode = code?.toString().trim().toUpperCase();
                 const statusNames = { ok: 'OK', blocked: 'Bloqueado', nowms: 'No WMS' };
 
+                // PASO 1: Buscar en todos los tabs (sesiones actuales)
                 for (const tab of GlobalTabs.tabs) {
-                    const index = tab.state.unified.boxes.findIndex(b => b.code === code);
+                    const index = tab.state.unified.boxes.findIndex(b => {
+                        const boxCode = b.code?.toString().trim().toUpperCase();
+                        const boxScan2 = b.scan2?.toString().trim().toUpperCase();
+                        return boxCode === normalizedCode || boxScan2 === normalizedCode;
+                    });
                     if (index !== -1) {
                         const box = tab.state.unified.boxes[index];
                         return {
+                            source: 'current_session',
                             tabId: tab.id,
                             tabName: tab.name,
                             index,
@@ -6817,55 +7481,101 @@
                             status: box.status,
                             statusName: statusNames[box.status] || box.status,
                             timestamp: box.timestamp,
-                            isCurrentTab: tab.id === GlobalTabs.activeTabId
+                            isCurrentTab: tab.id === GlobalTabs.activeTabId,
+                            pallet: tab.state.unified.palletId,
+                            user: CURRENT_USER,
+                            location: tab.state.unified.location || 'Sin ubicación'
                         };
                     }
                 }
+
+                // PASO 2: Buscar en PENDING_SYNC (registros locales pendientes de sincronizar)
+                const pendingResult = ProcessedBoxesManager.findInPendingSync(normalizedCode);
+                if (pendingResult) {
+                    return {
+                        source: 'pending_sync',
+                        tabId: null,
+                        tabName: 'Pendiente de sincronizar',
+                        index: -1,
+                        box: null,
+                        status: null,
+                        statusName: 'Pendiente de sincronizar',
+                        timestamp: `${pendingResult.date} ${pendingResult.time}`,
+                        isCurrentTab: false,
+                        pallet: pendingResult.pallet,
+                        user: pendingResult.user,
+                        location: pendingResult.location,
+                        scan1: pendingResult.scan1,
+                        scan2: pendingResult.scan2
+                    };
+                }
+
+                // PASO 3: Buscar en cajas procesadas del servidor (Lazy Load)
+                const serverResult = ProcessedBoxesManager.findInProcessed(normalizedCode);
+                if (serverResult) {
+                    return {
+                        source: 'server',
+                        tabId: null,
+                        tabName: 'Base de datos central',
+                        index: -1,
+                        box: null,
+                        status: null,
+                        statusName: 'Base de datos',
+                        timestamp: `${serverResult.date} ${serverResult.time}`,
+                        isCurrentTab: false,
+                        pallet: serverResult.pallet,
+                        user: serverResult.user,
+                        location: serverResult.location,
+                        scan1: serverResult.scan1,
+                        scan2: serverResult.scan2
+                    };
+                }
+
                 return null;
             },
 
-            // Mostrar popup de duplicado con información de tab
+            // Mostrar popup de duplicado con información de tab - ALERTA DETALLADA
             showDuplicatePopupGlobal(code, rawCode, duplicateInfo) {
+                // Determinar el origen del duplicado para mostrar mensaje apropiado
+                const sourceLabels = {
+                    'current_session': '📋 Sesión Actual',
+                    'pending_sync': '⏳ Pendiente de Sincronizar',
+                    'server': '🗄️ Base de Datos Central'
+                };
+                const sourceLabel = sourceLabels[duplicateInfo.source] || 'Registro Previo';
+                
+                // Determinar si permitir ingreso forzado (solo para sesión actual)
+                const allowForceInsert = duplicateInfo.source === 'current_session';
+                
                 const tabInfo = duplicateInfo.isCurrentTab
                     ? 'esta misma sesión'
-                    : `la sesión "${duplicateInfo.tabName}"`;
+                    : duplicateInfo.tabName || 'registro previo';
 
                 const overlay = document.createElement('div');
                 overlay.className = 'popup-overlay show';
                 overlay.innerHTML = `
-                    <div class="popup-content duplicate-popup">
-                        <div class="popup-header">
-                            <span>⚠️ Código Duplicado</span>
-                            <button class="popup-close" data-action="close">×</button>
+                    <div class="popup-content duplicate-popup" style="border: 2px solid #F44336; max-width: 320px; padding: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #FFEBEE; border-bottom: 1px solid #FFCDD2;">
+                            <span style="font-weight: 600; color: #D32F2F; font-size: 0.85em;">⛔ Caja Duplicada</span>
+                            <button class="popup-close" data-action="close" style="color: #D32F2F; font-size: 1.2em; background: none; border: none; cursor: pointer;">×</button>
                         </div>
-                        <div class="duplicate-info">
-                            <div class="duplicate-info-row">
-                                <span class="duplicate-info-label">Código:</span>
-                                <span class="duplicate-info-value"><code>${code}</code></span>
+                        <div style="padding: 12px;">
+                            <div style="background: #fff; padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #eee;">
+                                <div style="font-size: 0.75em; color: #999;">Código:</div>
+                                <div style="font-size: 1em; font-weight: 700; color: #333; font-family: monospace; word-break: break-all;">${code}</div>
                             </div>
-                            <div class="duplicate-info-row">
-                                <span class="duplicate-info-label">Ya registrado en:</span>
-                                <span class="duplicate-info-value">${tabInfo}</span>
+                            <div style="font-size: 0.75em; color: #E65100; font-weight: 600; margin-bottom: 6px;">${sourceLabel}</div>
+                            <div style="font-size: 0.8em; line-height: 1.6;">
+                                <div><span style="color: #888;">📦</span> ${duplicateInfo.pallet || 'N/A'}</div>
+                                <div><span style="color: #888;">👤</span> ${duplicateInfo.user || '-'}</div>
+                                <div><span style="color: #888;">🕐</span> ${duplicateInfo.timestamp || '-'}</div>
+                                <div><span style="color: #888;">📍</span> ${duplicateInfo.location || '-'}</div>
                             </div>
-                            <div class="duplicate-info-row">
-                                <span class="duplicate-info-label">Estado:</span>
-                                <span class="duplicate-info-value">${duplicateInfo.statusName}</span>
+                            ${!allowForceInsert ? `<div style="background: #FFCDD2; padding: 6px; border-radius: 4px; margin-top: 10px; text-align: center; font-size: 0.75em; color: #C62828;">⚠️ Sin ingreso forzado</div>` : ''}
+                            <div style="margin-top: 10px;">
+                                ${allowForceInsert ? `<button class="btn btn-warning btn-full" data-action="force" style="padding: 8px; font-size: 0.85em; margin-bottom: 6px;">⚡ Forzar</button>` : ''}
+                                <button class="btn btn-secondary btn-full" data-action="close" style="padding: 8px; font-size: 0.85em;">${allowForceInsert ? 'Cancelar' : 'OK'}</button>
                             </div>
-                            <div class="duplicate-info-row">
-                                <span class="duplicate-info-label">Hora de registro:</span>
-                                <span class="duplicate-info-value">${duplicateInfo.timestamp}</span>
-                            </div>
-                        </div>
-                        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
-                            Este código ya fue escaneado. ¿Deseas forzar un nuevo registro en la sesión actual?
-                        </p>
-                        <div class="popup-buttons">
-                            <button class="btn btn-warning btn-full" data-action="force">
-                                ⚡ Ingreso Forzado
-                            </button>
-                            <button class="btn btn-secondary btn-full" data-action="close">
-                                Cancelar
-                            </button>
                         </div>
                     </div>
                 `;
@@ -7011,6 +7721,28 @@
                     showNotification('⚠️ Ingresa la ubicación destino', 'warning');
                     document.getElementById('unified-location').focus();
                     return;
+                }
+
+                // DEDUPLICACIÓN: Verificación previa contra BD (si hay conexión)
+                if (IS_ONLINE && gapi?.client?.getToken()) {
+                    showNotification('🔍 Verificando duplicados...', 'info');
+                    const existsInDB = await DeduplicationManager.checkPalletExistsInDatabase(tab.palletId);
+                    if (existsInDB) {
+                        const confirmSend = confirm(
+                            `⚠️ ADVERTENCIA: El pallet ${tab.palletId} ya existe en la base de datos.\n\n` +
+                            `Esto puede indicar que ya fue enviado anteriormente.\n\n` +
+                            `¿Deseas generar un NUEVO código de pallet y continuar?`
+                        );
+                        if (confirmSend) {
+                            tab.palletId = this.generatePalletId();
+                            document.getElementById('unified-pallet-id').textContent = tab.palletId;
+                            GlobalTabs.saveToStorage();
+                            showNotification(`✅ Nuevo pallet generado: ${tab.palletId}`, 'success');
+                        } else {
+                            showNotification('❌ Envío cancelado', 'warning');
+                            return;
+                        }
+                    }
                 }
 
                 // Show validation popup
@@ -7186,16 +7918,38 @@
                 // Add to history
                 STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-                // Add to pending sync
-                PENDING_SYNC = [...PENDING_SYNC, ...records];
-                console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', records.length);
-                console.log('📊 [UNIFICADO] Total en cola PENDING_SYNC:', PENDING_SYNC.length);
-                console.log('🔍 [UNIFICADO] Ejemplo de registro:', records[0]);
-                SyncManager.save();
+                // DEDUPLICACIÓN: Verificar si el pallet ya fue sincronizado
+                if (DeduplicationManager.isPalletSynced(tab.palletId, finalLocation)) {
+                    console.warn(`⚠️ [DEDUP-UNIFICADO] Pallet ${tab.palletId} ya fue sincronizado a ${finalLocation}. Generando nuevo ID.`);
+                    // Generar nuevo ID de pallet para evitar conflicto
+                    const newPalletId = this.generatePalletId();
+                    records.forEach(r => r.pallet = newPalletId);
+                    tab.palletId = newPalletId;
+                    showNotification(`⚠️ Pallet duplicado detectado. Nuevo ID: ${newPalletId}`, 'warning');
+                }
 
-                // Show appropriate notification
-                const modeText = isCancelados ? ' como CANCELADOS' : '';
-                showNotification(`💾 ${records.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
+                // DEDUPLICACIÓN: Filtrar registros duplicados antes de agregar
+                const uniqueRecords = DeduplicationManager.filterDuplicateRecords(records);
+                
+                if (uniqueRecords.length === 0) {
+                    console.warn('⚠️ [DEDUP-UNIFICADO] Todos los registros ya existen en PENDING_SYNC');
+                    showNotification('⚠️ Registros duplicados - ya están pendientes de sincronizar', 'warning');
+                } else {
+                    // Add to pending sync
+                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
+                    console.log('📝 [UNIFICADO] Registros agregados a PENDING_SYNC:', uniqueRecords.length);
+                    console.log('📊 [UNIFICADO] Total en cola PENDING_SYNC:', PENDING_SYNC.length);
+                    console.log('🔍 [UNIFICADO] Ejemplo de registro:', uniqueRecords[0]);
+                    SyncManager.save();
+
+                    // Show appropriate notification
+                    const modeText = isCancelados ? ' como CANCELADOS' : '';
+                    if (uniqueRecords.length < records.length) {
+                        showNotification(`💾 ${uniqueRecords.length}/${records.length} registros agregados${modeText} (${records.length - uniqueRecords.length} duplicados filtrados)`, 'info');
+                    } else {
+                        showNotification(`💾 ${uniqueRecords.length} registros agregados${modeText} (1 tarima unificada)`, 'info');
+                    }
+                }
 
                 // Try to sync immediately
                 console.log('🔌 [UNIFICADO] Estado de conexión:');
