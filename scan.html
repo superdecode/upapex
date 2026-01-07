@@ -2987,6 +2987,19 @@
         let TOKEN_CLIENT = null;
         let audioCtx = null;
 
+        // ==================== UUID GENERATOR ====================
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function generateTimestamp() {
+            return Date.now(); // Unix timestamp en milisegundos
+        }
+
         // ==================== DEDUPLICATION MANAGER ====================
         const DeduplicationManager = {
             // Flag para evitar race conditions durante envío
@@ -3645,7 +3658,13 @@
 
                     const synced = recordsToSync.length;
                     
-                    // SOLO si handshake exitoso: Marcar pallets como sincronizados
+                    // SOLO si handshake exitoso: Marcar registros como sincronizados
+                    recordsToSync.forEach(record => {
+                        record._status = 'synced';
+                        record._syncedAt = generateTimestamp();
+                    });
+                    
+                    // Marcar pallets como sincronizados
                     for (const palletKey of palletLocationPairs) {
                         SYNCED_PALLETS.add(palletKey);
                     }
@@ -3798,18 +3817,47 @@
                 const el = document.getElementById('sync-status');
                 if (!el) return;
 
+                // Contador de registros pendientes con estado detallado
+                const pendingCount = PENDING_SYNC.length;
+                const pendingWithStatus = PENDING_SYNC.filter(r => r._status === 'pending').length;
+                
                 if (!IS_ONLINE) {
                     el.className = 'sync-status sync-warning';
-                    el.innerHTML = `⚠️ Sin conexión${PENDING_SYNC.length > 0 ? ` (${PENDING_SYNC.length})` : ''}`;
-                } else if (PENDING_SYNC.length > 0) {
+                    if (pendingCount > 0) {
+                        el.innerHTML = `⚠️ Sin conexión<br><strong>${pendingCount} registros en cola</strong>`;
+                        el.style.cursor = 'pointer';
+                        el.title = `${pendingCount} registros esperando sincronización. Click para ver detalles.`;
+                    } else {
+                        el.innerHTML = `⚠️ Sin conexión`;
+                        el.title = 'Sin conexión a internet';
+                    }
+                } else if (pendingCount > 0) {
                     el.className = 'sync-status sync-warning';
-                    el.innerHTML = `⏳ ${PENDING_SYNC.length} pendientes`;
+                    el.innerHTML = `⏳ <strong>${pendingCount}</strong> pendiente${pendingCount !== 1 ? 's' : ''}`;
+                    el.style.cursor = 'pointer';
+                    el.title = `${pendingCount} registros esperando sincronización. Click para sincronizar ahora.`;
                 } else if (synced) {
                     el.className = 'sync-status sync-ok';
-                    el.textContent = '✅ Sincronizado';
+                    el.innerHTML = '✅ Sincronizado';
+                    el.style.cursor = 'pointer';
+                    el.title = 'Todos los registros están sincronizados';
                 } else {
                     el.className = 'sync-status sync-error';
-                    el.textContent = '❌ Error sync';
+                    el.innerHTML = '❌ Error sync';
+                    el.style.cursor = 'pointer';
+                    el.title = 'Error en sincronización. Click para reintentar.';
+                }
+                
+                // Actualizar también el título de la página si hay pendientes
+                this.updatePageTitle(pendingCount);
+            },
+            
+            updatePageTitle(pendingCount) {
+                const baseTitle = 'Pallet Decoder';
+                if (pendingCount > 0) {
+                    document.title = `(${pendingCount}) ${baseTitle} - Pendientes`;
+                } else {
+                    document.title = baseTitle;
                 }
             },
 
@@ -5518,6 +5566,9 @@
                     }
 
                     return {
+                        _id: generateUUID(), // ID único para el registro
+                        _timestamp: generateTimestamp(), // Timestamp de creación
+                        _status: 'pending', // Estado de sincronización
                         date: dateStr,
                         time: timeStr,
                         user: CURRENT_USER || 'Usuario',
@@ -5658,18 +5709,27 @@
                                     errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
                                 }
                                 
-                                // ROLLBACK COMPLETO
-                                console.error('❌ [ROLLBACK] Restaurando estado anterior después de todos los intentos...');
-                                PENDING_SYNC = backupPendingSync;
-                                STATE.history = backupHistory;
-                                SyncManager.save();
+                                // CAPTURA CRÍTICA: Garantizar que datos NO se pierdan
+                                console.error('❌ [CRITICAL-CAPTURE] Guardando datos en cola de pendientes después de fallo...');
+                                
+                                // Los datos YA están en PENDING_SYNC (se agregaron antes del intento)
+                                // Solo necesitamos asegurar que se persistan
+                                await SyncManager.save();
+                                
+                                // Actualizar UI para mostrar contador de pendientes
+                                SyncManager.updateUI(false);
                                 
                                 // Cerrar cualquier modal o popup para desbloquear UI
                                 document.body.classList.remove('blind-mode');
                                 const popup = document.getElementById('send-validation-popup');
                                 if (popup) popup.remove();
                                 
-                                showNotification(errorMessage, 'error');
+                                const pendingMsg = `${errorMessage}\n\n✅ Tus datos están seguros en la cola de sincronización (${PENDING_SYNC.length} registros pendientes).`;
+                                showNotification(pendingMsg, 'error');
+                                
+                                console.log(`💾 [CRITICAL-CAPTURE] ${uniqueRecords.length} registros guardados en PENDING_SYNC`);
+                                console.log(`📊 [CRITICAL-CAPTURE] Total pendientes: ${PENDING_SYNC.length}`);
+                                
                                 return; // MANTENER DATOS EN PANTALLA
                             }
                             
@@ -6675,14 +6735,37 @@
                 showConnectionBanner('online');
                 updateConnectionIndicator();
                 showNotification('✅ Conexión restaurada', 'success');
-                setTimeout(() => SyncManager.sync(), 1000);
+                
+                // SINCRONIZACIÓN AUTOMÁTICA AGRESIVA al recuperar conexión
+                if (PENDING_SYNC.length > 0) {
+                    console.log(`🔄 [AUTO-SYNC] Conexión recuperada - Sincronizando ${PENDING_SYNC.length} registros pendientes...`);
+                    showNotification(`🔄 Sincronizando ${PENDING_SYNC.length} registros pendientes...`, 'info');
+                    
+                    // Intentar sincronización inmediata (sin esperar)
+                    SyncManager.sync(true).then(result => {
+                        if (result.success) {
+                            console.log('✅ [AUTO-SYNC] Sincronización automática completada');
+                        } else {
+                            console.warn('⚠️ [AUTO-SYNC] Sincronización automática falló, se reintentará en 30s');
+                        }
+                    }).catch(err => {
+                        console.error('❌ [AUTO-SYNC] Error en sincronización automática:', err);
+                    });
+                } else {
+                    console.log('✅ [AUTO-SYNC] No hay registros pendientes para sincronizar');
+                }
             });
 
             window.addEventListener('offline', () => {
                 IS_ONLINE = false;
                 showConnectionBanner('offline');
                 updateConnectionIndicator();
-                showNotification('⚠️ Sin conexión - Modo offline', 'warning');
+                
+                if (PENDING_SYNC.length > 0) {
+                    showNotification(`⚠️ Sin conexión - ${PENDING_SYNC.length} registros en cola`, 'warning');
+                } else {
+                    showNotification('⚠️ Sin conexión - Modo offline', 'warning');
+                }
             });
 
             updateConnectionIndicator();
@@ -8489,6 +8572,9 @@
                     }
 
                     return {
+                        _id: generateUUID(), // ID único para el registro
+                        _timestamp: generateTimestamp(), // Timestamp de creación
+                        _status: 'pending', // Estado de sincronización
                         date: dateStr,
                         time: timeStr,
                         user: CURRENT_USER || 'Usuario',
@@ -8614,18 +8700,27 @@
                                     errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
                                 }
                                 
-                                // ROLLBACK COMPLETO
-                                console.error('❌ [ROLLBACK-UNIFICADO] Restaurando estado anterior después de todos los intentos...');
-                                PENDING_SYNC = backupPendingSync;
-                                STATE.history = backupHistory;
-                                SyncManager.save();
+                                // CAPTURA CRÍTICA: Garantizar que datos NO se pierdan
+                                console.error('❌ [CRITICAL-CAPTURE-UNIFICADO] Guardando datos en cola de pendientes después de fallo...');
+                                
+                                // Los datos YA están en PENDING_SYNC (se agregaron antes del intento)
+                                // Solo necesitamos asegurar que se persistan
+                                await SyncManager.save();
+                                
+                                // Actualizar UI para mostrar contador de pendientes
+                                SyncManager.updateUI(false);
                                 
                                 // Cerrar cualquier modal o popup para desbloquear UI
                                 document.body.classList.remove('blind-mode');
                                 const popup = document.getElementById('unified-send-validation-popup');
                                 if (popup) popup.remove();
                                 
-                                showNotification(errorMessage, 'error');
+                                const pendingMsg = `${errorMessage}\n\n✅ Tus datos están seguros en la cola de sincronización (${PENDING_SYNC.length} registros pendientes).`;
+                                showNotification(pendingMsg, 'error');
+                                
+                                console.log(`💾 [CRITICAL-CAPTURE-UNIFICADO] ${uniqueRecords.length} registros guardados en PENDING_SYNC`);
+                                console.log(`📊 [CRITICAL-CAPTURE-UNIFICADO] Total pendientes: ${PENDING_SYNC.length}`);
+                                
                                 return; // MANTENER DATOS EN PANTALLA
                             }
                             
