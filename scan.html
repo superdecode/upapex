@@ -195,6 +195,17 @@
             color: var(--success);
             border: 1px solid var(--success);
         }
+        .sync-pending {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
+        .sync-syncing {
+            background: rgba(33, 150, 243, 0.2);
+            color: #2196F3;
+            border: 1px solid #2196F3;
+            animation: pulse 1s infinite;
+        }
         .sync-error {
             background: rgba(244, 67, 54, 0.2);
             color: var(--error);
@@ -328,21 +339,6 @@
             margin-top: 2px;
         }
 
-        .connection-indicator {
-            font-size: 0.75em;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .connection-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-        .connection-dot.online { background: var(--success); }
-        .connection-dot.offline { background: var(--error); }
-        .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -2331,9 +2327,9 @@
                     <p>Sistema de Captura</p>
                 </div>
 
-                <!-- Sync Status -->
-                <div id="sync-status" class="sync-status sync-ok" onclick="SyncManager.showPanel()">
-                    ✅ Sincronizado
+                <!-- Sync Status - Contador Único -->
+                <div id="sync-status" class="sync-status sync-ok" onclick="SyncQueue.showPanel()" title="Click para ver detalles">
+                    <span id="sync-status-text">✅ Sincronizado</span>
                 </div>
 
                 <!-- Menu -->
@@ -2381,10 +2377,6 @@
                         <div class="user-details" onclick="changeUserAlias()" style="cursor: pointer;">
                             <div class="user-name" id="user-name-display">No conectado</div>
                             <div class="user-email" id="user-email-display">Inicia sesión</div>
-                            <div class="connection-indicator">
-                                <div class="connection-dot" id="connection-dot"></div>
-                                <span id="connection-text">Offline</span>
-                            </div>
                         </div>
                     </div>
                     <div class="user-footer-actions">
@@ -2985,7 +2977,9 @@
         let PENDING_SYNC = [];
         let SYNCED_PALLETS = new Set(); // Registro de pallets ya sincronizados para evitar duplicados
         let TOKEN_CLIENT = null;
+        let CURRENT_SESSION_ID = null; // ID de sesión actual para persistencia
         let audioCtx = null;
+        let isSubmitting = false; // Flag para bloqueo hard del botón de envío
 
         // ==================== UUID GENERATOR ====================
         function generateUUID() {
@@ -2999,6 +2993,359 @@
         function generateTimestamp() {
             return Date.now(); // Unix timestamp en milisegundos
         }
+
+        // ==================== PERSISTENCE MANAGER (OFFLINE-FIRST) ====================
+        const PersistenceManager = {
+            DB_NAME: 'PalletDecoderDB',
+            DB_VERSION: 2,
+            db: null,
+
+            STORES: {
+                DRAFT_BOXES: 'draft_boxes',
+                PENDING_SYNC: 'pending_sync_v2',
+                SYNCED_RECORDS: 'synced_records',
+                SESSIONS: 'sessions'
+            },
+
+            async init() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+                    request.onerror = () => {
+                        console.error('❌ [PERSISTENCE] Error abriendo IndexedDB:', request.error);
+                        reject(request.error);
+                    };
+
+                    request.onsuccess = (e) => {
+                        this.db = e.target.result;
+                        console.log('✅ [PERSISTENCE] IndexedDB inicializada');
+                        resolve(this.db);
+                    };
+
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        console.log('🔧 [PERSISTENCE] Creando/actualizando stores...');
+
+                        // Store para cajas en borrador (tarima activa)
+                        if (!db.objectStoreNames.contains(this.STORES.DRAFT_BOXES)) {
+                            const draftStore = db.createObjectStore(this.STORES.DRAFT_BOXES, { keyPath: '_id' });
+                            draftStore.createIndex('_category', '_category', { unique: false });
+                            draftStore.createIndex('_palletId', '_palletId', { unique: false });
+                            draftStore.createIndex('_sessionId', '_sessionId', { unique: false });
+                            draftStore.createIndex('_timestamp', '_timestamp', { unique: false });
+                        }
+
+                        // Store para registros pendientes de sincronización
+                        if (!db.objectStoreNames.contains(this.STORES.PENDING_SYNC)) {
+                            const pendingStore = db.createObjectStore(this.STORES.PENDING_SYNC, { keyPath: '_id' });
+                            pendingStore.createIndex('_status', '_status', { unique: false });
+                            pendingStore.createIndex('_timestamp', '_timestamp', { unique: false });
+                        }
+
+                        // Store para registros sincronizados (auditoría)
+                        if (!db.objectStoreNames.contains(this.STORES.SYNCED_RECORDS)) {
+                            const syncedStore = db.createObjectStore(this.STORES.SYNCED_RECORDS, { keyPath: '_id' });
+                            syncedStore.createIndex('_syncedAt', '_syncedAt', { unique: false });
+                        }
+
+                        // Store para sesiones
+                        if (!db.objectStoreNames.contains(this.STORES.SESSIONS)) {
+                            const sessionStore = db.createObjectStore(this.STORES.SESSIONS, { keyPath: 'id' });
+                            sessionStore.createIndex('createdAt', 'createdAt', { unique: false });
+                        }
+                    };
+                });
+            },
+
+            // Guardar caja en borrador (PERSISTENCIA INSTANTÁNEA)
+            async saveDraftBox(boxRecord) {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.DRAFT_BOXES], 'readwrite');
+                        const store = tx.objectStore(this.STORES.DRAFT_BOXES);
+                        const request = store.put(boxRecord);
+
+                        request.onsuccess = () => {
+                            console.log(`💾 [PERSISTENCE] Caja guardada: ${boxRecord._id}`);
+                            resolve(boxRecord);
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error guardando caja:', request.error);
+                            reject(request.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en saveDraftBox:', error);
+                        reject(error);
+                    }
+                });
+            },
+
+            // Obtener todas las cajas en borrador
+            async getDraftBoxes(sessionId = null) {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.DRAFT_BOXES], 'readonly');
+                        const store = tx.objectStore(this.STORES.DRAFT_BOXES);
+                        const request = sessionId 
+                            ? store.index('_sessionId').getAll(sessionId)
+                            : store.getAll();
+
+                        request.onsuccess = () => {
+                            resolve(request.result || []);
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error obteniendo draft boxes:', request.error);
+                            reject(request.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en getDraftBoxes:', error);
+                        resolve([]);
+                    }
+                });
+            },
+
+            // Eliminar caja de borrador
+            async deleteDraftBox(boxId) {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.DRAFT_BOXES], 'readwrite');
+                        const store = tx.objectStore(this.STORES.DRAFT_BOXES);
+                        const request = store.delete(boxId);
+
+                        request.onsuccess = () => {
+                            console.log(`🗑️ [PERSISTENCE] Caja eliminada: ${boxId}`);
+                            resolve();
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error eliminando caja:', request.error);
+                            reject(request.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en deleteDraftBox:', error);
+                        reject(error);
+                    }
+                });
+            },
+
+            // Limpiar todas las cajas de un pallet
+            async clearDraftBoxesByPallet(palletId) {
+                if (!this.db) await this.init();
+                
+                return new Promise(async (resolve, reject) => {
+                    try {
+                        const boxes = await this.getDraftBoxes();
+                        const boxesToDelete = boxes.filter(box => box._palletId === palletId);
+                        
+                        const tx = this.db.transaction([this.STORES.DRAFT_BOXES], 'readwrite');
+                        const store = tx.objectStore(this.STORES.DRAFT_BOXES);
+                        
+                        boxesToDelete.forEach(box => {
+                            store.delete(box._id);
+                        });
+
+                        tx.oncomplete = () => {
+                            console.log(`🗑️ [PERSISTENCE] ${boxesToDelete.length} cajas eliminadas del pallet ${palletId}`);
+                            resolve(boxesToDelete.length);
+                        };
+
+                        tx.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error limpiando draft boxes:', tx.error);
+                            reject(tx.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en clearDraftBoxesByPallet:', error);
+                        reject(error);
+                    }
+                });
+            },
+
+            // Mover cajas de draft a pending (TRANSICIÓN ATÓMICA)
+            async moveToPending(records) {
+                if (!this.db) await this.init();
+                
+                return new Promise(async (resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.DRAFT_BOXES, this.STORES.PENDING_SYNC], 'readwrite');
+                        const draftStore = tx.objectStore(this.STORES.DRAFT_BOXES);
+                        const pendingStore = tx.objectStore(this.STORES.PENDING_SYNC);
+
+                        // Mover cada registro
+                        records.forEach(record => {
+                            // Eliminar de draft
+                            draftStore.delete(record._id);
+                            // Agregar a pending
+                            pendingStore.put(record);
+                        });
+
+                        tx.oncomplete = () => {
+                            console.log(`✅ [PERSISTENCE] ${records.length} registros movidos a PENDING`);
+                            resolve();
+                        };
+
+                        tx.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error moviendo a pending:', tx.error);
+                            reject(tx.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en moveToPending:', error);
+                        reject(error);
+                    }
+                });
+            },
+
+            // Obtener registros pendientes
+            async getPendingSync() {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.PENDING_SYNC], 'readonly');
+                        const store = tx.objectStore(this.STORES.PENDING_SYNC);
+                        const request = store.getAll();
+
+                        request.onsuccess = () => {
+                            resolve(request.result || []);
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error obteniendo pending sync:', request.error);
+                            reject(request.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en getPendingSync:', error);
+                        resolve([]);
+                    }
+                });
+            },
+
+            // Contar registros pendientes
+            async getPendingCount() {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.PENDING_SYNC], 'readonly');
+                        const store = tx.objectStore(this.STORES.PENDING_SYNC);
+                        const request = store.count();
+
+                        request.onsuccess = () => {
+                            resolve(request.result || 0);
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error contando pending:', request.error);
+                            resolve(0);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en getPendingCount:', error);
+                        resolve(0);
+                    }
+                });
+            },
+
+            // Marcar registros como sincronizados
+            async markAsSynced(records) {
+                if (!this.db) await this.init();
+                
+                return new Promise(async (resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.PENDING_SYNC, this.STORES.SYNCED_RECORDS], 'readwrite');
+                        const pendingStore = tx.objectStore(this.STORES.PENDING_SYNC);
+                        const syncedStore = tx.objectStore(this.STORES.SYNCED_RECORDS);
+
+                        records.forEach(record => {
+                            // Actualizar estado
+                            record._status = 'synced';
+                            record._syncedAt = generateTimestamp();
+                            
+                            // Eliminar de pending
+                            pendingStore.delete(record._id);
+                            
+                            // Agregar a synced (auditoría)
+                            syncedStore.put(record);
+                        });
+
+                        tx.oncomplete = () => {
+                            console.log(`✅ [PERSISTENCE] ${records.length} registros marcados como SYNCED`);
+                            resolve();
+                        };
+
+                        tx.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error marcando como synced:', tx.error);
+                            reject(tx.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en markAsSynced:', error);
+                        reject(error);
+                    }
+                });
+            },
+
+            // Guardar/actualizar sesión activa
+            async saveSession(sessionData) {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.SESSIONS], 'readwrite');
+                        const store = tx.objectStore(this.STORES.SESSIONS);
+                        const request = store.put(sessionData);
+
+                        request.onsuccess = () => {
+                            console.log(`💾 [PERSISTENCE] Sesión guardada: ${sessionData.id}`);
+                            resolve();
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error guardando sesión:', request.error);
+                            reject(request.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en saveSession:', error);
+                        reject(error);
+                    }
+                });
+            },
+
+            // Obtener sesión activa
+            async getActiveSession() {
+                if (!this.db) await this.init();
+                
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = this.db.transaction([this.STORES.SESSIONS], 'readonly');
+                        const store = tx.objectStore(this.STORES.SESSIONS);
+                        const request = store.getAll();
+
+                        request.onsuccess = () => {
+                            const sessions = request.result || [];
+                            // Retornar la sesión más reciente que no esté cerrada
+                            const activeSession = sessions
+                                .filter(s => !s.closed)
+                                .sort((a, b) => b.createdAt - a.createdAt)[0];
+                            resolve(activeSession || null);
+                        };
+
+                        request.onerror = () => {
+                            console.error('❌ [PERSISTENCE] Error obteniendo sesión activa:', request.error);
+                            resolve(null);
+                        };
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error en getActiveSession:', error);
+                        resolve(null);
+                    }
+                });
+            }
+        };
 
         // ==================== DEDUPLICATION MANAGER ====================
         const DeduplicationManager = {
@@ -3523,13 +3870,16 @@
             inProgress: false,
             retryCount: 0,
             intervalId: null,
-            AUTO_SYNC_INTERVAL: 30000,
+            heartbeatId: null,
+            AUTO_SYNC_INTERVAL: 45000, // 45 segundos (más agresivo)
+            HEARTBEAT_INTERVAL: 10000, // 10 segundos para actualizar contador
 
             init() {
                 this.load();
                 DeduplicationManager.loadSyncedPallets();
                 DeduplicationManager.cleanOldRecords();
                 this.startAutoSync();
+                this.startHeartbeat(); // FASE 5: Iniciar heartbeat
                 this.setupExitProtection();
                 this.updateUI(PENDING_SYNC.length === 0);
             },
@@ -3549,6 +3899,35 @@
                 });
             },
 
+            // FASE 5: Heartbeat de Sincronización Automática
+            startHeartbeat() {
+                if (this.heartbeatId) clearInterval(this.heartbeatId);
+                
+                this.heartbeatId = setInterval(async () => {
+                    try {
+                        // 1. Actualizar contador de pendientes en UI
+                        await updateConnectionIndicator();
+                        
+                        // 2. Sincronizar PENDING_SYNC desde IndexedDB (fuente de verdad)
+                        const pendingFromDB = await PersistenceManager.getPendingSync();
+                        if (pendingFromDB.length !== PENDING_SYNC.length) {
+                            console.log(`🔄 [HEARTBEAT] Sincronizando PENDING_SYNC: ${PENDING_SYNC.length} → ${pendingFromDB.length}`);
+                            PENDING_SYNC = pendingFromDB;
+                        }
+                        
+                        // 3. Intentar sincronización automática si hay pendientes
+                        if (IS_ONLINE && gapi?.client?.getToken() && PENDING_SYNC.length > 0 && !this.inProgress) {
+                            console.log(`🔄 [HEARTBEAT] Sincronización automática: ${PENDING_SYNC.length} registros pendientes`);
+                            this.sync(false);
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ [HEARTBEAT] Error en heartbeat:', error);
+                    }
+                }, this.HEARTBEAT_INTERVAL);
+                
+                console.log(`✅ [HEARTBEAT] Iniciado - Intervalo: ${this.HEARTBEAT_INTERVAL}ms`);
+            },
+
             startAutoSync() {
                 if (this.intervalId) clearInterval(this.intervalId);
                 this.intervalId = setInterval(() => {
@@ -3556,6 +3935,7 @@
                         this.sync(false);
                     }
                 }, this.AUTO_SYNC_INTERVAL);
+                console.log(`✅ [AUTO-SYNC] Iniciado - Intervalo: ${this.AUTO_SYNC_INTERVAL}ms`);
             },
 
             async sync(showMessages = true) {
@@ -3658,11 +4038,13 @@
 
                     const synced = recordsToSync.length;
                     
-                    // SOLO si handshake exitoso: Marcar registros como sincronizados
-                    recordsToSync.forEach(record => {
-                        record._status = 'synced';
-                        record._syncedAt = generateTimestamp();
-                    });
+                    // SOLO si handshake exitoso: Marcar registros como sincronizados en IndexedDB
+                    try {
+                        await PersistenceManager.markAsSynced(recordsToSync);
+                        console.log(`✅ [PERSISTENCE] ${synced} registros marcados como SYNCED en IndexedDB`);
+                    } catch (error) {
+                        console.error('❌ [PERSISTENCE] Error marcando como synced:', error);
+                    }
                     
                     // Marcar pallets como sincronizados
                     for (const palletKey of palletLocationPairs) {
@@ -3674,9 +4056,10 @@
                     // VALIDACIÓN DUAL: Agregar registros sincronizados al cache
                     ProcessedBoxesManager.addSyncedRecords(recordsToSync);
                     
-                    // SOLO si handshake exitoso: Limpiar PENDING_SYNC
-                    PENDING_SYNC = [];
-                    this.save();
+                    // SOLO si handshake exitoso: Actualizar PENDING_SYNC desde IndexedDB
+                    PENDING_SYNC = await PersistenceManager.getPendingSync();
+                    console.log(`📊 [PERSISTENCE] ${PENDING_SYNC.length} registros pendientes restantes`);
+                    
                     this.updateUI(true);
 
                     if (showMessages) showNotification(`✅ ${synced} registros sincronizados y confirmados`, 'success');
@@ -3711,23 +4094,26 @@
 
             async load() {
                 try {
-                    // Intentar cargar de localStorage primero
-                    const saved = localStorage.getItem('pd_pending_sync');
-                    if (saved) {
-                        PENDING_SYNC = JSON.parse(saved);
-                        console.log(`📂 [SYNC] Cargados ${PENDING_SYNC.length} registros de localStorage`);
-                    }
+                    // Cargar desde PersistenceManager (fuente de verdad)
+                    PENDING_SYNC = await PersistenceManager.getPendingSync();
+                    console.log(`📂 [SYNC] Cargados ${PENDING_SYNC.length} registros pendientes desde IndexedDB`);
                     
-                    // Verificar si hay más datos en IndexedDB (respaldo)
-                    const idbData = await this.loadFromIndexedDB();
-                    if (idbData && idbData.length > PENDING_SYNC.length) {
-                        console.log(`📂 [SYNC] Recuperados ${idbData.length} registros de IndexedDB (más que localStorage)`);
-                        PENDING_SYNC = idbData;
-                        // Sincronizar localStorage con IndexedDB
+                    // Sincronizar con localStorage como respaldo
+                    if (PENDING_SYNC.length > 0) {
                         localStorage.setItem('pd_pending_sync', JSON.stringify(PENDING_SYNC));
                     }
                 } catch (e) {
                     console.error('❌ [SYNC] Error cargando pendientes:', e);
+                    // Fallback a localStorage si falla IndexedDB
+                    try {
+                        const saved = localStorage.getItem('pd_pending_sync');
+                        if (saved) {
+                            PENDING_SYNC = JSON.parse(saved);
+                            console.log(`📂 [SYNC] Fallback: Cargados ${PENDING_SYNC.length} registros de localStorage`);
+                        }
+                    } catch (e2) {
+                        console.error('❌ [SYNC] Error en fallback localStorage:', e2);
+                    }
                 }
             },
 
@@ -3910,14 +4296,437 @@
             }
         };
 
+        // ==================== SYNC QUEUE (SISTEMA DE COLA SECUENCIAL) ====================
+        const SyncQueue = {
+            processing: false,
+            currentIndex: 0,
+            totalRecords: 0,
+            failedRecords: [],
+            successCount: 0,
+            
+            async init() {
+                // Cargar registros pendientes desde IndexedDB
+                await this.loadPendingRecords();
+                // Actualizar UI
+                await this.updateCounter();
+                // Iniciar heartbeat para actualizar contador
+                this.startHeartbeat();
+            },
+            
+            async loadPendingRecords() {
+                try {
+                    const pendingFromDB = await PersistenceManager.getPendingSync();
+                    PENDING_SYNC = pendingFromDB;
+                    console.log(`📂 [QUEUE] Cargados ${PENDING_SYNC.length} registros pendientes desde IndexedDB`);
+                } catch (error) {
+                    console.error('❌ [QUEUE] Error cargando registros:', error);
+                }
+            },
+            
+            startHeartbeat() {
+                setInterval(async () => {
+                    if (!this.processing) {
+                        await this.loadPendingRecords();
+                        await this.updateCounter();
+                    }
+                }, 10000); // Cada 10 segundos
+            },
+            
+            async updateCounter() {
+                const syncStatus = document.getElementById('sync-status');
+                const syncStatusText = document.getElementById('sync-status-text');
+                if (!syncStatus || !syncStatusText) return;
+                
+                const pendingCount = PENDING_SYNC.length;
+                
+                if (this.processing) {
+                    syncStatus.className = 'sync-status sync-syncing';
+                    syncStatusText.textContent = `🔄 Procesando: ${this.currentIndex} de ${this.totalRecords}`;
+                } else if (pendingCount > 0) {
+                    syncStatus.className = 'sync-status sync-pending';
+                    syncStatusText.textContent = `📤 ${pendingCount} Registro${pendingCount !== 1 ? 's' : ''} pendiente${pendingCount !== 1 ? 's' : ''}`;
+                } else {
+                    syncStatus.className = 'sync-status sync-ok';
+                    syncStatusText.textContent = '✅ Sincronizado';
+                }
+            },
+            
+            showPanel() {
+                const pendingCount = PENDING_SYNC.length;
+                const hasConnection = IS_ONLINE && gapi?.client?.getToken();
+                
+                const overlay = document.createElement('div');
+                overlay.className = 'popup-overlay show';
+                overlay.id = 'sync-queue-panel';
+                
+                let failedHTML = '';
+                if (this.failedRecords.length > 0) {
+                    failedHTML = `
+                        <div style="padding: 10px; background: #fee; border: 1px solid #fcc; border-radius: 6px; margin-bottom: 10px;">
+                            <strong>⚠️ ${this.failedRecords.length} registro(s) con error:</strong>
+                            <div style="max-height: 150px; overflow-y: auto; margin-top: 5px; font-size: 0.85em;">
+                                ${this.failedRecords.map(r => `
+                                    <div style="padding: 5px; border-bottom: 1px solid #fdd;">
+                                        ${r.record.scan1} - ${r.error}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                overlay.innerHTML = `
+                    <div class="popup-content" style="max-width: 500px;">
+                        <div class="popup-header">
+                            <span>📊 Estado de Sincronización</span>
+                            <button class="popup-close" onclick="document.getElementById('sync-queue-panel').remove()">×</button>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <div style="padding: 20px; background: ${pendingCount > 0 ? '#fff3cd' : '#d4edda'}; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Registros Pendientes</div>
+                                <div style="font-size: 3em; font-weight: 700; color: ${pendingCount > 0 ? '#856404' : '#155724'};">
+                                    ${pendingCount}
+                                </div>
+                            </div>
+                            
+                            ${failedHTML}
+                            
+                            <div style="font-size: 0.9em; padding: 12px; background: #f9f9f9; border-radius: 6px; line-height: 1.6;">
+                                <div style="margin-bottom: 5px;">
+                                    ${IS_ONLINE ? '🟢 <strong>Conectado</strong> a internet' : '🔴 <strong>Sin conexión</strong> a internet'}
+                                </div>
+                                <div style="margin-bottom: 5px;">
+                                    ${gapi?.client?.getToken() ? '🟢 <strong>Google conectado</strong>' : '🔴 <strong>Google desconectado</strong>'}
+                                </div>
+                                <div style="color: #666; font-size: 0.85em;">
+                                    📄 Hoja: <strong>${CONFIG.SHEET_NAME}</strong>
+                                </div>
+                            </div>
+                            
+                            ${this.processing ? `
+                                <div style="margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 6px; text-align: center;">
+                                    <div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">
+                                        🔄 Sincronizando...
+                                    </div>
+                                    <div style="font-size: 0.9em; color: #666;">
+                                        Procesando registro ${this.currentIndex} de ${this.totalRecords}
+                                    </div>
+                                    <div style="margin-top: 10px; background: #fff; border-radius: 4px; height: 8px; overflow: hidden;">
+                                        <div style="background: #1976d2; height: 100%; width: ${(this.currentIndex / this.totalRecords * 100)}%; transition: width 0.3s;"></div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="popup-buttons">
+                            ${pendingCount > 0 && hasConnection && !this.processing ? `
+                                <button class="btn btn-success btn-full" onclick="SyncQueue.startSync()" style="font-size: 1.1em; padding: 12px;">
+                                    🚀 Sincronizar Ahora
+                                </button>
+                            ` : ''}
+                            ${this.failedRecords.length > 0 && !this.processing ? `
+                                <button class="btn btn-warning btn-full" onclick="SyncQueue.retryFailed()">
+                                    🔄 Reintentar Fallidos
+                                </button>
+                            ` : ''}
+                            ${!hasConnection && pendingCount > 0 ? `
+                                <div style="padding: 10px; background: #fff3cd; border-radius: 6px; text-align: center; margin-bottom: 10px;">
+                                    ⚠️ Conecta a internet para sincronizar
+                                </div>
+                            ` : ''}
+                            <button class="btn btn-secondary btn-full" onclick="document.getElementById('sync-queue-panel').remove()">
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(overlay);
+                
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) overlay.remove();
+                });
+            },
+            
+            async startSync() {
+                if (this.processing) {
+                    showNotification('⏳ Sincronización en progreso...', 'info');
+                    return;
+                }
+                
+                if (!IS_ONLINE) {
+                    showNotification('⚠️ Sin conexión a internet', 'warning');
+                    return;
+                }
+                
+                if (!gapi?.client?.getToken()) {
+                    showNotification('⚠️ No conectado a Google', 'warning');
+                    return;
+                }
+                
+                if (PENDING_SYNC.length === 0) {
+                    showNotification('✅ No hay registros pendientes', 'success');
+                    return;
+                }
+                
+                // Cerrar panel si está abierto
+                const panel = document.getElementById('sync-queue-panel');
+                if (panel) panel.remove();
+                
+                // Limpiar estados de error previos
+                this.failedRecords = [];
+                this.successCount = 0;
+                this.currentIndex = 0;
+                this.totalRecords = PENDING_SYNC.length;
+                this.processing = true;
+                
+                console.log(`🚀 [QUEUE] Iniciando sincronización de ${this.totalRecords} registros`);
+                await this.updateCounter();
+                
+                // Procesar registros uno por uno
+                await this.processQueue();
+                
+                // Finalizar
+                this.processing = false;
+                await this.updateCounter();
+                
+                // Mostrar resultado
+                if (this.failedRecords.length === 0) {
+                    showNotification(`✅ Sincronización completada: ${this.successCount} registros enviados`, 'success');
+                } else {
+                    showNotification(`⚠️ Sincronización completada con ${this.failedRecords.length} errores. ${this.successCount} registros enviados.`, 'warning');
+                    this.showPanel(); // Mostrar panel con errores
+                }
+            },
+            
+            async processQueue() {
+                const recordsToProcess = [...PENDING_SYNC];
+                
+                for (let i = 0; i < recordsToProcess.length; i++) {
+                    this.currentIndex = i + 1;
+                    await this.updateCounter();
+                    
+                    const record = recordsToProcess[i];
+                    console.log(`📤 [QUEUE] Procesando registro ${this.currentIndex}/${this.totalRecords}: ${record.scan1}`);
+                    
+                    try {
+                        // Enviar registro individual
+                        const success = await this.sendSingleRecord(record);
+                        
+                        if (success) {
+                            // Éxito: eliminar de PENDING_SYNC
+                            PENDING_SYNC = PENDING_SYNC.filter(r => r._id !== record._id);
+                            await PersistenceManager.markAsSynced([record]);
+                            this.successCount++;
+                            console.log(`✅ [QUEUE] Registro ${this.currentIndex} sincronizado exitosamente`);
+                        } else {
+                            // Error: marcar como fallido
+                            this.failedRecords.push({
+                                record: record,
+                                error: 'Error de servidor (no Status 200)'
+                            });
+                            console.error(`❌ [QUEUE] Registro ${this.currentIndex} falló`);
+                        }
+                    } catch (error) {
+                        // Error de red o excepción
+                        this.failedRecords.push({
+                            record: record,
+                            error: error.message || 'Error desconocido'
+                        });
+                        console.error(`❌ [QUEUE] Error procesando registro ${this.currentIndex}:`, error);
+                    }
+                    
+                    // Pequeña pausa entre registros para evitar rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+                
+                // Guardar estado actualizado
+                await PersistenceManager.savePendingSync(PENDING_SYNC);
+            },
+            
+            async sendSingleRecord(record) {
+                try {
+                    const values = [[
+                        record.date, record.time, record.user, record.scan1, record.scan2,
+                        record.location, record.status, record.note, record.pallet, record.originLocation || ''
+                    ]];
+                    
+                    const response = await gapi.client.sheets.spreadsheets.values.append({
+                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                        range: `${CONFIG.SHEET_NAME}!A:J`,
+                        valueInputOption: 'USER_ENTERED',
+                        insertDataOption: 'INSERT_ROWS',
+                        resource: { values }
+                    });
+                    
+                    // Validar Status 200
+                    if (response.status === 200) {
+                        return true;
+                    } else {
+                        console.warn(`⚠️ [QUEUE] Respuesta no exitosa: Status ${response.status}`);
+                        return false;
+                    }
+                } catch (error) {
+                    console.error(`❌ [QUEUE] Error enviando registro:`, error);
+                    throw error;
+                }
+            },
+            
+            async retryFailed() {
+                if (this.failedRecords.length === 0) {
+                    showNotification('✅ No hay registros fallidos para reintentar', 'info');
+                    return;
+                }
+                
+                // Cerrar panel
+                const panel = document.getElementById('sync-queue-panel');
+                if (panel) panel.remove();
+                
+                // Limpiar y reintentar
+                this.failedRecords = [];
+                await this.startSync();
+            }
+        };
+
         // ==================== INITIALIZATION ====================
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             initAudio();
+            
+            // FASE 2: RESTAURACIÓN AUTOMÁTICA (antes de cargar desde localStorage)
+            await restoreFromIndexedDB();
+            
             loadFromStorage();
             setupEventListeners();
             setupConnectionMonitor();
+            
+            // Inicializar nuevo sistema de cola de sincronización
+            await SyncQueue.init();
+            
             gapi.load('client', initGAPI);
         });
+
+        // RESTAURACIÓN AUTOMÁTICA desde IndexedDB
+        async function restoreFromIndexedDB() {
+            try {
+                console.log('🔄 [RESTORE] ========== INICIANDO RESTAURACIÓN ==========');
+                console.log('🔄 [RESTORE] Timestamp:', new Date().toISOString());
+                
+                // 1. Inicializar PersistenceManager
+                console.log('🔄 [RESTORE] Paso 1: Inicializando PersistenceManager...');
+                await PersistenceManager.init();
+                console.log('✅ [RESTORE] PersistenceManager inicializado');
+                
+                // 2. Obtener sesión activa
+                console.log('🔄 [RESTORE] Paso 2: Buscando sesión activa...');
+                const activeSession = await PersistenceManager.getActiveSession();
+                console.log('🔄 [RESTORE] Sesión activa:', activeSession);
+                
+                if (activeSession) {
+                    console.log('✅ [RESTORE] Sesión activa encontrada:', activeSession.id);
+                    console.log('📊 [RESTORE] Detalles de sesión:', JSON.stringify(activeSession, null, 2));
+                    
+                    // Asignar sesión activa
+                    CURRENT_SESSION_ID = activeSession.id;
+                    console.log('✅ [RESTORE] CURRENT_SESSION_ID asignado:', CURRENT_SESSION_ID);
+                    
+                    // 3. Restaurar cajas en borrador
+                    console.log('🔄 [RESTORE] Paso 3: Obteniendo cajas en borrador...');
+                    const draftBoxes = await PersistenceManager.getDraftBoxes(activeSession.id);
+                    console.log(`📦 [RESTORE] Cajas encontradas: ${draftBoxes.length}`);
+                    
+                    if (draftBoxes.length > 0) {
+                        console.log(`✅ [RESTORE] Restaurando ${draftBoxes.length} cajas en borrador...`);
+                        console.log('📦 [RESTORE] Primera caja:', JSON.stringify(draftBoxes[0], null, 2));
+                        
+                        // 4. Repoblar STATE.pallets desde IndexedDB (fuente de verdad)
+                        console.log('🔄 [RESTORE] Paso 4: Repoblando STATE.pallets...');
+                        let okCount = 0, blockedCount = 0, nowmsCount = 0;
+                        
+                        draftBoxes.forEach(box => {
+                            if (box._category && STATE.pallets[box._category]) {
+                                STATE.pallets[box._category].boxes.push(box);
+                                if (box._category === 'ok') okCount++;
+                                else if (box._category === 'blocked') blockedCount++;
+                                else if (box._category === 'nowms') nowmsCount++;
+                            } else {
+                                console.warn('⚠️ [RESTORE] Caja sin categoría válida:', box);
+                            }
+                        });
+                        
+                        console.log(`✅ [RESTORE] Cajas repobladas - OK: ${okCount}, Blocked: ${blockedCount}, NoWMS: ${nowmsCount}`);
+                        console.log('📊 [RESTORE] STATE.pallets.ok.boxes.length:', STATE.pallets.ok.boxes.length);
+                        console.log('📊 [RESTORE] STATE.pallets.blocked.boxes.length:', STATE.pallets.blocked.boxes.length);
+                        console.log('📊 [RESTORE] STATE.pallets.nowms.boxes.length:', STATE.pallets.nowms.boxes.length);
+                        
+                        // 5. Restaurar IDs de pallets si existen en la sesión
+                        console.log('🔄 [RESTORE] Paso 5: Restaurando IDs de pallets...');
+                        if (activeSession.palletIds) {
+                            console.log('📊 [RESTORE] IDs de pallets en sesión:', activeSession.palletIds);
+                            if (activeSession.palletIds.ok) {
+                                STATE.pallets.ok.id = activeSession.palletIds.ok;
+                                console.log('✅ [RESTORE] Pallet OK ID:', STATE.pallets.ok.id);
+                            }
+                            if (activeSession.palletIds.blocked) {
+                                STATE.pallets.blocked.id = activeSession.palletIds.blocked;
+                                console.log('✅ [RESTORE] Pallet Blocked ID:', STATE.pallets.blocked.id);
+                            }
+                            if (activeSession.palletIds.nowms) {
+                                STATE.pallets.nowms.id = activeSession.palletIds.nowms;
+                                console.log('✅ [RESTORE] Pallet NoWMS ID:', STATE.pallets.nowms.id);
+                            }
+                        } else {
+                            console.warn('⚠️ [RESTORE] No hay IDs de pallets en la sesión');
+                        }
+                        
+                        // 6. Actualizar UI después de restaurar
+                        console.log('🔄 [RESTORE] Paso 6: Actualizando UI...');
+                        setTimeout(() => {
+                            console.log('🎨 [RESTORE] Ejecutando updateUI()...');
+                            updateUI();
+                            console.log('💾 [RESTORE] Ejecutando saveToStorage()...');
+                            saveToStorage(); // Sincronizar con localStorage
+                            console.log('✅ [RESTORE] ========== RESTAURACIÓN COMPLETADA ==========');
+                            showNotification(`✅ Sesión restaurada: ${draftBoxes.length} cajas recuperadas`, 'success');
+                        }, 100);
+                    } else {
+                        console.log('ℹ️ [RESTORE] No hay cajas en borrador para restaurar');
+                    }
+                } else {
+                    console.log('ℹ️ [RESTORE] No hay sesión activa, creando nueva...');
+                    
+                    // Crear nueva sesión
+                    const newSession = {
+                        id: generateUUID(),
+                        createdAt: generateTimestamp(),
+                        closed: false,
+                        palletIds: {
+                            ok: STATE.pallets.ok.id,
+                            blocked: STATE.pallets.blocked.id,
+                            nowms: STATE.pallets.nowms.id
+                        }
+                    };
+                    
+                    await PersistenceManager.saveSession(newSession);
+                    window.CURRENT_SESSION_ID = newSession.id;
+                    console.log('✅ [RESTORE] Nueva sesión creada:', newSession.id);
+                }
+                
+                // 6. Cargar registros pendientes de sincronización desde IndexedDB
+                const pendingRecords = await PersistenceManager.getPendingSync();
+                if (pendingRecords.length > 0) {
+                    console.log(`✅ [RESTORE] ${pendingRecords.length} registros pendientes de sincronización`);
+                    PENDING_SYNC = pendingRecords;
+                    
+                    // Actualizar contador UI
+                    setTimeout(() => {
+                        SyncManager.updateUI(false);
+                    }, 200);
+                }
+                
+            } catch (error) {
+                console.error('❌ [RESTORE] Error en restauración automática:', error);
+                // Continuar con flujo normal si falla la restauración
+            }
+        }
 
         function initAudio() {
             try {
@@ -3955,7 +4764,7 @@
                     await getUserProfile();
 
                     // Cargar TODAS las bases de datos en paralelo
-                    showLoadingOverlay(true, '📦 Cargando Inventarios...', 'Descargando bases de datos (WMS, FILE2, PRIORIDAD)');
+                    showLoadingOverlay(true, '📦 Cargando Inventarios...', 'Descargando bases de datos...');
                     console.log('🔄 Iniciando carga de todas las bases de datos...');
                     await Promise.all([
                         loadInventory(),         // WMS - Base de datos principal
@@ -3967,18 +4776,26 @@
                     showLoadingOverlay(true, '⚙️ Finalizando...', 'Inicializando sistema de sincronización');
                     SyncManager.init();
                     
-                    // Inicializar ProcessedBoxesManager para validación de cajas ya procesadas
-                    await ProcessedBoxesManager.init();
-                    // Sincronizar cajas procesadas del servidor (sin notificación en inicio)
-                    ProcessedBoxesManager.syncFromServer(false);
-                    
-                    if (PENDING_SYNC.length > 0) SyncManager.sync();
+                    // Sincronizar pendientes si existen (en background)
+                    if (PENDING_SYNC.length > 0) {
+                        SyncManager.sync().catch(err => console.warn('⚠️ Error en sync inicial:', err));
+                    }
 
-                    // Solo mostrar la app después de que TODO esté listo
+                    // Solo mostrar la app después de que lo esencial esté listo
                     showLoadingOverlay(true, '✅ ¡Listo!', 'Abriendo aplicación');
                     setTimeout(() => {
                         showApp();
                         showLoadingOverlay(false);
+                        
+                        // OPTIMIZACIÓN: Inicializar ProcessedBoxesManager en BACKGROUND (no bloqueante)
+                        console.log('🔄 [BACKGROUND] Inicializando ProcessedBoxesManager...');
+                        ProcessedBoxesManager.init().then(() => {
+                            console.log('✅ [BACKGROUND] ProcessedBoxesManager inicializado');
+                            // Sincronizar cajas procesadas del servidor (sin notificación)
+                            ProcessedBoxesManager.syncFromServer(false);
+                        }).catch(err => {
+                            console.warn('⚠️ [BACKGROUND] Error inicializando ProcessedBoxesManager:', err);
+                        });
                     }, 500); // Pequeño delay para que el usuario vea el mensaje de "¡Listo!"
                 } catch (error) {
                     console.error('❌ Error durante la inicialización:', error);
@@ -5254,40 +6071,100 @@
         }
 
         // ==================== BOX MANAGEMENT ====================
-        function addBox(category, boxData) {
-            STATE.pallets[category].boxes.push(boxData);
-            saveToStorage();
+        // REFACTORIZADO: Persistencia instantánea con transacción atómica
+        async function addBox(category, boxData) {
+            try {
+                console.log('📦 [ADD-BOX] ========== AGREGANDO CAJA ==========');
+                console.log('📦 [ADD-BOX] Categoría:', category);
+                console.log('📦 [ADD-BOX] Datos:', boxData);
+                console.log('📦 [ADD-BOX] CURRENT_SESSION_ID:', CURRENT_SESSION_ID);
+                
+                // 1. CREAR REGISTRO CON METADATA COMPLETA
+                const boxRecord = {
+                    _id: generateUUID(),
+                    _timestamp: generateTimestamp(),
+                    _status: 'draft',
+                    _sessionId: CURRENT_SESSION_ID || 'default',
+                    _category: category,
+                    _palletId: STATE.pallets[category].id,
+                    ...boxData
+                };
+                
+                console.log('📦 [ADD-BOX] Registro creado:', JSON.stringify(boxRecord, null, 2));
 
-            // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
-            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
-                GlobalTabs.saveCurrentTabState();
-            }
+                // 2. PERSISTENCIA INSTANTÁNEA EN IndexedDB (fuente de verdad)
+                console.log('💾 [ADD-BOX] Guardando en IndexedDB...');
+                await PersistenceManager.saveDraftBox(boxRecord);
+                console.log(`✅ [ADD-BOX] Caja persistida en IndexedDB: ${boxRecord._id}`);
 
-            // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
-            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
-                GlobalTabs.updateGlobalSummary();
-            }
+                // 3. LUEGO actualizar RAM (vista)
+                console.log('💾 [ADD-BOX] Agregando a STATE.pallets...');
+                STATE.pallets[category].boxes.push(boxRecord);
+                console.log(`✅ [ADD-BOX] STATE.pallets.${category}.boxes.length:`, STATE.pallets[category].boxes.length);
+                
+                // 4. Guardar en localStorage como respaldo (no bloqueante)
+                console.log('💾 [ADD-BOX] Guardando en localStorage...');
+                saveToStorage().catch(err => console.warn('⚠️ Error en saveToStorage:', err));
 
-            updateUI();
-        }
-
-        function deleteBox(category, index) {
-            if (confirm('¿Eliminar esta caja?')) {
-                STATE.pallets[category].boxes.splice(index, 1);
-                saveToStorage();
-
-                // CRÍTICO: Guardar estado actual en el tab para que updateGlobalSummary lea datos correctos
+                // 5. Actualizar tabs globales
                 if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
                     GlobalTabs.saveCurrentTabState();
                 }
 
-                // IMPORTANTE: Actualizar tarjetas globales después de guardar estado
                 if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
                     GlobalTabs.updateGlobalSummary();
                 }
 
+                // 6. Actualizar UI
+                console.log('🎨 [ADD-BOX] Actualizando UI...');
                 updateUI();
-                showNotification('Caja eliminada', 'info');
+                console.log('✅ [ADD-BOX] ========== CAJA AGREGADA ==========');
+                
+                return boxRecord;
+            } catch (error) {
+                console.error('❌ [ADD-BOX] Error crítico en addBox:', error);
+                console.error('❌ [ADD-BOX] Stack:', error.stack);
+                // Fallback: agregar solo a RAM si falla IndexedDB
+                STATE.pallets[category].boxes.push(boxData);
+                updateUI();
+                showNotification('⚠️ Caja agregada (modo degradado)', 'warning');
+                return boxData;
+            }
+        }
+
+        async function deleteBox(category, index) {
+            if (confirm('¿Eliminar esta caja?')) {
+                try {
+                    const box = STATE.pallets[category].boxes[index];
+                    
+                    // 1. Eliminar de IndexedDB primero (si tiene _id)
+                    if (box._id) {
+                        await PersistenceManager.deleteDraftBox(box._id);
+                        console.log(`✅ [ATOMIC-DELETE] Caja eliminada de IndexedDB: ${box._id}`);
+                    }
+                    
+                    // 2. Eliminar de RAM
+                    STATE.pallets[category].boxes.splice(index, 1);
+                    
+                    // 3. Guardar en localStorage como respaldo
+                    saveToStorage().catch(err => console.warn('⚠️ Error en saveToStorage:', err));
+
+                    // 4. Actualizar tabs globales
+                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
+                        GlobalTabs.saveCurrentTabState();
+                    }
+
+                    if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
+                        GlobalTabs.updateGlobalSummary();
+                    }
+
+                    // 5. Actualizar UI
+                    updateUI();
+                    showNotification('Caja eliminada', 'info');
+                } catch (error) {
+                    console.error('❌ [ATOMIC-DELETE] Error eliminando caja:', error);
+                    showNotification('⚠️ Error al eliminar caja', 'error');
+                }
             }
         }
 
@@ -5372,7 +6249,28 @@
             if (closeBtn) closeBtn.addEventListener('click', closeBlindValidationPopup);
             if (cancelBtn) cancelBtn.addEventListener('click', closeBlindValidationPopup);
             if (confirmBtn) {
-                confirmBtn.addEventListener('click', () => confirmSendPallet(category, location));
+                confirmBtn.addEventListener('click', () => {
+                    // HARD BLOCK: Verificar si ya está procesando
+                    if (isSubmitting) {
+                        console.warn('⚠️ [SEND] Ya hay un envío en progreso');
+                        return;
+                    }
+                    
+                    // PRIMERA LÍNEA: Establecer isSubmitting = true
+                    isSubmitting = true;
+                    
+                    // BLOQUEO INMEDIATO: Deshabilitar botón físicamente
+                    confirmBtn.disabled = true;
+                    confirmBtn.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">⏳</span> Procesando envío...';
+                    confirmBtn.style.opacity = '0.6';
+                    confirmBtn.style.cursor = 'not-allowed';
+                    
+                    // Cerrar popup inmediatamente
+                    closeBlindValidationPopup();
+                    
+                    // Ejecutar envío
+                    confirmSendPallet(category, location);
+                });
             }
             if (input) {
                 input.addEventListener('input', () => validateBoxCount(boxCount));
@@ -5422,8 +6320,30 @@
 
         // Confirmar envío después de validación
         async function confirmSendPallet(category, location) {
+            // Obtener botón de confirmación
+            const confirmBtn = document.getElementById('confirm-send-btn');
+            
             try {
-                console.log('confirmSendPallet called with:', { category, location });
+                console.log('🚀 [SEND] ========== INICIANDO ENVÍO DE PALLET ==========');
+                console.log('🚀 [SEND] Categoría:', category);
+                console.log('🚀 [SEND] Ubicación:', location);
+                
+                // PROTECCIÓN: Prevenir doble click / duplicación
+                if (window.SENDING_IN_PROGRESS) {
+                    console.warn('⚠️ [SEND] Envío ya en progreso, ignorando solicitud duplicada');
+                    return;
+                }
+                
+                window.SENDING_IN_PROGRESS = true;
+                console.log('🔒 [SEND] Flag SENDING_IN_PROGRESS activado');
+                
+                // DESHABILITAR BOTÓN INMEDIATAMENTE (Anti-spam)
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.textContent = '⏳ Procesando...';
+                    confirmBtn.style.opacity = '0.6';
+                    confirmBtn.style.cursor = 'not-allowed';
+                }
                 
                 // Cerrar popup de validación y disable blind mode
                 document.body.classList.remove('blind-mode');
@@ -5432,8 +6352,10 @@
 
                 const pallet = STATE.pallets[category];
                 if (!pallet) {
-                    console.error('Pallet not found for category:', category);
+                    console.error('❌ [SEND] Pallet not found for category:', category);
                     showNotification('❌ Error: No se encontró la tarima', 'error');
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false;
                     return;
                 }
 
@@ -5441,25 +6363,33 @@
                 const originLocationInput = document.getElementById('origin-location');
                 const originLocation = originLocationInput ? originLocationInput.value.trim().toUpperCase() : '';
 
-                console.log('Validating location:', location);
+                console.log('🔍 [SEND] Validando ubicación:', location);
                 
                 // Validar formato de ubicación y uso diario
                 if (typeof confirmInvalidLocation !== 'function') {
-                    console.error('confirmInvalidLocation is not a function');
+                    console.error('❌ [SEND] confirmInvalidLocation is not a function');
                     showNotification('❌ Error: Función de validación no disponible', 'error');
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false;
                     return;
                 }
 
+                console.log('🔍 [SEND] Llamando a confirmInvalidLocation()...');
                 const locationCheck = await confirmInvalidLocation(location);
-                console.log('Location check result:', locationCheck);
+                console.log('🔍 [SEND] Resultado de validación:', JSON.stringify(locationCheck, null, 2));
                 
                 if (!locationCheck || !locationCheck.confirmed) {
                     const errorMsg = locationCheck?.message || 'Ubicación inválida o en uso';
-                    console.error('Location validation failed:', errorMsg);
+                    console.error('❌ [SEND] Location validation failed:', errorMsg);
+                    console.error('❌ [SEND] locationCheck completo:', locationCheck);
                     showNotification(`❌ ${errorMsg}`, 'error');
                     if (locationInput) locationInput.focus();
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false;
                     return;
                 }
+                
+                console.log('✅ [SEND] Ubicación validada correctamente');
 
                 // Usar la ubicación formateada (normalizada si es válida)
                 const finalLocation = locationCheck.formatted;
@@ -5469,66 +6399,93 @@
                 const isAdjustmentMode = window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active;
                 
                 if (!isAdjustmentMode) {
+                    console.log('🔍 [VALIDATION] ========== VALIDACIÓN DE UBICACIÓN DUPLICADA ==========');
                     // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
                     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                    console.log('🔍 [VALIDATION] Fecha hoy:', today);
+                    console.log('🔍 [VALIDATION] Ubicación a validar:', finalLocation);
                     
-                    // 1. Verificar en PENDING_SYNC (registros locales pendientes)
+                    // IMPORTANTE: Sincronizar PENDING_SYNC desde IndexedDB antes de validar
+                    try {
+                        const pendingFromDB = await PersistenceManager.getPendingSync();
+                        PENDING_SYNC = pendingFromDB;
+                        console.log(`🔍 [VALIDATION] PENDING_SYNC actualizado: ${PENDING_SYNC.length} registros`);
+                    } catch (error) {
+                        console.warn('⚠️ [VALIDATION] Error sincronizando PENDING_SYNC:', error);
+                    }
+                    
+                    // CAPA 1: Verificar en PENDING_SYNC (registros locales pendientes)
+                    console.log('🔍 [VALIDATION] Capa 1: Verificando en PENDING_SYNC...');
                     const usedInPending = PENDING_SYNC.some(record => {
                         const recordDate = record.date; // YYYY-MM-DD
-                        return recordDate === today && record.location === finalLocation;
+                        const match = recordDate === today && record.location === finalLocation;
+                        if (match) {
+                            console.log('❌ [VALIDATION] Match encontrado en PENDING_SYNC:', record);
+                        }
+                        return match;
                     });
 
                     if (usedInPending) {
-                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
+                        console.error(`❌ [VALIDATION] BLOQUEADO - Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
                         showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
                         if (locationInput) locationInput.focus();
+                        window.SENDING_IN_PROGRESS = false;
+                        isSubmitting = false;
                         return;
                     }
+                    console.log('✅ [VALIDATION] Capa 1: No encontrado en PENDING_SYNC');
 
-                    // 2. Verificar en STATE.history (registros locales del historial)
+                    // CAPA 2: Verificar en STATE.history (registros locales del historial)
+                    console.log('🔍 [VALIDATION] Capa 2: Verificando en STATE.history...');
+                    console.log('🔍 [VALIDATION] STATE.history.length:', STATE.history.length);
                     const usedInHistory = STATE.history.some(record => {
                         const recordDate = record.date; // YYYY-MM-DD
-                        return recordDate === today && record.location === finalLocation;
+                        const match = recordDate === today && record.location === finalLocation;
+                        if (match) {
+                            console.log('❌ [VALIDATION] Match encontrado en STATE.history:', record);
+                        }
+                        return match;
                     });
 
                     if (usedInHistory) {
-                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
+                        console.error(`❌ [VALIDATION] BLOQUEADO - Ubicación ${finalLocation} ya fue usada hoy en historial local`);
                         showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
                         if (locationInput) locationInput.focus();
+                        window.SENDING_IN_PROGRESS = false;
+                        isSubmitting = false;
                         return;
                     }
+                    console.log('✅ [VALIDATION] Capa 2: No encontrado en STATE.history');
 
-                    // 3. Verificar en base de datos remota (si hay conexión)
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
-                        try {
-                            console.log('🔍 Verificando ubicación en base de datos...');
-                            const response = await gapi.client.sheets.spreadsheets.values.get({
-                                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                                range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
-                            });
-
-                            const rows = response.result.values || [];
-                            const usedInDB = rows.some(row => {
-                                const dbDate = row[0]; // Columna A = fecha
-                                const dbLocation = row[5]; // Columna F = ubicación
-                                return dbDate === today && dbLocation === finalLocation;
-                            });
-
-                            if (usedInDB) {
-                                console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
-                                showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
-                                if (locationInput) locationInput.focus();
-                                return;
-                            }
-                        } catch (error) {
-                            console.warn('⚠️ No se pudo verificar ubicación en BD:', error);
-                            // Continuar si falla la verificación remota (modo offline)
+                    // CAPA 3: Verificar en caché de datos del servidor (PROCESSED_BOXES_MAP)
+                    console.log('🔍 [VALIDATION] Capa 3: Verificando en caché del servidor...');
+                    console.log(`🔍 [VALIDATION] PROCESSED_BOXES_MAP.size: ${PROCESSED_BOXES_MAP.size}`);
+                    
+                    let usedInServerCache = false;
+                    for (const [code, boxData] of PROCESSED_BOXES_MAP) {
+                        const dbDate = boxData.date; // Formato: YYYY-MM-DD
+                        const dbLocation = boxData.location;
+                        const match = dbDate === today && dbLocation === finalLocation;
+                        if (match) {
+                            console.log('❌ [VALIDATION] Match encontrado en caché del servidor:', boxData);
+                            usedInServerCache = true;
+                            break;
                         }
                     }
 
-                    console.log('✅ Ubicación validada - no ha sido usada hoy');
+                    if (usedInServerCache) {
+                        console.error(`❌ [VALIDATION] BLOQUEADO - Ubicación ${finalLocation} ya fue usada hoy por otro usuario`);
+                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy por otro usuario. Elige otra ubicación.`, 'error');
+                        if (locationInput) locationInput.focus();
+                        window.SENDING_IN_PROGRESS = false;
+                        isSubmitting = false;
+                        return;
+                    }
+                    console.log('✅ [VALIDATION] Capa 3: No encontrado en caché del servidor');
+
+                    console.log('✅ [VALIDATION] ========== UBICACIÓN VALIDADA - NO DUPLICADA ==========');
                 } else {
-                    console.log('🔧 [AJUSTE] Bypass de validación de ubicación duplicada activado');
+                    console.log('🔧 [AJUSTE] ========== BYPASS DE VALIDACIÓN ACTIVADO (MODO AJUSTE) ==========');
                 }
                 
                 if (locationInput) {
@@ -5613,17 +6570,31 @@
                         return;
                     }
 
-                    // VALIDACIÓN DE CONECTIVIDAD ANTES DE ENVÍO
+                    // FASE 4: PROTOCOLO ATÓMICO - TRANSICIÓN draft → pending
+                    console.log('🔄 [ATOMIC] Iniciando transición draft → pending...');
+                    
+                    // 1. MOVER CAJAS DE DRAFT A PENDING en IndexedDB (TRANSACCIÓN ATÓMICA)
+                    try {
+                        await PersistenceManager.moveToPending(uniqueRecords);
+                        console.log(`✅ [ATOMIC] ${uniqueRecords.length} registros movidos a PENDING en IndexedDB`);
+                    } catch (error) {
+                        console.error('❌ [ATOMIC] Error moviendo a pending:', error);
+                        showNotification('❌ Error al procesar pallet. Intenta nuevamente.', 'error');
+                        return;
+                    }
+                    
+                    // 2. ACTUALIZAR PENDING_SYNC en RAM (sincronizado con IndexedDB)
+                    PENDING_SYNC = await PersistenceManager.getPendingSync();
+                    
+                    // 3. LIMPIAR DRAFT_BOXES del pallet actual
+                    await PersistenceManager.clearDraftBoxesByPallet(pallet.id);
+                    
+                    // 4. VALIDACIÓN DE CONECTIVIDAD
                     if (!IS_ONLINE) {
-                        // Modo offline - guardar localmente
-                        console.log('📴 [OFFLINE] Guardando datos localmente...');
-                        PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                        SyncManager.save();
+                        // Modo offline - datos YA están seguros en pending
+                        console.log('📴 [OFFLINE] Datos guardados en PENDING, se sincronizarán cuando haya conexión');
                         
-                        // Agregar a historial local SOLO en modo offline
-                        STATE.history = [...records, ...STATE.history].slice(0, 1000);
-                        
-                        // Reset pallet
+                        // Reset pallet en RAM
                         const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
                         STATE.pallets[category] = {
                             id: generatePalletId(prefixes[category]),
@@ -5631,41 +6602,36 @@
                             location: ''
                         };
                         locationInput.value = '';
-                        saveToStorage();
-                        
-                        if (typeof GlobalTabs !== 'undefined' && GlobalTabs.saveCurrentTabState) {
-                            GlobalTabs.saveCurrentTabState();
-                        }
-                        if (typeof GlobalTabs !== 'undefined' && GlobalTabs.updateGlobalSummary) {
-                            GlobalTabs.updateGlobalSummary();
-                        }
                         
                         updateUI();
                         playSound('success');
                         originLocationInput.focus();
                         originLocationInput.select();
                         
-                        showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros (se sincronizará cuando haya conexión)`, 'info');
+                        showNotification(`💾 Pallet guardado localmente: ${uniqueRecords.length} registros en cola (se sincronizarán automáticamente)`, 'info');
+                        SyncManager.updateUI(false);
                         return;
                     }
 
-                    // Verificar token de Google antes de intentar envío
+                    // 5. VERIFICAR TOKEN DE GOOGLE
                     if (!gapi?.client?.getToken()) {
                         console.error('❌ [AUTH] Token de Google no disponible');
-                        showNotification(`❌ Conexión perdida. Por favor, desconecta manualmente y vuelve a conectarte a Google para continuar.`, 'error');
+                        showNotification(`⚠️ Pallet guardado en cola. Reconecta a Google para sincronizar (${PENDING_SYNC.length} pendientes).`, 'warning');
+                        
+                        // Reset pallet en RAM
+                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                        STATE.pallets[category] = {
+                            id: generatePalletId(prefixes[category]),
+                            boxes: [],
+                            location: ''
+                        };
+                        locationInput.value = '';
+                        updateUI();
+                        SyncManager.updateUI(false);
                         return;
                     }
 
-                    // TRANSACCIÓN ATÓMICA: Guardar estado ANTES de modificar UI
-                    const backupPallet = JSON.parse(JSON.stringify(pallet));
-                    const backupPendingSync = [...PENDING_SYNC];
-                    const backupHistory = [...STATE.history];
-                    
-                    // Add to pending sync temporalmente
-                    PENDING_SYNC = [...PENDING_SYNC, ...uniqueRecords];
-                    SyncManager.save();
-
-                    // SINCRONIZACIÓN CON TIMEOUT DE 15 SEGUNDOS Y RETRY AUTOMÁTICO
+                    // 6. SINCRONIZACIÓN CON TIMEOUT Y RETRY (datos YA están en pending)
                     let syncResult = { success: false, confirmed: false };
                     const maxRetries = 2;
                     let lastError = null;
@@ -5709,28 +6675,35 @@
                                     errorMessage += 'No se pudo confirmar con el servidor. Intenta nuevamente.';
                                 }
                                 
-                                // CAPTURA CRÍTICA: Garantizar que datos NO se pierdan
-                                console.error('❌ [CRITICAL-CAPTURE] Guardando datos en cola de pendientes después de fallo...');
+                                // CAPTURA CRÍTICA: Datos YA están seguros en IndexedDB (pending)
+                                console.error('❌ [CRITICAL-CAPTURE] Sincronización falló, datos seguros en PENDING');
                                 
-                                // Los datos YA están en PENDING_SYNC (se agregaron antes del intento)
-                                // Solo necesitamos asegurar que se persistan
-                                await SyncManager.save();
-                                
-                                // Actualizar UI para mostrar contador de pendientes
+                                // Actualizar contador UI
                                 SyncManager.updateUI(false);
                                 
-                                // Cerrar cualquier modal o popup para desbloquear UI
+                                // Cerrar modal para desbloquear UI
                                 document.body.classList.remove('blind-mode');
                                 const popup = document.getElementById('send-validation-popup');
                                 if (popup) popup.remove();
                                 
-                                const pendingMsg = `${errorMessage}\n\n✅ Tus datos están seguros en la cola de sincronización (${PENDING_SYNC.length} registros pendientes).`;
-                                showNotification(pendingMsg, 'error');
+                                // Reset pallet en RAM (datos están en pending, no se pierden)
+                                const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                                STATE.pallets[category] = {
+                                    id: generatePalletId(prefixes[category]),
+                                    boxes: [],
+                                    location: ''
+                                };
+                                locationInput.value = '';
+                                updateUI();
                                 
-                                console.log(`💾 [CRITICAL-CAPTURE] ${uniqueRecords.length} registros guardados en PENDING_SYNC`);
+                                const pendingMsg = `${errorMessage}\n\n✅ Tus datos están seguros en cola (${PENDING_SYNC.length} registros). Se sincronizarán automáticamente.`;
+                                showNotification(pendingMsg, 'warning');
+                                
+                                console.log(`💾 [CRITICAL-CAPTURE] ${uniqueRecords.length} registros en PENDING (IndexedDB)`);
                                 console.log(`📊 [CRITICAL-CAPTURE] Total pendientes: ${PENDING_SYNC.length}`);
                                 
-                                return; // MANTENER DATOS EN PANTALLA
+                                playSound('warning');
+                                return;
                             }
                             
                             // Esperar 2 segundos antes del siguiente reintento
@@ -5740,9 +6713,11 @@
                         }
                     }
 
-                    // VALIDACIÓN ATÓMICA: Solo limpiar pantalla si HTTP 200 confirmado
+                    // 7. VALIDACIÓN ATÓMICA: Solo si HTTP 200 confirmado
                     if (syncResult.confirmed) {
-                        // ✅ ÉXITO: Agregar a historial local SOLO si confirmado en servidor
+                        console.log('✅ [ATOMIC] Transición pending → synced completada');
+                        
+                        // Agregar a historial local
                         STATE.history = [...records, ...STATE.history].slice(0, 1000);
                         
                         // Reset pallet (transacción exitosa)
@@ -5770,22 +6745,33 @@
                         originLocationInput.focus();
                         originLocationInput.select();
 
-                        showNotification(`✅ Pallet enviado exitosamente: ${uniqueRecords.length} registros procesados y confirmados`, 'success');
+                        showNotification(`✅ Pallet enviado y confirmado: ${uniqueRecords.length} registros sincronizados`, 'success');
                     } else {
-                        // ❌ FALLO: ROLLBACK COMPLETO - mantener datos en pantalla
-                        console.error('❌ [ROLLBACK] Sincronización falló, restaurando estado...');
-                        PENDING_SYNC = backupPendingSync;
-                        STATE.history = backupHistory;
-                        SyncManager.save();
-                        showNotification(`❌ Error al enviar pallet: No se pudo confirmar con el servidor. Los datos permanecen en pantalla. Intenta nuevamente.`, 'error');
-                        return; // MANTENER DATOS EN PANTALLA
+                        // ❌ FALLO: Datos permanecen en pending (se reintentarán automáticamente)
+                        console.warn('⚠️ [ATOMIC] Sincronización falló, datos permanecen en PENDING');
+                        
+                        // Reset pallet en RAM (datos están seguros en pending)
+                        const prefixes = { ok: 'OK', blocked: 'BLK', nowms: 'NW' };
+                        STATE.pallets[category] = {
+                            id: generatePalletId(prefixes[category]),
+                            boxes: [],
+                            location: ''
+                        };
+                        locationInput.value = '';
+                        updateUI();
+                        
+                        showNotification(`⚠️ Pallet guardado en cola (${PENDING_SYNC.length} pendientes). Se sincronizará automáticamente.`, 'warning');
+                        SyncManager.updateUI(false);
+                        return;
                     }
 
                     // If in adjustment mode, delete old records in background
                     if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
                         const origPallet = window.ADJUSTMENT_MODE.originalPalletCode;
                         const origLocation = window.ADJUSTMENT_MODE.originalLocation;
-                        window.ADJUSTMENT_MODE = { active: false };
+                        
+                        // Desactivar modo de ajuste y restaurar estado normal
+                        deactivateAdjustmentMode();
                         
                         // Ejecutar en background
                         deleteOldPalletRecords(origPallet, origLocation).then(() => {
@@ -5795,12 +6781,34 @@
                         });
                     }
                 } finally {
-                    // PROTECCIÓN: Siempre marcar fin de envío
+                    // PROTECCIÓN: Siempre marcar fin de envío y liberar flags
                     DeduplicationManager.endSending();
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false; // LIBERAR HARD BLOCK
+                    console.log('🔓 [SEND] Flags liberados (SENDING_IN_PROGRESS + isSubmitting)');
+                    
+                    // REHABILITAR BOTÓN (si aún existe)
+                    if (confirmBtn && !confirmBtn.disabled) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '📤 Confirmar Envío';
+                        confirmBtn.style.opacity = '1';
+                        confirmBtn.style.cursor = 'pointer';
+                    }
                 }
             } catch (error) {
-                console.error('Error in confirmSendPallet:', error);
-                // endSending ya se llamó en finally, no duplicar
+                console.error('❌ [SEND] Error in confirmSendPallet:', error);
+                console.error('❌ [SEND] Stack:', error.stack);
+                window.SENDING_IN_PROGRESS = false;
+                isSubmitting = false; // LIBERAR HARD BLOCK
+                
+                // REHABILITAR BOTÓN en caso de error
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = '📤 Confirmar Envío';
+                    confirmBtn.style.opacity = '1';
+                    confirmBtn.style.cursor = 'pointer';
+                }
+                
                 showNotification('❌ Error al enviar la tarima. Por favor, intente nuevamente.', 'error');
             }
         }
@@ -6385,7 +7393,7 @@
             let totalBlocked = 0;
             let totalNowms = 0;
 
-            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.tabs) {
+            if (typeof GlobalTabs !== 'undefined' && GlobalTabs.tabs && GlobalTabs.tabs.length > 0) {
                 GlobalTabs.tabs.forEach(tab => {
                     // Count from classic module
                     totalOk += tab.state.classic.pallets.ok.boxes.length;
@@ -6399,6 +7407,11 @@
                         else if (box.status === 'nowms') totalNowms++;
                     });
                 });
+            } else {
+                // Fallback: Contar desde STATE.pallets si GlobalTabs no está disponible
+                totalOk = STATE.pallets.ok.boxes.length;
+                totalBlocked = STATE.pallets.blocked.boxes.length;
+                totalNowms = STATE.pallets.nowms.boxes.length;
             }
 
             document.getElementById('resumen-ok').textContent = totalOk;
@@ -6669,63 +7682,150 @@
             }
         }
 
-        function loadPalletForEditing(boxes, palletCode, location) {
-            // Clear current pallets
-            STATE.pallets.ok.boxes = [];
-            STATE.pallets.blocked.boxes = [];
-            STATE.pallets.nowms.boxes = [];
+        // FASE 6: Helper para desactivar modo de ajuste y restaurar estado normal
+        function deactivateAdjustmentMode() {
+            if (!window.ADJUSTMENT_MODE || !window.ADJUSTMENT_MODE.active) return;
+            
+            console.log('🔧 [AJUSTE] Desactivando modo de ajuste...');
+            
+            // Restaurar placeholder del input
+            const scanInput = document.getElementById('scan-input');
+            if (scanInput) {
+                scanInput.placeholder = 'Escanea código de barras';
+            }
+            
+            // Cerrar sesión de ajuste en IndexedDB si existe
+            if (window.ADJUSTMENT_MODE.sessionId) {
+                PersistenceManager.saveSession({
+                    id: window.ADJUSTMENT_MODE.sessionId,
+                    closed: true,
+                    closedAt: generateTimestamp()
+                }).catch(err => console.warn('⚠️ Error cerrando sesión de ajuste:', err));
+            }
+            
+            // Desactivar flag global
+            window.ADJUSTMENT_MODE = { active: false };
+            
+            console.log('✅ [AJUSTE] Modo de ajuste desactivado');
+        }
 
-            // Set the pallet ID to the one being edited
-            const firstBox = boxes[0];
-            const originLocation = firstBox[9] || '';
+        // FASE 6: Módulo de Ajustes Corregido - Aislamiento y Datos Limpios
+        async function loadPalletForEditing(boxes, palletCode, location) {
+            try {
+                // 1. VERIFICAR SI HAY SESIÓN ACTIVA CON DATOS NO GUARDADOS
+                const hasUnsavedData = STATE.pallets.ok.boxes.length > 0 ||
+                                      STATE.pallets.blocked.boxes.length > 0 ||
+                                      STATE.pallets.nowms.boxes.length > 0;
+                
+                if (hasUnsavedData) {
+                    const confirm = window.confirm('⚠️ Hay datos sin guardar en la sesión actual. ¿Deseas descartarlos y abrir el modo de ajuste?');
+                    if (!confirm) {
+                        showNotification('❌ Modo de ajuste cancelado', 'info');
+                        return;
+                    }
+                }
 
-            // Classify boxes by status
-            boxes.forEach(row => {
-                const status = row[6] || '';
-                const box = {
-                    code: row[3],
-                    scan1: row[3],
-                    scan2: row[4] || '',
-                    location: row[5],
-                    status: status,
-                    note: row[7] || '',
-                    originLocation: row[9] || '',
-                    source: 'ADJUSTMENT',
-                    isPriority: false,
-                    verified: false
+                // 2. LIMPIAR COMPLETAMENTE LAS SECCIONES (DATOS EN LIMPIO)
+                STATE.pallets.ok.boxes = [];
+                STATE.pallets.blocked.boxes = [];
+                STATE.pallets.nowms.boxes = [];
+
+                // 3. CREAR NUEVA SESIÓN DE AJUSTE AISLADA
+                const adjustmentSessionId = `ADJUSTMENT_${generateUUID()}`;
+                window.CURRENT_SESSION_ID = adjustmentSessionId;
+                
+                // Guardar sesión de ajuste en IndexedDB
+                await PersistenceManager.saveSession({
+                    id: adjustmentSessionId,
+                    createdAt: generateTimestamp(),
+                    closed: false,
+                    type: 'adjustment',
+                    originalPallet: palletCode,
+                    originalLocation: location,
+                    palletIds: {
+                        ok: palletCode,
+                        blocked: palletCode,
+                        nowms: palletCode
+                    }
+                });
+
+                // 4. CARGAR CAJAS DEL PALLET A EDITAR
+                const firstBox = boxes[0];
+                const originLocation = firstBox[9] || '';
+
+                // Clasificar cajas por status
+                for (const row of boxes) {
+                    const status = row[6] || '';
+                    const box = {
+                        code: row[3],
+                        scan1: row[3],
+                        scan2: row[4] || '',
+                        location: row[5],
+                        status: status,
+                        note: row[7] || '',
+                        originLocation: row[9] || '',
+                        source: 'ADJUSTMENT',
+                        isPriority: false,
+                        verified: false,
+                        _id: generateUUID(),
+                        _timestamp: generateTimestamp(),
+                        _status: 'draft',
+                        _sessionId: adjustmentSessionId,
+                        _category: status.includes('OK') && !status.includes('BLOQUEADO') ? 'ok' :
+                                  status.includes('BLOQUEADO') ? 'blocked' : 'nowms',
+                        _palletId: palletCode
+                    };
+
+                    // Guardar en IndexedDB inmediatamente
+                    await PersistenceManager.saveDraftBox(box);
+
+                    // Clasificar en RAM
+                    if (status.includes('OK') && !status.includes('BLOQUEADO')) {
+                        STATE.pallets.ok.boxes.push(box);
+                    } else if (status.includes('BLOQUEADO')) {
+                        STATE.pallets.blocked.boxes.push(box);
+                    } else if (status.includes('NO WMS')) {
+                        STATE.pallets.nowms.boxes.push(box);
+                    }
+                }
+
+                // 5. CONFIGURAR IDs Y UBICACIONES
+                STATE.pallets.ok.id = palletCode;
+                STATE.pallets.blocked.id = palletCode;
+                STATE.pallets.nowms.id = palletCode;
+
+                document.getElementById('location-ok').value = location;
+                document.getElementById('location-blocked').value = location;
+                document.getElementById('location-nowms').value = location;
+                document.getElementById('origin-location').value = originLocation;
+
+                // 6. ACTIVAR MODO DE AJUSTE CON BLOQUEO
+                window.ADJUSTMENT_MODE = {
+                    active: true,
+                    sessionId: adjustmentSessionId,
+                    originalPalletCode: palletCode,
+                    originalLocation: location,
+                    originalBoxes: boxes,
+                    locked: true // BLOQUEAR CREACIÓN DE OTRAS SECCIONES
                 };
 
-                // Classify based on status
-                if (status.includes('OK') && !status.includes('BLOQUEADO')) {
-                    STATE.pallets.ok.boxes.push(box);
-                } else if (status.includes('BLOQUEADO')) {
-                    STATE.pallets.blocked.boxes.push(box);
-                } else if (status.includes('NO WMS')) {
-                    STATE.pallets.nowms.boxes.push(box);
+                updateUI();
+                
+                // 7. BLOQUEAR INTERFAZ PARA OTRAS SECCIONES
+                const scanInput = document.getElementById('scan-input');
+                if (scanInput) {
+                    scanInput.placeholder = '🔒 Modo Ajuste Activo - Solo esta sección';
                 }
-            });
 
-            // Set pallet IDs and locations
-            STATE.pallets.ok.id = palletCode;
-            STATE.pallets.blocked.id = palletCode;
-            STATE.pallets.nowms.id = palletCode;
-
-            // Set locations
-            document.getElementById('location-ok').value = location;
-            document.getElementById('location-blocked').value = location;
-            document.getElementById('location-nowms').value = location;
-            document.getElementById('origin-location').value = originLocation;
-
-            // Mark that we're in adjustment mode
-            window.ADJUSTMENT_MODE = {
-                active: true,
-                originalPalletCode: palletCode,
-                originalLocation: location,
-                originalBoxes: boxes
-            };
-
-            updateUI();
-            showNotification('📝 Modo de ajuste activado. Puedes agregar, eliminar o modificar cajas.', 'info');
+                showNotification('📝 Modo de ajuste activado. Solo puedes editar este pallet. Otras secciones bloqueadas.', 'warning');
+                console.log(`🔧 [AJUSTE] Sesión de ajuste creada: ${adjustmentSessionId}`);
+                console.log(`🔧 [AJUSTE] Pallet: ${palletCode} | Ubicación: ${location} | Cajas: ${boxes.length}`);
+                
+            } catch (error) {
+                console.error('❌ [AJUSTE] Error al cargar pallet para edición:', error);
+                showNotification('❌ Error al activar modo de ajuste', 'error');
+                window.ADJUSTMENT_MODE = { active: false };
+            }
         }
 
         // ==================== CONNECTION ====================
@@ -6782,21 +7882,11 @@
             }
         }
 
-        function updateConnectionIndicator(syncing = false) {
-            const dot = document.getElementById('connection-dot');
-            const text = document.getElementById('connection-text');
-
-            if (!dot || !text) return;
-
-            if (syncing) {
-                dot.className = 'connection-dot syncing';
-                text.textContent = 'Sincronizando...';
-            } else if (IS_ONLINE) {
-                dot.className = 'connection-dot online';
-                text.textContent = 'En línea';
-            } else {
-                dot.className = 'connection-dot offline';
-                text.textContent = 'Sin conexión';
+        // Actualizar Sync Status (UI Unificada) - Delegado a SyncQueue
+        async function updateConnectionIndicator(syncing = false) {
+            // Delegar actualización al nuevo sistema SyncQueue
+            if (typeof SyncQueue !== 'undefined' && SyncQueue.updateCounter) {
+                await SyncQueue.updateCounter();
             }
         }
 
@@ -7289,7 +8379,7 @@
 
                 // Deshabilitar modo ajuste al cerrar sesión
                 if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
-                    window.ADJUSTMENT_MODE = { active: false };
+                    deactivateAdjustmentMode();
                     console.log('🔧 [AJUSTE] Modo ajuste deshabilitado por cierre de sesión');
                 }
 
@@ -8399,7 +9489,28 @@
                 if (closeBtn) closeBtn.addEventListener('click', () => this.closeBlindValidationPopup());
                 if (cancelBtn) cancelBtn.addEventListener('click', () => this.closeBlindValidationPopup());
                 if (confirmBtn) {
-                    confirmBtn.addEventListener('click', () => this.confirmSendPallet(location, originLocation));
+                    confirmBtn.addEventListener('click', () => {
+                        // HARD BLOCK: Verificar si ya está procesando
+                        if (isSubmitting) {
+                            console.warn('⚠️ [SEND-UNIFIED] Ya hay un envío en progreso');
+                            return;
+                        }
+                        
+                        // PRIMERA LÍNEA: Establecer isSubmitting = true
+                        isSubmitting = true;
+                        
+                        // BLOQUEO INMEDIATO: Deshabilitar botón físicamente
+                        confirmBtn.disabled = true;
+                        confirmBtn.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">⏳</span> Procesando envío...';
+                        confirmBtn.style.opacity = '0.6';
+                        confirmBtn.style.cursor = 'not-allowed';
+                        
+                        // Cerrar popup inmediatamente
+                        this.closeBlindValidationPopup();
+                        
+                        // Ejecutar envío
+                        this.confirmSendPallet(location, originLocation);
+                    });
                 }
                 if (input) {
                     input.addEventListener('input', () => this.validateBoxCount(boxCount));
@@ -8446,89 +9557,152 @@
             },
 
             async confirmSendPallet(location, originLocation) {
-                // Disable blind mode and close popup
-                document.body.classList.remove('blind-mode');
-                document.getElementById('unified-send-validation-popup')?.remove();
-
-                const tab = this.getActiveTab();
-                if (!tab) return;
-
-                // Validate location format and daily usage
-                const locationCheck = await confirmInvalidLocation(location);
-                if (!locationCheck.confirmed) {
-                    showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-                    document.getElementById('unified-location').focus();
-                    return;
-                }
-
-                const finalLocation = locationCheck.formatted;
-                document.getElementById('unified-location').value = finalLocation;
-
-                // BYPASS: Si estamos en modo AJUSTE, saltar validación de ubicación duplicada
-                const isAdjustmentMode = window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active;
+                // Obtener botón de confirmación
+                const confirmBtn = document.getElementById('unified-confirm-send-btn');
                 
-                if (!isAdjustmentMode) {
-                    // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
-                    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                try {
+                    console.log('🚀 [SEND-UNIFIED] ========== INICIANDO ENVÍO DE PALLET ==========');
                     
-                    // 1. Verificar en PENDING_SYNC (registros locales pendientes)
-                    const usedInPending = PENDING_SYNC.some(record => {
-                        const recordDate = record.date; // YYYY-MM-DD
-                        return recordDate === today && record.location === finalLocation;
-                    });
+                    // PROTECCIÓN: Prevenir doble click / duplicación
+                    if (window.SENDING_IN_PROGRESS) {
+                        console.warn('⚠️ [SEND-UNIFIED] Envío ya en progreso, ignorando solicitud duplicada');
+                        return;
+                    }
+                    
+                    window.SENDING_IN_PROGRESS = true;
+                    console.log('🔒 [SEND-UNIFIED] Flag SENDING_IN_PROGRESS activado');
+                    
+                    // DESHABILITAR BOTÓN INMEDIATAMENTE (Anti-spam)
+                    if (confirmBtn) {
+                        confirmBtn.disabled = true;
+                        confirmBtn.textContent = '⏳ Procesando...';
+                        confirmBtn.style.opacity = '0.6';
+                        confirmBtn.style.cursor = 'not-allowed';
+                    }
+                    
+                    // Disable blind mode and close popup
+                    document.body.classList.remove('blind-mode');
+                    document.getElementById('unified-send-validation-popup')?.remove();
 
-                    if (usedInPending) {
-                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
-                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
-                        document.getElementById('unified-location').focus();
+                    const tab = this.getActiveTab();
+                    if (!tab) {
+                        window.SENDING_IN_PROGRESS = false;
+                        isSubmitting = false;
                         return;
                     }
 
-                    // 2. Verificar en STATE.history (registros locales del historial)
-                    const usedInHistory = STATE.history.some(record => {
-                        const recordDate = record.date; // YYYY-MM-DD
-                        return recordDate === today && record.location === finalLocation;
-                    });
-
-                    if (usedInHistory) {
-                        console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en historial local`);
-                        showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                    console.log('🔍 [SEND-UNIFIED] Validando ubicación:', location);
+                    
+                    // Validate location format and daily usage
+                    const locationCheck = await confirmInvalidLocation(location);
+                    console.log('🔍 [SEND-UNIFIED] Resultado de validación:', JSON.stringify(locationCheck, null, 2));
+                    
+                    if (!locationCheck || !locationCheck.confirmed) {
+                        console.error('❌ [SEND-UNIFIED] Location validation failed');
+                        showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
                         document.getElementById('unified-location').focus();
+                        window.SENDING_IN_PROGRESS = false;
+                        isSubmitting = false;
                         return;
                     }
+                    
+                    console.log('✅ [SEND-UNIFIED] Ubicación validada correctamente');
 
-                    // 3. Verificar en base de datos remota (si hay conexión)
-                    if (IS_ONLINE && gapi?.client?.getToken()) {
+                    const finalLocation = locationCheck.formatted;
+                    document.getElementById('unified-location').value = finalLocation;
+
+                    // BYPASS: Si estamos en modo AJUSTE, saltar validación de ubicación duplicada
+                    const isAdjustmentMode = window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active;
+                    
+                    if (!isAdjustmentMode) {
+                        console.log('🔍 [VALIDATION-UNIFIED] ========== VALIDACIÓN DE UBICACIÓN DUPLICADA ==========');
+                        // VALIDACIÓN CRÍTICA: Verificar si la ubicación ya fue usada HOY
+                        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                        console.log('🔍 [VALIDATION-UNIFIED] Fecha hoy:', today);
+                        console.log('🔍 [VALIDATION-UNIFIED] Ubicación a validar:', finalLocation);
+                        
+                        // IMPORTANTE: Sincronizar PENDING_SYNC desde IndexedDB antes de validar
                         try {
-                            console.log('🔍 [UNIFICADO] Verificando ubicación en base de datos...');
-                            const response = await gapi.client.sheets.spreadsheets.values.get({
-                                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                                range: `${CONFIG.SHEET_NAME}!A:F` // A=fecha, F=ubicación
-                            });
-
-                            const rows = response.result.values || [];
-                            const usedInDB = rows.some(row => {
-                                const dbDate = row[0]; // Columna A = fecha
-                                const dbLocation = row[5]; // Columna F = ubicación
-                                return dbDate === today && dbLocation === finalLocation;
-                            });
-
-                            if (usedInDB) {
-                                console.error(`❌ Ubicación ${finalLocation} ya fue usada hoy en base de datos`);
-                                showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy (confirmado en servidor). Elige otra ubicación.`, 'error');
-                                document.getElementById('unified-location').focus();
-                                return;
-                            }
+                            const pendingFromDB = await PersistenceManager.getPendingSync();
+                            PENDING_SYNC = pendingFromDB;
+                            console.log(`🔍 [VALIDATION-UNIFIED] PENDING_SYNC actualizado: ${PENDING_SYNC.length} registros`);
                         } catch (error) {
-                            console.warn('⚠️ [UNIFICADO] No se pudo verificar ubicación en BD:', error);
-                            // Continuar si falla la verificación remota (modo offline)
+                            console.warn('⚠️ [VALIDATION-UNIFIED] Error sincronizando PENDING_SYNC:', error);
                         }
-                    }
+                        
+                        // CAPA 1: Verificar en PENDING_SYNC (registros locales pendientes)
+                        console.log('🔍 [VALIDATION-UNIFIED] Capa 1: Verificando en PENDING_SYNC...');
+                        const usedInPending = PENDING_SYNC.some(record => {
+                            const recordDate = record.date; // YYYY-MM-DD
+                            const match = recordDate === today && record.location === finalLocation;
+                            if (match) {
+                                console.log('❌ [VALIDATION-UNIFIED] Match encontrado en PENDING_SYNC:', record);
+                            }
+                            return match;
+                        });
 
-                    console.log('✅ [UNIFICADO] Ubicación validada - no ha sido usada hoy');
-                } else {
-                    console.log('🔧 [AJUSTE-UNIFICADO] Bypass de validación de ubicación duplicada activado');
-                }
+                        if (usedInPending) {
+                            console.error(`❌ [VALIDATION-UNIFIED] BLOQUEADO - Ubicación ${finalLocation} ya fue usada hoy en registros pendientes`);
+                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                            document.getElementById('unified-location').focus();
+                            window.SENDING_IN_PROGRESS = false;
+                            isSubmitting = false;
+                            return;
+                        }
+                        console.log('✅ [VALIDATION-UNIFIED] Capa 1: No encontrado en PENDING_SYNC');
+
+                        // CAPA 2: Verificar en STATE.history (registros locales del historial)
+                        console.log('🔍 [VALIDATION-UNIFIED] Capa 2: Verificando en STATE.history...');
+                        console.log('🔍 [VALIDATION-UNIFIED] STATE.history.length:', STATE.history.length);
+                        const usedInHistory = STATE.history.some(record => {
+                            const recordDate = record.date; // YYYY-MM-DD
+                            const match = recordDate === today && record.location === finalLocation;
+                            if (match) {
+                                console.log('❌ [VALIDATION-UNIFIED] Match encontrado en STATE.history:', record);
+                            }
+                            return match;
+                        });
+
+                        if (usedInHistory) {
+                            console.error(`❌ [VALIDATION-UNIFIED] BLOQUEADO - Ubicación ${finalLocation} ya fue usada hoy en historial local`);
+                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy. Elige otra ubicación.`, 'error');
+                            document.getElementById('unified-location').focus();
+                            window.SENDING_IN_PROGRESS = false;
+                            isSubmitting = false;
+                            return;
+                        }
+                        console.log('✅ [VALIDATION-UNIFIED] Capa 2: No encontrado en STATE.history');
+
+                        // CAPA 3: Verificar en caché de datos del servidor (PROCESSED_BOXES_MAP)
+                        console.log('🔍 [VALIDATION-UNIFIED] Capa 3: Verificando en caché del servidor...');
+                        console.log(`🔍 [VALIDATION-UNIFIED] PROCESSED_BOXES_MAP.size: ${PROCESSED_BOXES_MAP.size}`);
+                        
+                        let usedInServerCache = false;
+                        for (const [code, boxData] of PROCESSED_BOXES_MAP) {
+                            const dbDate = boxData.date; // Formato: YYYY-MM-DD
+                            const dbLocation = boxData.location;
+                            const match = dbDate === today && dbLocation === finalLocation;
+                            if (match) {
+                                console.log('❌ [VALIDATION-UNIFIED] Match encontrado en caché del servidor:', boxData);
+                                usedInServerCache = true;
+                                break;
+                            }
+                        }
+
+                        if (usedInServerCache) {
+                            console.error(`❌ [VALIDATION-UNIFIED] BLOQUEADO - Ubicación ${finalLocation} ya fue usada hoy por otro usuario`);
+                            showNotification(`❌ La ubicación ${finalLocation} ya fue usada hoy por otro usuario. Elige otra ubicación.`, 'error');
+                            document.getElementById('unified-location').focus();
+                            window.SENDING_IN_PROGRESS = false;
+                            isSubmitting = false;
+                            return;
+                        }
+                        console.log('✅ [VALIDATION-UNIFIED] Capa 3: No encontrado en caché del servidor');
+
+                        console.log('✅ [VALIDATION-UNIFIED] ========== UBICACIÓN VALIDADA - NO DUPLICADA ==========');
+                    } else {
+                        console.log('🔧 [AJUSTE-UNIFIED] ========== BYPASS DE VALIDACIÓN ACTIVADO (MODO AJUSTE) ==========');
+                    }
 
                 const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
                 const statusMapDisplay = { ok: 'OK', blocked: 'Bloqueada', nowms: 'No WMS' };
@@ -8765,7 +9939,9 @@
                     if (window.ADJUSTMENT_MODE && window.ADJUSTMENT_MODE.active) {
                         const origPallet = window.ADJUSTMENT_MODE.originalPalletCode;
                         const origLocation = window.ADJUSTMENT_MODE.originalLocation;
-                        window.ADJUSTMENT_MODE = { active: false };
+                        
+                        // Desactivar modo de ajuste y restaurar estado normal
+                        deactivateAdjustmentMode();
                         
                         deleteOldPalletRecords(origPallet, origLocation).then(() => {
                             showNotification('✅ Ajuste completado', 'success');
@@ -8773,8 +9949,46 @@
                             console.warn('⚠️ Error eliminando registros antiguos:', err);
                         });
                     }
+                } catch (innerError) {
+                    console.error('❌ [SEND-UNIFIED] Error en bloque de envío:', innerError);
+                    showNotification('❌ Error al procesar el pallet. Intenta nuevamente.', 'error');
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false;
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '📤 Confirmar Envío';
+                        confirmBtn.style.opacity = '1';
+                        confirmBtn.style.cursor = 'pointer';
+                    }
+                }
+                } catch (error) {
+                    console.error('❌ [SEND-UNIFIED] Error in confirmSendPallet:', error);
+                    console.error('❌ [SEND-UNIFIED] Stack:', error.stack);
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false;
+                    
+                    // REHABILITAR BOTÓN en caso de error
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '📤 Confirmar Envío';
+                        confirmBtn.style.opacity = '1';
+                        confirmBtn.style.cursor = 'pointer';
+                    }
+                    
+                    showNotification('❌ Error al enviar la tarima. Por favor, intente nuevamente.', 'error');
                 } finally {
                     DeduplicationManager.endSending();
+                    window.SENDING_IN_PROGRESS = false;
+                    isSubmitting = false;
+                    console.log('🔓 [SEND-UNIFIED] Flags liberados (SENDING_IN_PROGRESS + isSubmitting)');
+                    
+                    // REHABILITAR BOTÓN (si aún existe)
+                    if (confirmBtn && !confirmBtn.disabled) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '📤 Confirmar Envío';
+                        confirmBtn.style.opacity = '1';
+                        confirmBtn.style.cursor = 'pointer';
+                    }
                 }
             },
 
