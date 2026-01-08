@@ -8,33 +8,84 @@
 
 /**
  * Normaliza un código eliminando caracteres especiales y convirtiendo a mayúsculas
+ * Soporta patrones complejos de escaneo incluyendo JSON estructurado y variaciones de caracteres especiales
  * @param {string} rawCode - Código sin procesar
  * @returns {string} - Código normalizado
  */
 function normalizeCode(rawCode) {
     if (!rawCode) return '';
 
-    let code = rawCode.trim().toUpperCase();
+    let code = rawCode.trim();
+    
+    console.log(' [WMS-UTILS] Normalizando:', rawCode);
 
-    // Patrones de extracción especiales (JSON, etc)
-    const jsonMatch = code.match(/"code"\s*:\s*"([^"]+)"/i);
-    if (jsonMatch) {
-        code = jsonMatch[1];
+    // Remove control characters and scanner prefixes
+    code = code.replace(/[\x00-\x1F\x7F]/g, '');
+    code = code.replace(/^GS1:|^\]C1|^\]E0|^\]d2/i, '');
+    
+    // Normalizar caracteres especiales comunes en scanners
+    // ö → o, ï → i, Ñ/ñ → n, ^ → (remover), ¨ → "
+    code = code.replace(/ö/gi, 'o');
+    code = code.replace(/ï/gi, 'i');
+    code = code.replace(/Ñ/g, 'n');
+    code = code.replace(/ñ/g, 'n');
+    code = code.replace(/\^/g, '');
+    code = code.replace(/¨/g, '"');
+
+    // Convertir a mayúsculas después de normalizar caracteres especiales
+    const codeUpper = code.toUpperCase();
+
+    // PRIORIDAD ALTA: Patrones complejos de escaneo
+    // Soporta múltiples variaciones de delimitadores y formatos
+    const complexPatterns = [
+        // Patrón 1: ¨[id[ñ[CODIGO[ o variaciones con espacios
+        /\[ID\[N\s*\[([\d]+[\/\-][\d]+)/i,           // [ID[N [49991031/1[
+        /\[ID\[.*?\[([\d]+[\/\-][\d]+)/i,            // [ID[...[49991031/1[
+        
+        // Patrón 2: "[id"n"CODIGO" (después de normalizar ¨ → ")
+        /"\[ID"N"([\d]+[\/\-][\d]+)/i,              // "[ID"N"49991031/1
+        /"\[ID".*?"([\d]+[\/\-][\d]+)/i,            // "[ID"..."49991031/1
+        
+        // Patrón 3: JSON con "id":"CODIGO" o "ID":"CODIGO"
+        /"ID"\s*[N:"]+\s*"([\d]+[\/\-][\d]+)"/i,   // "ID"N"50243727/36"
+        /"ID"\s*:\s*"([\d]+[\/\-][\d]+)"/i,        // "ID":"50243727/36"
+        /"CODE"\s*:\s*"([^"]+)"/i,                  // "CODE":"CODIGO"
+        
+        // Patrón 4: Formato simple ID seguido de código
+        /\bID[N:\s]*([\d]+[\/\-][\d]+)/i,           // IDN50243727/36 o ID:50243727/36
+        
+        // Patrón 5: Códigos al inicio de la cadena (fragmentos)
+        /^([\d]+[\/\-][\d]+)/,                       // 50243727/36 al inicio
+        
+        // Patrón 6: Buscar cualquier secuencia numérica con / o -
+        /([\d]{7,9}[\/\-]\d{1,3})/                   // 50243727/36 o 49987997-1
+    ];
+
+    for (const pattern of complexPatterns) {
+        const match = codeUpper.match(pattern);
+        if (match && match[1]) {
+            const extracted = match[1];
+            // Validar que el código extraído tenga formato válido
+            if (/^\d{7,9}[\/\-]\d{1,3}$/.test(extracted)) {
+                console.log(` [WMS-UTILS] Código extraído: ${extracted}`);
+                return extracted;
+            }
+        }
     }
 
     // Patrón especial: IDxxxxxx-xxOPERATION... → extraer solo xxxxxx-xx
     // Ejemplo: ID51014088-10PERATIONFBMTYPENBOUNDSOURCESELLER → 51014088-10
     const idPattern = /^ID(\d+[-\/]\d+)/i;
-    const idMatch = code.match(idPattern);
+    const idMatch = codeUpper.match(idPattern);
     if (idMatch) {
-        console.log(`🔍 Código extraído de patrón ID: ${idMatch[1]} (original: ${rawCode})`);
+        console.log(` [WMS-UTILS] Código extraído de patrón ID: ${idMatch[1]}`);
         return idMatch[1];
     }
 
     // Eliminar caracteres especiales excepto guiones y slashes
-    code = code.replace(/[^A-Z0-9\-\/]/g, '');
+    const cleaned = codeUpper.replace(/[^A-Z0-9\-\/]/g, '');
 
-    return code;
+    return cleaned;
 }
 
 /**

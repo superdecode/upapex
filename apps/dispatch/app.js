@@ -1689,7 +1689,7 @@ async function loadAllData() {
     STATE.isLoading = true;
     STATE.loadingProgress = 0;
     showLoadingOverlay(true, 0, 4);  // Reduced to 4 (removed BD_CAJAS and validated/folios)
-    showNotification('🔄 Cargando catálogos básicos...', 'info');
+    showNotification('🔄 Cargando datos básicos...', 'info');
 
     let errors = [];
     let loaded = 0;
@@ -1760,11 +1760,11 @@ async function loadAllData() {
 
     // Show appropriate notification
     if (errors.length > 0 && loaded === 0) {
-        showNotification('❌ Error cargando catálogos', 'error');
+        showNotification('❌ Error cargando datos', 'error');
     } else if (errors.length > 0) {
-        showNotification(`⚠️ Catálogos cargados (advertencia: algunas fuentes fallaron)`, 'warning');
+        showNotification(`⚠️ Datos cargados (advertencia: algunas fuentes fallaron)`, 'warning');
     } else {
-        showNotification(`✅ Catálogos cargados - Usa el filtro de fecha para cargar órdenes`, 'success');
+        showNotification(`✅ Datos cargados - Usa el filtro de fecha para cargar órdenes`, 'success');
     }
 
     updateBdInfo();
@@ -2436,24 +2436,94 @@ function updateSummary() {
  * MEJORA: Configura deep linking en tarjetas de resumen
  */
 function setupSummaryCardLinks() {
-    // Buscar tarjetas de resumen en el sidebar
-    const summaryCards = document.querySelectorAll('.summary-card, [id^="summary-"]');
+    // Buscar elementos de resumen específicos del sidebar
+    const summaryItems = document.querySelectorAll('.summary-item');
     
-    summaryCards.forEach(card => {
-        const cardId = card.id || card.className;
+    if (summaryItems.length === 0) {
+        console.log('⚠️ No se encontraron summary-items para configurar deep linking');
+        return;
+    }
+    
+    summaryItems.forEach(function(item) {
+        // Buscar el elemento de valor dentro del item
+        const valueEl = item.querySelector('.summary-value');
+        if (!valueEl) return;
         
-        // Agregar cursor pointer y evento click
-        if (cardId.includes('pending') || card.textContent?.includes('Pendientes')) {
-            card.style.cursor = 'pointer';
-            card.onclick = () => {
-                console.log('👉 Deep link: Navegando a Pendientes');
-                switchValidationTab('pending');
+        const itemId = valueEl.id;
+        let targetTab = null;
+        let sectionName = '';
+        
+        // Determinar tipo de tarjeta según el ID del elemento de valor
+        if (itemId === 'summary-total') {
+            targetTab = 'todo';
+            sectionName = 'Todo';
+        } else if (itemId === 'summary-pending') {
+            targetTab = 'pending';
+            sectionName = 'Pendientes';
+        } else if (itemId === 'summary-validated') {
+            targetTab = 'validated';
+            sectionName = 'Validadas';
+        }
+        
+        if (targetTab) {
+            // Configurar estilos y eventos
+            item.style.cursor = 'pointer';
+            item.style.transition = 'transform 0.2s, box-shadow 0.2s';
+            item.setAttribute('title', 'Ir a ' + sectionName);
+            
+            // Remover listeners previos
+            var newItem = item.cloneNode(true);
+            if (item.parentNode) {
+                item.parentNode.replaceChild(newItem, item);
+            }
+            
+            newItem.onmouseenter = function() {
+                this.style.transform = 'translateY(-2px)';
+                this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
             };
-        } else if (cardId.includes('validated') || card.textContent?.includes('Validadas')) {
-            card.style.cursor = 'pointer';
-            card.onclick = () => {
-                console.log('👉 Deep link: Navegando a Validadas');
-                switchValidationTab('validated');
+            
+            newItem.onmouseleave = function() {
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = '';
+            };
+            
+            newItem.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('👉 Deep link: Navegando a ' + sectionName);
+                
+                // Obtener el conteo actual del elemento
+                var currentValueEl = this.querySelector('.summary-value');
+                var count = currentValueEl ? parseInt(currentValueEl.textContent || '0') : 0;
+                
+                console.log('📊 Conteo de ' + sectionName + ': ' + count);
+                
+                // Verificar si hay sección de despacho activa
+                var searchPanel = document.getElementById('search-panel');
+                var validatedContent = document.getElementById('validated-content');
+                var hasActiveDispatch = (searchPanel && searchPanel.style.display !== 'none') || (validatedContent && validatedContent.style.display !== 'none');
+                
+                if (!hasActiveDispatch && targetTab !== 'todo') {
+                    showNotification('ℹ️ Sin sección de despacho activa. Mostrando resumen global', 'info');
+                    return;
+                }
+                
+                // Para 'todo' siempre permitir navegación
+                // Para otros, verificar si hay registros
+                if (count === 0 && targetTab !== 'todo') {
+                    showNotification('⚠️ La sección "' + sectionName + '" no contiene registros', 'warning');
+                    return;
+                }
+                
+                // Navegar a la pestaña
+                try {
+                    switchValidationTab(targetTab);
+                    showNotification('📍 Navegando a ' + sectionName, 'success', 2000);
+                } catch (error) {
+                    console.error('Error navegando:', error);
+                    showNotification('❌ Error al navegar a la sección', 'error');
+                }
             };
         }
     });
@@ -4226,47 +4296,74 @@ async function executeDeleteValidated() {
 // ==================== SCANNER INPUT NORMALIZATION ====================
 // Enhanced normalization based on scan.html implementation
 
-function normalizeScannerInput(raw) {
-    if (!raw) return '';
+/**
+ * MEJORA: Match flexible ignorando / y - para comparaciones
+ * @param {string} code1 - Primer código
+ * @param {string} code2 - Segundo código
+ * @returns {boolean} - True si coinciden ignorando separadores
+ */
+function flexibleCodeMatch(code1, code2) {
+    if (!code1 || !code2) return false;
     
-    let code = raw.trim().toUpperCase();
+    // Normalizar ambos códigos removiendo / y -
+    const normalize = (code) => code.toUpperCase().replace(/[\/\-]/g, '');
     
-    console.log('🔍 Normalizando entrada:', raw);
+    return normalize(code1) === normalize(code2);
+}
 
-    // Remove control characters and scanner prefixes
-    code = code.replace(/[\x00-\x1F\x7F]/g, ''); // Remove control characters
-    code = code.replace(/^GS1:|^\]C1|^\]E0|^\]d2/i, ''); // Remove scanner prefixes
-
-    // Extract from complex JSON patterns (prioridad alta)
-    // Ejemplo: [id[ñ[49987997/1[,[reference?id[ñ[49987997/1[,[t[ñ[inb[,[ops?data[ñ¨[source[ñ[seller[,[container?type[ñ[box[**
-    const complexPatterns = [
-        /\[id\[ñ\[([\d]+[\/\-][\d]+)/i,  // [id[ñ[49987997/1[
-        /\[id\[.*?\[([^\[\]]+)\[/i,        // [id[...[CODIGO[
-        /¨id¨.*?¨([^¨]+)¨/i,          // ¨id¨...¨CODIGO¨
-        /"id"\s*:\s*"([^"]+)"/i,         // "id":"CODIGO"
-        /\bid[:\s]*([\d]+[\/\-][\d]+)/i   // id:49987997/1 o id 49987997/1
-    ];
-
-    for (const pattern of complexPatterns) {
-        const match = code.match(pattern);
-        if (match && match[1]) {
-            console.log(`✅ Código extraído con patrón: ${match[1]}`);
-            return match[1];
+/**
+ * MEJORA: Busca un código usando match flexible en un Map
+ * @param {string} searchCode - Código a buscar
+ * @param {Map} dataMap - Map donde buscar
+ * @returns {Object|null} - Objeto encontrado o null
+ */
+function findWithFlexibleMatch(searchCode, dataMap) {
+    if (!searchCode || !dataMap) return null;
+    
+    // 1. Búsqueda directa
+    if (dataMap.has(searchCode)) {
+        return dataMap.get(searchCode);
+    }
+    
+    // 2. Búsqueda flexible (ignorando / y -)
+    for (const [key, value] of dataMap.entries()) {
+        if (flexibleCodeMatch(searchCode, key)) {
+            console.log(`✅ Match flexible: "${searchCode}" coincide con "${key}"`);
+            return value;
         }
     }
+    
+    return null;
+}
 
-    // Special pattern: IDxxxxxx-xxOPERATION... → extract only xxxxxx-xx
-    const idPattern = /^ID(\d+[-\/]\d+)/i;
-    const idMatch = code.match(idPattern);
-    if (idMatch) {
-        console.log(`🔍 Código extraído de patrón ID: ${idMatch[1]} (original: ${raw})`);
-        return idMatch[1];
+/**
+ * REFACTORIZADO: Usa función compartida normalizeCode de wms-utils.js
+ * Evita duplicación de código y mantiene consistencia en todo el sistema
+ */
+function normalizeScannerInput(raw) {
+    // Usar función compartida si está disponible
+    if (typeof window.normalizeCode === 'function') {
+        return window.normalizeCode(raw);
     }
+    
+    // Fallback básico si no está disponible la función compartida
+    if (!raw) return '';
+    return raw.trim().toUpperCase().replace(/[^A-Z0-9\-\/]/g, '');
+}
 
-    // Clean special characters except dashes, slashes, and alphanumeric
-    const cleaned = code.replace(/[^A-Z0-9\-\/]/g, '');
-    console.log(`🧹 Código limpiado: ${cleaned}`);
-    return cleaned;
+/**
+ * MEJORA: Normaliza código usando funciones compartidas de wms-utils.js
+ * @param {string} rawCode - Código sin procesar
+ * @returns {string} - Código normalizado
+ */
+function normalizeCodeShared(rawCode) {
+    // Usar función compartida si está disponible
+    if (typeof window.normalizeCode === 'function') {
+        return window.normalizeCode(rawCode);
+    }
+    
+    // Fallback a normalización local
+    return normalizeScannerInput(rawCode);
 }
 
 // Intelligent code search with dash/slash alternation
@@ -4302,19 +4399,32 @@ function executeSearch() {
 
     if (!rawQuery) {
         showNotification('⚠️ Ingresa un código para buscar', 'warning');
+        hideNormalizedCodeDisplay();
         return;
     }
 
-    // Normalize scanner input (remove control chars, prefixes, etc.)
-    const queryNormalized = normalizeScannerInput(rawQuery);
+    // MEJORA: Normalización previa con función compartida
+    const queryNormalized = normalizeCodeShared(rawQuery);
     const query = queryNormalized.toUpperCase();
     
-    console.log(`🔍 Búsqueda: raw="${rawQuery}" → normalized="${query}"`);
+    console.log(`🔍 Búsqueda optimizada: raw="${rawQuery}" → normalized="${query}"`);
+    
+    // Mostrar código normalizado en UI
+    showNormalizedCodeDisplay(query);
 
     // Check if user can perform search (online check for edit operations later)
     if (!STATE.isOnline) {
         showNotification('⚠️ Modo offline - Solo consulta disponible', 'warning');
     }
+    
+    // DEBUG: Logging detallado para investigar por qué no encuentra códigos
+    console.log('📊 DEBUG - Estado de búsqueda:', {
+        rawQuery,
+        queryNormalized,
+        query,
+        'STATE.bdCajasData.size': STATE.bdCajasData.size,
+        'Primeros 5 códigos en BD': Array.from(STATE.bdCajasData.keys()).slice(0, 5)
+    });
 
     let foundOrders = [];
     const isOBC = query.startsWith('OBC');
@@ -4335,8 +4445,30 @@ function executeSearch() {
         const codeBaseMatch = query.match(/^([A-Z0-9]+?)(?:[U]\d{3})?$/);
         const codeBase = codeBaseMatch ? codeBaseMatch[1] : query;
 
-        // PRIORIDAD 1: Código COMPLETO en BD Cajas (exacto)
-        if (STATE.bdCajasData.has(query)) {
+        // MEJORA: PRIORIDAD 1 - Búsqueda con match flexible
+        let foundWithFlexible = findWithFlexibleMatch(query, STATE.bdCajasData);
+        
+        if (foundWithFlexible) {
+            // Encontrado con match flexible
+            if (Array.isArray(foundWithFlexible)) {
+                foundWithFlexible.forEach(caja => {
+                    foundOrders.push({
+                        orden: caja.obc,
+                        source: `Código (Match Flexible): ${query}`,
+                        confidence: 100,
+                        matchedCode: query
+                    });
+                });
+            } else {
+                foundOrders.push({
+                    orden: foundWithFlexible.obc || foundWithFlexible,
+                    source: `Código (Match Flexible): ${query}`,
+                    confidence: 100,
+                    matchedCode: query
+                });
+            }
+        } else if (STATE.bdCajasData.has(query)) {
+            // Búsqueda directa tradicional
             const cajas = STATE.bdCajasData.get(query);
             cajas.forEach(caja => {
                 foundOrders.push({
@@ -4350,9 +4482,23 @@ function executeSearch() {
 
         // PRIORIDAD 1B: Búsqueda con código normalizado
         if (foundOrders.length === 0) {
+            console.log('🔍 DEBUG - Búsqueda con código normalizado:', {
+                queryNormalized,
+                'Total códigos en BD': STATE.bdCajasData.size
+            });
+            
+            let matchCount = 0;
             for (const [codigo, cajas] of STATE.bdCajasData.entries()) {
                 const codigoNormalized = normalizeCode(codigo);
+                
+                // Log primeros 10 para debugging
+                if (matchCount < 10) {
+                    console.log(`  📋 Comparando: "${codigo}" → "${codigoNormalized}" vs "${queryNormalized}"`);
+                    matchCount++;
+                }
+                
                 if (codigoNormalized === queryNormalized) {
+                    console.log(`✅ MATCH ENCONTRADO: "${codigo}" normalizado a "${codigoNormalized}"`);
                     cajas.forEach(caja => {
                         foundOrders.push({
                             orden: caja.obc,
@@ -4363,6 +4509,10 @@ function executeSearch() {
                     });
                     break;
                 }
+            }
+            
+            if (foundOrders.length === 0) {
+                console.warn('⚠️ DEBUG - No se encontró match con código normalizado');
             }
         }
 
@@ -4430,14 +4580,33 @@ function executeSearch() {
         }
     }
 
+    // MEJORA: Limpiar searchbox siempre después de buscar
+    if (searchInput) {
+        searchInput.value = '';
+    }
+
     if (foundOrders.length === 0) {
+        console.error('❌ DEBUG - No se encontraron resultados para:', {
+            rawQuery,
+            queryNormalized,
+            query,
+            'Intentos de búsqueda': [
+                'Match flexible',
+                'Búsqueda directa',
+                'Código normalizado',
+                'Código base',
+                'Rastreo MNE',
+                'Validaciones',
+                'TRS'
+            ]
+        });
         showNotification('❌ No se encontró la orden o código', 'error');
+        // Mantener código normalizado visible para referencia
         return;
     }
 
     if (foundOrders.length > 1) {
         showMultipleMatchesModal(foundOrders, query);
-        searchInput.value = '';
         return;
     }
 
@@ -4451,15 +4620,62 @@ function executeSearch() {
         if (!isInFilteredRange) {
             // Orden encontrada pero no corresponde al rango de fechas
             showDateExceptionDialog(foundOrden, foundSource);
-            searchInput.value = '';
             return;
         }
     }
 
-    // Orden válida, abrir normalmente
-    showNotification(`📦 ${foundSource} encontrado: ${foundOrden}`, 'success');
+    // MEJORA: Orden válida y única - abrir automáticamente modal de detalles
+    console.log(`✅ Orden única encontrada: ${foundOrden} - Abriendo automáticamente`);
+    showNotification(`📦 ${foundSource} encontrado: ${foundOrden}`, 'success', 2000);
+    
+    // Abrir modal de información de orden automáticamente
     showOrderInfo(foundOrden);
-    searchInput.value = '';
+}
+
+/**
+ * Muestra el código normalizado en la UI
+ * @param {string} normalizedCode - Código normalizado
+ */
+function showNormalizedCodeDisplay(normalizedCode) {
+    const display = document.getElementById('normalized-code-display');
+    const valueEl = document.getElementById('normalized-code-value');
+    
+    if (display && valueEl) {
+        valueEl.textContent = normalizedCode;
+        display.style.display = 'flex';
+        
+        // Guardar en variable global para copiar
+        window.lastNormalizedCode = normalizedCode;
+    }
+}
+
+/**
+ * Oculta el display de código normalizado
+ */
+function hideNormalizedCodeDisplay() {
+    const display = document.getElementById('normalized-code-display');
+    if (display) {
+        display.style.display = 'none';
+    }
+    window.lastNormalizedCode = null;
+}
+
+/**
+ * Copia el código normalizado al portapapeles
+ */
+function copyNormalizedCode() {
+    const code = window.lastNormalizedCode;
+    if (!code) {
+        showNotification('⚠️ No hay código para copiar', 'warning');
+        return;
+    }
+    
+    navigator.clipboard.writeText(code).then(() => {
+        showNotification('✅ Código copiado: ' + code, 'success', 2000);
+    }).catch(err => {
+        console.error('Error al copiar:', err);
+        showNotification('❌ Error al copiar código', 'error');
+    });
 }
 
 function showMultipleMatchesModal(foundOrders, query) {
@@ -6775,7 +6991,7 @@ function renderFoliosTable() {
         const fechaDisplay = formatDateForDisplay(folio.fecha);
         
         return `
-            <tr>
+            <tr class="folio-row-clickable" data-folio="${folio.folio}" style="cursor: pointer; transition: background-color 0.2s;" onmouseenter="this.style.backgroundColor='#fff5ed'" onmouseleave="this.style.backgroundColor=''">
                 <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
                 <td>${fechaDisplay}</td>
                 <td style="text-align: center;">${folio.totalCajas}</td>
@@ -6784,16 +7000,16 @@ function renderFoliosTable() {
                 <td>${horarioFinal}</td>
                 <td>${folio.conductor || '<span class="empty-cell">N/A</span>'}</td>
                 <td>${folio.unidad || '<span class="empty-cell">N/A</span>'}</td>
-                <td>
+                <td onclick="event.stopPropagation()">
                     <div style="display: flex; gap: 8px; justify-content: center;">
-                        <button class="btn-action print" onclick="printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
+                        <button class="btn-action print" onclick="event.stopPropagation(); printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9"></polyline>
                                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
                                 <rect x="6" y="14" width="12" height="8"></rect>
                             </svg>
                         </button>
-                        <button class="btn-action view" onclick="viewFolioOrders('${folio.folio}')" title="Ver Órdenes">
+                        <button class="btn-action view" onclick="event.stopPropagation(); viewFolioOrders('${folio.folio}')" title="Ver Órdenes">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                                 <circle cx="12" cy="12" r="3"></circle>
@@ -6807,6 +7023,31 @@ function renderFoliosTable() {
 
     // Actualizar indicadores de ordenamiento
     updateFoliosSortIndicators();
+    
+    // MEJORA: Añadir event listeners para click en filas
+    setupFolioRowClickListeners();
+}
+
+/**
+ * MEJORA: Configura listeners para click en filas de folios
+ */
+function setupFolioRowClickListeners() {
+    const folioRows = document.querySelectorAll('.folio-row-clickable');
+    
+    folioRows.forEach(row => {
+        row.addEventListener('click', (e) => {
+            // No hacer nada si el click fue en un botón o su contenedor
+            if (e.target.closest('button') || e.target.closest('.btn-action')) {
+                return;
+            }
+            
+            const folio = row.getAttribute('data-folio');
+            if (folio) {
+                console.log(`📋 Click en fila de folio: ${folio}`);
+                viewFolioOrders(folio);
+            }
+        });
+    });
 }
 
 /**
@@ -7277,11 +7518,10 @@ function renderFoliosManagementTable() {
             ? folio.horarios.reduce((max, h) => h > max ? h : max, folio.horarios[0])
             : 'N/A';
 
-        // FIX: Formatear fecha correctamente sin offset
         const fechaDisplay = formatDateForDisplay(folio.fecha);
 
         return `
-            <tr>
+            <tr class="folio-row-clickable" data-folio="${folio.folio}" style="cursor: pointer; transition: background-color 0.2s;" onmouseenter="this.style.backgroundColor='#fff5ed'" onmouseleave="this.style.backgroundColor=''">
                 <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
                 <td>${fechaDisplay}</td>
                 <td style="text-align: center;">${folio.totalCajas}</td>
@@ -7290,16 +7530,16 @@ function renderFoliosManagementTable() {
                 <td>${horarioFinal}</td>
                 <td>${folio.conductor || '<span class="empty-cell">N/A</span>'}</td>
                 <td>${folio.unidad || '<span class="empty-cell">N/A</span>'}</td>
-                <td>
+                <td onclick="event.stopPropagation()">
                     <div style="display: flex; gap: 8px; justify-content: center;">
-                        <button class="btn-action print" onclick="printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
+                        <button class="btn-action print" onclick="event.stopPropagation(); printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9"></polyline>
                                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
                                 <rect x="6" y="14" width="12" height="8"></rect>
                             </svg>
                         </button>
-                        <button class="btn-action view" onclick="viewFolioOrdersFromManagement('${folio.folio}')" title="Ver Órdenes">
+                        <button class="btn-action view" onclick="event.stopPropagation(); viewFolioOrdersFromManagement('${folio.folio}')" title="Ver Órdenes">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                                 <circle cx="12" cy="12" r="3"></circle>
@@ -7310,6 +7550,9 @@ function renderFoliosManagementTable() {
             </tr>
         `;
     }).join('');
+    
+    // MEJORA: Añadir event listeners para click en filas de gestión de folios
+    setupFolioRowClickListeners();
 }
 
 /**
