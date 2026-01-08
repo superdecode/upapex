@@ -417,6 +417,8 @@ class SidebarComponent {
      * @param {Object} summary - Objeto con los valores del resumen
      */
     updateSummary(summary = {}) {
+        // MEJORA: Configurar deep linking en tarjetas
+        const onCardClick = this.config.onCardClick || {};
         // Para inventario: ok, blocked, nowms, total
         if (summary.ok !== undefined) {
             const okEl = document.getElementById('global-ok-count');

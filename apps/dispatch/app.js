@@ -271,7 +271,7 @@ async function loadExistingValidatedRecords(startDate = null, endDate = null) {
         
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-            range: `${sheetName}!A:P`  // Use detected sheet name
+            range: `${sheetName}!A:R`  // Use detected sheet name (A-R for new columns)
         });
 
         const rows = response.result.values;
@@ -298,15 +298,29 @@ async function loadExistingValidatedRecords(startDate = null, endDate = null) {
                     estatus: row[9] || '',         // J: Estatus
                     tarea: row[10] || '',          // K: Tarea
                     estatus2: row[11] || '',       // L: Estatus2
-                    incidencias: row[12] || '',    // M: Incidencias
-                    operador: row[13] || '',       // N: Operador
-                    conductor: row[13] || '',      // Alias for operador
-                    unidad: row[14] || '',         // O: Unidad
-                    observaciones: row[15] || '',  // P: Observaciones
-                    notaDespacho: row[15] || '',   // Alias for observaciones
-                    // Parse cantidad despachar from incidencias if present
-                    cantidadDespachar: parseCantidadFromIncidencias(row[12] || '')
+                    cantInicial: parseInt(row[12]) || 0,     // M: Cant Inicial (from OBC, read-only)
+                    cantDespacho: parseInt(row[13]) || 0,    // N: Cant Despacho (manual input)
+                    incidencias: row[14] || '',    // O: Incidencias
+                    operador: row[15] || '',       // P: Operador
+                    conductor: row[15] || '',      // Alias for operador
+                    unidad: row[16] || '',         // Q: Unidad
+                    observaciones: row[17] || '',  // R: Observaciones
+                    notaDespacho: row[17] || '',   // Alias for observaciones
+                    // Use cantDespacho as the primary field
+                    cantidadDespachar: parseInt(row[13]) || 0
                 };
+
+                if (i <= 3) { // Log primeros 3 registros para debug
+                    console.log(`📖 LECTURA BD row ${i}:`, {
+                        orden: record.orden,
+                        'M[12]-cantInicial': row[12],
+                        'N[13]-cantDespacho': row[13],
+                        'O[14]-incidencias': row[14],
+                        'P[15]-operador': row[15],
+                        'Q[16]-unidad': row[16],
+                        'R[17]-observaciones': row[17]
+                    });
+                }
 
                 if (record.orden) {
                     // Apply date filter if provided
@@ -362,8 +376,9 @@ function isDateInRange(dateStr, startDate, endDate) {
 }
 
 /**
- * Parse cantidad despachar from incidencias field
+ * Parse cantidad despachar from incidencias field (legacy support)
  * Format: "Parcial: 5/10" -> 5
+ * NOTE: This is now deprecated - cantDespacho (Column N) is the primary field
  */
 function parseCantidadFromIncidencias(incidencias) {
     if (!incidencias) return 0;
@@ -715,7 +730,7 @@ async function fetchValidatedRecordsFromWriteDB() {
         // Fetch all data from the sheet
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-            range: `${sheetName}!A:P`
+            range: `${sheetName}!A:R`  // Columns A through R (added M, N columns)
         });
 
         const rows = response.result.values;
@@ -744,13 +759,15 @@ async function fetchValidatedRecordsFromWriteDB() {
                     estatus: row[9] || '',
                     tarea: row[10] || '',
                     estatus2: row[11] || '',
-                    incidencias: row[12] || '',
-                    operador: row[13] || '',
-                    conductor: row[13] || '',
-                    unidad: row[14] || '',
-                    observaciones: row[15] || '',
-                    notaDespacho: row[15] || '',
-                    cantidadDespachar: parseCantidadFromIncidencias(row[12] || '')
+                    cantInicial: parseInt(row[12]) || 0,     // M: Cant Inicial (from OBC, read-only)
+                    cantDespacho: parseInt(row[13]) || 0,    // N: Cant Despacho (manual input)
+                    incidencias: row[14] || '',    // O: Incidencias
+                    operador: row[15] || '',       // P: Operador
+                    conductor: row[15] || '',      // Alias for operador
+                    unidad: row[16] || '',         // Q: Unidad
+                    observaciones: row[17] || '',  // R: Observaciones
+                    notaDespacho: row[17] || '',   // Alias for observaciones
+                    cantidadDespachar: parseInt(row[13]) || 0  // Use cantDespacho as primary
                 });
             }
         }
@@ -2074,9 +2091,155 @@ function toggleConnection() {
             handleLogout();
         }
     } else {
-        // No está conectado, iniciar login
-        handleLogin();
+        // MEJORA: Reconectar sin salir a login
+        handleGoogleReconnect();
     }
+}
+
+/**
+ * MEJORA: Reconexión de Google sin redirección
+ */
+async function handleGoogleReconnect() {
+    if (!tokenClient) {
+        showContextualError('auth_error', 'tokenClient no inicializado');
+        return;
+    }
+    
+    // Mostrar overlay de bloqueo
+    showReconnectOverlay(true);
+    
+    try {
+        console.log('🔄 Iniciando reconexión de Google...');
+        
+        // Realizar reconexión sin redirección
+        tokenClient.callback = async (resp) => {
+            if (resp.error !== undefined) {
+                console.error('Error de reconexión:', resp);
+                showContextualError('auth_error', resp.error);
+                showReconnectOverlay(false);
+                return;
+            }
+            
+            console.log('✅ Reconexión exitosa');
+            
+            // Actualizar estado
+            if (window.sidebarComponent) {
+                window.sidebarComponent.avatarState.isGoogleConnected = true;
+                window.sidebarComponent.saveAvatarData();
+                window.sidebarComponent.updateAvatarButtons();
+            }
+            
+            showReconnectOverlay(false);
+            showNotification('✅ Cuenta de Google reconectada', 'success');
+            
+            // Recargar datos si es necesario
+            if (STATE.obcData.size === 0) {
+                await loadAllData();
+            }
+        };
+        
+        tokenClient.requestAccessToken({ prompt: '' });
+        
+    } catch (error) {
+        console.error('Error en reconexión:', error);
+        showContextualError('auth_error', error.message);
+        showReconnectOverlay(false);
+    }
+}
+
+/**
+ * Muestra overlay de reconexión
+ */
+function showReconnectOverlay(show) {
+    let overlay = document.getElementById('reconnect-overlay');
+    
+    if (show && !overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'reconnect-overlay';
+        overlay.className = 'preloader-overlay';
+        overlay.style.display = 'flex';
+        overlay.innerHTML = `
+            <div class="preloader-content">
+                <div class="preloader-spinner"></div>
+                <div class="preloader-text" style="color: #333;">🔄 Reconectando con Google...</div>
+                <div class="preloader-subtext" style="color: #666;">Por favor espere, no cierre esta ventana</div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    } else if (!show && overlay) {
+        overlay.remove();
+    }
+}
+
+/**
+ * MEJORA: Sistema de alertas contextuales para errores
+ */
+function showContextualError(errorType, details = '') {
+    let title, message, action, actionCallback;
+    
+    switch(errorType) {
+        case 'auth_error':
+            title = '🔐 Error de Autenticación';
+            message = 'Por favor, desconecte manualmente su cuenta de Google y vuelva a conectarla.';
+            action = 'Ir a Configuración';
+            actionCallback = () => {
+                // Abrir panel de usuario
+                document.querySelector('.user-avatar')?.click();
+            };
+            break;
+            
+        case 'server_error':
+            title = '🔴 Problemas de Comunicación';
+            message = 'El servidor no responde. Por favor, recargue la página para reintentar.';
+            action = 'Recargar Página';
+            actionCallback = () => location.reload();
+            break;
+            
+        case 'network_error':
+            title = '📡 Sin Conexión a Internet';
+            message = 'Verifique su red. Los datos se guardarán localmente hasta que se restablezca la conexión.';
+            action = null;
+            break;
+            
+        case 'timeout_error':
+            title = '⏱️ Tiempo de Espera Agotado';
+            message = 'La operación tardó demasiado. Verifique su conexión e intente nuevamente.';
+            action = 'Reintentar';
+            actionCallback = () => location.reload();
+            break;
+            
+        default:
+            title = '❌ Error';
+            message = details || 'Ha ocurrido un error inesperado.';
+            action = null;
+    }
+    
+    // Crear modal de error contextual
+    const modal = document.createElement('div');
+    modal.className = 'popup-overlay show';
+    modal.innerHTML = `
+        <div class="popup-content" style="max-width: 500px;">
+            <div class="popup-header" style="background: #fee2e2; color: #991b1b;">
+                <span>${title}</span>
+                <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
+            </div>
+            <div style="padding: 25px;">
+                <p style="color: #374151; font-size: 1.05em; line-height: 1.6; margin-bottom: 20px;">
+                    ${message}
+                </p>
+                ${details ? `<p style="color: #6b7280; font-size: 0.9em; background: #f3f4f6; padding: 12px; border-radius: 6px; margin-bottom: 15px;"><strong>Detalles:</strong> ${details}</p>` : ''}
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    ${action ? `<button class="btn btn-primary" onclick="this.closest('.popup-overlay').remove(); (${actionCallback})()">${action}</button>` : ''}
+                    <button class="btn btn-secondary" onclick="this.closest('.popup-overlay').remove()">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // También mostrar notificación
+    showNotification(`${title}: ${message}`, 'error');
 }
 
 // ==================== UI FUNCTIONS ====================
@@ -2222,7 +2385,10 @@ function updateSummary() {
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
     
     // Contar órdenes totales (OBC)
-    let totalCount = dataToUse.size;
+    const totalCount = dataToUse.size;
+    
+    // MEJORA: Configurar deep linking en tarjetas de resumen
+    setupSummaryCardLinks();
     
     // Contar validadas - usar la misma lógica que updateTabBadges
     let validatedCount = 0;
@@ -2264,6 +2430,33 @@ function updateSummary() {
 
     // Update tab badges as well
     updateTabBadges();
+}
+
+/**
+ * MEJORA: Configura deep linking en tarjetas de resumen
+ */
+function setupSummaryCardLinks() {
+    // Buscar tarjetas de resumen en el sidebar
+    const summaryCards = document.querySelectorAll('.summary-card, [id^="summary-"]');
+    
+    summaryCards.forEach(card => {
+        const cardId = card.id || card.className;
+        
+        // Agregar cursor pointer y evento click
+        if (cardId.includes('pending') || card.textContent?.includes('Pendientes')) {
+            card.style.cursor = 'pointer';
+            card.onclick = () => {
+                console.log('👉 Deep link: Navegando a Pendientes');
+                switchValidationTab('pending');
+            };
+        } else if (cardId.includes('validated') || card.textContent?.includes('Validadas')) {
+            card.style.cursor = 'pointer';
+            card.onclick = () => {
+                console.log('👉 Deep link: Navegando a Validadas');
+                switchValidationTab('validated');
+            };
+        }
+    });
 }
 
 function filterOrdersByDateRange() {
@@ -3647,7 +3840,21 @@ function renderValidatedTable() {
             : '<span class="empty-cell">N/A</span>';
 
         // FIXED: Calculate dispatch status instead of sync status
-        const cantidadDespachar = record.cantidadDespachar || 0;
+        // IMPORTANTE: cantidadDespachar apunta a cantDespacho (Columna N)
+        // PRIORIDAD: Usar cantDespacho directamente, luego cantidadDespachar como fallback
+        const cantidadDespachar = record.cantDespacho || record.cantidadDespachar || 0;
+        
+        // Debug para primeros 5 registros
+        if (index < 5) {
+            console.log(`🎨 RENDER tabla row ${index}:`, {
+                orden: record.orden,
+                'cantDespacho (N)': record.cantDespacho,
+                'cantidadDespachar (alias)': record.cantidadDespachar,
+                'VALOR USADO': cantidadDespachar,
+                operador: record.operador,
+                unidad: record.unidad
+            });
+        }
         let dispatchStatus, statusBadge, statusColor;
 
         if (record.estatus === 'Cancelada') {
@@ -3709,7 +3916,7 @@ function renderValidatedTable() {
                     ${tieneRastreo ? '<span class="rastreo-badge si">SI</span>' : '<span class="rastreo-badge no">NO</span>'}
                 </td>
                 <td style="text-align: center;">${trsCount > 0 ? `<span class="order-code">${trsCount}</span>` : '<span class="empty-cell">-</span>'}</td>
-                <td style="text-align: center;"><strong>${record.cantidadDespachar || 0}</strong></td>
+                <td style="text-align: center;"><strong>${record.cantDespacho || record.cantidadDespachar || 0}</strong></td>
                 <td>
                     <span class="status-badge" style="background-color: ${statusColor}; color: white;">${statusBadge}</span>
                 </td>
@@ -3960,7 +4167,7 @@ async function executeConfirmCancelOrder() {
 /**
  * Execute delete and move order back to pending
  */
-function executeDeleteValidated() {
+async function executeDeleteValidated() {
     if (!pendingDeleteOrden) {
         closeDeleteValidatedModal();
         return;
@@ -3968,9 +4175,27 @@ function executeDeleteValidated() {
 
     const orden = pendingDeleteOrden;
 
-    // Find and remove from localValidated
+    // Find record in localValidated
     const index = STATE.localValidated.findIndex(v => v.orden === orden);
     if (index > -1) {
+        const record = STATE.localValidated[index];
+        
+        // MEJORA: Marcar como eliminado para sincronización con BD
+        const deleteRecord = {
+            ...record,
+            estatus: 'Eliminado',
+            fechaEliminacion: new Date().toISOString(),
+            usuarioEliminacion: CURRENT_USER
+        };
+        
+        console.log('🗑️ Marcando registro como eliminado:', orden);
+        
+        // Agregar a cola de sincronización para eliminar en BD
+        if (window.syncManager) {
+            window.syncManager.addToQueue(deleteRecord);
+        }
+        
+        // Remover de localValidated
         STATE.localValidated.splice(index, 1);
 
         // Save state
@@ -3978,11 +4203,18 @@ function executeDeleteValidated() {
 
         // Re-render validated table
         renderValidatedTable();
+        
+        // MEJORA: Actualizar vista de folios afectados
+        const currentView = document.querySelector('.main-tab.active')?.getAttribute('data-tab');
+        if (currentView === 'folios') {
+            renderFolioDetailsTable(record.folio);
+        }
 
-        // Update badges
+        // Update badges and summary
         updateTabBadges();
+        updateSummary();
 
-        showNotification(`✅ Orden ${orden} eliminada y movida a pendientes`, 'success');
+        showNotification(`✅ Orden ${orden} eliminada y sincronizada`, 'success');
     } else {
         showNotification('❌ Error al eliminar la orden', 'error');
     }
@@ -3995,22 +4227,32 @@ function executeDeleteValidated() {
 // Enhanced normalization based on scan.html implementation
 
 function normalizeScannerInput(raw) {
+    if (!raw) return '';
+    
     let code = raw.trim().toUpperCase();
+    
+    console.log('🔍 Normalizando entrada:', raw);
 
     // Remove control characters and scanner prefixes
     code = code.replace(/[\x00-\x1F\x7F]/g, ''); // Remove control characters
     code = code.replace(/^GS1:|^\]C1|^\]E0|^\]d2/i, ''); // Remove scanner prefixes
 
-    // Extract from JSON patterns
-    const patterns = [
-        /\[id\[.*?\[([^\[]+)\[/i,
-        /¨id¨.*?¨([^¨]+)¨/i,
-        /"id"\s*:\s*"([^"]+)"/i
+    // Extract from complex JSON patterns (prioridad alta)
+    // Ejemplo: [id[ñ[49987997/1[,[reference?id[ñ[49987997/1[,[t[ñ[inb[,[ops?data[ñ¨[source[ñ[seller[,[container?type[ñ[box[**
+    const complexPatterns = [
+        /\[id\[ñ\[([\d]+[\/\-][\d]+)/i,  // [id[ñ[49987997/1[
+        /\[id\[.*?\[([^\[\]]+)\[/i,        // [id[...[CODIGO[
+        /¨id¨.*?¨([^¨]+)¨/i,          // ¨id¨...¨CODIGO¨
+        /"id"\s*:\s*"([^"]+)"/i,         // "id":"CODIGO"
+        /\bid[:\s]*([\d]+[\/\-][\d]+)/i   // id:49987997/1 o id 49987997/1
     ];
 
-    for (const pattern of patterns) {
+    for (const pattern of complexPatterns) {
         const match = code.match(pattern);
-        if (match) return match[1];
+        if (match && match[1]) {
+            console.log(`✅ Código extraído con patrón: ${match[1]}`);
+            return match[1];
+        }
     }
 
     // Special pattern: IDxxxxxx-xxOPERATION... → extract only xxxxxx-xx
@@ -4022,7 +4264,9 @@ function normalizeScannerInput(raw) {
     }
 
     // Clean special characters except dashes, slashes, and alphanumeric
-    return code.replace(/[^a-zA-Z0-9\-\/]/g, '');
+    const cleaned = code.replace(/[^A-Z0-9\-\/]/g, '');
+    console.log(`🧹 Código limpiado: ${cleaned}`);
+    return cleaned;
 }
 
 // Intelligent code search with dash/slash alternation
@@ -4423,10 +4667,13 @@ function showOrderInfo(orden) {
                 console.log(`✅ Unidad populated: ${savedData.unidad}`);
             }
 
-            // FIXED: Populate cantidad despachar field
+            // FIXED: Populate cantidad despachar field from Columna N (cantDespacho)
             const cantidadDespacharInput = document.getElementById('cantidad-despachar');
-            if (cantidadDespacharInput && savedData.cantidadDespachar) {
-                cantidadDespacharInput.value = savedData.cantidadDespachar;
+            if (cantidadDespacharInput) {
+                // Usar cantDespacho (Columna N) o cantidadDespachar como fallback
+                const valorGuardado = savedData.cantDespacho || savedData.cantidadDespachar || '';
+                cantidadDespacharInput.value = valorGuardado;
+                console.log('📝 Poblando CANT. DESPACHO desde BD:', valorGuardado);
             }
 
             // Populate nota despacho field
@@ -4818,15 +5065,15 @@ function renderModalBody(orden, orderData) {
                         <div class="general-info-value">${makeCopyable(orderData.trackingCode || 'N/A')}</div>
                     </div>
 
-                    <!-- Fila 2: Distribución Mixta (1fr 1fr 3fr) -->
+                    <!-- Fila 2: Distribución Mixta (1fr 1fr 2fr) -->
                     <div class="row-2">
                         <div class="general-info-field">
                             <div class="general-info-label">CANT. CAJAS</div>
                             <div class="general-info-value"><span class="highlight-orange">${orderData.totalCajas || rastreoData.length || validaciones.length || 'N/A'}</span></div>
                         </div>
                         <div class="general-info-field editable">
-                            <div class="general-info-label">CANT. DESPACHAR</div>
-                            <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Cantidad..." min="0">
+                            <div class="general-info-label">CANT. DESPACHO</div>
+                            <input type="number" class="general-info-input" id="cantidad-despachar" placeholder="Ingresar cantidad validada..." min="0" value="">
                         </div>
                         <div class="general-info-field editable">
                             <div class="general-info-label">NOTA</div>
@@ -5313,7 +5560,8 @@ async function saveValidatedOrderChanges(orden) {
         operador: operador,
         conductor: operador, // Also update conductor field for consistency
         unidad: unidad,
-        cantidadDespachar: cantidadDespacharNum,
+        cantDespacho: cantidadDespacharNum,  // N: Cant Despacho (manual input)
+        cantidadDespachar: cantidadDespacharNum,  // Keep for UI compatibility
         notaDespacho: notaDespacho,
         observaciones: notaDespacho, // Also save as observaciones
         folio: newFolio,
@@ -5557,7 +5805,7 @@ async function executeConfirmDispatch() {
     // Generar folio con el folio de carga seleccionado
     const folio = generateFolio(folioCarga);
 
-    // Estructura para Google Sheets: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Incidencias, Operador, Unidad, Observaciones
+    // Estructura para Google Sheets: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Cant Inicial, Cant Despacho, Incidencias, Operador, Unidad, Observaciones
     const dispatchRecord = {
         folio: folio,
         timestamp: timestamp.toISOString(),
@@ -5572,15 +5820,26 @@ async function executeConfirmDispatch() {
         estatus: 'Procesado',
         tarea: 'Despacho',
         estatus2: 'Completado',
-        incidencias: totalCajas !== cantidadDespacharNum ? `Parcial: ${cantidadDespacharNum}/${totalCajas}` : '',
-        operador: operador,
-        unidad: unidad,
-        observaciones: notaDespacho,
+        cantInicial: totalCajas,  // M: Cant Inicial (from OBC, read-only)
+        cantDespacho: cantidadDespacharNum,  // N: Cant Despacho (manual input)
+        incidencias: '',  // O: Incidencias (NO generar automáticamente)
+        operador: operador,  // P: Operador
+        unidad: unidad,  // Q: Unidad
+        observaciones: notaDespacho,  // R: Observaciones
         // Datos adicionales para UI
         cantidadDespachar: cantidadDespacharNum,
         totalCajas: totalCajas,
         qc: Object.keys(qcData).length > 0 ? qcData : null
     };
+
+    console.log('📝 DISPATCH RECORD CREADO:', {
+        orden: STATE.currentOrder,
+        cantInicial: totalCajas,
+        cantDespacho: cantidadDespacharNum,
+        operador: operador,
+        unidad: unidad,
+        observaciones: notaDespacho
+    });
 
     // Guardar en validados locales primero (al inicio para mostrar las más recientes primero)
     STATE.localValidated.unshift(dispatchRecord);
@@ -5622,9 +5881,9 @@ function initSyncManager() {
         storageKey: 'dispatch_pending_sync',
         appName: 'Despacho',
         appIcon: '🚚',
-        // Estructura: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Incidencias, Operador, Unidad, Observaciones
+        // Estructura: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Cant Inicial, Cant Despacho, Incidencias, Operador, Unidad, Observaciones
         formatRecord: (record) => {
-            return [
+            const formattedArray = [
                 record.folio || '',
                 record.fecha || '',
                 record.hora || '',
@@ -5637,11 +5896,25 @@ function initSyncManager() {
                 record.estatus || 'Procesado',
                 record.tarea || 'Despacho',
                 record.estatus2 || 'Completado',
-                record.incidencias || '',
-                record.operador || '',
-                record.unidad || '',
-                record.observaciones || record.nota || ''
+                record.cantInicial || record.totalCajas || 0,  // M: Cant Inicial (from OBC)
+                record.cantDespacho || record.cantidadDespachar || 0,  // N: Cant Despacho (manual input)
+                record.incidencias || '',  // O: Incidencias
+                record.operador || '',  // P: Operador
+                record.unidad || '',  // Q: Unidad
+                record.observaciones || record.notaDespacho || record.nota || ''  // R: Observaciones
             ];
+            
+            console.log('💾 FORMATO PARA BD (A-R):', {
+                orden: record.orden,
+                'M-cantInicial': formattedArray[12],
+                'N-cantDespacho': formattedArray[13],
+                'O-incidencias': formattedArray[14],
+                'P-operador': formattedArray[15],
+                'Q-unidad': formattedArray[16],
+                'R-observaciones': formattedArray[17]
+            });
+            
+            return formattedArray;
         },
         onStatusChange: () => {
             updateSummary();
@@ -7241,7 +7514,7 @@ function renderFolioDetailsTable(folioCompleto) {
 
     let totalCajasDespachar = 0;
 
-    tableBody.innerHTML = ordenesDelFolio.map(record => {
+    tableBody.innerHTML = ordenesDelFolio.map((record, index) => {
         const orderData = STATE.obcData.get(record.orden) || {};
         
         // Get reference and tracking codes
@@ -7250,8 +7523,21 @@ function renderFolioDetailsTable(folioCompleto) {
 
         const destino = record.destino || orderData.recipient || 'N/A';
         const horario = record.horario || orderData.expectedArrival || 'N/A';
-        const cantDespachar = record.cantidadDespachar || 0;
+        // IMPORTANTE: Usar cantDespacho (Columna N) como prioridad
+        const cantDespachar = record.cantDespacho || record.cantidadDespachar || 0;
         totalCajasDespachar += cantDespachar;
+        
+        // Debug para primeros 5 registros
+        if (index < 5) {
+            console.log(`🎨 RENDER folio details row ${index}:`, {
+                orden: record.orden,
+                'cantDespacho (N)': record.cantDespacho,
+                'cantidadDespachar (alias)': record.cantidadDespachar,
+                'VALOR USADO': cantDespachar,
+                operador: record.operador,
+                unidad: record.unidad
+            });
+        }
         
         const estatus = record.estatus || 'Pendiente';
         const calidad = record.calidad || 'N/A';
@@ -7432,7 +7718,7 @@ function printFolioDelivery(folioCompleto) {
             horario: record.horario || orderData.expectedArrival || 'N/A',
             referencia: orderData.referenceNo || record.codigo || 'N/A',
             tracking: orderData.trackingCode || record.track || 'N/A',
-            cantidadDespachar: record.cantidadDespachar || 0
+            cantidadDespachar: record.cantDespacho || record.cantidadDespachar || 0  // Prioridad: Columna N
         });
 
         // Procesar cada caja validada
@@ -7598,12 +7884,12 @@ function printFolioDelivery(folioCompleto) {
                 }
 
                 .codigo-base {
-                    font-family: 'Courier New', monospace;
-                    background: #fed7aa;
+                    font-family: 'Arial', 'Helvetica', sans-serif;
+                    background: transparent;
                     padding: 2px 4px;
                     border-radius: 2px;
-                    font-weight: 600;
-                    color: #9a3412;
+                    font-weight: 500;
+                    color: #292524;
                 }
 
                 .table-footer {
@@ -8450,6 +8736,96 @@ function openDispatchFromAgenda(orden) {
     // Simply call the existing showOrderInfo function
     showOrderInfo(orden);
 }
+
+// ==================== VERIFICACIÓN DE DATOS ====================
+/**
+ * Función de verificación para debugging - llamar desde consola
+ * Uso: verificarDatosDespacho('OBC-123')
+ */
+window.verificarDatosDespacho = function(orden) {
+    console.log('\n🔍 ========== VERIFICACIÓN DE DATOS ==========');
+    
+    // Buscar en validados
+    const record = STATE.localValidated.find(r => r.orden === orden);
+    
+    if (!record) {
+        console.log('❌ Orden no encontrada en validados');
+        return;
+    }
+    
+    console.log('✅ Registro encontrado:', orden);
+    console.log('\n📊 DATOS DEL REGISTRO:');
+    console.log('├─ Folio:', record.folio);
+    console.log('├─ Fecha:', record.fecha);
+    console.log('├─ Hora:', record.hora);
+    console.log('├─ Usuario:', record.usuario);
+    console.log('├─ Destino:', record.destino);
+    console.log('├─ Horario:', record.horario);
+    console.log('\n📦 CANTIDADES:');
+    console.log('├─ cantInicial (M):', record.cantInicial);
+    console.log('├─ cantDespacho (N):', record.cantDespacho);
+    console.log('├─ cantidadDespachar (alias):', record.cantidadDespachar);
+    console.log('├─ totalCajas:', record.totalCajas);
+    console.log('\n👤 TRANSPORTE:');
+    console.log('├─ operador (P):', record.operador);
+    console.log('├─ conductor (alias):', record.conductor);
+    console.log('├─ unidad (Q):', record.unidad);
+    console.log('\n📝 NOTAS:');
+    console.log('├─ incidencias (O):', record.incidencias);
+    console.log('├─ observaciones (R):', record.observaciones);
+    console.log('├─ notaDespacho (alias):', record.notaDespacho);
+    console.log('\n🔍 VERIFICACIÓN:');
+    
+    const issues = [];
+    if (!record.cantDespacho && record.cantDespacho !== 0) issues.push('⚠️ cantDespacho no definido');
+    if (!record.operador) issues.push('⚠️ operador vacío');
+    if (!record.unidad) issues.push('⚠️ unidad vacía');
+    if (record.cantidadDespachar !== record.cantDespacho) issues.push('⚠️ cantidadDespachar no coincide con cantDespacho');
+    
+    if (issues.length > 0) {
+        console.log('\n❌ PROBLEMAS DETECTADOS:');
+        issues.forEach(issue => console.log(issue));
+    } else {
+        console.log('✅ Todos los campos están correctamente mapeados');
+    }
+    
+    console.log('\n========================================\n');
+    return record;
+};
+
+/**
+ * Verificar todos los registros validados
+ */
+window.verificarTodosLosDespachos = function() {
+    console.log('\n🔍 ========== VERIFICACIÓN MASIVA ==========');
+    console.log(`Total de registros: ${STATE.localValidated.length}`);
+    
+    let sinCantDespacho = 0;
+    let sinOperador = 0;
+    let sinUnidad = 0;
+    let desincronizados = 0;
+    
+    STATE.localValidated.forEach((record, index) => {
+        if (!record.cantDespacho && record.cantDespacho !== 0) sinCantDespacho++;
+        if (!record.operador) sinOperador++;
+        if (!record.unidad) sinUnidad++;
+        if (record.cantidadDespachar !== record.cantDespacho) desincronizados++;
+    });
+    
+    console.log('\n📊 RESUMEN:');
+    console.log(`├─ Sin cantDespacho: ${sinCantDespacho}`);
+    console.log(`├─ Sin operador: ${sinOperador}`);
+    console.log(`├─ Sin unidad: ${sinUnidad}`);
+    console.log(`└─ Desincronizados: ${desincronizados}`);
+    
+    if (sinCantDespacho > 0 || sinOperador > 0 || sinUnidad > 0 || desincronizados > 0) {
+        console.log('\n⚠️ Se detectaron problemas. Usa verificarDatosDespacho(orden) para ver detalles.');
+    } else {
+        console.log('\n✅ Todos los registros están correctos');
+    }
+    
+    console.log('========================================\n');
+};
 
 // ==================== EXPOSE FUNCTIONS GLOBALLY ====================
 window.showOrderInfo = showOrderInfo;
