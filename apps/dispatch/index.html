@@ -414,7 +414,7 @@
                                     🔍 Buscar
                                 </button>
                                 <div id="normalized-code-display" class="normalized-code-display" style="display: none;">
-                                    <div class="normalized-code-label">🧹 Código depurado:</div>
+                                    <div class="normalized-code-label">🧹 Buscado:</div>
                                     <div class="normalized-code-value" id="normalized-code-value"></div>
                                     <button class="btn-copy-normalized" onclick="copyNormalizedCode()" title="Copiar código">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -575,6 +575,16 @@
                 <div class="modal-title">
                     <span>📦</span>
                     <span id="modal-title-text">Información de Orden</span>
+                </div>
+                <div class="modal-metadata" id="modal-metadata" style="display: none;">
+                    <div class="metadata-item">
+                        <span class="metadata-label">Última modificación:</span>
+                        <span class="metadata-value" id="modal-last-modified">--:--</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Usuario:</span>
+                        <span class="metadata-value" id="modal-user">N/A</span>
+                    </div>
                 </div>
                 <button class="modal-close" onclick="closeInfoModal()">×</button>
             </div>
@@ -938,6 +948,6 @@
     <script src="dispatch-sync-manager.js?v=1.0.0"></script>
 
     <!-- App Script -->
-    <script src="app.js?v=3.2.0"></script>
+    <script src="app.js?v=3.4.0"></script>
 </body>
 </html>

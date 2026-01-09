@@ -4344,6 +4344,36 @@ function formatDateTimeForDB(date = new Date()) {
 }
 
 /**
+ * Formatea la última modificación para mostrar en el modal
+ * @param {Object} record - Registro con datos de fecha/hora
+ * @returns {string} - Fecha y hora formateada
+ */
+function formatLastModified(record) {
+    if (!record) return '--:--';
+    
+    // Intentar obtener fecha y hora del registro
+    const fecha = record.fecha || record.fechaModificacion;
+    const hora = record.hora || record.horaModificacion;
+    
+    if (fecha && hora) {
+        return `${fecha} ${hora}`;
+    }
+    
+    // Fallback: intentar parsear timestamp
+    if (record.timestamp) {
+        try {
+            const d = new Date(record.timestamp);
+            const { fecha: f, hora: h } = formatDateTimeForDB(d);
+            return `${f} ${h}`;
+        } catch (e) {
+            console.warn('Error parseando timestamp:', e);
+        }
+    }
+    
+    return '--:--';
+}
+
+/**
  * Valida la estructura del registro antes de sincronizar
  * @param {Object} record - Registro a validar
  * @returns {Object} { valid: boolean, errors: string[] }
@@ -4526,20 +4556,24 @@ async function executeDeleteValidated() {
         
         console.log('✅ Fila eliminada de Google Sheets:', deleteResult);
 
-        // PASO 2: Remover de localValidated
+        // PASO 2: CRÍTICO - Limpiar TODOS los residuos de validación
+        // Este es el paso que faltaba y causaba el bug de desincronización
+        cleanupValidationResidues(orden);
+
+        // PASO 3: Remover de localValidated (ya verificado en cleanupValidationResidues)
         STATE.localValidated.splice(index, 1);
 
-        // PASO 3: Limpiar de folios si aplica
+        // PASO 4: Limpiar de folios si aplica
         if (record.folio) {
             cleanupFolioAfterDelete(record);
         }
 
-        // PASO 4: Guardar estado local
+        // PASO 5: Guardar estado local
         saveLocalState();
 
-        // PASO 5: Re-render UI
+        // PASO 6: Re-render UI
         renderValidatedTable();
-        renderOrdersList(); // La orden debe volver a aparecer en pendientes
+        renderOrdersList(); // La orden AHORA SÍ reaparecerá en pendientes
         
         // Actualizar vista de folios si está activa
         const currentView = document.querySelector('.main-tab.active')?.getAttribute('data-tab');
@@ -4667,6 +4701,50 @@ function cleanupFolioAfterDelete(record) {
     }
 }
 
+/**
+ * Limpia completamente todos los residuos de validación de una orden
+ * Asegura que la orden vuelva a su estado original "Pendiente"
+ * @param {string} orden - Número de orden
+ */
+function cleanupValidationResidues(orden) {
+    console.log(`🧹 Limpiando residuos de validación para orden ${orden}...`);
+    
+    // 1. Limpiar flags en obcData
+    if (STATE.obcData.has(orden)) {
+        const obcOrder = STATE.obcData.get(orden);
+        delete obcOrder.isValidated;
+        delete obcOrder.validatedAt;
+        delete obcOrder.validatedBy;
+        delete obcOrder.folio;
+        delete obcOrder.conductor;
+        delete obcOrder.unidad;
+        delete obcOrder.cantidadDespachar;
+        console.log(`  ✓ Residuos limpiados en obcData`);
+    }
+    
+    // 2. Limpiar flags en obcDataFiltered
+    if (STATE.obcDataFiltered.has(orden)) {
+        const obcOrderFiltered = STATE.obcDataFiltered.get(orden);
+        delete obcOrderFiltered.isValidated;
+        delete obcOrderFiltered.validatedAt;
+        delete obcOrderFiltered.validatedBy;
+        delete obcOrderFiltered.folio;
+        delete obcOrderFiltered.conductor;
+        delete obcOrderFiltered.unidad;
+        delete obcOrderFiltered.cantidadDespachar;
+        console.log(`  ✓ Residuos limpiados en obcDataFiltered`);
+    }
+    
+    // 3. Verificar que no quede en localValidated (doble verificación)
+    const remainingIndex = STATE.localValidated.findIndex(v => v.orden === orden);
+    if (remainingIndex > -1) {
+        STATE.localValidated.splice(remainingIndex, 1);
+        console.log(`  ⚠️ Registro residual encontrado y eliminado de localValidated`);
+    }
+    
+    console.log(`✅ Orden ${orden} restaurada completamente a estado Pendiente`);
+}
+
 // ==================== SEARCH ====================
 // ==================== SCANNER INPUT NORMALIZATION ====================
 // Enhanced normalization based on scan.html implementation
@@ -4782,7 +4860,7 @@ function executeSearch() {
     const queryNormalized = normalizeCodeShared(rawQuery);
     const query = queryNormalized.toUpperCase();
     
-    console.log(`🔍 Búsqueda optimizada: raw="${rawQuery}" → normalized="${query}"`);
+    console.log(`🔍 Búsqueda optimizada multicanal: raw="${rawQuery}" → normalized="${query}"`);
     
     // Mostrar código normalizado en UI
     showNormalizedCodeDisplay(query);
@@ -4792,23 +4870,26 @@ function executeSearch() {
         showNotification('⚠️ Modo offline - Solo consulta disponible', 'warning');
     }
     
-    // DEBUG: Logging detallado para investigar por qué no encuentra códigos
-    console.log('📊 DEBUG - Estado de búsqueda:', {
+    console.log('📊 Búsqueda multicanal iniciada:', {
         rawQuery,
         queryNormalized,
         query,
-        'STATE.bdCajasData.size': STATE.bdCajasData.size,
-        'Primeros 5 códigos en BD': Array.from(STATE.bdCajasData.keys()).slice(0, 5)
+        'Filtro activo': STATE.dateFilter.active,
+        'Órdenes en filtro': STATE.obcDataFiltered.size,
+        'Órdenes totales': STATE.obcData.size
     });
 
+    // NUEVA LÓGICA: Búsqueda multicanal con prioridad de filtro
     let foundOrders = [];
     const isOBC = query.startsWith('OBC');
 
     if (isOBC) {
         // ===== LÓGICA PARA OBC =====
+        // Prioridad 1: Match exacto
         if (STATE.obcData.has(query)) {
             foundOrders.push({ orden: query, source: 'OBC Directo', confidence: 100 });
         } else {
+            // Prioridad 2: Match parcial
             for (const orden of STATE.obcData.keys()) {
                 if (orden.includes(query)) {
                     foundOrders.push({ orden, source: 'OBC Parcial', confidence: 80 });
@@ -4910,7 +4991,43 @@ function executeSearch() {
             }
         }
 
-        // PRIORIDAD 3: Rastreo MNE
+        // NUEVA PRIORIDAD 3: Búsqueda por Código Track (trackingCode)
+        if (foundOrders.length === 0) {
+            console.log('🔍 Buscando por Código Track...');
+            for (const [orden, data] of STATE.obcData.entries()) {
+                if (data.trackingCode) {
+                    const trackNormalized = normalizeCodeShared(data.trackingCode).toUpperCase();
+                    // Match exacto prioritario
+                    if (data.trackingCode.toUpperCase() === query || trackNormalized === queryNormalized) {
+                        foundOrders.push({ orden, source: 'Código Track (Exacto)', confidence: 100 });
+                    }
+                    // Match parcial
+                    else if (data.trackingCode.toUpperCase().includes(query) || trackNormalized.includes(queryNormalized)) {
+                        foundOrders.push({ orden, source: 'Código Track (Parcial)', confidence: 90 });
+                    }
+                }
+            }
+        }
+
+        // NUEVA PRIORIDAD 4: Búsqueda por Código Referencia (referenceNo)
+        if (foundOrders.length === 0) {
+            console.log('🔍 Buscando por Código Referencia...');
+            for (const [orden, data] of STATE.obcData.entries()) {
+                if (data.referenceNo) {
+                    const refNormalized = normalizeCodeShared(data.referenceNo).toUpperCase();
+                    // Match exacto prioritario
+                    if (data.referenceNo.toUpperCase() === query || refNormalized === queryNormalized) {
+                        foundOrders.push({ orden, source: 'Código Referencia (Exacto)', confidence: 100 });
+                    }
+                    // Match parcial
+                    else if (data.referenceNo.toUpperCase().includes(query) || refNormalized.includes(queryNormalized)) {
+                        foundOrders.push({ orden, source: 'Código Referencia (Parcial)', confidence: 90 });
+                    }
+                }
+            }
+        }
+
+        // PRIORIDAD 5: Rastreo MNE
         if (foundOrders.length === 0) {
             for (const [orden, rastreoItems] of STATE.mneData.entries()) {
                 const match = rastreoItems.find(r =>
@@ -4923,7 +5040,7 @@ function executeSearch() {
             }
         }
 
-        // PRIORIDAD 4: Validaciones
+        // PRIORIDAD 6: Validaciones
         if (foundOrders.length === 0) {
             for (const [orden, validaciones] of STATE.validacionData.entries()) {
                 const match = validaciones.find(v =>
@@ -4936,7 +5053,7 @@ function executeSearch() {
             }
         }
 
-        // PRIORIDAD 5: TRS (último recurso)
+        // PRIORIDAD 7: TRS (último recurso)
         if (foundOrders.length === 0) {
             for (const trsEntry of STATE.trsData) {
                 if ((trsEntry.codigoOriginal && trsEntry.codigoOriginal.toUpperCase().includes(query)) ||
@@ -4955,56 +5072,95 @@ function executeSearch() {
         }
     }
 
+    // OPTIMIZACIÓN: Ordenar por confidence (mayor a menor) y eliminar duplicados
+    foundOrders.sort((a, b) => b.confidence - a.confidence);
+    const uniqueOrders = [];
+    const seenOrders = new Set();
+    for (const order of foundOrders) {
+        if (!seenOrders.has(order.orden)) {
+            seenOrders.add(order.orden);
+            uniqueOrders.push(order);
+        }
+    }
+    foundOrders = uniqueOrders;
+
     // MEJORA: Limpiar searchbox siempre después de buscar
     if (searchInput) {
         searchInput.value = '';
     }
 
     if (foundOrders.length === 0) {
-        console.error('❌ DEBUG - No se encontraron resultados para:', {
+        console.error('❌ No se encontraron resultados para:', {
             rawQuery,
             queryNormalized,
             query,
-            'Intentos de búsqueda': [
-                'Match flexible',
-                'Búsqueda directa',
-                'Código normalizado',
-                'Código base',
-                'Rastreo MNE',
-                'Validaciones',
-                'TRS'
-            ]
+            'Canales buscados': ['OBC', 'Código Caja', 'Código Track', 'Código Referencia', 'MNE', 'Validaciones', 'TRS']
         });
         showNotification('❌ No se encontró la orden o código', 'error');
-        // Mantener código normalizado visible para referencia
         return;
     }
 
-    if (foundOrders.length > 1) {
-        showMultipleMatchesModal(foundOrders, query);
-        return;
-    }
+    console.log(`✅ Encontradas ${foundOrders.length} coincidencias:`, foundOrders.map(o => `${o.orden} (${o.source})` ));
 
-    const foundOrden = foundOrders[0].orden;
-    const foundSource = foundOrders[0].source;
-
-    // Validar si la orden corresponde al filtro de fecha activo
+    // LÓGICA DE SELECCIÓN INTELIGENTE CON PRIORIDAD DE FILTRO
     if (STATE.dateFilter.active) {
-        const isInFilteredRange = STATE.obcDataFiltered.has(foundOrden);
+        // Filtrar coincidencias que están dentro del rango de fechas activo
+        const ordersInFilter = foundOrders.filter(o => STATE.obcDataFiltered.has(o.orden));
+        const ordersOutFilter = foundOrders.filter(o => !STATE.obcDataFiltered.has(o.orden));
         
-        if (!isInFilteredRange) {
-            // Orden encontrada pero no corresponde al rango de fechas
-            showDateExceptionDialog(foundOrden, foundSource);
+        console.log('📊 Análisis de filtro:', {
+            'Total coincidencias': foundOrders.length,
+            'Dentro del filtro': ordersInFilter.length,
+            'Fuera del filtro': ordersOutFilter.length
+        });
+
+        // ESCENARIO A: Coincidencia única dentro del filtro
+        if (ordersInFilter.length === 1) {
+            const foundOrden = ordersInFilter[0].orden;
+            const foundSource = ordersInFilter[0].source;
+            console.log(`✅ ESCENARIO A: Coincidencia única en filtro - Abriendo ${foundOrden}`);
+            showNotification(`📦 ${foundSource}: ${foundOrden}`, 'success', 2000);
+            showOrderInfo(foundOrden);
+            if (searchInput) searchInput.value = '';
+            return;
+        }
+        
+        // ESCENARIO B: Múltiples coincidencias dentro del filtro
+        if (ordersInFilter.length > 1) {
+            console.log(`📋 ESCENARIO B: ${ordersInFilter.length} coincidencias en filtro - Mostrando selector`);
+            showMultipleMatchesModal(ordersInFilter, query);
+            if (searchInput) searchInput.value = '';
+            return;
+        }
+        
+        // ESCENARIO C: Sin coincidencias en filtro, pero sí en historial general
+        if (ordersInFilter.length === 0 && ordersOutFilter.length > 0) {
+            console.log(`⚠️ ESCENARIO C: ${ordersOutFilter.length} coincidencias fuera del filtro - Mostrando selector histórico`);
+            // Marcar como registros históricos
+            ordersOutFilter.forEach(o => o.source += ' (Histórico)');
+            showMultipleMatchesModal(ordersOutFilter, query);
+            if (searchInput) searchInput.value = '';
+            return;
+        }
+    } else {
+        // Sin filtro activo: comportamiento tradicional
+        if (foundOrders.length === 1) {
+            const foundOrden = foundOrders[0].orden;
+            const foundSource = foundOrders[0].source;
+            console.log(`✅ Orden única encontrada: ${foundOrden}`);
+            showNotification(`📦 ${foundSource}: ${foundOrden}`, 'success', 2000);
+            showOrderInfo(foundOrden);
+            if (searchInput) searchInput.value = '';
+            return;
+        }
+        
+        if (foundOrders.length > 1) {
+            console.log(`📋 ${foundOrders.length} coincidencias - Mostrando selector`);
+            showMultipleMatchesModal(foundOrders, query);
+            if (searchInput) searchInput.value = '';
             return;
         }
     }
-
-    // MEJORA: Orden válida y única - abrir automáticamente modal de detalles
-    console.log(`✅ Orden única encontrada: ${foundOrden} - Abriendo automáticamente`);
-    showNotification(`📦 ${foundSource} encontrado: ${foundOrden}`, 'success', 2000);
-    
-    // Abrir modal de información de orden automáticamente
-    showOrderInfo(foundOrden);
 }
 
 /**
@@ -5231,6 +5387,37 @@ function showOrderInfo(orden) {
 
     // Update modal title with status badge for validated orders
     document.getElementById('modal-title-text').innerHTML = `Orden ${orden}${statusBadgeHTML}`;
+
+    // Update metadata fields (only show if order is validated)
+    const metadataContainer = document.getElementById('modal-metadata');
+    const lastModifiedEl = document.getElementById('modal-last-modified');
+    const userEl = document.getElementById('modal-user');
+    
+    if (validationCheck.validated && validationCheck.data) {
+        const savedData = validationCheck.data;
+        
+        // Mostrar metadata
+        if (metadataContainer) {
+            metadataContainer.style.display = 'flex';
+        }
+        
+        // Formatear última modificación
+        if (lastModifiedEl) {
+            const lastModified = formatLastModified(savedData);
+            lastModifiedEl.textContent = lastModified;
+        }
+        
+        // Mostrar usuario
+        if (userEl) {
+            const userName = savedData.usuario || savedData.usuarioModificacion || 'N/A';
+            userEl.textContent = userName;
+        }
+    } else {
+        // Ocultar metadata para órdenes no validadas
+        if (metadataContainer) {
+            metadataContainer.style.display = 'none';
+        }
+    }
 
     // Render KPI Cards
     renderKPICards(orderData);
@@ -6146,6 +6333,10 @@ async function saveValidatedOrderChanges(orden) {
         };
     }
 
+    // Obtener timestamp y usuario actual para la modificación
+    const now = new Date();
+    const { fecha, hora } = formatDateTimeForDB(now);
+    
     // Update the record
     const updatedRecord = {
         ...oldRecord,
@@ -6158,7 +6349,15 @@ async function saveValidatedOrderChanges(orden) {
         observaciones: notaDespacho, // Also save as observaciones
         folio: newFolio,
         qc: qcData, // Save QC data
-        lastModified: new Date().toISOString()
+        lastModified: now.toISOString(),
+        // NUEVO: Registrar fecha, hora y usuario de la modificación
+        fecha: fecha,
+        hora: hora,
+        fechaModificacion: fecha,
+        horaModificacion: hora,
+        usuario: CURRENT_USER || USER_GOOGLE_NAME || 'Usuario',
+        usuarioModificacion: CURRENT_USER || USER_GOOGLE_NAME || 'Usuario',
+        timestamp: now.toISOString()
     };
 
     STATE.localValidated[recordIndex] = updatedRecord;
