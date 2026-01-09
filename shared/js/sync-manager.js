@@ -470,8 +470,8 @@ class SyncManager {
                             <button class="btn btn-primary" onclick="window.syncManager.sync(); this.closest('.popup-overlay').remove();">
                                 🔄 Sincronizar Ahora
                             </button>
-                            <button class="btn btn-success" onclick="window.syncManager.syncSlow(); this.closest('.popup-overlay').remove();">
-                                ⏱️ Sync Lenta (más segura)
+                            <button class="btn btn-warning" onclick="window.syncManager.syncSlow(); this.closest('.popup-overlay').remove();" style="margin-top: 5px;">
+                                ⏱️ Sincronización Lenta (más segura)
                             </button>
                         ` : ''}
                         ${stats.pendingSync > 0 ? `

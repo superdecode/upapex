@@ -79,6 +79,10 @@ let STATE = {
     currentFolio: null // Current folio being viewed in details screen
 };
 
+// ==================== SYNC MANAGER GLOBALS ====================
+let syncManager = null;
+let dispatchSyncManager = null;
+
 // ==================== CONNECTION & OFFLINE MODE ====================
 
 // Initialize connection monitoring
@@ -453,6 +457,14 @@ async function lazyLoadDataByDate(startDate, endDate) {
         return;
     }
 
+    // OPTIMIZACIÓN: Verificar si este rango ya fue cargado
+    if (!needsDataLoad(startDate, endDate)) {
+        console.log('⚡ [LAZY] Usando datos en caché, solo filtrando localmente...');
+        filterOrdersByDateRange();
+        showNotification('✅ Filtro aplicado (datos en caché)', 'success');
+        return;
+    }
+
     const TOTAL_STEPS = 4;
     
     try {
@@ -557,6 +569,9 @@ async function lazyLoadDataByDate(startDate, endDate) {
         updateSummary();
         updateValidationBadges();
         updateTabBadges();
+        
+        // OPTIMIZACIÓN: Marcar este rango como cargado para evitar recargas
+        markRangeAsLoaded(startDate, endDate);
         
         console.log('\n========================================');
         console.log('✅ CARGA COMPLETADA EXITOSAMENTE');
@@ -1695,92 +1710,228 @@ function updateUserFooter() {
 
 
 // ==================== DATA LOADING ====================
-async function loadAllData() {
+
+// Estado de carga para evitar cargas redundantes
+const LOAD_STATE = {
+    criticalLoaded: false,      // BD Escritura (folios actuales)
+    referenceLoaded: false,     // BDs de referencia (LISTAS)
+    backgroundLoading: false,   // Carga en segundo plano en progreso
+    lastDateFilter: null,       // Último filtro de fecha aplicado
+    loadedDateRanges: []        // Rangos de fecha ya cargados
+};
+
+/**
+ * CARGA INICIAL CRÍTICA
+ * Solo carga la BD de Escritura para mostrar folios actuales inmediatamente
+ * Las BDs pesadas se cargan en segundo plano después
+ */
+async function loadCriticalData() {
+    if (LOAD_STATE.criticalLoaded) {
+        console.log('⚡ [LOAD] Datos críticos ya cargados, omitiendo...');
+        return;
+    }
+
+    console.log('🚀 [LOAD] Iniciando carga crítica (BD Escritura)...');
     STATE.isLoading = true;
-    STATE.loadingProgress = 0;
-    showLoadingOverlay(true, 0, 4);  // Reduced to 4 (removed BD_CAJAS and validated/folios)
-    showNotification('🔄 Cargando datos básicos...', 'info');
-
-    let errors = [];
-    let loaded = 0;
-    const total = 4;  // Only essential catalogs: VALIDACION, MNE, TRS, LISTAS
-
-    // ❌ REMOVED: BD_CAJAS loading (200k+ records causing crash)
-    // 💡 BD_CAJAS will be loaded lazily when date filter is applied
-    console.log('⚡ Lazy loading enabled: BD_CAJAS will load on-demand with date filter');
-
-    // Load VALIDACION (Sistema de Validación de Surtido)
-    try {
-        const validacionResponse = await fetch(CONFIG.SOURCES.VALIDACION);
-        const validacionCsv = await validacionResponse.text();
-        parseValidacionData(validacionCsv);
-        loaded++;
-        STATE.loadingProgress = loaded;
-        showLoadingOverlay(true, loaded, total);
-    } catch (e) {
-        console.error('Error loading VALIDACION:', e);
-        errors.push('VALIDACION');
-    }
-
-    // Load MNE (Rastreo)
-    try {
-        const mneResponse = await fetch(CONFIG.SOURCES.MNE);
-        const mneCsv = await mneResponse.text();
-        parseMNEData(mneCsv);
-        loaded++;
-        STATE.loadingProgress = loaded;
-        showLoadingOverlay(true, loaded, total);
-    } catch (e) {
-        console.error('Error loading MNE:', e);
-        errors.push('MNE');
-    }
-
-    // Load TRS
-    try {
-        const trsResponse = await fetch(CONFIG.SOURCES.TRS);
-        const trsCsv = await trsResponse.text();
-        parseTRSData(trsCsv);
-        loaded++;
-        STATE.loadingProgress = loaded;
-        showLoadingOverlay(true, loaded, total);
-    } catch (e) {
-        console.error('Error loading TRS:', e);
-        errors.push('TRS');
-    }
-
-    // Load LISTAS (Operadores y Unidades)
-    try {
-        const listasResponse = await fetch(CONFIG.SOURCES.LISTAS);
-        const listasCsv = await listasResponse.text();
-        parseListasData(listasCsv);
-        loaded++;
-        STATE.loadingProgress = loaded;
-        showLoadingOverlay(true, loaded, total);
-    } catch (e) {
-        console.error('Error loading LISTAS:', e);
-        errors.push('LISTAS');
-    }
-
-    // ❌ REMOVED: Transactional data loading from initialization
-    // 💡 Validated records and folios will be loaded lazily with date filter
-    console.log('⚡ Transactional data will load on-demand with date filter');
-
-    STATE.isLoading = false;
-    showLoadingOverlay(false);
-
-    // Show appropriate notification
-    if (errors.length > 0 && loaded === 0) {
-        showNotification('❌ Error cargando datos', 'error');
-    } else if (errors.length > 0) {
-        showNotification(`⚠️ Datos cargados (advertencia: algunas fuentes fallaron)`, 'warning');
-    } else {
-        showNotification(`✅ Datos cargados - Usa el filtro de fecha para cargar órdenes`, 'success');
-    }
-
-    updateBdInfo();
-    updateSummary();
     
-    console.log('✅ Initialization complete - Ready for lazy loading with date filter');
+    try {
+        // PASO 1: Cargar BD de Escritura (folios del usuario)
+        showNotification('🔄 Cargando tus folios...', 'info');
+        
+        if (gapi?.client?.sheets) {
+            const validatedRecords = await fetchValidatedRecordsFromWriteDB();
+            STATE.localValidated = validatedRecords;
+            rebuildFoliosFromRecords(validatedRecords);
+            console.log(`✅ [LOAD] ${validatedRecords.length} registros de despacho cargados`);
+        }
+        
+        // PASO 2: Cargar LISTAS (operadores/unidades) - crítico para UI
+        try {
+            const listasResponse = await fetch(CONFIG.SOURCES.LISTAS);
+            const listasCsv = await listasResponse.text();
+            parseListasData(listasCsv);
+            console.log('✅ [LOAD] Listas de operadores/unidades cargadas');
+        } catch (e) {
+            console.warn('⚠️ Error cargando LISTAS:', e);
+        }
+        
+        LOAD_STATE.criticalLoaded = true;
+        STATE.isLoading = false;
+        
+        // Actualizar UI inmediatamente
+        updateBdInfo();
+        updateSummary();
+        updateTabBadges();
+        
+        showNotification('✅ Listo - Selecciona un rango de fechas para ver órdenes', 'success');
+        
+        // PASO 3: Iniciar carga de BDs de referencia en segundo plano
+        loadReferenceDataInBackground();
+        
+    } catch (error) {
+        console.error('❌ Error en carga crítica:', error);
+        STATE.isLoading = false;
+        showNotification('❌ Error cargando datos iniciales', 'error');
+    }
+}
+
+/**
+ * CARGA EN SEGUNDO PLANO
+ * Carga BDs de referencia sin bloquear la UI
+ */
+async function loadReferenceDataInBackground() {
+    if (LOAD_STATE.referenceLoaded || LOAD_STATE.backgroundLoading) {
+        console.log('⚡ [BACKGROUND] Datos de referencia ya cargados o en progreso');
+        return;
+    }
+
+    LOAD_STATE.backgroundLoading = true;
+    console.log('📦 [BACKGROUND] Iniciando carga de BDs de referencia en segundo plano...');
+
+    // Usar setTimeout para no bloquear el hilo principal
+    setTimeout(async () => {
+        try {
+            // VALIDACION
+            try {
+                let validacionCsv;
+                if (dispatchSyncManager) {
+                    validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION);
+                } else {
+                    const response = await fetch(CONFIG.SOURCES.VALIDACION);
+                    validacionCsv = await response.text();
+                }
+                if (validacionCsv) parseValidacionData(validacionCsv);
+                console.log('✅ [BACKGROUND] VALIDACION cargada');
+            } catch (e) {
+                console.warn('⚠️ [BACKGROUND] Error cargando VALIDACION:', e);
+            }
+
+            // MNE
+            try {
+                let mneCsv;
+                if (dispatchSyncManager) {
+                    mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE);
+                } else {
+                    const response = await fetch(CONFIG.SOURCES.MNE);
+                    mneCsv = await response.text();
+                }
+                if (mneCsv) parseMNEData(mneCsv);
+                console.log('✅ [BACKGROUND] MNE cargada');
+            } catch (e) {
+                console.warn('⚠️ [BACKGROUND] Error cargando MNE:', e);
+            }
+
+            // TRS
+            try {
+                let trsCsv;
+                if (dispatchSyncManager) {
+                    trsCsv = await dispatchSyncManager.getReferenceData('trs', CONFIG.SOURCES.TRS);
+                } else {
+                    const response = await fetch(CONFIG.SOURCES.TRS);
+                    trsCsv = await response.text();
+                }
+                if (trsCsv) parseTRSData(trsCsv);
+                console.log('✅ [BACKGROUND] TRS cargada');
+            } catch (e) {
+                console.warn('⚠️ [BACKGROUND] Error cargando TRS:', e);
+            }
+
+            LOAD_STATE.referenceLoaded = true;
+            LOAD_STATE.backgroundLoading = false;
+            console.log('✅ [BACKGROUND] Todas las BDs de referencia cargadas');
+
+        } catch (error) {
+            console.error('❌ [BACKGROUND] Error en carga de referencia:', error);
+            LOAD_STATE.backgroundLoading = false;
+        }
+    }, 100); // Pequeño delay para permitir que la UI se renderice primero
+}
+
+/**
+ * CARGA OPTIMIZADA POR FILTRO DE FECHA
+ * Solo carga datos si el rango no ha sido cargado previamente
+ * @param {string} startDate - Fecha inicio YYYY-MM-DD
+ * @param {string} endDate - Fecha fin YYYY-MM-DD
+ * @returns {boolean} - true si se necesita cargar, false si ya estaba cargado
+ */
+function needsDataLoad(startDate, endDate) {
+    const rangeKey = `${startDate}_${endDate}`;
+    
+    // Verificar si este rango exacto ya fue cargado
+    if (LOAD_STATE.loadedDateRanges.includes(rangeKey)) {
+        console.log(`⚡ [LOAD] Rango ${startDate} - ${endDate} ya cargado, usando caché local`);
+        return false;
+    }
+    
+    // Verificar si el rango está contenido en uno ya cargado
+    for (const loadedRange of LOAD_STATE.loadedDateRanges) {
+        const [loadedStart, loadedEnd] = loadedRange.split('_');
+        if (startDate >= loadedStart && endDate <= loadedEnd) {
+            console.log(`⚡ [LOAD] Rango contenido en ${loadedStart} - ${loadedEnd}, filtrando localmente`);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/**
+ * Registra un rango de fechas como cargado
+ */
+function markRangeAsLoaded(startDate, endDate) {
+    const rangeKey = `${startDate}_${endDate}`;
+    if (!LOAD_STATE.loadedDateRanges.includes(rangeKey)) {
+        LOAD_STATE.loadedDateRanges.push(rangeKey);
+        // Mantener solo los últimos 5 rangos para no acumular demasiado
+        if (LOAD_STATE.loadedDateRanges.length > 5) {
+            LOAD_STATE.loadedDateRanges.shift();
+        }
+    }
+    LOAD_STATE.lastDateFilter = rangeKey;
+}
+
+/**
+ * Limpia el caché de rangos cargados (para forzar recarga)
+ */
+function clearLoadedRanges() {
+    LOAD_STATE.loadedDateRanges = [];
+    LOAD_STATE.lastDateFilter = null;
+    console.log('🧹 [LOAD] Caché de rangos limpiado');
+}
+
+/**
+ * FUNCIÓN LEGACY - Mantener compatibilidad
+ * Ahora llama a loadCriticalData()
+ */
+async function loadAllData() {
+    await loadCriticalData();
+}
+
+/**
+ * Fuerza actualización de todas las BDs de referencia (botón manual)
+ */
+async function forceRefreshReferenceData() {
+    showNotification('🔄 Actualizando datos de referencia...', 'info');
+    
+    if (dispatchSyncManager) {
+        await dispatchSyncManager.refreshReferenceData();
+    }
+    
+    // Recargar datos
+    await loadAllData();
+    
+    showNotification('✅ Datos de referencia actualizados', 'success');
+}
+
+/**
+ * Fuerza actualización de BD operativa (polling manual)
+ */
+async function forceRefreshOperationalData() {
+    if (dispatchSyncManager) {
+        showNotification('🔄 Actualizando BD operativa...', 'info');
+        await dispatchSyncManager.forceOperationalRefresh();
+        showNotification('✅ BD operativa actualizada', 'success');
+    }
 }
 
 function parseOBCData(csv) {
@@ -4340,6 +4491,7 @@ async function executeConfirmCancelOrder() {
 
 /**
  * Execute delete and move order back to pending
+ * CORREGIDO: Ahora elimina físicamente la fila de Google Sheets
  */
 async function executeDeleteValidated() {
     if (!pendingDeleteOrden) {
@@ -4348,39 +4500,50 @@ async function executeDeleteValidated() {
     }
 
     const orden = pendingDeleteOrden;
+    showNotification('🔄 Eliminando registro...', 'info');
 
     // Find record in localValidated
     const index = STATE.localValidated.findIndex(v => v.orden === orden);
-    if (index > -1) {
-        const record = STATE.localValidated[index];
+    if (index === -1) {
+        showNotification('❌ Orden no encontrada en registros locales', 'error');
+        closeDeleteValidatedModal();
+        return;
+    }
+
+    const record = STATE.localValidated[index];
+    console.log('🗑️ Iniciando eliminación de orden:', orden);
+
+    try {
+        // PASO 1: Eliminar físicamente de Google Sheets
+        const deleteResult = await deleteRowFromWriteDB(record);
         
-        // MEJORA: Marcar como eliminado para sincronización con BD
-        const deleteRecord = {
-            ...record,
-            estatus: 'Eliminado',
-            fechaEliminacion: new Date().toISOString(),
-            usuarioEliminacion: CURRENT_USER
-        };
-        
-        console.log('🗑️ Marcando registro como eliminado:', orden);
-        
-        // Agregar a cola de sincronización para eliminar en BD
-        if (window.syncManager) {
-            window.syncManager.addToQueue(deleteRecord);
+        if (!deleteResult.success) {
+            console.error('❌ Error eliminando de BD:', deleteResult.error);
+            showNotification('❌ Error al eliminar de la base de datos: ' + (deleteResult.error || 'Error desconocido'), 'error');
+            closeDeleteValidatedModal();
+            return;
         }
         
-        // Remover de localValidated
+        console.log('✅ Fila eliminada de Google Sheets:', deleteResult);
+
+        // PASO 2: Remover de localValidated
         STATE.localValidated.splice(index, 1);
 
-        // Save state
+        // PASO 3: Limpiar de folios si aplica
+        if (record.folio) {
+            cleanupFolioAfterDelete(record);
+        }
+
+        // PASO 4: Guardar estado local
         saveLocalState();
 
-        // Re-render validated table
+        // PASO 5: Re-render UI
         renderValidatedTable();
+        renderOrdersList(); // La orden debe volver a aparecer en pendientes
         
-        // MEJORA: Actualizar vista de folios afectados
+        // Actualizar vista de folios si está activa
         const currentView = document.querySelector('.main-tab.active')?.getAttribute('data-tab');
-        if (currentView === 'folios') {
+        if (currentView === 'folios' && record.folio) {
             renderFolioDetailsTable(record.folio);
         }
 
@@ -4388,12 +4551,120 @@ async function executeDeleteValidated() {
         updateTabBadges();
         updateSummary();
 
-        showNotification(`✅ Orden ${orden} eliminada y sincronizada`, 'success');
-    } else {
-        showNotification('❌ Error al eliminar la orden', 'error');
+        showNotification(`✅ Orden ${orden} eliminada y regresada a pendientes`, 'success');
+        
+    } catch (error) {
+        console.error('❌ Error en executeDeleteValidated:', error);
+        showNotification('❌ Error al eliminar: ' + error.message, 'error');
     }
 
     closeDeleteValidatedModal();
+}
+
+/**
+ * Elimina físicamente una fila de la BD de Escritura (Google Sheets)
+ * @param {Object} record - Registro a eliminar
+ * @returns {Promise<Object>} - {success: boolean, error?: string}
+ */
+async function deleteRowFromWriteDB(record) {
+    if (!gapi?.client?.sheets) {
+        return { success: false, error: 'Google Sheets API no disponible' };
+    }
+
+    try {
+        // Primero, encontrar la fila que contiene este registro
+        const sheetName = 'BD';
+        
+        // Obtener todos los datos para encontrar la fila
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+            range: `${sheetName}!A:E`  // Solo necesitamos las primeras columnas para identificar
+        });
+
+        const rows = response.result.values || [];
+        let rowIndexToDelete = -1;
+
+        // Buscar la fila que coincide con folio Y orden
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const rowFolio = row[0] || '';
+            const rowOrden = row[4] || '';
+            
+            if (rowFolio === record.folio && rowOrden === record.orden) {
+                rowIndexToDelete = i + 1; // +1 porque Sheets es 1-indexed
+                console.log(`📍 Fila encontrada: ${rowIndexToDelete} (folio: ${rowFolio}, orden: ${rowOrden})`);
+                break;
+            }
+        }
+
+        if (rowIndexToDelete === -1) {
+            console.warn('⚠️ Fila no encontrada en BD, puede que ya haya sido eliminada');
+            return { success: true, message: 'Fila no encontrada (ya eliminada)' };
+        }
+
+        // Obtener el sheetId para la operación de borrado
+        const metadataResponse = await gapi.client.sheets.spreadsheets.get({
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE
+        });
+        
+        const sheet = metadataResponse.result.sheets.find(s => s.properties.title === sheetName);
+        if (!sheet) {
+            return { success: false, error: `Hoja '${sheetName}' no encontrada` };
+        }
+        
+        const sheetId = sheet.properties.sheetId;
+
+        // Eliminar la fila usando batchUpdate
+        const deleteRequest = {
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+            resource: {
+                requests: [{
+                    deleteDimension: {
+                        range: {
+                            sheetId: sheetId,
+                            dimension: 'ROWS',
+                            startIndex: rowIndexToDelete - 1, // 0-indexed
+                            endIndex: rowIndexToDelete        // exclusive
+                        }
+                    }
+                }]
+            }
+        };
+
+        await gapi.client.sheets.spreadsheets.batchUpdate(deleteRequest);
+        
+        console.log(`✅ Fila ${rowIndexToDelete} eliminada exitosamente de Google Sheets`);
+        return { success: true, rowDeleted: rowIndexToDelete };
+
+    } catch (error) {
+        console.error('Error en deleteRowFromWriteDB:', error);
+        return { success: false, error: error.message || 'Error de API' };
+    }
+}
+
+/**
+ * Limpia referencias de folio después de eliminar un registro
+ * @param {Object} record - Registro eliminado
+ */
+function cleanupFolioAfterDelete(record) {
+    if (!record.folio) return;
+    
+    // Verificar si hay otros registros con el mismo folio
+    const otherRecordsWithFolio = STATE.localValidated.filter(r => r.folio === record.folio);
+    
+    if (otherRecordsWithFolio.length === 0) {
+        // No hay más registros con este folio, limpiar del mapa de folios
+        const fecha = record.fecha;
+        if (fecha && STATE.foliosDeCargas.has(fecha)) {
+            const foliosDelDia = STATE.foliosDeCargas.get(fecha);
+            // Extraer número de folio (ej: "01" de "DDMMYYYY-01")
+            const folioNum = record.folio.split('-').pop();
+            if (folioNum && foliosDelDia.has(folioNum)) {
+                foliosDelDia.delete(folioNum);
+                console.log(`🧹 Folio ${folioNum} limpiado del día ${fecha}`);
+            }
+        }
+    }
 }
 
 // ==================== SEARCH ====================
@@ -6177,15 +6448,24 @@ async function executeConfirmDispatch() {
     STATE.localValidated.unshift(dispatchRecord);
     saveLocalState();
 
-    // Agregar a la cola de sync usando SyncManager legacy
-    addToDispatchSync(dispatchRecord);
-
-    // Intentar sincronizar si hay conexión
-    if (IS_ONLINE && gapi?.client?.getToken()) {
-        await syncPendingData();
+    // PUSH INMEDIATO: Enviar directamente a BD sin esperar cola
+    if (dispatchSyncManager) {
+        const result = await dispatchSyncManager.pushImmediate(dispatchRecord);
+        if (result.success) {
+            console.log('✅ [PUSH] Despacho enviado inmediatamente a BD');
+        } else if (result.queued) {
+            console.log('📥 [PUSH] Despacho en cola local (sin conexión)');
+            showNotification('💾 Despacho guardado localmente - Se sincronizará cuando haya conexión', 'warning');
+        }
     } else {
-        showNotification('💾 Despacho guardado localmente - Se sincronizará cuando haya conexión', 'warning');
-        updateSyncStatus();
+        // Fallback a método legacy
+        addToDispatchSync(dispatchRecord);
+        if (IS_ONLINE && gapi?.client?.getToken()) {
+            await syncPendingData();
+        } else {
+            showNotification('💾 Despacho guardado localmente - Se sincronizará cuando haya conexión', 'warning');
+            updateSyncStatus();
+        }
     }
 
     closeInfoModal();
@@ -6202,9 +6482,21 @@ async function executeConfirmDispatch() {
 }
 
 async function initSyncManager() {
-    // Inicializar SyncManager legacy (append-based)
-    if (typeof SyncManager === 'undefined') {
-        console.error('❌ SyncManager no está disponible (sync-manager.js no cargó)');
+    // Inicializar DispatchSyncManager optimizado (Push Inmediato + Polling 30s + Caché 30min)
+    if (typeof DispatchSyncManager === 'undefined') {
+        console.error('❌ DispatchSyncManager no está disponible');
+        // Fallback a SyncManager legacy
+        if (typeof SyncManager !== 'undefined') {
+            console.log('⚠️ Usando SyncManager legacy como fallback');
+            syncManager = new SyncManager({
+                spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+                sheetName: 'BD',
+                appName: 'Dispatch',
+                storageKey: 'dispatch_pending_sync'
+            });
+            syncManager.init();
+            window.syncManager = syncManager;
+        }
         return;
     }
 
@@ -6212,66 +6504,54 @@ async function initSyncManager() {
         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
         sheetName: 'BD',
         appName: 'Dispatch',
-        appIcon: '🚚',
-        autoSyncInterval: 45000,
         storageKey: 'dispatch_pending_sync',
+        
+        // Formateador de registros para Google Sheets
         formatRecord: (record) => {
-            // Usar fecha/hora del record si existen, sino generar con formato consistente
             let fecha = record?.fecha || '';
             let hora = record?.hora || '';
             
-            // Si no hay fecha/hora, generar desde timestamp con formato consistente
+            // Si no hay fecha/hora, generar desde timestamp
             if ((!fecha || !hora) && record?.timestamp) {
                 const formatted = formatDateTimeForDB(new Date(record.timestamp));
                 fecha = fecha || formatted.fecha;
                 hora = hora || formatted.hora;
             }
             
-            // Validación final de formato antes de enviar
+            // Validación de formato
             if (fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
-                console.warn(`⚠️ Formato de fecha inconsistente detectado: ${fecha}, corrigiendo...`);
                 const d = new Date(record.timestamp || Date.now());
                 fecha = formatDateTimeForDB(d).fecha;
             }
             
             if (hora && !/^\d{2}:\d{2}$/.test(hora)) {
-                console.warn(`⚠️ Formato de hora inconsistente detectado: ${hora}, corrigiendo...`);
                 const d = new Date(record.timestamp || Date.now());
                 hora = formatDateTimeForDB(d).hora;
             }
             
-            // Log de escritura para auditoría
-            console.log('📝 [SYNC] Formateando registro para BD:', {
-                orden: record.orden,
-                fecha: fecha,
-                hora: hora,
-                usuario: record.usuario || '',
-                operador: record.operador || '',
-                cantInicial: record.cantInicial || '',
-                cantDespacho: record.cantDespacho || ''
-            });
-            
             return [
-                record.folio || '',              // A: Folio
-                fecha,                           // B: Fecha (DD/MM/YYYY)
-                hora,                            // C: Hora (HH:MM)
-                record.usuario || '',            // D: Usuario
-                record.orden || '',              // E: Orden
-                record.destino || '',            // F: Destino
-                record.horario || '',            // G: Horario
-                record.codigo || '',             // H: Código
-                record.codigo2 || '',            // I: Código 2
-                record.estatus || '',            // J: Estatus
-                record.tarea || '',              // K: Tarea
-                record.estatus2 || '',           // L: Estatus2
-                record.cantInicial || '',        // M: Cant Inicial
-                record.cantDespacho || '',       // N: Cant Despacho
-                record.incidencias || '',        // O: Incidencias
-                record.operador || '',           // P: Operador
-                record.unidad || '',             // Q: Unidad
-                record.observaciones || ''       // R: Observaciones
+                record.folio || '',
+                fecha,
+                hora,
+                record.usuario || '',
+                record.orden || '',
+                record.destino || '',
+                record.horario || '',
+                record.codigo || '',
+                record.codigo2 || '',
+                record.estatus || '',
+                record.tarea || '',
+                record.estatus2 || '',
+                record.cantInicial || '',
+                record.cantDespacho || '',
+                record.incidencias || '',
+                record.operador || '',
+                record.unidad || '',
+                record.observaciones || ''
             ];
         },
+        
+        // Callbacks
         onSyncStart: () => {
             if (typeof updateConnectionIndicator === 'function') {
                 updateConnectionIndicator(true);
@@ -6281,15 +6561,34 @@ async function initSyncManager() {
             if (typeof updateConnectionIndicator === 'function') {
                 updateConnectionIndicator(false);
             }
+        },
+        
+        // Callback cuando hay nuevos datos del polling (30s)
+        onDataUpdate: (update) => {
+            console.log('📊 [SYNC] Datos actualizados desde servidor:', update.type);
+            if (update.type === 'OPERATIONAL') {
+                // Actualizar datos remotos en STATE
+                handleRemoteDataUpdate(update.data);
+            }
+        },
+        
+        // Callback cuando hay conflicto de concurrencia
+        onConflict: (conflict) => {
+            console.warn('⚠️ [SYNC] Conflicto de concurrencia detectado:', conflict);
+            handleConcurrencyConflict(conflict);
         }
     };
 
-    syncManager = new SyncManager(syncConfig);
-    syncManager.init();
-    window.syncManager = syncManager;
+    // Crear instancia del DispatchSyncManager
+    dispatchSyncManager = new DispatchSyncManager(syncConfig);
+    await dispatchSyncManager.init();
+    
+    // Exponer globalmente
+    window.dispatchSyncManager = dispatchSyncManager;
+    window.syncManager = dispatchSyncManager; // Compatibilidad con código existente
 
     // Actualizar badge inicial
-    const stats = syncManager.getStats();
+    const stats = dispatchSyncManager.getStats();
     const badge = document.getElementById('pending-badge');
     if (badge && stats.pendingSync > 0) {
         badge.textContent = stats.pendingSync;
@@ -6297,6 +6596,138 @@ async function initSyncManager() {
     } else if (badge) {
         badge.style.display = 'none';
     }
+    
+    console.log('✅ [DISPATCH] DispatchSyncManager inicializado');
+    console.log('   - Push Inmediato: Escrituras sin espera');
+    console.log('   - Polling: 30s para BD operativa');
+    console.log('   - Caché: 30min para BDs de referencia');
+}
+
+/**
+ * Maneja actualizaciones remotas de datos (polling 30s)
+ */
+function handleRemoteDataUpdate(rows) {
+    if (!rows || rows.length <= 1) return;
+    
+    console.log(`📥 [SYNC] Procesando ${rows.length - 1} registros remotos...`);
+    
+    // Parsear registros remotos (skip header)
+    const remoteRecords = [];
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.length >= 5) {
+            remoteRecords.push({
+                folio: row[0] || '',
+                fecha: row[1] || '',
+                hora: row[2] || '',
+                usuario: row[3] || '',
+                orden: row[4] || '',
+                destino: row[5] || '',
+                horario: row[6] || '',
+                codigo: row[7] || '',
+                codigo2: row[8] || '',
+                estatus: row[9] || '',
+                tarea: row[10] || '',
+                estatus2: row[11] || '',
+                cantInicial: parseInt(row[12]) || 0,
+                cantDespacho: parseInt(row[13]) || 0,
+                incidencias: row[14] || '',
+                operador: row[15] || '',
+                unidad: row[16] || '',
+                observaciones: row[17] || '',
+                _remote: true
+            });
+        }
+    }
+    
+    // Detectar nuevos registros que no están en localValidated
+    const localFolios = new Set(STATE.localValidated.map(r => r.folio));
+    const newRemoteRecords = remoteRecords.filter(r => r.folio && !localFolios.has(r.folio));
+    
+    if (newRemoteRecords.length > 0) {
+        console.log(`🆕 [SYNC] ${newRemoteRecords.length} nuevos registros de otros usuarios`);
+        
+        // Agregar nuevos registros remotos al estado local
+        STATE.localValidated = [...newRemoteRecords, ...STATE.localValidated];
+        
+        // Actualizar UI
+        renderValidatedTable();
+        updateTabBadges();
+        updateSummary();
+        
+        // Notificar al usuario
+        if (typeof showNotification === 'function') {
+            showNotification(`📥 ${newRemoteRecords.length} nuevo(s) despacho(s) de otros usuarios`, 'info');
+        }
+    }
+}
+
+/**
+ * Maneja conflictos de concurrencia (bloqueo optimista)
+ */
+function handleConcurrencyConflict(conflict) {
+    // Mostrar modal de conflicto al usuario
+    const message = `
+        <div style="padding: 15px;">
+            <h3 style="color: #e65100; margin-bottom: 10px;">⚠️ Conflicto de Edición</h3>
+            <p>El registro fue modificado por otro usuario mientras lo editabas.</p>
+            <p><strong>Tu versión:</strong> ${conflict.expected}</p>
+            <p><strong>Versión actual:</strong> ${conflict.actual}</p>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="resolveConflictKeepLocal()">
+                    Mantener mis cambios
+                </button>
+                <button class="btn btn-secondary" onclick="resolveConflictUseRemote()">
+                    Usar versión del servidor
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Guardar datos del conflicto para resolución
+    window._pendingConflict = conflict;
+    
+    // Mostrar en modal o notificación
+    if (typeof showNotification === 'function') {
+        showNotification('⚠️ Conflicto de edición detectado - Revisa los cambios', 'warning');
+    }
+    
+    console.warn('⚠️ Conflicto pendiente de resolución:', conflict);
+}
+
+/**
+ * Resuelve conflicto manteniendo cambios locales
+ */
+async function resolveConflictKeepLocal() {
+    const conflict = window._pendingConflict;
+    if (!conflict) return;
+    
+    // Forzar escritura con nueva versión
+    if (dispatchSyncManager) {
+        await dispatchSyncManager.pushImmediate(conflict.localData);
+    }
+    
+    window._pendingConflict = null;
+    showNotification('✅ Tus cambios han sido guardados', 'success');
+}
+
+/**
+ * Resuelve conflicto usando datos remotos
+ */
+function resolveConflictUseRemote() {
+    const conflict = window._pendingConflict;
+    if (!conflict) return;
+    
+    // Actualizar estado local con datos remotos
+    const index = STATE.localValidated.findIndex(r => r.orden === conflict.remoteData.orden);
+    if (index !== -1) {
+        STATE.localValidated[index] = conflict.remoteData;
+        saveLocalState();
+        renderValidatedTable();
+    }
+    
+    window._pendingConflict = null;
+    showNotification('✅ Datos actualizados desde el servidor', 'success');
 }
 
 function updateTabBadges() {

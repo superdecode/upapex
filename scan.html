@@ -4213,14 +4213,40 @@
                     return { success: true, synced: 0 };
                 }
 
-                return await this._doSync(showMessages);
+                return await this._doSync(showMessages, false);
             },
 
-            async _doSync(showMessages) {
+            async syncSlow(showMessages = true) {
+                if (this.inProgress) {
+                    if (showMessages) showNotification('⏳ Sincronización en progreso...', 'info');
+                    return { success: false };
+                }
+
+                if (!IS_ONLINE) {
+                    if (showMessages) showNotification('⚠️ Sin conexión a internet', 'warning');
+                    return { success: false };
+                }
+
+                if (!gapi?.client?.getToken()) {
+                    if (showMessages) showNotification('⚠️ No conectado a Google', 'warning');
+                    return { success: false };
+                }
+
+                if (PENDING_SYNC.length === 0) {
+                    this.updateUI(true);
+                    if (showMessages) showNotification('✅ Todo sincronizado', 'success');
+                    return { success: true, synced: 0 };
+                }
+
+                return await this._doSync(showMessages, true);
+            },
+
+            async _doSync(showMessages, slowMode = false) {
                 this.inProgress = true;
                 updateConnectionIndicator(true);
 
-                if (showMessages) showNotification('🔄 Sincronizando...', 'info');
+                const syncMessage = slowMode ? '⏱️ Sincronización lenta...' : '🔄 Sincronizando...';
+                if (showMessages) showNotification(syncMessage, 'info');
 
                 try {
                     // DEDUPLICACIÓN: Filtrar registros que ya fueron sincronizados
@@ -4255,18 +4281,77 @@
                         r.location, r.status, r.note, r.pallet, r.originLocation || ''
                     ]);
 
-                    console.log('📤 Intentando sincronizar con CONTROL DE CONCURRENCIA:');
+                    console.log(`📤 Intentando sincronizar con CONTROL DE CONCURRENCIA (${slowMode ? 'MODO LENTO' : 'MODO NORMAL'}):`);
                     console.log('  - SpreadsheetId:', CONFIG.SPREADSHEET_WRITE);
                     console.log('  - Hoja:', CONFIG.SHEET_NAME);
                     console.log('  - Registros:', values.length);
                     console.log('  - Primer registro:', values[0]);
 
-                    // ========== NUEVO: USAR CONTROL DE CONCURRENCIA ==========
-                    const response = await ConcurrencyControl.writeWithConcurrencyControl(
-                        CONFIG.SPREADSHEET_WRITE,
-                        CONFIG.SHEET_NAME,
-                        values
-                    );
+                    let response;
+                    if (slowMode) {
+                        // ========== MODO LENTO: SINCRONIZACIÓN REGISTRO POR REGISTRO ==========
+                        console.log('⏱️ [SLOW-SYNC] Iniciando sincronización lenta con delays entre registros...');
+                        let synced = 0;
+                        const failed = [];
+
+                        for (let i = 0; i < values.length; i++) {
+                            try {
+                                if (showMessages && i % 5 === 0) {
+                                    showNotification(`⏱️ Procesando registro ${i + 1} de ${values.length}...`, 'info');
+                                }
+
+                                const singleResponse = await ConcurrencyControl.writeWithConcurrencyControl(
+                                    CONFIG.SPREADSHEET_WRITE,
+                                    CONFIG.SHEET_NAME,
+                                    [values[i]]
+                                );
+
+                                if (singleResponse && singleResponse.success) {
+                                    synced++;
+                                    // Marcar este registro específico como sincronizado
+                                    await PersistenceManager.markAsSynced([recordsToSync[i]]);
+                                    const palletKey = DeduplicationManager.generatePalletKey(
+                                        recordsToSync[i].pallet,
+                                        recordsToSync[i].location
+                                    );
+                                    SYNCED_PALLETS.add(palletKey);
+                                } else {
+                                    failed.push(recordsToSync[i]);
+                                }
+
+                                // Delay de 2 segundos entre registros en modo lento
+                                if (i < values.length - 1) {
+                                    await new Promise(resolve => setTimeout(resolve, 2000));
+                                }
+                            } catch (err) {
+                                console.error(`❌ [SLOW-SYNC] Error en registro ${i + 1}:`, err);
+                                failed.push(recordsToSync[i]);
+                            }
+                        }
+
+                        DeduplicationManager.saveSyncedPallets();
+                        ProcessedBoxesManager.addSyncedRecords(recordsToSync.filter((_, i) => !failed.includes(recordsToSync[i])));
+
+                        PENDING_SYNC = await PersistenceManager.getPendingSync();
+                        this.updateUI(failed.length === 0);
+
+                        if (showMessages) {
+                            if (failed.length === 0) {
+                                showNotification(`✅ ${synced} registros sincronizados (modo lento)`, 'success');
+                            } else {
+                                showNotification(`⚠️ ${synced} OK, ${failed.length} con error`, 'warning');
+                            }
+                        }
+
+                        return { success: failed.length === 0, synced, failed: failed.length };
+                    } else {
+                        // ========== MODO NORMAL: USAR CONTROL DE CONCURRENCIA EN LOTE ==========
+                        response = await ConcurrencyControl.writeWithConcurrencyControl(
+                            CONFIG.SPREADSHEET_WRITE,
+                            CONFIG.SHEET_NAME,
+                            values
+                        );
+                    }
 
                     // HANDSHAKE: Validar respuesta con control de concurrencia
                     if (!response || !response.success || response.status !== 200) {
@@ -4556,6 +4641,9 @@
                                 <button class="btn btn-success btn-full" data-action="sync">
                                     🔄 Sincronizar Ahora
                                 </button>
+                                <button class="btn btn-warning btn-full" data-action="sync-slow" style="margin-top: 10px;">
+                                    ⏱️ Sincronización Lenta (más segura)
+                                </button>
                             ` : ''}
                             <button class="btn btn-secondary btn-full" data-action="close">
                                 Cerrar
@@ -4573,6 +4661,10 @@
                     if (e.target.dataset.action === 'sync') {
                         closePopup();
                         SyncManager.sync();
+                    }
+                    if (e.target.dataset.action === 'sync-slow') {
+                        closePopup();
+                        SyncManager.syncSlow();
                     }
                 });
             }
@@ -8037,7 +8129,7 @@
 
                 // Clasificar cajas por status
                 for (const row of boxes) {
-                    const status = row[6] || '';
+                    const status = String(row[6] || '');
                     const box = {
                         code: row[3],
                         scan1: row[3],
@@ -8053,8 +8145,8 @@
                         _timestamp: generateTimestamp(),
                         _status: 'draft',
                         _sessionId: adjustmentSessionId,
-                        _category: status.includes('OK') && !status.includes('BLOQUEADO') ? 'ok' :
-                                  status.includes('BLOQUEADO') ? 'blocked' : 'nowms',
+                        _category: status && status.includes('OK') && !status.includes('BLOQUEADO') ? 'ok' :
+                                  status && status.includes('BLOQUEADO') ? 'blocked' : 'nowms',
                         _palletId: palletCode
                     };
 
@@ -8062,11 +8154,11 @@
                     await PersistenceManager.saveDraftBox(box);
 
                     // Clasificar en RAM
-                    if (status.includes('OK') && !status.includes('BLOQUEADO')) {
+                    if (status && status.includes('OK') && !status.includes('BLOQUEADO')) {
                         STATE.pallets.ok.boxes.push(box);
-                    } else if (status.includes('BLOQUEADO')) {
+                    } else if (status && status.includes('BLOQUEADO')) {
                         STATE.pallets.blocked.boxes.push(box);
-                    } else if (status.includes('NO WMS')) {
+                    } else if (status && status.includes('NO WMS')) {
                         STATE.pallets.nowms.boxes.push(box);
                     }
                 }

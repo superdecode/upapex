@@ -143,10 +143,10 @@ class ConcurrencyControl {
                     console.error(`❌ [CONCURRENCY] Error en intento ${attempt}:`, error);
 
                     // Manejo seguro de error.message
-                    const errorMessage = error?.message || error?.result?.error?.message || '';
-                    const isRecoverable = errorMessage.includes('Verificación fallida') ||
-                                        errorMessage.includes('Integridad comprometida') ||
-                                        error.status === 429 || 
+                    const errorMessage = String(error?.message || error?.result?.error?.message || '');
+                    const isRecoverable = errorMessage && (errorMessage.includes('Verificación fallida') ||
+                                        errorMessage.includes('Integridad comprometida')) ||
+                                        error.status === 429 ||
                                         error.status === 503;
 
                     if (isRecoverable && attempt < this.maxRetries) {
@@ -840,15 +840,48 @@ class AdvancedSyncManager {
         try {
             // Verificar token antes de sincronizar
             await this.ensureValidToken();
-            return await this._doSync(showMessages);
+            return await this._doSync(showMessages, false);
         } catch (error) {
             // Si es error de autenticación, mostrar mensaje claro
-            if (error.message && (error.message.includes('token') || error.message.includes('autenticación') || error.message.includes('Google API'))) {
-                console.error('❌ Error de autenticación:', error.message);
+            const errorMsg = String(error?.message || '');
+            if (errorMsg && (errorMsg.includes('token') || errorMsg.includes('autenticación') || errorMsg.includes('Google API'))) {
+                console.error('❌ Error de autenticación:', errorMsg);
                 if (showMessages && typeof showNotification === 'function') {
-                    showNotification('❌ ' + error.message, 'error');
+                    showNotification('❌ ' + errorMsg, 'error');
                 }
-                return { success: false, message: error.message };
+                return { success: false, message: errorMsg };
+            }
+            throw error;
+        } finally {
+            this.inProgress = false;
+        }
+    }
+
+    /**
+     * Sincronización lenta (más segura, con delays entre registros)
+     */
+    async syncSlow(showMessages = true) {
+        if (this.inProgress) {
+            console.log('⚠️ Sincronización ya en progreso');
+            return { success: false, message: 'Sincronización en progreso' };
+        }
+
+        this.inProgress = true;
+        this.retryCount = 0;
+
+        try {
+            // Verificar token antes de sincronizar
+            await this.ensureValidToken();
+            return await this._doSync(showMessages, true);
+        } catch (error) {
+            // Si es error de autenticación, mostrar mensaje claro
+            const errorMsg = String(error?.message || '');
+            if (errorMsg && (errorMsg.includes('token') || errorMsg.includes('autenticación') || errorMsg.includes('Google API'))) {
+                console.error('❌ Error de autenticación:', errorMsg);
+                if (showMessages && typeof showNotification === 'function') {
+                    showNotification('❌ ' + errorMsg, 'error');
+                }
+                return { success: false, message: errorMsg };
             }
             throw error;
         } finally {
@@ -859,7 +892,7 @@ class AdvancedSyncManager {
     /**
      * Ejecuta la sincronización con control de concurrencia
      */
-    async _doSync(showMessages) {
+    async _doSync(showMessages, slowMode = false) {
         if (!gapi?.client?.getToken()) {
             if (showMessages && typeof showNotification === 'function') {
                 showNotification('⚠️ No conectado a Google', 'warning');
@@ -879,8 +912,9 @@ class AdvancedSyncManager {
         this.lastErrors = [];
 
         if (this.config.onSyncStart) this.config.onSyncStart();
+        const syncMessage = slowMode ? '⏱️ Sincronización lenta...' : '🔄 Sincronizando...';
         if (showMessages && typeof showNotification === 'function') {
-            showNotification('🔄 Sincronizando...', 'info');
+            showNotification(syncMessage, 'info');
         }
 
         try {
@@ -922,33 +956,95 @@ class AdvancedSyncManager {
                 return this._defaultFormat(r);
             });
 
-            console.log('📤 Sincronizando con CONTROL DE CONCURRENCIA:');
+            console.log(`📤 Sincronizando con CONTROL DE CONCURRENCIA (${slowMode ? 'MODO LENTO' : 'MODO NORMAL'}):`);
             console.log('  - SpreadsheetId:', this.config.spreadsheetId);
             console.log('  - Hoja:', this.config.sheetName);
             console.log('  - Registros:', values.length);
 
-            // Usar control de concurrencia
-            const response = await this.concurrencyControl.writeWithConcurrencyControl(
-                this.config.spreadsheetId,
-                this.config.sheetName,
-                values
-            );
+            let synced = 0;
+            let response;
 
-            if (!response || !response.success || response.status !== 200) {
-                throw new Error(`Escritura con control de concurrencia falló - Status: ${response?.status || 'desconocido'}`);
+            if (slowMode) {
+                // ========== MODO LENTO: SINCRONIZACIÓN REGISTRO POR REGISTRO ==========
+                console.log('⏱️ [SLOW-SYNC] Iniciando sincronización lenta con delays entre registros...');
+                const failed = [];
+                const slowSyncDelay = this.config.slowSyncDelay || 2000;
+
+                for (let i = 0; i < values.length; i++) {
+                    try {
+                        if (showMessages && i % 5 === 0 && typeof showNotification === 'function') {
+                            showNotification(`⏱️ Procesando registro ${i + 1} de ${values.length}...`, 'info');
+                        }
+
+                        const singleResponse = await this.concurrencyControl.writeWithConcurrencyControl(
+                            this.config.spreadsheetId,
+                            this.config.sheetName,
+                            [values[i]]
+                        );
+
+                        if (singleResponse && singleResponse.success) {
+                            synced++;
+                            // Marcar este registro específico como sincronizado
+                            await this.persistenceManager.markAsSynced([recordsToSync[i]]);
+                            const palletKey = this.deduplicationManager.generatePalletKey(
+                                recordsToSync[i].pallet,
+                                recordsToSync[i].location
+                            );
+                            this.deduplicationManager.syncedPallets.add(palletKey);
+                        } else {
+                            failed.push(recordsToSync[i]);
+                        }
+
+                        // Delay entre registros en modo lento
+                        if (i < values.length - 1) {
+                            await new Promise(resolve => setTimeout(resolve, slowSyncDelay));
+                        }
+                    } catch (err) {
+                        console.error(`❌ [SLOW-SYNC] Error en registro ${i + 1}:`, err);
+                        failed.push(recordsToSync[i]);
+                    }
+                }
+
+                this.deduplicationManager.saveSyncedPallets();
+                this.pendingSync = await this.persistenceManager.getPendingSync();
+                this.lastSyncTime = new Date();
+                this.retryCount = 0;
+                this.updateUI(failed.length === 0);
+
+                if (showMessages && typeof showNotification === 'function') {
+                    if (failed.length === 0) {
+                        showNotification(`✅ ${synced} registros sincronizados (modo lento)`, 'success');
+                    } else {
+                        showNotification(`⚠️ ${synced} OK, ${failed.length} con error`, 'warning');
+                    }
+                }
+
+                if (this.config.onSyncEnd) this.config.onSyncEnd();
+                return { success: failed.length === 0, synced, failed: failed.length };
+            } else {
+                // ========== MODO NORMAL: USAR CONTROL DE CONCURRENCIA EN LOTE ==========
+                response = await this.concurrencyControl.writeWithConcurrencyControl(
+                    this.config.spreadsheetId,
+                    this.config.sheetName,
+                    values
+                );
+
+                if (!response || !response.success || response.status !== 200) {
+                    throw new Error(`Escritura con control de concurrencia falló - Status: ${response?.status || 'desconocido'}`);
+                }
+
+                const updatedRows = response.updatedRows;
+
+                if (!updatedRows || updatedRows !== recordsToSync.length) {
+                    throw new Error(`Handshake fallido: Se enviaron ${recordsToSync.length} registros pero se confirmaron ${updatedRows || 0}`);
+                }
+
+                console.log('✅ HANDSHAKE CONFIRMADO:');
+                console.log('  - Registros confirmados:', updatedRows);
+                console.log('  - Filas escritas:', `${response.startRow}-${response.endRow}`);
+
+                synced = recordsToSync.length;
             }
-
-            const updatedRows = response.updatedRows;
-
-            if (!updatedRows || updatedRows !== recordsToSync.length) {
-                throw new Error(`Handshake fallido: Se enviaron ${recordsToSync.length} registros pero se confirmaron ${updatedRows || 0}`);
-            }
-
-            console.log('✅ HANDSHAKE CONFIRMADO:');
-            console.log('  - Registros confirmados:', updatedRows);
-            console.log('  - Filas escritas:', `${response.startRow}-${response.endRow}`);
-
-            const synced = recordsToSync.length;
             
             // Marcar como sincronizados
             await this.persistenceManager.markAsSynced(recordsToSync);
@@ -977,11 +1073,12 @@ class AdvancedSyncManager {
             console.error('❌ Error de sincronización:', e);
 
             // Manejo especial para errores de concurrencia
-            if (e.message && (
-                e.message.includes('Conflicto de concurrencia') ||
-                e.message.includes('Ya hay una operación de escritura en progreso') ||
-                e.message.includes('Verificación fallida') ||
-                e.message.includes('Integridad comprometida')
+            const errorMessage = String(e?.message || '');
+            if (errorMessage && (
+                errorMessage.includes('Conflicto de concurrencia') ||
+                errorMessage.includes('Ya hay una operación de escritura en progreso') ||
+                errorMessage.includes('Verificación fallida') ||
+                errorMessage.includes('Integridad comprometida')
             )) {
                 console.warn('⚠️ [CONCURRENCY] Error de concurrencia detectado');
                 console.warn('⚠️ [CONCURRENCY] Los datos permanecen en PENDING_SYNC para reintento');
@@ -1182,6 +1279,9 @@ class AdvancedSyncManager {
                         ${stats.pendingSync > 0 && stats.isOnline && stats.hasToken ? `
                             <button class="btn btn-primary" onclick="window.advancedSyncManager.sync(); this.closest('.popup-overlay').remove();">
                                 🔄 Sincronizar Ahora
+                            </button>
+                            <button class="btn btn-warning" onclick="window.advancedSyncManager.syncSlow(); this.closest('.popup-overlay').remove();" style="margin-top: 5px;">
+                                ⏱️ Sincronización Lenta (más segura)
                             </button>
                         ` : ''}
                         ${stats.pendingSync > 0 ? `

@@ -29,11 +29,12 @@ body {
     padding: 0;
 }
 
-.sidebar {
-    width: 200px;
-    background: #333;
+#validation .sidebar,
+.container .sidebar {
+    width: 220px !important;
+    background: #2d2d2d !important;
     color: white;
-    padding: 18px;
+    padding: 20px 15px !important;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -58,9 +59,9 @@ body {
 
 .main-content {
     flex: 1;
-    padding: 15px;
+    padding: 25px 30px;
     overflow-y: auto;
-    background: #f7f7f7;
+    background: #f5f5f5;
     width: 100%;
 }
 
@@ -68,24 +69,26 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
     flex-wrap: wrap;
     gap: 10px;
 }
 
 .header h1 {
     color: var(--primary);
-    font-size: 1.6em;
+    font-size: 1.8em;
+    font-weight: 700;
     flex: 1;
     margin: 0;
 }
 
 .card {
     background: white;
-    padding: 18px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 15px;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+    border: 1px solid #f0f0f0;
 }
 
 /* === SIDEBAR COMPONENTS === */
@@ -180,13 +183,14 @@ body {
 .summary-item.nowms { border-left: 3px solid var(--error); }
 .summary-item.total { border-left: 3px solid var(--primary); }
 
-/* === PROGRESS CARD (Orange Gradient - Original Design) === */
+/* === PROGRESS CARD (Orange Gradient - Reducido 30%) === */
 .progress-card {
-    background: linear-gradient(135deg, #ffa07a 0%, #ff8a52 100%);
+    background: linear-gradient(135deg, #ff9966 0%, #ff8a52 100%);
     color: white;
-    padding: 15px;
-    border-radius: 8px;
+    padding: 15px 18px;
+    border-radius: 10px;
     margin-bottom: 15px;
+    box-shadow: 0 3px 8px rgba(255, 136, 85, 0.25);
 }
 
 .progress-card.completed {
@@ -196,17 +200,19 @@ body {
 .progress-header {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 10px;
+    align-items: center;
+    margin-bottom: 12px;
 }
 
 .progress-obc-name {
-    font-size: 1.2em;
+    font-size: 1.3em;
     font-weight: 700;
 }
 
 .progress-percentage {
-    font-size: 2em;
+    font-size: 2em !important;
     font-weight: 800;
+    line-height: 1;
 }
 
 .progress-counts {
@@ -217,31 +223,35 @@ body {
 
 .progress-count-item {
     text-align: center;
+    flex: 1;
 }
 
 .progress-count-number {
-    font-size: 1.4em;
+    font-size: 1.5em;
     font-weight: 700;
+    display: block;
+    margin-bottom: 3px;
 }
 
 .progress-count-label {
     font-size: 0.7em;
     opacity: 0.85;
+    font-weight: 500;
 }
 
 .progress-bar-container {
-    background: rgba(0,0,0,0.25);
-    height: 10px;
-    border-radius: 20px;
+    background: rgba(0,0,0,0.2);
+    height: 8px;
+    border-radius: 15px;
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.3);
 }
 
 .progress-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #fff, #ffd966);
+    background: rgba(255,255,255,0.9);
     transition: width 0.5s;
-    box-shadow: 0 0 10px rgba(255,255,255,0.5);
+    box-shadow: 0 0 6px rgba(255,255,255,0.4);
+    border-radius: 15px;
 }
 
 .progress-bar-fill.completed {
@@ -299,11 +309,18 @@ body {
 }
 
 .scanner-input {
-    font-size: 1.6em !important;
+    font-size: 1.4em !important;
     text-transform: uppercase;
-    font-weight: bold;
+    font-weight: 600 !important;
     text-align: center;
-    background: #fff5ed !important;
+    background: #fef7f1 !important;
+    border: 2px solid #e0e0e0 !important;
+    letter-spacing: 1px;
+}
+
+.scanner-input:focus {
+    border-color: var(--primary) !important;
+    background: #fff !important;
 }
 
 .scanner-section {
@@ -317,39 +334,41 @@ body {
 }
 
 .btn-manual {
-    padding: 10px 15px;
-    background: var(--warning);
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.9em;
+    font-size: 0.95em;
     transition: all 0.2s;
     white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(255,152,0,0.25);
 }
 
 .btn-manual:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255,152,0,0.3);
+    box-shadow: 0 4px 12px rgba(255,152,0,0.35);
 }
 
 .btn-reconteo {
-    padding: 10px 15px;
-    background: #9c27b0;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.9em;
+    font-size: 0.95em;
     transition: all 0.2s;
     white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(156,39,176,0.25);
 }
 
 .btn-reconteo:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(156,39,176,0.3);
+    box-shadow: 0 4px 12px rgba(156,39,176,0.35);
 }
 
 /* === STATS === */
@@ -387,28 +406,38 @@ body {
 /* === LOGS === */
 .logs-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
 }
 
 .log-list {
-    max-height: 350px;
+    max-height: 400px;
     overflow-y: auto;
     list-style: none;
-    background: #fafafa;
-    padding: 10px;
-    border-radius: 8px;
+    background: white;
+    padding: 0;
+    border-radius: 0;
     counter-reset: log-counter;
 }
 
 .log-item {
     display: flex;
     gap: 8px;
-    padding: 8px;
-    margin-bottom: 6px;
+    padding: 12px 15px;
+    margin-bottom: 0;
     background: white;
-    border-radius: 4px;
+    border-radius: 0;
     border-left: 4px solid;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.2s;
+}
+
+.log-item:hover {
+    background: #fafafa;
+}
+
+.log-item:last-child {
+    border-bottom: none;
 }
 
 .log-item::before {
@@ -416,11 +445,12 @@ body {
     counter-increment: log-counter;
     font-weight: 700;
     min-width: 25px;
+    color: #666;
 }
 
-.log-ok { border-color: var(--success); }
+.log-ok { border-left-color: var(--success); }
 .log-ok::before { color: var(--success); }
-.log-reject { border-color: var(--error); }
+.log-reject { border-left-color: var(--error); }
 .log-reject::before { color: var(--error); }
 .log-info { flex: 1; }
 .log-code { font-weight: 600; }
@@ -429,20 +459,25 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.log-header-with-badge h3 {
+    font-size: 1.1em;
+    font-weight: 700;
+    margin: 0;
 }
 
 .log-count-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 36px;
-    height: 36px;
+    min-width: 32px;
+    height: 32px;
     padding: 0 10px;
     border-radius: 50%;
     font-weight: 700;
-    font-size: 1.1em;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    font-size: 1em;
 }
 
 .log-count-badge.ok {
@@ -459,39 +494,52 @@ body {
 .tab-bar {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 15px;
+    gap: 10px;
+    margin-bottom: 20px;
     align-items: center;
 }
 
 .tab {
-    padding: 8px 12px;
+    padding: 10px 18px;
     cursor: pointer;
-    border: 2px solid #ddd;
-    border-radius: 6px;
+    border: none;
+    border-radius: 8px;
     background: white;
     font-weight: 600;
+    font-size: 0.95em;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     gap: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+.tab:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
 }
 
 .tab.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, #ff6b3d 100%);
     color: white;
-    border-color: var(--primary);
+    box-shadow: 0 3px 8px rgba(237, 82, 36, 0.3);
 }
 
 .tab.completed {
-    background: var(--success) !important;
+    background: linear-gradient(135deg, var(--success) 0%, #45a049 100%) !important;
     color: white !important;
-    border-color: var(--success) !important;
+    box-shadow: 0 3px 8px rgba(76, 175, 80, 0.3) !important;
 }
 
 .tab.new-tab {
     background: linear-gradient(135deg, #ffb399, #ff9d7a);
     color: white;
+    animation: pulse-tab 2s infinite;
+}
+
+@keyframes pulse-tab {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.9; }
 }
 
 .tab-close {
