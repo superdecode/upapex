@@ -401,6 +401,191 @@
     gap: 8px;
 }
 
+/* ==================== FOLIO EDIT MODULE STYLES ==================== */
+
+.folio-modal-header {
+  background: #fbfbfb;
+  color: #f97316;
+  border-bottom: 1px solid #ffd8a8;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.folio-modal-title {
+  color: #f97316;
+  font-size: 1.3em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.folio-close-btn {
+  color: #f97316;
+  background: none;
+  border: none;
+  font-size: 1.8em;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+.folio-close-btn:hover {
+  background: rgba(249, 115, 22, 0.08);
+  color: #ea580c;
+}
+.folio-modal-body {
+  padding: 24px;
+}
+.folio-summary-card {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #ffd8a8;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.folio-summary-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+.folio-summary-label {
+  font-size: 0.7em;
+  font-weight: 600;
+  color: #f97316;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.folio-summary-folio {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: #f97316;
+  letter-spacing: 1px;
+}
+.folio-summary-data {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.folio-summary-item {
+  text-align: center;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+}
+.folio-summary-item-label {
+  font-size: 0.6em;
+  color: #f97316;
+  font-weight: 600;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.folio-summary-item-value {
+  font-size: 0.9em;
+  color: #1e293b;
+  font-weight: 500;
+}
+.folio-form-grid {
+  margin-bottom: 20px;
+}
+.folio-form-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.folio-form-label {
+  text-align: right;
+  font-size: 0.95em;
+  color: #475569;
+  font-weight: 600;
+}
+.folio-modal-footer {
+  background: #f8fafc;
+  padding: 20px 24px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.folio-save-btn {
+  padding: 10px 32px;
+  background: #f97316;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.95em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+  transition: all 0.2s;
+}
+.folio-save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+}
+.folio-save-btn:disabled {
+  background: linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+  box-shadow: none !important;
+}
+
+/* Resaltado de opciones actuales en dropdowns */
+select option[data-is-current="true"] {
+    background-color: #e8f5e9;
+    font-weight: 600;
+    color: #2e7d32;
+}
+
+/* Estilo para botón deshabilitado */
+.btn-primary:disabled,
+.btn-primary[disabled] {
+    background: #ccc !important;
+    cursor: not-allowed !important;
+    opacity: 0.5 !important;
+}
+
+/* Estilos interactivos para modal de edición de folio */
+#edit-folio-modal .form-select:hover {
+    border-color: #cbd5e1;
+}
+
+#edit-folio-modal .form-select:focus {
+    outline: none;
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+#edit-folio-modal #btn-save-folio-edit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+}
+
+#edit-folio-modal #btn-save-folio-edit:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+#edit-folio-modal #btn-save-folio-edit:disabled {
+    background: linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%) !important;
+    cursor: not-allowed !important;
+    opacity: 0.6 !important;
+    box-shadow: none !important;
+}
+
+#edit-folio-modal .btn-secondary:hover {
+    background: #e2e8f0;
+    transform: translateY(-1px);
+}
+
 /* Modal Styles (track.html inspired) */
 .modal-overlay {
     position: fixed;

@@ -571,6 +571,76 @@ function toggleGoogleConnection() {
     }
 }
 
+async function handleLogout() {
+    const confirmLogout = confirm('¿Cerrar sesión?\n\nSe limpiarán todos los datos en caché.');
+    if (!confirmLogout) return;
+
+    try {
+        // Detener sincronización
+        if (window.syncManager) {
+            await window.syncManager.stopSync();
+        }
+
+        // Detener sincronización automática del historial
+        if (HistoryIndexedDBManager && HistoryIndexedDBManager.intervalId) {
+            clearInterval(HistoryIndexedDBManager.intervalId);
+            HistoryIndexedDBManager.intervalId = null;
+        }
+
+        // Limpiar caché procesado
+        if (window.processedCacheManager && window.processedCacheManager.clearCache) {
+            await window.processedCacheManager.clearCache();
+        }
+
+        // Limpiar datos locales
+        BD_CODES.clear();
+        OBC_MAP.clear();
+        OBC_TOTALS.clear();
+        OBC_INFO.clear();
+        HISTORY.clear();
+        PREREC_DATA.clear();
+        STATE = {
+            activeOBC: null,
+            tabs: {},
+            closedTabs: {},
+            sessionStats: { total: 0, valid: 0, invalid: 0 },
+            currentLocation: '',
+            pendingLocationValidation: null
+        };
+
+        // Cerrar sesión de Google
+        if (AuthManager.isAuthenticated()) {
+            AuthManager.logout();
+        }
+
+        // Limpiar localStorage de la app (excepto alias)
+        const alias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('validador_') && !key.includes('alias')) {
+                localStorage.removeItem(key);
+            }
+        });
+        if (alias && USER_EMAIL) {
+            localStorage.setItem(`wms_alias_${USER_EMAIL}`, alias);
+        }
+
+        // Reiniciar variables
+        CURRENT_USER = '';
+        USER_EMAIL = '';
+        USER_GOOGLE_NAME = '';
+        LAST_BD_UPDATE = null;
+
+        showLoginScreen();
+        showNotification('✅ Sesión cerrada y caché limpiada', 'success');
+    } catch (error) {
+        console.error('Error during logout:', error);
+        showNotification('⚠️ Error al cerrar sesión, intenta de nuevo', 'warning');
+    }
+}
+
+// Hacer disponible globalmente
+window.handleLogout = handleLogout;
+
 // ==================== GESTIÓN DE ALIAS DE USUARIO ====================
 async function getUserProfile() {
     try {
@@ -668,22 +738,36 @@ function changeUserAlias() {
 }
 
 function updateUserFooter() {
-    const avatarEl = document.getElementById('user-avatar');
-    const nameEl = document.getElementById('user-name-display');
-    const authBtn = document.getElementById('sidebar-auth-btn');
+    // Usar el sistema compartido de Avatar si está disponible
+    if (window.AvatarSystem) {
+        window.AvatarSystem.updateDisplay(
+            CURRENT_USER,
+            USER_EMAIL,
+            {
+                onClick: changeUserAlias,
+                title: USER_EMAIL || 'No conectado'
+            }
+        );
+    } else {
+        // Fallback si el sistema compartido no está disponible
+        const avatarEl = document.getElementById('user-avatar');
+        const nameEl = document.getElementById('user-name-display');
 
-    if (avatarEl) {
-        avatarEl.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
-        avatarEl.title = USER_EMAIL || 'No conectado';
-        avatarEl.style.cursor = 'pointer';
-        avatarEl.onclick = changeUserAlias;
+        if (avatarEl) {
+            avatarEl.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
+            avatarEl.title = USER_EMAIL || 'No conectado';
+            avatarEl.style.cursor = 'pointer';
+            avatarEl.onclick = changeUserAlias;
+        }
+        if (nameEl) {
+            nameEl.textContent = CURRENT_USER || 'No conectado';
+            nameEl.title = `Click para cambiar alias\n${USER_EMAIL}`;
+            nameEl.style.cursor = 'pointer';
+            nameEl.onclick = changeUserAlias;
+        }
     }
-    if (nameEl) {
-        nameEl.textContent = CURRENT_USER || 'No conectado';
-        nameEl.title = `Click para cambiar alias\n${USER_EMAIL}`;
-        nameEl.style.cursor = 'pointer';
-        nameEl.onclick = changeUserAlias;
-    }
+
+    const authBtn = document.getElementById('sidebar-auth-btn');
     if (authBtn) authBtn.textContent = gapi?.client?.getToken() ? '🚪 Salir' : '🔗 Conectar';
 
     updateConnectionIndicator();
@@ -1353,7 +1437,23 @@ async function addOBC() {
         return;
     }
 
+    // Verificar si la base de datos está cargada
+    if (BD_CODES.size === 0 || OBC_TOTALS.size === 0) {
+        showNotification('⚠️ Base de datos no cargada. Conecta y recarga la BD primero', 'warning');
+        return;
+    }
+
+    // Verificar si la OBC existe en la base de datos
     const total = OBC_TOTALS.get(obcName) || 0;
+    const obcInfo = OBC_INFO.get(obcName);
+
+    if (total === 0 && !obcInfo) {
+        const confirmCreate = confirm(`⚠️ La orden ${obcName} no se encontró en la base de datos.\n\n¿Deseas crearla de todos modos?\n\nNota: No se podrá verificar el total de cajas esperadas.`);
+        if (!confirmCreate) {
+            return;
+        }
+    }
+
     let validatedCount = 0;
     for (const [key, data] of HISTORY.entries()) {
         if (data.obc === obcName) validatedCount++;

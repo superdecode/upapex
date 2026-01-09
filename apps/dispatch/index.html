@@ -738,6 +738,119 @@
         </div>
     </div>
 
+    <!-- MODAL DE EDICIÓN DE FOLIO -->
+    <div class="modal-overlay" id="edit-folio-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header folio-modal-header">
+                <div class="modal-title folio-modal-title">
+                    <span>⚙️</span>
+                    <span>Ajustar Folio de Carga</span>
+                </div>
+                <button class="modal-close folio-close-btn" onclick="closeEditFolioModal()">×</button>
+            </div>
+            <div class="modal-body folio-modal-body">
+                <!-- HEADER: TARJETA DE RESUMEN COMPACTA -->
+                <div class="folio-summary-card">
+                    <div class="folio-summary-header">
+                        <div class="folio-summary-label">📋 Folio Actual</div>
+                        <div class="folio-summary-folio" id="edit-folio-current">-</div>
+                    </div>
+                    <div class="folio-summary-data">
+                        <div class="folio-summary-item">
+                            <div class="folio-summary-item-label">👤 Conductor</div>
+                            <div class="folio-summary-item-value" id="edit-folio-conductor-display">-</div>
+                        </div>
+                        <div class="folio-summary-item">
+                            <div class="folio-summary-item-label">🚛 Placas</div>
+                            <div class="folio-summary-item-value" id="edit-folio-unidad-display">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CUERPO: FORMULARIO DE SELECCIÓN (GRID DE DOS COLUMNAS) -->
+                <div class="folio-form-grid">
+                    <div class="folio-form-row">
+                        <label class="folio-form-label">Nuevo Conductor:</label>
+                        <select id="edit-folio-conductor" class="form-select" onchange="updateEditFolioUnidades(); validateFolioChanges();" style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em; transition: all 0.2s;">
+                            <option value="">Seleccionar conductor...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="folio-form-row">
+                        <label class="folio-form-label">Nueva Unidad:</label>
+                        <select id="edit-folio-unidad" class="form-select" onchange="updateEditFolioNumber(); validateFolioChanges();" style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em; transition: all 0.2s;">
+                            <option value="">Seleccionar unidad...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="folio-form-row">
+                        <label class="folio-form-label">Nuevo Folio:</label>
+                        <select id="edit-folio-number" class="form-select" onchange="validateFolioChanges();" style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em; transition: all 0.2s;">
+                            <option value="">Seleccionar folio...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- BOTONES DE ACCIÓN -->
+            <div class="modal-footer folio-modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditFolioModal()" style="padding: 10px 24px; font-weight: 600; border-radius: 8px; font-size: 0.95em;">Cancelar</button>
+                <button id="btn-save-folio-edit" class="btn btn-primary folio-save-btn" onclick="executeEditFolio()">💾 Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIRMACIÓN DE MERGE DE FOLIOS -->
+    <div class="modal-overlay" id="merge-folio-modal">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>⚠️</span>
+                    <span>Confirmar Combinación de Folios</span>
+                </div>
+                <button class="modal-close" onclick="closeMergeFolioModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-bottom: 20px;">
+                    <div style="font-weight: 700; color: #856404; margin-bottom: 8px;">⚠️ ADVERTENCIA: Posible Duplicidad</div>
+                    <div style="color: #856404; font-size: 0.95em;">
+                        El folio seleccionado ya existe con información diferente. Si continúas, se combinarán las órdenes de ambos folios.
+                    </div>
+                </div>
+                <div class="confirm-summary">
+                    <div class="confirm-row">
+                        <span class="confirm-label">📋 Folio Origen:</span>
+                        <span class="confirm-value" id="merge-folio-source">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">📦 Órdenes a Transferir:</span>
+                        <span class="confirm-value" id="merge-folio-orders-count">-</span>
+                    </div>
+                    <div class="confirm-row highlight">
+                        <span class="confirm-label">📋 Folio Destino:</span>
+                        <span class="confirm-value" id="merge-folio-target">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">👤 Conductor Destino:</span>
+                        <span class="confirm-value" id="merge-folio-conductor">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">🚛 Unidad Destino:</span>
+                        <span class="confirm-value" id="merge-folio-unidad">-</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">📦 Órdenes Existentes:</span>
+                        <span class="confirm-value" id="merge-folio-existing-orders">-</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button class="btn btn-primary" onclick="confirmMergeFolio()">✅ Confirmar Combinación</button>
+                <button class="btn btn-secondary" onclick="closeMergeFolioModal()">❌ Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DE CONFIRMACIÓN DE DESPACHO -->
     <div class="modal-overlay" id="confirm-dispatch-modal">
         <div class="modal-content" style="max-width: 600px;">
@@ -947,7 +1060,10 @@
     <script src="../../shared/js/sync-manager.js?v=3.0.5"></script>
     <script src="dispatch-sync-manager.js?v=1.0.0"></script>
 
+    <!-- Folio Edit Module -->
+    <script src="folio-edit-module.js?v=1.2.0"></script>
+
     <!-- App Script -->
-    <script src="app.js?v=3.4.0"></script>
+    <script src="app.js?v=3.5.1"></script>
 </body>
 </html>

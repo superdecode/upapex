@@ -215,14 +215,16 @@ function startRealtimeSync() {
         clearInterval(STATE.syncInterval);
     }
     
-    // Sync every 10 seconds for real-time collaboration
+    // Sync every 30 seconds for real-time collaboration
     STATE.syncInterval = setInterval(async () => {
         if (STATE.isOnline && !STATE.syncInProgress) {
+            console.log('🔄 [AUTO-SYNC] Sincronización automática cada 30s...');
             await syncTransactionalData();
         }
-    }, 10000);
+    }, 30000); // 30 segundos
     
     // Initial sync
+    console.log('🔄 [AUTO-SYNC] Iniciando sincronización automática (intervalo: 30s)');
     syncTransactionalData();
 }
 
@@ -2233,10 +2235,47 @@ async function reloadData() {
         showNotification('⚠️ No estás autenticado', 'warning');
         return;
     }
+    
+    console.log('🔄 [RELOAD] Iniciando recarga completa de datos...');
+    
     showPreloader('Recargando datos...', 'Descargando información actualizada');
-    await loadAllData();
-    hidePreloader();
-    showNotification('✅ Datos actualizados', 'success');
+    
+    try {
+        // OPTIMIZACIÓN: Invalidar caché del sync manager
+        if (dispatchSyncManager) {
+            console.log('🗑️ [RELOAD] Invalidando caché del sync manager...');
+            dispatchSyncManager.cache.operational.data = null;
+            dispatchSyncManager.cache.operational.timestamp = 0;
+            dispatchSyncManager.cache.operational.version = 0;
+            
+            dispatchSyncManager.cache.reference.data = null;
+            dispatchSyncManager.cache.reference.timestamp = 0;
+        }
+        
+        // OPTIMIZACIÓN: Limpiar rangos de carga para forzar recarga
+        if (typeof clearLoadedRanges === 'function') {
+            console.log('🗑️ [RELOAD] Limpiando rangos de carga...');
+            clearLoadedRanges();
+        }
+        
+        // OPTIMIZACIÓN: Forzar recarga completa
+        console.log('📥 [RELOAD] Ejecutando loadAllData...');
+        await loadAllData();
+        
+        // OPTIMIZACIÓN: Forzar sincronización transaccional
+        console.log('🔄 [RELOAD] Forzando sincronización transaccional...');
+        await syncTransactionalData();
+        
+        hidePreloader();
+        showNotification('✅ Datos actualizados correctamente', 'success');
+        
+        console.log('✅ [RELOAD] Recarga completa finalizada');
+        
+    } catch (error) {
+        console.error('❌ [RELOAD] Error en recarga de datos:', error);
+        hidePreloader();
+        showNotification('❌ Error al recargar datos: ' + error.message, 'error');
+    }
 }
 
 function updateBdInfo() {
@@ -7790,6 +7829,12 @@ function renderFoliosTable() {
                 <td>${folio.unidad || '<span class="empty-cell">N/A</span>'}</td>
                 <td onclick="event.stopPropagation()">
                     <div style="display: flex; gap: 8px; justify-content: center;">
+                        <button class="btn-action edit" onclick="event.stopPropagation(); openEditFolioModal('${folio.folio}')" title="Ajustar Folio">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
                         <button class="btn-action print" onclick="event.stopPropagation(); printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9"></polyline>
@@ -8320,6 +8365,12 @@ function renderFoliosManagementTable() {
                 <td>${folio.unidad || '<span class="empty-cell">N/A</span>'}</td>
                 <td onclick="event.stopPropagation()">
                     <div style="display: flex; gap: 8px; justify-content: center;">
+                        <button class="btn-action edit" onclick="event.stopPropagation(); openEditFolioModal('${folio.folio}')" title="Ajustar Folio">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
                         <button class="btn-action print" onclick="event.stopPropagation(); printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9"></polyline>
