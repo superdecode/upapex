@@ -443,8 +443,380 @@ Los registros creados **antes** de estas correcciones pueden tener:
 
 ---
 
+---
+
+## ✅ 5. Corrección de Formato de Fecha (CRÍTICO)
+
+### Problema Identificado
+- Las fechas se guardaban en formatos inconsistentes: `toLocaleDateString('es-ES')`, `toLocaleTimeString('es-ES')`
+- Esto generaba formatos variables según el navegador/sistema operativo
+- En cancelaciones: formato DD-MM-YYYY (con guiones)
+- En despachos: formato dependiente del locale del navegador
+- **Resultado**: Fechas ilegibles, timestamps numéricos, formatos inconsistentes en BD
+
+### Solución Aplicada
+
+#### A. Nueva Función de Formato Consistente
+**Archivo**: `app.js` líneas 4176-4193
+
+```javascript
+/**
+ * Formatea fecha y hora de manera consistente para BD
+ * @param {Date} date - Fecha a formatear
+ * @returns {Object} { fecha: string, hora: string } en formato DD/MM/YYYY y HH:MM
+ */
+function formatDateTimeForDB(date = new Date()) {
+    const d = date instanceof Date ? date : new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    
+    return {
+        fecha: `${day}/${month}/${year}`,
+        hora: `${hours}:${minutes}`
+    };
+}
+```
+
+✅ **Resultado**: Formato estándar **DD/MM/YYYY** y **HH:MM** en todos los registros
+
+#### B. Aplicación en Cancelaciones
+**Archivo**: `app.js` líneas 4267-4270
+
+**ANTES**:
+```javascript
+const now = new Date();
+const fecha = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
+const hora = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+```
+
+**DESPUÉS**:
+```javascript
+const now = new Date();
+const { fecha, hora } = formatDateTimeForDB(now);
+```
+
+#### C. Aplicación en Despachos
+**Archivo**: `app.js` líneas 6121-6122
+
+**ANTES**:
+```javascript
+const timestamp = new Date();
+fecha: timestamp.toLocaleDateString('es-ES'),
+hora: timestamp.toLocaleTimeString('es-ES'),
+```
+
+**DESPUÉS**:
+```javascript
+const timestamp = new Date();
+const { fecha, hora } = formatDateTimeForDB(timestamp);
+```
+
+#### D. Validación en SyncManager
+**Archivo**: `app.js` líneas 6218-6241 y `sync-config.js` líneas 33-67
+
+Agregada validación automática antes de enviar a BD:
+```javascript
+// Validación final de formato antes de enviar
+if (fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
+    console.warn(`⚠️ Formato de fecha inconsistente detectado: ${fecha}, corrigiendo...`);
+    const d = new Date(record.timestamp || Date.now());
+    fecha = formatDateTimeForDB(d).fecha;
+}
+
+if (hora && !/^\d{2}:\d{2}$/.test(hora)) {
+    console.warn(`⚠️ Formato de hora inconsistente detectado: ${hora}, corrigiendo...`);
+    const d = new Date(record.timestamp || Date.now());
+    hora = formatDateTimeForDB(d).hora;
+}
+```
+
+✅ **Resultado**: 
+- Formato consistente **DD/MM/YYYY** en Columna B
+- Formato consistente **HH:MM** en Columna C
+- Validación automática antes de escritura
+- Corrección automática de formatos incorrectos
+
+---
+
+## ✅ 6. Corrección de Mapeo Usuario/Operador en Cancelaciones (CRÍTICO)
+
+### Problema Identificado
+- En `executeConfirmCancelOrder`, el campo `operador` recibía el valor de `CURRENT_USER`
+- **ERROR**: El usuario que cancela iba a Columna P (Operador) en lugar de Columna D (Usuario)
+- **ERROR**: La Columna D (Usuario) quedaba vacía
+- **Resultado**: Datos incorrectos, imposible saber quién canceló la orden
+
+### Solución Aplicada
+**Archivo**: `app.js` líneas 4272-4303
+
+**ANTES**:
+```javascript
+const validationRecord = {
+    orden: STATE.currentOrder,
+    destino: orderData.recipient || '',
+    horario: orderData.expectedArrival || '',
+    totalCajas: orderData.totalCajas || 0,
+    cantidadDespachar: 0,
+    porcentajeSurtido: 0,
+    estatus: 'Cancelada',
+    calidad: 'N/A',
+    operador: CURRENT_USER || USER_GOOGLE_NAME || '',  // ❌ INCORRECTO
+    unidad: '',
+    folio: '',
+    nota: 'Orden cancelada',
+    timestamp: now.toISOString(),
+    fecha: fecha,
+    hora: hora,
+    codigo: orderData.referenceNo || '',
+    track: orderData.trackingCode || ''
+};
+```
+
+**DESPUÉS**:
+```javascript
+// CORRECCIÓN CRÍTICA: usuario (D) != operador (P)
+const validationRecord = {
+    folio: '',                                      // A: Folio (vacío para canceladas)
+    timestamp: now.toISOString(),                   // Timestamp ISO para referencia interna
+    fecha: fecha,                                   // B: Fecha (DD/MM/YYYY)
+    hora: hora,                                     // C: Hora (HH:MM)
+    usuario: CURRENT_USER || USER_GOOGLE_NAME || '', // D: Usuario (quien cancela) ✅
+    orden: STATE.currentOrder,                      // E: Orden
+    destino: orderData.recipient || '',             // F: Destino
+    horario: orderData.expectedArrival || '',       // G: Horario
+    codigo: orderData.trackingCode || '',           // H: Código
+    codigo2: orderData.referenceNo || '',           // I: Código 2
+    estatus: 'Cancelada',                           // J: Estatus
+    tarea: 'Cancelación',                           // K: Tarea
+    estatus2: 'N/A',                                // L: Estatus2
+    cantInicial: orderData.totalCajas || 0,         // M: Cant Inicial
+    cantDespacho: 0,                                // N: Cant Despacho (0 para canceladas)
+    incidencias: '',                                // O: Incidencias
+    operador: '',                                   // P: Operador (vacío para canceladas) ✅
+    conductor: '',                                  // Alias para operador
+    unidad: '',                                     // Q: Unidad (vacía para canceladas)
+    observaciones: 'Orden cancelada',               // R: Observaciones
+    notaDespacho: 'Orden cancelada',                // Alias para observaciones
+    // Campos adicionales para compatibilidad UI
+    totalCajas: orderData.totalCajas || 0,
+    cantidadDespachar: 0,
+    porcentajeSurtido: 0,
+    calidad: 'N/A',
+    nota: 'Orden cancelada',
+    track: orderData.trackingCode || ''
+};
+```
+
+✅ **Resultado**: 
+- **Columna D (Usuario)**: Contiene el nombre de quien cancela ✅
+- **Columna P (Operador)**: Vacía para cancelaciones ✅
+- Todos los campos mapeados correctamente a sus columnas
+- Lectura posterior funciona correctamente
+
+---
+
+## ✅ 7. Validación de Schema Antes de Escritura (CRÍTICO)
+
+### Problema Identificado
+- No había validación de tipos de datos antes de enviar a BD
+- Posibles desplazamientos de columnas por datos mal formateados
+- Sin verificación de campos requeridos
+- Sin validación de formatos de fecha/hora
+
+### Solución Aplicada
+
+#### A. Nueva Función de Validación
+**Archivo**: `app.js` líneas 4195-4249
+
+```javascript
+/**
+ * Valida la estructura del registro antes de sincronizar
+ * @param {Object} record - Registro a validar
+ * @returns {Object} { valid: boolean, errors: string[] }
+ */
+function validateDispatchRecord(record) {
+    const errors = [];
+    const requiredFields = ['orden', 'estatus', 'timestamp'];
+    
+    // Validar campos requeridos
+    requiredFields.forEach(field => {
+        if (!record[field]) {
+            errors.push(`Campo requerido faltante: ${field}`);
+        }
+    });
+    
+    // Validar tipos de datos críticos
+    if (record.cantInicial !== undefined && typeof record.cantInicial !== 'number') {
+        errors.push(`cantInicial debe ser número, recibido: ${typeof record.cantInicial}`);
+    }
+    if (record.cantDespacho !== undefined && typeof record.cantDespacho !== 'number') {
+        errors.push(`cantDespacho debe ser número, recibido: ${typeof record.cantDespacho}`);
+    }
+    
+    // Validar formato de fecha
+    if (record.fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(record.fecha)) {
+        errors.push(`Formato de fecha inválido: ${record.fecha} (esperado: DD/MM/YYYY)`);
+    }
+    
+    // Validar formato de hora
+    if (record.hora && !/^\d{2}:\d{2}$/.test(record.hora)) {
+        errors.push(`Formato de hora inválido: ${record.hora} (esperado: HH:MM)`);
+    }
+    
+    // Log de validación
+    if (errors.length > 0) {
+        console.error('❌ [VALIDACIÓN] Errores encontrados:', errors);
+        console.error('❌ [VALIDACIÓN] Registro:', record);
+    } else {
+        console.log('✅ [VALIDACIÓN] Registro válido:', {
+            orden: record.orden,
+            usuario: record.usuario,
+            operador: record.operador,
+            fecha: record.fecha,
+            hora: record.hora,
+            cantInicial: record.cantInicial,
+            cantDespacho: record.cantDespacho
+        });
+    }
+    
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}
+```
+
+#### B. Aplicación en Cancelaciones
+**Archivo**: `app.js` líneas 4305-4311
+
+```javascript
+// VALIDACIÓN antes de agregar a sync
+const validation = validateDispatchRecord(validationRecord);
+if (!validation.valid) {
+    console.error('❌ Registro de cancelación inválido:', validation.errors);
+    showNotification('❌ Error de validación: ' + validation.errors.join(', '), 'error');
+    return;
+}
+```
+
+#### C. Aplicación en Despachos
+**Archivo**: `app.js` líneas 6159-6165
+
+```javascript
+// VALIDACIÓN antes de guardar
+const recordValidation = validateDispatchRecord(dispatchRecord);
+if (!recordValidation.valid) {
+    console.error('❌ Registro de despacho inválido:', recordValidation.errors);
+    showNotification('❌ Error de validación: ' + recordValidation.errors.join(', '), 'error');
+    return;
+}
+```
+
+✅ **Resultado**: 
+- Validación automática antes de cada escritura
+- Detección temprana de errores de formato
+- Prevención de desplazamientos de columnas
+- Logs detallados para debugging
+- Notificación al usuario si hay errores
+
+---
+
+## 🔍 Logging Mejorado para Auditoría
+
+### Logs en Formateo para BD
+**Archivo**: `app.js` líneas 6243-6252 y `sync-config.js` líneas 69-78
+
+```javascript
+console.log('📝 [SYNC] Formateando registro para BD:', {
+    orden: record.orden,
+    fecha: fecha,
+    hora: hora,
+    usuario: record.usuario || '',
+    operador: record.operador || '',
+    cantInicial: record.cantInicial || '',
+    cantDespacho: record.cantDespacho || ''
+});
+```
+
+### Logs en Validación
+```javascript
+console.log('✅ [VALIDACIÓN] Registro válido:', {
+    orden: record.orden,
+    usuario: record.usuario,
+    operador: record.operador,
+    fecha: record.fecha,
+    hora: record.hora,
+    cantInicial: record.cantInicial,
+    cantDespacho: record.cantDespacho
+});
+```
+
+---
+
+## 📊 Mapeo de Columnas Corregido
+
+### Estructura Final de Columnas (A-R)
+
+| Col | Campo | Descripción | Ejemplo |
+|-----|-------|-------------|---------|
+| A | Folio | Folio de carga | `20260109-01` |
+| B | Fecha | Fecha operación | `09/01/2026` ✅ |
+| C | Hora | Hora operación | `10:30` ✅ |
+| D | Usuario | Quien procesa/cancela | `Juan Pérez` ✅ |
+| E | Orden | Número OBC | `OBC-12345` |
+| F | Destino | Cliente destino | `Cliente A` |
+| G | Horario | Fecha arribo esperado | `10/01/2026` |
+| H | Código | Tracking code | `TRK-001` |
+| I | Código 2 | Reference No | `REF-001` |
+| J | Estatus | Estado orden | `Procesado/Cancelada` |
+| K | Tarea | Tipo operación | `Despacho/Cancelación` |
+| L | Estatus2 | Estado secundario | `Completado/N/A` |
+| M | Cant Inicial | Total cajas OBC | `100` |
+| N | Cant Despacho | Cantidad real despachada | `95` ✅ |
+| O | Incidencias | Notas incidencias | (vacío) ✅ |
+| P | Operador | Conductor (solo despachos) | `Pedro López` ✅ |
+| Q | Unidad | Placas vehículo | `ABC-123` |
+| R | Observaciones | Notas generales | `Orden cancelada` |
+
+---
+
+## 🎯 Verificación de Correcciones Nuevas
+
+### 1. Verificar Formato de Fecha
+```javascript
+// En consola del navegador
+const testDate = new Date();
+formatDateTimeForDB(testDate);
+// Debe retornar: { fecha: "09/01/2026", hora: "10:30" }
+```
+
+### 2. Verificar Mapeo en Cancelaciones
+1. Cancelar una orden
+2. Verificar en consola:
+```javascript
+// Debe mostrar:
+✅ [VALIDACIÓN] Registro válido: {
+    orden: "OBC-12345",
+    usuario: "Juan Pérez",  // ✅ Columna D
+    operador: "",           // ✅ Columna P (vacío)
+    fecha: "09/01/2026",    // ✅ Formato correcto
+    hora: "10:30"           // ✅ Formato correcto
+}
+```
+
+### 3. Verificar Validación de Schema
+1. Intentar crear un registro con datos inválidos
+2. Debe mostrar error y NO permitir guardar
+3. Verificar en consola los errores detectados
+
+---
+
 ## 📅 Fecha de Aplicación
-**8 de enero de 2026 - 10:40 AM**
+**9 de enero de 2026 - 10:00 AM** (Actualización)
+**8 de enero de 2026 - 10:40 AM** (Inicial)
 
 ## 👤 Aplicado por
 Cascade AI Assistant - Desarrollador Senior

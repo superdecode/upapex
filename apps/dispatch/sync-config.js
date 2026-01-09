@@ -31,13 +31,56 @@ async function initAdvancedSync() {
             // Formato de registro para Dispatch
             // Columnas: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código2, Estatus, Tarea, Estatus2, CantInicial, CantDespacho, Incidencias, Operador, Unidad, Observaciones
             formatRecord: (record) => {
-                const d = record?.timestamp ? new Date(record.timestamp) : new Date();
-                const fecha = record?.fecha || d.toLocaleDateString('es-MX');
-                const hora = record?.hora || d.toLocaleTimeString('es-MX', { hour12: false });
+                // Usar fecha/hora del record si existen, sino generar con formato consistente
+                let fecha = record?.fecha || '';
+                let hora = record?.hora || '';
+                
+                // Si no hay fecha/hora, generar desde timestamp con formato consistente DD/MM/YYYY y HH:MM
+                if ((!fecha || !hora) && record?.timestamp) {
+                    const d = new Date(record.timestamp);
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const year = d.getFullYear();
+                    const hours = String(d.getHours()).padStart(2, '0');
+                    const minutes = String(d.getMinutes()).padStart(2, '0');
+                    
+                    fecha = fecha || `${day}/${month}/${year}`;
+                    hora = hora || `${hours}:${minutes}`;
+                }
+                
+                // Validación final de formato antes de enviar
+                if (fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
+                    console.warn(`⚠️ [SYNC-CONFIG] Formato de fecha inconsistente detectado: ${fecha}, corrigiendo...`);
+                    const d = new Date(record.timestamp || Date.now());
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const year = d.getFullYear();
+                    fecha = `${day}/${month}/${year}`;
+                }
+                
+                if (hora && !/^\d{2}:\d{2}$/.test(hora)) {
+                    console.warn(`⚠️ [SYNC-CONFIG] Formato de hora inconsistente detectado: ${hora}, corrigiendo...`);
+                    const d = new Date(record.timestamp || Date.now());
+                    const hours = String(d.getHours()).padStart(2, '0');
+                    const minutes = String(d.getMinutes()).padStart(2, '0');
+                    hora = `${hours}:${minutes}`;
+                }
+                
+                // Log de escritura para auditoría
+                console.log('📝 [SYNC-CONFIG] Formateando registro para BD:', {
+                    orden: record.orden,
+                    fecha: fecha,
+                    hora: hora,
+                    usuario: record.usuario || '',
+                    operador: record.operador || '',
+                    cantInicial: record.cantInicial || '',
+                    cantDespacho: record.cantDespacho || ''
+                });
+                
                 return [
                     record.folio || '',              // A: Folio
-                    fecha,                           // B: Fecha
-                    hora,                            // C: Hora
+                    fecha,                           // B: Fecha (DD/MM/YYYY)
+                    hora,                            // C: Hora (HH:MM)
                     record.usuario || '',            // D: Usuario
                     record.orden || '',              // E: Orden
                     record.destino || '',            // F: Destino

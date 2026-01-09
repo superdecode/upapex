@@ -4174,6 +4174,81 @@ function closeCancelOrderModal() {
 }
 
 /**
+ * Formatea fecha y hora de manera consistente para BD
+ * @param {Date} date - Fecha a formatear
+ * @returns {Object} { fecha: string, hora: string } en formato DD/MM/YYYY y HH:MM
+ */
+function formatDateTimeForDB(date = new Date()) {
+    const d = date instanceof Date ? date : new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    
+    return {
+        fecha: `${day}/${month}/${year}`,
+        hora: `${hours}:${minutes}`
+    };
+}
+
+/**
+ * Valida la estructura del registro antes de sincronizar
+ * @param {Object} record - Registro a validar
+ * @returns {Object} { valid: boolean, errors: string[] }
+ */
+function validateDispatchRecord(record) {
+    const errors = [];
+    const requiredFields = ['orden', 'estatus', 'timestamp'];
+    
+    // Validar campos requeridos
+    requiredFields.forEach(field => {
+        if (!record[field]) {
+            errors.push(`Campo requerido faltante: ${field}`);
+        }
+    });
+    
+    // Validar tipos de datos críticos
+    if (record.cantInicial !== undefined && typeof record.cantInicial !== 'number') {
+        errors.push(`cantInicial debe ser número, recibido: ${typeof record.cantInicial}`);
+    }
+    if (record.cantDespacho !== undefined && typeof record.cantDespacho !== 'number') {
+        errors.push(`cantDespacho debe ser número, recibido: ${typeof record.cantDespacho}`);
+    }
+    
+    // Validar formato de fecha
+    if (record.fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(record.fecha)) {
+        errors.push(`Formato de fecha inválido: ${record.fecha} (esperado: DD/MM/YYYY)`);
+    }
+    
+    // Validar formato de hora
+    if (record.hora && !/^\d{2}:\d{2}$/.test(record.hora)) {
+        errors.push(`Formato de hora inválido: ${record.hora} (esperado: HH:MM)`);
+    }
+    
+    // Log de validación
+    if (errors.length > 0) {
+        console.error('❌ [VALIDACIÓN] Errores encontrados:', errors);
+        console.error('❌ [VALIDACIÓN] Registro:', record);
+    } else {
+        console.log('✅ [VALIDACIÓN] Registro válido:', {
+            orden: record.orden,
+            usuario: record.usuario,
+            operador: record.operador,
+            fecha: record.fecha,
+            hora: record.hora,
+            cantInicial: record.cantInicial,
+            cantDespacho: record.cantDespacho
+        });
+    }
+    
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}
+
+/**
  * Execute order cancellation
  */
 async function executeConfirmCancelOrder() {
@@ -4192,29 +4267,48 @@ async function executeConfirmCancelOrder() {
     try {
         // Get current date and time for validation record
         const now = new Date();
-        const fecha = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
-        const hora = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const { fecha, hora } = formatDateTimeForDB(now);
 
         // Prepare validation record for cancelled order
+        // CORRECCIÓN CRÍTICA: usuario (D) != operador (P)
         const validationRecord = {
-            orden: STATE.currentOrder,
-            destino: orderData.recipient || '',
-            horario: orderData.expectedArrival || '',
+            folio: '',                                      // A: Folio (vacío para canceladas)
+            timestamp: now.toISOString(),                   // Timestamp ISO para referencia interna
+            fecha: fecha,                                   // B: Fecha (DD/MM/YYYY)
+            hora: hora,                                     // C: Hora (HH:MM)
+            usuario: CURRENT_USER || USER_GOOGLE_NAME || '', // D: Usuario (quien cancela)
+            orden: STATE.currentOrder,                      // E: Orden
+            destino: orderData.recipient || '',             // F: Destino
+            horario: orderData.expectedArrival || '',       // G: Horario
+            codigo: orderData.trackingCode || '',           // H: Código
+            codigo2: orderData.referenceNo || '',           // I: Código 2
+            estatus: 'Cancelada',                           // J: Estatus
+            tarea: 'Cancelación',                           // K: Tarea
+            estatus2: 'N/A',                                // L: Estatus2
+            cantInicial: orderData.totalCajas || 0,         // M: Cant Inicial
+            cantDespacho: 0,                                // N: Cant Despacho (0 para canceladas)
+            incidencias: '',                                // O: Incidencias
+            operador: '',                                   // P: Operador (vacío para canceladas)
+            conductor: '',                                  // Alias para operador
+            unidad: '',                                     // Q: Unidad (vacía para canceladas)
+            observaciones: 'Orden cancelada',               // R: Observaciones
+            notaDespacho: 'Orden cancelada',                // Alias para observaciones
+            // Campos adicionales para compatibilidad UI
             totalCajas: orderData.totalCajas || 0,
             cantidadDespachar: 0,
             porcentajeSurtido: 0,
-            estatus: 'Cancelada',
             calidad: 'N/A',
-            operador: CURRENT_USER || USER_GOOGLE_NAME || '',
-            unidad: '',
-            folio: '',
             nota: 'Orden cancelada',
-            timestamp: now.toISOString(),
-            fecha: fecha,
-            hora: hora,
-            codigo: orderData.referenceNo || '',
             track: orderData.trackingCode || ''
         };
+        
+        // VALIDACIÓN antes de agregar a sync
+        const validation = validateDispatchRecord(validationRecord);
+        if (!validation.valid) {
+            console.error('❌ Registro de cancelación inválido:', validation.errors);
+            showNotification('❌ Error de validación: ' + validation.errors.join(', '), 'error');
+            return;
+        }
 
         // Add to local validated
         STATE.localValidated.push(validationRecord);
@@ -5989,9 +6083,9 @@ function closeConfirmDispatch() {
 
 async function executeConfirmDispatch() {
     // Validate edit operation (check online status)
-    const validation = validateEditOperation(STATE.currentOrder, 'dispatch');
-    if (!validation.allowed) {
-        if (validation.reason === 'offline') {
+    const editValidation = validateEditOperation(STATE.currentOrder, 'dispatch');
+    if (!editValidation.allowed) {
+        if (editValidation.reason === 'offline') {
             showNotification('❌ Sin conexión - No se pueden realizar cambios', 'error');
             closeConfirmDispatch();
             return;
@@ -6025,6 +6119,7 @@ async function executeConfirmDispatch() {
     }
 
     const timestamp = new Date();
+    const { fecha, hora } = formatDateTimeForDB(timestamp);
 
     // Marcar el folio de carga como utilizado
     markFolioAsUsed(operador, unidad, folioCarga);
@@ -6034,30 +6129,40 @@ async function executeConfirmDispatch() {
 
     // Estructura para Google Sheets: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Cant Inicial, Cant Despacho, Incidencias, Operador, Unidad, Observaciones
     const dispatchRecord = {
-        folio: folio,
-        timestamp: timestamp.toISOString(),
-        fecha: timestamp.toLocaleDateString('es-ES'),
-        hora: timestamp.toLocaleTimeString('es-ES'),
-        usuario: CURRENT_USER,
-        orden: STATE.currentOrder,
-        destino: orderData.recipient || '',
-        horario: orderData.expectedArrival || '',
-        codigo: orderData.trackingCode || '',
-        codigo2: orderData.referenceNo || '',
-        estatus: 'Procesado',
-        tarea: 'Despacho',
-        estatus2: 'Completado',
-        cantInicial: totalCajas,  // M: Cant Inicial (from OBC, read-only)
-        cantDespacho: cantidadDespacharNum,  // N: Cant Despacho (manual input)
-        incidencias: '',  // O: Incidencias (NO generar automáticamente)
-        operador: operador,  // P: Operador
-        unidad: unidad,  // Q: Unidad
-        observaciones: notaDespacho,  // R: Observaciones
+        folio: folio,                           // A: Folio
+        timestamp: timestamp.toISOString(),     // Timestamp ISO para referencia interna
+        fecha: fecha,                           // B: Fecha (DD/MM/YYYY formato consistente)
+        hora: hora,                             // C: Hora (HH:MM formato consistente)
+        usuario: CURRENT_USER,                  // D: Usuario
+        orden: STATE.currentOrder,              // E: Orden
+        destino: orderData.recipient || '',     // F: Destino
+        horario: orderData.expectedArrival || '', // G: Horario
+        codigo: orderData.trackingCode || '',   // H: Código
+        codigo2: orderData.referenceNo || '',   // I: Código 2
+        estatus: 'Procesado',                   // J: Estatus
+        tarea: 'Despacho',                      // K: Tarea
+        estatus2: 'Completado',                 // L: Estatus2
+        cantInicial: totalCajas,                // M: Cant Inicial (from OBC, read-only)
+        cantDespacho: cantidadDespacharNum,     // N: Cant Despacho (manual input)
+        incidencias: '',                        // O: Incidencias (NO generar automáticamente)
+        operador: operador,                     // P: Operador (conductor)
+        conductor: operador,                    // Alias para operador
+        unidad: unidad,                         // Q: Unidad
+        observaciones: notaDespacho,            // R: Observaciones
+        notaDespacho: notaDespacho,             // Alias para observaciones
         // Datos adicionales para UI
         cantidadDespachar: cantidadDespacharNum,
         totalCajas: totalCajas,
         qc: Object.keys(qcData).length > 0 ? qcData : null
     };
+    
+    // VALIDACIÓN antes de guardar
+    const recordValidation = validateDispatchRecord(dispatchRecord);
+    if (!recordValidation.valid) {
+        console.error('❌ Registro de despacho inválido:', recordValidation.errors);
+        showNotification('❌ Error de validación: ' + recordValidation.errors.join(', '), 'error');
+        return;
+    }
 
     console.log('📝 DISPATCH RECORD CREADO:', {
         orden: STATE.currentOrder,
@@ -6111,28 +6216,60 @@ async function initSyncManager() {
         autoSyncInterval: 45000,
         storageKey: 'dispatch_pending_sync',
         formatRecord: (record) => {
-            const d = record?.timestamp ? new Date(record.timestamp) : new Date();
-            const fecha = record?.fecha || d.toLocaleDateString('es-MX');
-            const hora = record?.hora || d.toLocaleTimeString('es-MX', { hour12: false });
+            // Usar fecha/hora del record si existen, sino generar con formato consistente
+            let fecha = record?.fecha || '';
+            let hora = record?.hora || '';
+            
+            // Si no hay fecha/hora, generar desde timestamp con formato consistente
+            if ((!fecha || !hora) && record?.timestamp) {
+                const formatted = formatDateTimeForDB(new Date(record.timestamp));
+                fecha = fecha || formatted.fecha;
+                hora = hora || formatted.hora;
+            }
+            
+            // Validación final de formato antes de enviar
+            if (fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
+                console.warn(`⚠️ Formato de fecha inconsistente detectado: ${fecha}, corrigiendo...`);
+                const d = new Date(record.timestamp || Date.now());
+                fecha = formatDateTimeForDB(d).fecha;
+            }
+            
+            if (hora && !/^\d{2}:\d{2}$/.test(hora)) {
+                console.warn(`⚠️ Formato de hora inconsistente detectado: ${hora}, corrigiendo...`);
+                const d = new Date(record.timestamp || Date.now());
+                hora = formatDateTimeForDB(d).hora;
+            }
+            
+            // Log de escritura para auditoría
+            console.log('📝 [SYNC] Formateando registro para BD:', {
+                orden: record.orden,
+                fecha: fecha,
+                hora: hora,
+                usuario: record.usuario || '',
+                operador: record.operador || '',
+                cantInicial: record.cantInicial || '',
+                cantDespacho: record.cantDespacho || ''
+            });
+            
             return [
-                record.folio || '',
-                fecha,
-                hora,
-                record.usuario || '',
-                record.orden || '',
-                record.destino || '',
-                record.horario || '',
-                record.codigo || '',
-                record.codigo2 || '',
-                record.estatus || '',
-                record.tarea || '',
-                record.estatus2 || '',
-                record.cantInicial || '',
-                record.cantDespacho || '',
-                record.incidencias || '',
-                record.operador || '',
-                record.unidad || '',
-                record.observaciones || ''
+                record.folio || '',              // A: Folio
+                fecha,                           // B: Fecha (DD/MM/YYYY)
+                hora,                            // C: Hora (HH:MM)
+                record.usuario || '',            // D: Usuario
+                record.orden || '',              // E: Orden
+                record.destino || '',            // F: Destino
+                record.horario || '',            // G: Horario
+                record.codigo || '',             // H: Código
+                record.codigo2 || '',            // I: Código 2
+                record.estatus || '',            // J: Estatus
+                record.tarea || '',              // K: Tarea
+                record.estatus2 || '',           // L: Estatus2
+                record.cantInicial || '',        // M: Cant Inicial
+                record.cantDespacho || '',       // N: Cant Despacho
+                record.incidencias || '',        // O: Incidencias
+                record.operador || '',           // P: Operador
+                record.unidad || '',             // Q: Unidad
+                record.observaciones || ''       // R: Observaciones
             ];
         },
         onSyncStart: () => {
