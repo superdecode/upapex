@@ -237,39 +237,21 @@ const HistoryIndexedDBManager = {
         await this.saveToIndexedDB();
     }
 };
-
-// ==================== SYNC MANAGER ====================
 // Usar el módulo compartido SyncManager
 let syncManager = null;
 
-function initSyncManager() {
-    syncManager = new SyncManager({
-        spreadsheetId: SPREADSHEET_WRITE,
-        sheetName: 'Val3',
-        autoSyncInterval: 3600000,
-        storageKey: 'wms_validador_pending_sync',
-        appName: 'Validador',
-        appIcon: '🎯',
-        formatRecord: (record) => {
-            const log = record.log || record;
-            return [
-                log.date || '',
-                log.timestamp || '',
-                log.user || '',
-                log.obc || '',
-                log.raw || '',
-                log.code || '',
-                log.reason || '',
-                log.location || '',
-                log.note || ''
-            ];
-        },
-        onSyncStart: () => updateConnectionIndicator(true),
-        onSyncEnd: () => updateConnectionIndicator(false),
-        onStatusChange: (stats) => updateSummaryStats(stats)
-    });
-    window.syncManager = syncManager;
-    syncManager.init();
+async function initSyncManager() {
+    // Inicializar Advanced Sync Manager
+    await initAdvancedSync();
+    syncManager = window.syncManager;
+    
+    // Actualizar estadísticas iniciales
+    if (syncManager) {
+        const stats = getValidadorSyncStats();
+        if (stats) {
+            updateSummaryStats(stats);
+        }
+    }
 }
 
 // Actualizar estadísticas del resumen
@@ -280,6 +262,37 @@ function updateSummaryStats(stats) {
         badge.textContent = stats?.pendingSync || 0;
         badge.style.display = (stats?.pendingSync > 0) ? 'inline-block' : 'none';
     }
+}
+
+// Actualizar resumen global de la sesión
+function updateGlobalSummary() {
+    let totalValidated = 0;
+    let totalRejected = 0;
+    let totalExpected = 0;
+
+    // Calcular totales de todas las órdenes activas
+    Object.keys(STATE.tabs).forEach(obc => {
+        const tab = STATE.tabs[obc];
+        const total = OBC_TOTALS.get(obc) || 0;
+
+        totalValidated += tab.validations.length;
+        totalRejected += tab.rejections.length;
+        totalExpected += total;
+    });
+
+    const totalPending = Math.max(0, totalExpected - totalValidated);
+    const grandTotal = totalValidated + totalRejected;
+
+    // Actualizar UI
+    const validatedEl = document.getElementById('summary-validated');
+    const pendingEl = document.getElementById('summary-pending');
+    const rejectedEl = document.getElementById('summary-rejected');
+    const totalEl = document.getElementById('summary-total');
+
+    if (validatedEl) validatedEl.textContent = totalValidated;
+    if (pendingEl) pendingEl.textContent = totalPending;
+    if (rejectedEl) rejectedEl.textContent = totalRejected;
+    if (totalEl) totalEl.textContent = grandTotal;
 }
 
 // Helper para agregar a la cola de sync (compatibilidad)
@@ -318,7 +331,26 @@ window.storage = {
         try {
             localStorage.setItem(key, value);
         } catch (e) {
-            console.error(`Error setting ${key}:`, e);
+            if (e.name === 'QuotaExceededError') {
+                console.warn(`⚠️ LocalStorage lleno. Limpiando datos antiguos para ${key}...`);
+                // Intentar limpiar datos antiguos excepto los críticos
+                const criticalKeys = ['wms_validador_state', 'wms_validador_bd'];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const storageKey = localStorage.key(i);
+                    if (storageKey && !criticalKeys.includes(storageKey) && !storageKey.startsWith('wms_')) {
+                        localStorage.removeItem(storageKey);
+                    }
+                }
+                // Reintentar guardar
+                try {
+                    localStorage.setItem(key, value);
+                    console.log(`✅ Datos guardados después de limpieza`);
+                } catch (retryError) {
+                    console.error(`❌ No se pudo guardar ${key} incluso después de limpieza:`, retryError);
+                }
+            } else {
+                console.error(`Error setting ${key}:`, e);
+            }
         }
     }
 };
@@ -411,7 +443,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadPrerecData();
     setupListeners();
     setupConnectionMonitor();
-    initSyncManager();
+    await initSyncManager();
     renderValidation();
     
     // Debug mode: bypass Google auth
@@ -720,8 +752,8 @@ async function loadDatabase() {
             }
         }
 
-        // Cargar códigos
-        const sheets = ['BD', 'Outbound_出库单', 'Sheet1'];
+        // Cargar códigos solo de la hoja BD principal
+        const sheets = ['BD'];
         for (const sheet of sheets) {
             try {
                 const codesRes = await gapi.client.sheets.spreadsheets.values.get({
@@ -746,7 +778,7 @@ async function loadDatabase() {
             }
         }
 
-        // Cargar historial
+        // Cargar historial desde la hoja de validaciones
         try {
             const histRes = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: SPREADSHEET_WRITE,
@@ -997,6 +1029,7 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
 
     renderValidation();
     updateSidebar();
+    updateGlobalSummary();
     playSound('ok');
     flashInput('success');
 
@@ -1031,6 +1064,7 @@ async function handleRejection(reason, raw, code, obc) {
     playSound('error');
     flashInput('error');
     renderValidation();
+    updateGlobalSummary();
 
     if (syncManager) syncManager.sync(false);
 }
@@ -1248,6 +1282,7 @@ function renderValidation() {
     }
 
     updateSidebar();
+    updateGlobalSummary();
 }
 
 function updateSidebar() {
@@ -1294,6 +1329,18 @@ function closeTab(obc) {
     renderValidation();
     saveState();
     showNotification(`Orden ${obc} cerrada`, 'success');
+}
+
+function createNewOBC(obcName) {
+    STATE.tabs[obcName] = {
+        location: '',
+        validations: [],
+        rejections: [],
+        completed: false
+    };
+    switchOBC(obcName);
+    updateGlobalSummary();
+    showNotification(`✅ Orden ${obcName} creada`, 'success');
 }
 
 async function addOBC() {

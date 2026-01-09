@@ -1291,7 +1291,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize sync manager if available
     if (typeof initSyncManager === 'function') {
         setupConnectionMonitoring();
-        initSyncManager();
+        await initSyncManager();
     }
     
     initSidebarComponent();
@@ -1300,22 +1300,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initSidebarComponent() {
-    // Inicializar SidebarComponent con configuración de dispatch
-    window.sidebarComponent = new SidebarComponent({
-        ...SidebarComponent.presets.dispatch,
-        containerId: 'sidebar',
-        syncManager: window.syncManager,
-        onReloadBD: reloadData,
-        onLogout: handleLogout,
-        onToggleConnection: toggleConnection,
-        buttons: [
-            { label: '🚀 Iniciar Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
-            { label: '📋 Gestión de Folios', onClick: 'showFoliosManagementView()', class: 'sidebar-btn-secondary' },
-            { label: '📥 Exportar CSV', onClick: 'exportData()', class: 'sidebar-btn-secondary' }
-        ]
-    });
+    // Verificar que SidebarComponent esté disponible
+    if (typeof SidebarComponent === 'undefined') {
+        console.warn('⚠️ SidebarComponent no está disponible, omitiendo inicialización');
+        return;
+    }
+    
+    try {
+        // Inicializar SidebarComponent con configuración de dispatch
+        window.sidebarComponent = new SidebarComponent({
+            ...SidebarComponent.presets.dispatch,
+            containerId: 'sidebar',
+            syncManager: window.syncManager,
+            onReloadBD: reloadData,
+            onLogout: handleLogout,
+            onToggleConnection: toggleConnection,
+            buttons: [
+                { label: '🚀 Iniciar Despacho', onClick: 'showSearchPanel()', class: 'sidebar-btn-primary' },
+                { label: '📋 Gestión de Folios', onClick: 'showFoliosManagementView()', class: 'sidebar-btn-secondary' },
+                { label: '📥 Exportar CSV', onClick: 'exportData()', class: 'sidebar-btn-secondary' }
+            ]
+        });
 
-    window.sidebarComponent.render();
+        window.sidebarComponent.render();
+    } catch (error) {
+        console.error('❌ Error inicializando SidebarComponent:', error);
+    }
 }
 
 function setupEventListeners() {
@@ -1597,7 +1607,7 @@ function handleLogin() {
         
         // Initialize sync manager if not already initialized
         if (!window.syncManager) {
-            initSyncManager();
+            await initSyncManager();
         }
 
         document.getElementById('login-screen').classList.add('hidden');
@@ -5649,6 +5659,7 @@ async function saveValidatedOrderChanges(orden) {
             // Update the status to cancelled
             STATE.localValidated[recordIndex].estatus = 'Cancelada';
             STATE.localValidated[recordIndex].cantidadDespachar = 0;
+            STATE.localValidated[recordIndex].cantDespacho = 0;  // FIXED: Also update cantDespacho (Columna N)
             STATE.localValidated[recordIndex].conductor = '';
             STATE.localValidated[recordIndex].unidad = '';
             STATE.localValidated[recordIndex].folio = '';
@@ -5793,8 +5804,8 @@ async function saveValidatedOrderChanges(orden) {
         showNotification('✅ Cambios guardados exitosamente', 'success');
 
         // Trigger sync if available
-        if (window.syncManager && typeof window.syncManager.syncData === 'function') {
-            await window.syncManager.syncData();
+        if (window.syncManager) {
+            await syncPendingData();
         }
 
         // Update validated table
@@ -5990,7 +6001,7 @@ async function executeConfirmDispatch() {
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
     const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
-    const cantidadDespachar = parseInt(document.getElementById('modal-cantidad-despachar')?.value) || 0;
+    const cantidadDespachar = parseInt(document.getElementById('cantidad-despachar')?.value) || 0;  // FIXED: Use correct ID 'cantidad-despachar' instead of 'modal-cantidad-despachar'
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
 
     // Cerrar modal de confirmación
@@ -6061,7 +6072,7 @@ async function executeConfirmDispatch() {
     STATE.localValidated.unshift(dispatchRecord);
     saveLocalState();
 
-    // Agregar a la cola de sync usando el módulo compartido
+    // Agregar a la cola de sync usando SyncManager legacy
     addToDispatchSync(dispatchRecord);
 
     // Intentar sincronizar si hay conexión
@@ -6085,60 +6096,70 @@ async function executeConfirmDispatch() {
     document.getElementById('modal-unidad').value = '';
 }
 
-// ==================== SYNC MANAGEMENT ====================
-// Usar el módulo compartido SyncManager
-let syncManager = null;
+async function initSyncManager() {
+    // Inicializar SyncManager legacy (append-based)
+    if (typeof SyncManager === 'undefined') {
+        console.error('❌ SyncManager no está disponible (sync-manager.js no cargó)');
+        return;
+    }
 
-function initSyncManager() {
-    syncManager = new SyncManager({
+    const syncConfig = {
         spreadsheetId: CONFIG.SPREADSHEET_WRITE,
         sheetName: 'BD',
-        autoSyncInterval: 30000,
-        storageKey: 'dispatch_pending_sync',
-        appName: 'Despacho',
+        appName: 'Dispatch',
         appIcon: '🚚',
-        // Estructura: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Cant Inicial, Cant Despacho, Incidencias, Operador, Unidad, Observaciones
+        autoSyncInterval: 45000,
+        storageKey: 'dispatch_pending_sync',
         formatRecord: (record) => {
-            const formattedArray = [
+            const d = record?.timestamp ? new Date(record.timestamp) : new Date();
+            const fecha = record?.fecha || d.toLocaleDateString('es-MX');
+            const hora = record?.hora || d.toLocaleTimeString('es-MX', { hour12: false });
+            return [
                 record.folio || '',
-                record.fecha || '',
-                record.hora || '',
+                fecha,
+                hora,
                 record.usuario || '',
                 record.orden || '',
                 record.destino || '',
                 record.horario || '',
-                record.codigo || record.trackingCode || '',
-                record.codigo2 || record.referenceNo || '',
-                record.estatus || 'Procesado',
-                record.tarea || 'Despacho',
-                record.estatus2 || 'Completado',
-                record.cantInicial || record.totalCajas || 0,  // M: Cant Inicial (from OBC)
-                record.cantDespacho || record.cantidadDespachar || 0,  // N: Cant Despacho (manual input)
-                record.incidencias || '',  // O: Incidencias
-                record.operador || '',  // P: Operador
-                record.unidad || '',  // Q: Unidad
-                record.observaciones || record.notaDespacho || record.nota || ''  // R: Observaciones
+                record.codigo || '',
+                record.codigo2 || '',
+                record.estatus || '',
+                record.tarea || '',
+                record.estatus2 || '',
+                record.cantInicial || '',
+                record.cantDespacho || '',
+                record.incidencias || '',
+                record.operador || '',
+                record.unidad || '',
+                record.observaciones || ''
             ];
-            
-            console.log('💾 FORMATO PARA BD (A-R):', {
-                orden: record.orden,
-                'M-cantInicial': formattedArray[12],
-                'N-cantDespacho': formattedArray[13],
-                'O-incidencias': formattedArray[14],
-                'P-operador': formattedArray[15],
-                'Q-unidad': formattedArray[16],
-                'R-observaciones': formattedArray[17]
-            });
-            
-            return formattedArray;
         },
-        onStatusChange: () => {
-            updateSummary();
-            updateTabBadges();
+        onSyncStart: () => {
+            if (typeof updateConnectionIndicator === 'function') {
+                updateConnectionIndicator(true);
+            }
+        },
+        onSyncEnd: () => {
+            if (typeof updateConnectionIndicator === 'function') {
+                updateConnectionIndicator(false);
+            }
         }
-    });
-    window.syncManager = syncManager;
+    };
+
+    syncManager = new SyncManager(syncConfig);
     syncManager.init();
+    window.syncManager = syncManager;
+
+    // Actualizar badge inicial
+    const stats = syncManager.getStats();
+    const badge = document.getElementById('pending-badge');
+    if (badge && stats.pendingSync > 0) {
+        badge.textContent = stats.pendingSync;
+        badge.style.display = 'inline-block';
+    } else if (badge) {
+        badge.style.display = 'none';
+    }
 }
 
 function updateTabBadges() {

@@ -42,21 +42,44 @@ const AuthManager = {
             });
             this.gapiInited = true;
             
-            // Inicializar Google Identity Services
-            if (typeof google !== 'undefined' && google.accounts) {
-                this.tokenClient = google.accounts.oauth2.initTokenClient({
-                    client_id: this.CLIENT_ID,
-                    scope: this.SCOPES,
-                    callback: '',
-                });
-                this.gisInited = true;
-                console.log('✅ AuthManager: Google Identity Services initialized');
-            } else {
-                console.error('❌ AuthManager: Google Identity Services not loaded');
-            }
+            // Esperar a que Google Identity Services esté disponible
+            await this.waitForGIS();
+            
         } catch (error) {
             console.error('❌ AuthManager: Error initializing GAPI:', error);
         }
+    },
+
+    /**
+     * Esperar a que Google Identity Services esté disponible
+     */
+    async waitForGIS() {
+        return new Promise((resolve, reject) => {
+            let attempts = 0;
+            const maxAttempts = 50; // 5 segundos máximo
+            
+            const checkGIS = () => {
+                if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                    // Google Identity Services está disponible
+                    this.tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: this.CLIENT_ID,
+                        scope: this.SCOPES,
+                        callback: '',
+                    });
+                    this.gisInited = true;
+                    console.log('✅ AuthManager: Google Identity Services initialized');
+                    resolve();
+                } else if (attempts < maxAttempts) {
+                    attempts++;
+                    setTimeout(checkGIS, 100);
+                } else {
+                    console.error('❌ AuthManager: Timeout waiting for Google Identity Services');
+                    reject(new Error('Google Identity Services not available'));
+                }
+            };
+            
+            checkGIS();
+        });
     },
 
     /**

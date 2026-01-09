@@ -15,12 +15,20 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="../../shared/js/debug-mode.js"></script>
-    <script src="../../shared/js/auth-manager.js"></script>
+    <script src="../../shared/js/auth-manager.js?v=3.0.1"></script>
     <script src="../../shared/js/wms-utils.js"></script>
-    <script src="../../shared/js/sync-manager.js"></script>
+    
+    <!-- Advanced Sync System -->
+    <script src="../../shared/js/sync-utils.js?v=3.0.3"></script>
+    <script src="../../shared/js/processed-cache-manager.js?v=3.0.3"></script>
+    <script src="../../shared/js/advanced-sync-manager.js?v=3.0.3"></script>
+    
     <script src="../../shared/js/sidebar-component.js"></script>
     <script src="../../shared/js/avatar-system.js"></script>
     <script src="../../shared/js/location-validator-ui.js"></script>
+    
+    <!-- Sync Configuration -->
+    <script src="sync-config.js?v=3.0.3"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -74,7 +82,7 @@
                 <!-- Resumen Global -->
                 <div class="global-summary-section" id="global-summary-section">
                     <div class="summary-title">📊 Resumen de Sesión</div>
-                    <div class="summary-grid">
+                    <div class="summary-grid vertical">
                         <div class="summary-item validated">
                             <span class="summary-icon">✅</span>
                             <span class="summary-value" id="summary-validated">0</span>
@@ -559,6 +567,6 @@
     </div>
     <!-- End MAIN APP -->
 
-    <script src="app.js"></script>
+    <script src="app.js?v=3.0.1"></script>
 </body>
 </html>

@@ -514,9 +514,9 @@ const UnifiedModule = {
             STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
             if (syncManager) {
-                syncManager.addToQueue(records);
+                await addPalletToQueue(records, records[0]?.pallet, records[0]?.location);
                 if (checkOnlineStatus() && gapi?.client?.getToken()) {
-                    await syncManager.sync();
+                    await syncInventoryData(true);
                 }
             }
 
@@ -589,7 +589,8 @@ function initializeSidebar() {
                     ]
                 },
                 buttons: [
-                    { label: '➕ Nuevo', onClick: 'GlobalTabs.createTab()', class: 'sidebar-btn-primary' }
+                    { label: '➕ Nuevo', onClick: 'GlobalTabs.createTab()', class: 'sidebar-btn-primary' },
+                    { label: '📋 Resumen', onClick: 'showAllRecordsModal()', class: 'sidebar-btn-secondary' }
                 ],
                 onReloadBD: refreshInventory,
                 onLogout: handleLogout,
@@ -675,6 +676,9 @@ function renderFallbackSidebar() {
             <button class="sidebar-btn sidebar-btn-primary" onclick="GlobalTabs.createTab()">
                 ➕ Nuevo
             </button>
+            <button class="sidebar-btn sidebar-btn-secondary" onclick="showAllRecordsModal()">
+                📋 Resumen
+            </button>
         </div>
 
         <div class="user-footer">
@@ -759,13 +763,9 @@ function tryRestoreSession() {
                     await getUserProfile();
                     await loadInventory();
 
-                    syncManager = new SyncManager({
-                        spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-                        sheetName: CONFIG.SHEET_NAME,
-                        storageKey: 'wms_inventory_pending_sync'
-                    });
-                    syncManager.init();
-                    window.syncManager = syncManager;
+                    // Inicializar Advanced Sync Manager
+                    await initAdvancedSync();
+                    syncManager = window.syncManager; // Referencia al advanced sync manager
 
                     document.getElementById('login-screen').classList.add('hidden');
                     document.getElementById('main-app').classList.remove('hidden');
@@ -822,13 +822,9 @@ function handleLogin() {
         await getUserProfile();
         await loadInventory();
 
-        syncManager = new SyncManager({
-            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
-            sheetName: CONFIG.SHEET_NAME,
-            storageKey: 'wms_inventory_pending_sync'
-        });
-        syncManager.init();
-        window.syncManager = syncManager;
+        // Inicializar Advanced Sync Manager
+        await initAdvancedSync();
+        syncManager = window.syncManager; // Referencia al advanced sync manager
 
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('main-app').classList.remove('hidden');
@@ -1579,11 +1575,11 @@ async function executeSendPallet(category, finalLocation, originLocation) {
         STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
         if (syncManager) {
-            syncManager.addToQueue(records);
+            await addPalletToQueue(records, records[0]?.pallet, records[0]?.location);
             showNotification(`💾 ${records.length} registros agregados a cola`, 'info');
 
             if (checkOnlineStatus() && gapi?.client?.getToken()) {
-                await syncManager.sync();
+                await syncInventoryData(true);
             }
         }
 
@@ -1760,19 +1756,65 @@ function refreshInventory() {
 }
 
 function exportData() {
-    if (STATE.history.length === 0) {
-        showNotification('No hay datos para exportar', 'warning');
+    // Recolectar todos los datos de todas las pestañas
+    const allData = [];
+    
+    GlobalTabs.tabs.forEach(tab => {
+        if (tab.type === 'classic') {
+            ['ok', 'blocked', 'nowms'].forEach(cat => {
+                const boxes = tab.data.pallets[cat].boxes || [];
+                boxes.forEach(box => {
+                    allData.push({
+                        tab: tab.name,
+                        date: getCurrentDate(),
+                        time: box.timestamp || '',
+                        user: STATE.userAlias || STATE.userName || 'Usuario',
+                        scan1: box.code || box.scan1 || '',
+                        scan2: box.scan2 || '',
+                        location: box.location || '-',
+                        status: cat === 'ok' ? 'OK' : cat === 'blocked' ? 'BLOQUEADO' : 'NO WMS',
+                        sku: box.sku || '-',
+                        product: box.product || '-',
+                        pallet: tab.data.pallets[cat].id || '-',
+                        originLocation: tab.data.originLocation || ''
+                    });
+                });
+            });
+        } else if (tab.type === 'unified') {
+            const items = tab.data.items || [];
+            items.forEach(item => {
+                allData.push({
+                    tab: tab.name,
+                    date: getCurrentDate(),
+                    time: item.timestamp || '',
+                    user: STATE.userAlias || STATE.userName || 'Usuario',
+                    scan1: item.code || '',
+                    scan2: '',
+                    location: item.location || '-',
+                    status: item.statusText || item.status || '-',
+                    sku: item.sku || '-',
+                    product: item.product || '-',
+                    pallet: '-',
+                    originLocation: tab.data.originLocation || ''
+                });
+            });
+        }
+    });
+
+    if (allData.length === 0) {
+        showNotification('⚠️ No hay datos para exportar', 'warning');
         return;
     }
 
-    const headers = ['FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION DESTINO', 'ESTATUS', 'NOTA', 'PALLET', 'UBICACION FISICA ORIGEN'];
-    const rows = STATE.history.map(r => [
-        r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.note, r.pallet, r.originLocation || ''
+    const headers = ['PESTAÑA', 'FECHA', 'HORA', 'RESPONSABLE', 'SCAN 1', 'SCAN 2', 'UBICACION', 'ESTATUS', 'SKU', 'PRODUCTO', 'PALLET', 'ORIGEN'];
+    const rows = allData.map(r => [
+        r.tab, r.date, r.time, r.user, r.scan1, r.scan2, r.location, r.status, r.sku, r.product, r.pallet, r.originLocation
     ]);
 
     const csvContent = arrayToCSV([headers, ...rows]);
-    downloadCSV(csvContent, `inventario_${getCurrentDate()}.csv`);
-    showNotification('✅ Datos exportados', 'success');
+    downloadCSV(csvContent, `inventario_${getCurrentDate()}_${getCurrentTime().replace(/:/g, '-')}.csv`);
+    showNotification(`✅ ${allData.length} registros exportados`, 'success');
+    playSound('success');
 }
 
 // ==================== SISTEMA DE ALIAS ====================
@@ -2113,6 +2155,489 @@ function updateVerificationBadges() {
     }
 }
 
+// ==================== MODAL DE RESUMEN AVANZADO ====================
+let allRecordsModalSort = { column: 'timestamp', direction: 'desc' };
+let allRecordsModalFilter = { code: '', location: '', pallet: '', status: '' };
+
+function showAllRecordsModal() {
+    // Recolectar todos los registros de todas las pestañas
+    const allRecords = [];
+    
+    GlobalTabs.tabs.forEach(tab => {
+        if (tab.type === 'classic') {
+            ['ok', 'blocked', 'nowms'].forEach(cat => {
+                const boxes = tab.data.pallets[cat].boxes || [];
+                boxes.forEach((box, index) => {
+                    allRecords.push({
+                        tabId: tab.id,
+                        tabName: tab.name,
+                        tabType: tab.type,
+                        category: cat,
+                        index: index,
+                        code: box.code || box.scan1 || '',
+                        scan2: box.scan2 || '',
+                        location: box.location || '-',
+                        status: cat === 'ok' ? 'OK' : cat === 'blocked' ? 'BLOQUEADO' : 'NO WMS',
+                        sku: box.sku || '-',
+                        product: box.product || '-',
+                        pallet: tab.data.pallets[cat].id || '-',
+                        originLocation: tab.data.originLocation || '-',
+                        timestamp: box.timestamp || '',
+                        verified: box.verified || false
+                    });
+                });
+            });
+        } else if (tab.type === 'unified') {
+            const items = tab.data.items || [];
+            items.forEach((item, index) => {
+                allRecords.push({
+                    tabId: tab.id,
+                    tabName: tab.name,
+                    tabType: tab.type,
+                    category: item.status,
+                    index: index,
+                    code: item.code || '',
+                    scan2: '',
+                    location: item.location || '-',
+                    status: item.statusText || item.status || '-',
+                    sku: item.sku || '-',
+                    product: item.product || '-',
+                    pallet: '-',
+                    originLocation: tab.data.originLocation || '-',
+                    timestamp: item.timestamp || '',
+                    verified: false
+                });
+            });
+        }
+    });
+
+    if (allRecords.length === 0) {
+        showNotification('⚠️ No hay registros para mostrar', 'warning');
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay show';
+    overlay.id = 'all-records-modal';
+    overlay.innerHTML = `
+        <div class="popup-content pallet-detail-modal-large" style="max-width: 95vw; max-height: 90vh;">
+            <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
+            <div class="pallet-detail-header" style="border-bottom: 3px solid var(--primary);">
+                <div class="pallet-detail-title">
+                    <span class="pallet-category-name" style="color: var(--primary);">
+                        📋 Todos los Registros
+                    </span>
+                    <span class="pallet-count" id="all-records-count">${allRecords.length} registros</span>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                <input type="text" class="scan-input" style="flex: 1; min-width: 150px; font-size: 0.9em; padding: 8px;"
+                       placeholder="🔍 Filtrar código..." id="all-filter-code" onkeyup="filterAllRecordsModal()">
+                <input type="text" class="scan-input" style="flex: 1; min-width: 150px; font-size: 0.9em; padding: 8px;"
+                       placeholder="📍 Filtrar ubicación..." id="all-filter-location" onkeyup="filterAllRecordsModal()">
+                <input type="text" class="scan-input" style="flex: 1; min-width: 150px; font-size: 0.9em; padding: 8px;"
+                       placeholder="📦 Filtrar pallet..." id="all-filter-pallet" onkeyup="filterAllRecordsModal()">
+                <select class="scan-input" style="flex: 0.5; min-width: 120px; font-size: 0.9em; padding: 8px;"
+                        id="all-filter-status" onchange="filterAllRecordsModal()">
+                    <option value="">Todos los estados</option>
+                    <option value="OK">✅ OK</option>
+                    <option value="BLOQUEADO">⚠️ Bloqueado</option>
+                    <option value="NO WMS">❌ No WMS</option>
+                </select>
+                <button class="btn btn-small btn-secondary" onclick="clearAllRecordsFilters()">Limpiar</button>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; padding: 10px; background: #f5f5f5; border-radius: 6px;">
+                <button class="btn btn-primary btn-small" onclick="syncDatabaseFromModal()" style="flex: 1;">
+                    🔄 Sincronizar Bases
+                </button>
+                <button class="btn btn-warning btn-small" onclick="openAjusteFromModal()" style="flex: 1;">
+                    🔧 Ajuste
+                </button>
+            </div>
+            
+            <div style="max-height: 450px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                    <thead>
+                        <tr style="background: #f5f5f5; position: sticky; top: 0; z-index: 10;">
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('tabName')">Pestaña ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('code')">Código ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('scan2')">Código 2 ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('location')">Ubicación ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('status')">Estado ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('pallet')">Pallet ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('originLocation')">Origen ↕</th>
+                            <th style="padding: 8px; text-align: left; cursor: pointer;" onclick="sortAllRecordsModal('timestamp')">Hora ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody id="all-records-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    // Store records in window for filtering/sorting
+    window.ALL_RECORDS_DATA = allRecords;
+    
+    renderAllRecordsTable();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function renderAllRecordsTable() {
+    const tbody = document.getElementById('all-records-table-body');
+    if (!tbody || !window.ALL_RECORDS_DATA) return;
+
+    let filtered = [...window.ALL_RECORDS_DATA];
+
+    // Apply filters
+    if (allRecordsModalFilter.code) {
+        const s = allRecordsModalFilter.code.toUpperCase();
+        filtered = filtered.filter(r => 
+            r.code.toUpperCase().includes(s) || 
+            (r.scan2 && r.scan2.toUpperCase().includes(s))
+        );
+    }
+    if (allRecordsModalFilter.location) {
+        const s = allRecordsModalFilter.location.toUpperCase();
+        filtered = filtered.filter(r => r.location.toUpperCase().includes(s));
+    }
+    if (allRecordsModalFilter.pallet) {
+        const s = allRecordsModalFilter.pallet.toUpperCase();
+        filtered = filtered.filter(r => r.pallet.toUpperCase().includes(s));
+    }
+    if (allRecordsModalFilter.status) {
+        filtered = filtered.filter(r => r.status === allRecordsModalFilter.status);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+        let valA = a[allRecordsModalSort.column];
+        let valB = b[allRecordsModalSort.column];
+        
+        if (typeof valA === 'string') {
+            return allRecordsModalSort.direction === 'asc' 
+                ? valA.localeCompare(valB) 
+                : valB.localeCompare(valA);
+        }
+        return allRecordsModalSort.direction === 'asc' ? valA - valB : valB - valA;
+    });
+
+    // Update count
+    const countEl = document.getElementById('all-records-count');
+    if (countEl) {
+        countEl.textContent = `${filtered.length} de ${window.ALL_RECORDS_DATA.length} registros`;
+    }
+
+    // Render rows
+    tbody.innerHTML = filtered.map((record, i) => {
+        const statusColor = record.status === 'OK' ? 'var(--success)' : 
+                           record.status === 'BLOQUEADO' ? 'var(--blocked)' : 
+                           'var(--error)';
+        const style = record.verified ? 'background: rgba(76, 175, 80, 0.1);' : '';
+
+        return `
+            <tr style="${style} border-bottom: 1px solid #eee;">
+                <td style="padding: 8px;">
+                    <span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; font-size: 0.85em;">
+                        ${record.tabName}
+                    </span>
+                </td>
+                <td style="padding: 8px; font-family: monospace; font-weight: 600;">${record.code}</td>
+                <td style="padding: 8px; font-family: monospace;">${record.scan2 || '-'}</td>
+                <td style="padding: 8px;">${record.location}</td>
+                <td style="padding: 8px;">
+                    <span style="color: ${statusColor}; font-weight: 600;">${record.status}</span>
+                </td>
+                <td style="padding: 8px; font-family: monospace; font-size: 0.8em;">${record.pallet}</td>
+                <td style="padding: 8px;">${record.originLocation}</td>
+                <td style="padding: 8px; font-size: 0.85em;">${record.timestamp}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #999;">No se encontraron registros con los filtros aplicados</td></tr>';
+    }
+}
+
+function sortAllRecordsModal(column) {
+    if (allRecordsModalSort.column === column) {
+        allRecordsModalSort.direction = allRecordsModalSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        allRecordsModalSort.column = column;
+        allRecordsModalSort.direction = 'asc';
+    }
+    renderAllRecordsTable();
+}
+
+function filterAllRecordsModal() {
+    allRecordsModalFilter.code = document.getElementById('all-filter-code')?.value || '';
+    allRecordsModalFilter.location = document.getElementById('all-filter-location')?.value || '';
+    allRecordsModalFilter.pallet = document.getElementById('all-filter-pallet')?.value || '';
+    allRecordsModalFilter.status = document.getElementById('all-filter-status')?.value || '';
+    renderAllRecordsTable();
+}
+
+function clearAllRecordsFilters() {
+    document.getElementById('all-filter-code').value = '';
+    document.getElementById('all-filter-location').value = '';
+    document.getElementById('all-filter-pallet').value = '';
+    document.getElementById('all-filter-status').value = '';
+    allRecordsModalFilter = { code: '', location: '', pallet: '', status: '' };
+    renderAllRecordsTable();
+}
+
+async function syncDatabaseFromModal() {
+    if (!syncManager) {
+        showNotification('⚠️ Sistema de sincronización no disponible', 'warning');
+        return;
+    }
+
+    const confirmed = confirm('¿Deseas sincronizar la base de datos con Google Sheets?');
+    if (!confirmed) return;
+
+    try {
+        showLoading(true);
+        await syncManager.sync();
+        showNotification('✅ Base de datos sincronizada correctamente', 'success');
+        playSound('success');
+    } catch (error) {
+        console.error('Error syncing:', error);
+        showNotification('❌ Error al sincronizar', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function openAjusteFromModal() {
+    // Cerrar el modal de todos los registros
+    document.getElementById('all-records-modal')?.remove();
+
+    // Solicitar ubicación para buscar pallets
+    const location = prompt('🔍 Ingresa la ubicación para buscar pallets:\n\nEjemplo: A1-12-03-02');
+    
+    if (!location || !location.trim()) {
+        showNotification('❌ Operación cancelada', 'info');
+        return;
+    }
+
+    const normalizedLocation = location.trim().toUpperCase();
+
+    try {
+        showLoading(true);
+
+        // Buscar pallets en Google Sheets
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+            range: `${CONFIG.SHEET_NAME}!A:J`
+        });
+
+        const rows = response.result.values || [];
+        
+        // Filtrar por ubicación (columna F, índice 5)
+        const matchingRows = rows.filter((row, index) => {
+            if (index === 0) return false; // Skip header
+            return row[5] && row[5].toUpperCase() === normalizedLocation;
+        });
+
+        if (matchingRows.length === 0) {
+            showNotification(`❌ No se encontraron pallets en: ${normalizedLocation}`, 'warning');
+            showLoading(false);
+            return;
+        }
+
+        // Agrupar por pallet
+        const palletGroups = {};
+        matchingRows.forEach(row => {
+            const palletCode = row[8] || 'SIN-PALLET';
+            if (!palletGroups[palletCode]) {
+                palletGroups[palletCode] = {
+                    palletCode: palletCode,
+                    boxes: [],
+                    location: row[5]
+                };
+            }
+            palletGroups[palletCode].boxes.push(row);
+        });
+
+        showLoading(false);
+
+        // Mostrar selector de pallet
+        showPalletSelectorModal(palletGroups, normalizedLocation);
+
+    } catch (error) {
+        console.error('Error searching pallets:', error);
+        showNotification('❌ Error al buscar pallets', 'error');
+        showLoading(false);
+    }
+}
+
+function showPalletSelectorModal(palletGroups, location) {
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay show';
+    overlay.innerHTML = `
+        <div class="popup-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+            <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
+            <div class="popup-header-centered">
+                <span class="popup-header-icon">🔧</span>
+                <h2>Seleccionar Pallet para Ajuste</h2>
+            </div>
+            <p style="text-align: center; color: #666; margin-bottom: 20px;">
+                Ubicación: <strong>${location}</strong> • ${Object.keys(palletGroups).length} pallet(s) encontrado(s)
+            </p>
+            <div style="display: grid; gap: 15px;">
+                ${Object.values(palletGroups).map(group => `
+                    <div class="pallet-selector-card" onclick="loadPalletForAdjustment('${group.palletCode}', '${location}')" 
+                         style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; cursor: pointer; transition: all 0.2s; background: white;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="font-size: 1.1em; font-weight: 700; color: var(--primary); font-family: monospace;">
+                                ${group.palletCode}
+                            </div>
+                            <div style="background: var(--primary); color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: 600;">
+                                ${group.boxes.length} cajas
+                            </div>
+                        </div>
+                        <div style="font-size: 0.85em; color: #666;">
+                            📍 ${group.location}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove()">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    // Add hover effect
+    overlay.querySelectorAll('.pallet-selector-card').forEach(card => {
+        card.addEventListener('mouseenter', () => {
+            card.style.borderColor = 'var(--primary)';
+            card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+            card.style.transform = 'translateY(-2px)';
+        });
+        card.addEventListener('mouseleave', () => {
+            card.style.borderColor = '#e0e0e0';
+            card.style.boxShadow = 'none';
+            card.style.transform = 'translateY(0)';
+        });
+    });
+}
+
+async function loadPalletForAdjustment(palletCode, location) {
+    // Cerrar modal de selección
+    document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
+
+    const confirmed = confirm(`¿Cargar pallet ${palletCode} para ajuste?\n\nNOTA: Sin restricción de contraseña en este módulo.`);
+    if (!confirmed) return;
+
+    try {
+        showLoading(true);
+
+        // Obtener todas las cajas del pallet
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SPREADSHEET_WRITE,
+            range: `${CONFIG.SHEET_NAME}!A:J`
+        });
+
+        const rows = response.result.values || [];
+        const palletBoxes = rows.filter((row, index) => {
+            if (index === 0) return false;
+            return row[8] === palletCode && row[5] && row[5].toUpperCase() === location.toUpperCase();
+        });
+
+        if (palletBoxes.length === 0) {
+            showNotification('❌ No se encontraron cajas para este pallet', 'error');
+            showLoading(false);
+            return;
+        }
+
+        // Verificar si hay datos sin guardar
+        const hasUnsavedData = GlobalTabs.tabs.some(tab => {
+            if (tab.type === 'classic') {
+                return tab.data.pallets.ok.boxes.length > 0 ||
+                       tab.data.pallets.blocked.boxes.length > 0 ||
+                       tab.data.pallets.nowms.boxes.length > 0;
+            }
+            return tab.data.items && tab.data.items.length > 0;
+        });
+
+        if (hasUnsavedData) {
+            const proceed = confirm('⚠️ Hay datos sin guardar en las pestañas actuales.\n\n¿Deseas continuar? Se creará una nueva pestaña para el ajuste.');
+            if (!proceed) {
+                showLoading(false);
+                return;
+            }
+        }
+
+        // Crear nueva pestaña para el ajuste
+        GlobalTabs.createTab('classic');
+        
+        // Esperar a que se cree la pestaña
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Limpiar las secciones actuales
+        STATE.pallets.ok.boxes = [];
+        STATE.pallets.blocked.boxes = [];
+        STATE.pallets.nowms.boxes = [];
+
+        // Cargar cajas del pallet
+        const firstBox = palletBoxes[0];
+        const originLocation = firstBox[9] || '';
+
+        palletBoxes.forEach(row => {
+            const status = row[6] || '';
+            const box = {
+                code: row[3],
+                scan1: row[3],
+                scan2: row[4] || '',
+                location: row[5],
+                sku: '-',
+                product: '-',
+                timestamp: getTimestamp(),
+                verified: false,
+                adjustmentMode: true
+            };
+
+            if (status.includes('OK') && !status.includes('BLOQUEADO')) {
+                STATE.pallets.ok.boxes.push(box);
+            } else if (status.includes('BLOQUEADO')) {
+                STATE.pallets.blocked.boxes.push(box);
+            } else {
+                STATE.pallets.nowms.boxes.push(box);
+            }
+        });
+
+        // Configurar IDs y ubicaciones
+        STATE.pallets.ok.id = palletCode;
+        STATE.pallets.blocked.id = palletCode;
+        STATE.pallets.nowms.id = palletCode;
+
+        document.getElementById('location-ok').value = location;
+        document.getElementById('location-blocked').value = location;
+        document.getElementById('location-nowms').value = location;
+        document.getElementById('origin-location').value = originLocation;
+
+        updateUI();
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
+
+        showLoading(false);
+        showNotification(`✅ Pallet ${palletCode} cargado para ajuste (${palletBoxes.length} cajas)`, 'success');
+        playSound('success');
+
+    } catch (error) {
+        console.error('Error loading pallet:', error);
+        showNotification('❌ Error al cargar pallet', 'error');
+        showLoading(false);
+    }
+}
+
 // ==================== CONEXIÓN/DESCONEXIÓN GOOGLE ====================
 function toggleGoogleConnection() {
     const token = gapi?.client?.getToken();
@@ -2227,3 +2752,9 @@ window.toggleGoogleConnection = toggleGoogleConnection;
 window.showCountValidationModal = showCountValidationModal;
 window.validateAndSendPallet = validateAndSendPallet;
 window.executeSendPallet = executeSendPallet;
+window.showAllRecordsModal = showAllRecordsModal;
+window.sortAllRecordsModal = sortAllRecordsModal;
+window.filterAllRecordsModal = filterAllRecordsModal;
+window.clearAllRecordsFilters = clearAllRecordsFilters;
+window.syncDatabaseFromModal = syncDatabaseFromModal;
+window.openAjusteFromModal = openAjusteFromModal;
