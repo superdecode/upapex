@@ -6559,6 +6559,25 @@ async function confirmDispatch() {
         return;
     }
 
+    // SSOT: Validar folio contra BD de escritura antes de continuar
+    if (typeof validateFolioBeforeDispatch === 'function') {
+        console.log('🔍 [SSOT] Validando folio antes de despacho...');
+        const folioValidation = await validateFolioBeforeDispatch(folioCarga, operador, unidad);
+        
+        if (!folioValidation.valid) {
+            const message = `❌ FOLIO NO DISPONIBLE\n\n${folioValidation.message}\n\n` +
+                (folioValidation.existingOrders && folioValidation.existingOrders.length > 0
+                    ? `Órdenes existentes:\n${folioValidation.existingOrders.map(o => `- ${o.orden}`).join('\n')}`
+                    : '');
+            
+            alert(message);
+            showNotification('❌ El folio seleccionado no está disponible', 'error');
+            return;
+        }
+        
+        console.log('✅ [SSOT] Folio validado:', folioValidation.message);
+    }
+
     if (!cantidadDespachar || cantidadDespachar <= 0) {
         showNotification('⚠️ Debes ingresar la cantidad a despachar', 'warning');
         return;
