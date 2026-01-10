@@ -409,6 +409,10 @@
                                 <div class="search-input-wrapper">
                                     <input type="text" id="search-input" class="scanner-input" placeholder="Escanea o ingresa OBC/Código..." autofocus>
                                     <button class="clear-search-btn" id="clear-search-input" onclick="clearSearchInput('search-input')" style="display: none;">✕</button>
+                                    <div id="search-loader" class="search-loader" style="display: none;">
+                                        <div class="spinner-small"></div>
+                                        <span>Buscando en histórico...</span>
+                                    </div>
                                 </div>
                                 <button class="btn btn-primary" onclick="executeSearch()">
                                     🔍 Buscar
@@ -1063,10 +1067,13 @@
     <!-- Folio Validation SSOT -->
     <script src="folio-validation-ssot.js?v=1.0.0"></script>
     
+    <!-- Background Index Loader -->
+    <script src="background-index-loader.js?v=1.0.0"></script>
+    
     <!-- Folio Edit Module -->
     <script src="folio-edit-module.js?v=1.3.0"></script>
 
     <!-- App Script -->
-    <script src="app.js?v=3.6.0"></script>
+    <script src="app.js?v=3.7.1"></script>
 </body>
 </html>

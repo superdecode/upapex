@@ -1770,6 +1770,14 @@ async function loadCriticalData() {
         // PASO 3: Iniciar carga de BDs de referencia en segundo plano
         loadReferenceDataInBackground();
         
+        // PASO 4: Iniciar carga de índice de búsqueda en background
+        if (typeof startBackgroundIndexLoad === 'function') {
+            console.log('🔄 [Background Index] Iniciando carga de índice...');
+            setTimeout(() => {
+                startBackgroundIndexLoad();
+            }, 2000); // Esperar 2 segundos para no interferir con carga de referencias
+        }
+        
     } catch (error) {
         console.error('❌ Error en carga crítica:', error);
         STATE.isLoading = false;
@@ -4976,8 +4984,8 @@ function findCodeWithVariants(code, dataMap) {
     return { found: false, code: code, variant: 'none' };
 }
 
-// CHANGE 4: Enhanced executeSearch with scanner normalization
-function executeSearch() {
+// CHANGE 4: Enhanced executeSearch with scanner normalization + Background Index
+async function executeSearch() {
     const searchInput = document.getElementById('search-input');
     const rawQuery = searchInput?.value.trim() || '';
 
@@ -5012,6 +5020,7 @@ function executeSearch() {
 
     // NUEVA LÓGICA: Búsqueda multicanal con prioridad de filtro
     let foundOrders = [];
+    let searchedInBackground = false;
     const isOBC = query.startsWith('OBC');
 
     if (isOBC) {
@@ -5215,6 +5224,45 @@ function executeSearch() {
     }
     foundOrders = uniqueOrders;
 
+    // BÚSQUEDA HÍBRIDA: Si no hay resultados, consultar índice de background
+    if (foundOrders.length === 0 && typeof searchInBackgroundIndex === 'function') {
+        console.log('🔍 [Híbrido] No hay resultados en datos cargados, consultando índice de background...');
+        
+        // Mostrar loader en barra de búsqueda
+        showSearchLoader(true);
+        
+        const backgroundResults = searchInBackgroundIndex(query);
+        
+        if (backgroundResults && backgroundResults.length > 0) {
+            console.log(`✅ [Híbrido] Encontrados ${backgroundResults.length} OBCs en índice de background`);
+            
+            // Cargar datos completos de los OBCs encontrados
+            for (const obc of backgroundResults) {
+                if (STATE.obcData.has(obc)) {
+                    foundOrders.push({ 
+                        orden: obc, 
+                        source: 'Búsqueda Histórica (Background Index)', 
+                        confidence: 95 
+                    });
+                } else {
+                    // Si el OBC no está en memoria, marcarlo para carga
+                    foundOrders.push({ 
+                        orden: obc, 
+                        source: 'Histórico (Requiere carga)', 
+                        confidence: 90,
+                        needsLoad: true
+                    });
+                }
+            }
+            
+            searchedInBackground = true;
+            showNotification(`🔍 Búsqueda histórica: ${backgroundResults.length} resultado${backgroundResults.length > 1 ? 's' : ''} encontrado${backgroundResults.length > 1 ? 's' : ''}`, 'info', 3000);
+        }
+        
+        // Ocultar loader
+        showSearchLoader(false);
+    }
+
     // MEJORA: Limpiar searchbox siempre después de buscar
     if (searchInput) {
         searchInput.value = '';
@@ -5225,9 +5273,20 @@ function executeSearch() {
             rawQuery,
             queryNormalized,
             query,
-            'Canales buscados': ['OBC', 'Código Caja', 'Código Track', 'Código Referencia', 'MNE', 'Validaciones', 'TRS']
+            'Canales buscados': ['OBC', 'Código Caja', 'Código Track', 'Código Referencia', 'MNE', 'Validaciones', 'TRS', 'Background Index']
         });
-        showNotification('❌ No se encontró la orden o código', 'error');
+        
+        // Verificar si el índice está cargando
+        if (typeof isBackgroundIndexReady === 'function' && !isBackgroundIndexReady()) {
+            const status = getBackgroundIndexStatus();
+            if (status.isLoading) {
+                showNotification(`⏳ Búsqueda histórica cargando... ${status.loadProgress.toFixed(0)}%`, 'info', 3000);
+            } else {
+                showNotification('❌ No se encontró la orden o código', 'error');
+            }
+        } else {
+            showNotification('❌ No se encontró la orden o código', 'error');
+        }
         return;
     }
 
@@ -5245,11 +5304,11 @@ function executeSearch() {
             'Fuera del filtro': ordersOutFilter.length
         });
 
-        // ESCENARIO A: Coincidencia única dentro del filtro
+        // ESCENARIO A: Coincidencia única dentro del filtro → ABRIR INMEDIATAMENTE
         if (ordersInFilter.length === 1) {
             const foundOrden = ordersInFilter[0].orden;
             const foundSource = ordersInFilter[0].source;
-            console.log(`✅ ESCENARIO A: Coincidencia única en filtro - Abriendo ${foundOrden}`);
+            console.log(`✅ ESCENARIO A: Coincidencia única en filtro - Abriendo ${foundOrden} INMEDIATAMENTE`);
             showNotification(`📦 ${foundSource}: ${foundOrden}`, 'success', 2000);
             showOrderInfo(foundOrden);
             if (searchInput) searchInput.value = '';
@@ -5264,12 +5323,19 @@ function executeSearch() {
             return;
         }
         
-        // ESCENARIO C: Sin coincidencias en filtro, pero sí en historial general
+        // ESCENARIO C: Sin coincidencias en filtro, pero sí en historial → MODAL DE CONFIRMACIÓN
         if (ordersInFilter.length === 0 && ordersOutFilter.length > 0) {
-            console.log(`⚠️ ESCENARIO C: ${ordersOutFilter.length} coincidencias fuera del filtro - Mostrando selector histórico`);
-            // Marcar como registros históricos
-            ordersOutFilter.forEach(o => o.source += ' (Histórico)');
-            showMultipleMatchesModal(ordersOutFilter, query);
+            console.log(`⚠️ ESCENARIO C: ${ordersOutFilter.length} coincidencias fuera del filtro - Mostrando modal de confirmación`);
+            
+            if (ordersOutFilter.length === 1) {
+                // Orden única fuera del filtro: mostrar modal de confirmación
+                showHistoricalOrderConfirmationModal(ordersOutFilter[0].orden, query);
+            } else {
+                // Múltiples órdenes fuera del filtro: mostrar selector
+                ordersOutFilter.forEach(o => o.source += ' (Histórico)');
+                showMultipleMatchesModal(ordersOutFilter, query);
+            }
+            
             if (searchInput) searchInput.value = '';
             return;
         }
@@ -5320,6 +5386,17 @@ function hideNormalizedCodeDisplay() {
         display.style.display = 'none';
     }
     window.lastNormalizedCode = null;
+}
+
+/**
+ * Muestra el loader de búsqueda en background
+ * @param {boolean} show - true para mostrar, false para ocultar
+ */
+function showSearchLoader(show) {
+    const loader = document.getElementById('search-loader');
+    if (loader) {
+        loader.style.display = show ? 'flex' : 'none';
+    }
 }
 
 /**
@@ -5385,6 +5462,118 @@ function selectMatch(orden) {
 
 function closeMultipleMatchesModal() {
     document.getElementById('multiple-matches-modal').classList.remove('show');
+}
+
+/**
+ * Muestra modal de confirmación para orden histórica (fuera del filtro activo)
+ * @param {string} orden - ID de la orden
+ * @param {string} searchQuery - Código buscado
+ */
+function showHistoricalOrderConfirmationModal(orden, searchQuery) {
+    console.log('⚠️ [Confirmación Histórica] Mostrando modal para orden fuera del filtro:', orden);
+    
+    const orderData = STATE.obcData.get(orden);
+    
+    if (!orderData) {
+        console.error('❌ No se encontraron datos para la orden:', orden);
+        showNotification('❌ Error al cargar datos de la orden', 'error');
+        return;
+    }
+    
+    // Obtener información de la orden
+    const recipient = orderData.recipient || 'N/A';
+    const expectedArrival = orderData.expectedArrival || 'N/A';
+    const totalCajas = orderData.totalCajas || 0;
+    const trackingCode = orderData.trackingCode || 'N/A';
+    const referenceNo = orderData.referenceNo || 'N/A';
+    
+    // Crear modal HTML
+    const modalHTML = `
+        <div id="historical-order-modal" class="modal-overlay" style="display: flex; z-index: 10000;">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header" style="background: #fff3cd; border-bottom: 2px solid #ffc107;">
+                    <h3 style="margin: 0; color: #856404;">⚠️ Orden Fuera del Filtro Activo</h3>
+                </div>
+                <div class="modal-body" style="padding: 24px;">
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <p style="margin: 0 0 12px 0; font-size: 0.95em; color: #6c757d;">
+                            Esta orden <strong>no está dentro del rango de fechas del filtro activo</strong>. 
+                            ¿Estás seguro de que deseas abrirla?
+                        </p>
+                        <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                            <div style="font-size: 0.9em; color: #495057; margin-bottom: 8px;">
+                                <strong>Código buscado:</strong> ${searchQuery}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="border: 1px solid #dee2e6; border-radius: 8px; padding: 16px; background: white;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 1.1em; color: #2196f3;">📦 ${orden}</h4>
+                        <div style="display: grid; gap: 10px; font-size: 0.9em;">
+                            <div style="display: flex; align-items: start; gap: 8px;">
+                                <span style="color: #6c757d; min-width: 100px;">📍 Destinatario:</span>
+                                <span style="font-weight: 500;">${recipient}</span>
+                            </div>
+                            <div style="display: flex; align-items: start; gap: 8px;">
+                                <span style="color: #6c757d; min-width: 100px;">📅 Fecha Entrega:</span>
+                                <span style="font-weight: 500;">${expectedArrival}</span>
+                            </div>
+                            <div style="display: flex; align-items: start; gap: 8px;">
+                                <span style="color: #6c757d; min-width: 100px;">📦 Total Cajas:</span>
+                                <span style="font-weight: 500;">${totalCajas}</span>
+                            </div>
+                            <div style="display: flex; align-items: start; gap: 8px;">
+                                <span style="color: #6c757d; min-width: 100px;">🔢 Código Track:</span>
+                                <span style="font-weight: 500; font-size: 0.85em;">${trackingCode}</span>
+                            </div>
+                            <div style="display: flex; align-items: start; gap: 8px;">
+                                <span style="color: #6c757d; min-width: 100px;">📋 Referencia:</span>
+                                <span style="font-weight: 500; font-size: 0.85em;">${referenceNo}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end; padding: 16px 24px; background: #f8f9fa; border-top: 1px solid #dee2e6;">
+                    <button class="btn btn-secondary" onclick="closeHistoricalOrderModal()" style="min-width: 100px;">
+                        ✕ Cancelar
+                    </button>
+                    <button class="btn btn-primary" onclick="confirmOpenHistoricalOrder('${orden}')" style="min-width: 120px; background: #ffc107; color: #000;">
+                        ✓ Abrir Orden
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Insertar modal en el DOM
+    const existingModal = document.getElementById('historical-order-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    console.log('✅ Modal de confirmación histórica mostrado');
+}
+
+/**
+ * Confirma y abre la orden histórica
+ */
+function confirmOpenHistoricalOrder(orden) {
+    console.log('✅ Usuario confirmó apertura de orden histórica:', orden);
+    closeHistoricalOrderModal();
+    showNotification(`📦 Abriendo orden histórica: ${orden}`, 'info', 2000);
+    showOrderInfo(orden);
+}
+
+/**
+ * Cierra el modal de confirmación histórica
+ */
+function closeHistoricalOrderModal() {
+    const modal = document.getElementById('historical-order-modal');
+    if (modal) {
+        modal.remove();
+    }
 }
 
 // ==================== ESTATUS DE ORDEN ====================
@@ -8108,17 +8297,47 @@ function filterFoliosTable() {
     const filterInput = document.getElementById('filter-folios');
     if (!filterInput) return;
 
-    const filterValue = filterInput.value.toLowerCase();
+    const filterValue = filterInput.value.toLowerCase().trim();
     const tableBody = document.getElementById('folios-table-body');
     if (!tableBody) return;
 
     const rows = tableBody.querySelectorAll('tr');
 
-    rows.forEach((row) => {
-        const text = row.textContent.toLowerCase();
-        const isVisible = text.includes(filterValue);
-        row.style.display = isVisible ? '' : 'none';
-    });
+    // MEJORA: Búsqueda inteligente por contenido (OBC dentro del folio)
+    if (filterValue.startsWith('obc') || filterValue.length >= 8) {
+        console.log('🔍 [Filtro Inteligente] Buscando folio que contiene OBC:', filterValue);
+        
+        rows.forEach((row) => {
+            const folioCell = row.cells[0];
+            if (!folioCell) {
+                row.style.display = 'none';
+                return;
+            }
+            
+            const folio = folioCell.textContent.trim();
+            
+            // Buscar si este folio contiene la OBC
+            const ordenesEnFolio = STATE.localValidated.filter(record => 
+                record.folio === folio && 
+                record.orden && 
+                record.orden.toLowerCase().includes(filterValue)
+            );
+            
+            const isVisible = ordenesEnFolio.length > 0 || row.textContent.toLowerCase().includes(filterValue);
+            row.style.display = isVisible ? '' : 'none';
+            
+            if (ordenesEnFolio.length > 0) {
+                console.log(`✅ Folio ${folio} contiene ${ordenesEnFolio.length} orden(es) que coinciden`);
+            }
+        });
+    } else {
+        // Búsqueda tradicional por texto
+        rows.forEach((row) => {
+            const text = row.textContent.toLowerCase();
+            const isVisible = text.includes(filterValue);
+            row.style.display = isVisible ? '' : 'none';
+        });
+    }
 
     // Update badges based on visible rows
     updateFoliosBadges();
@@ -8579,15 +8798,51 @@ function sortFoliosManagementTable(columnIndex) {
 
 /**
  * Filtrar tabla de Gestión de Folios por texto
+ * MEJORA: Búsqueda inteligente por contenido (OBC dentro del folio)
  */
 function filterFoliosManagementTable() {
-    const filterText = document.getElementById('filter-folios-mgmt')?.value.toLowerCase() || '';
+    const filterText = document.getElementById('filter-folios-mgmt')?.value.toLowerCase().trim() || '';
     const rows = document.querySelectorAll('#folios-mgmt-table-body tr');
 
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filterText) ? '' : 'none';
-    });
+    if (!filterText) {
+        rows.forEach(row => row.style.display = '');
+        return;
+    }
+
+    // MEJORA: Búsqueda inteligente por contenido (OBC dentro del folio)
+    if (filterText.startsWith('obc') || filterText.length >= 8) {
+        console.log('🔍 [Filtro Inteligente Mgmt] Buscando folio que contiene OBC:', filterText);
+        
+        rows.forEach(row => {
+            const folioCell = row.cells[0];
+            if (!folioCell) {
+                row.style.display = 'none';
+                return;
+            }
+            
+            const folio = folioCell.textContent.trim();
+            
+            // Buscar si este folio contiene la OBC
+            const ordenesEnFolio = STATE.localValidated.filter(record => 
+                record.folio === folio && 
+                record.orden && 
+                record.orden.toLowerCase().includes(filterText)
+            );
+            
+            const isVisible = ordenesEnFolio.length > 0 || row.textContent.toLowerCase().includes(filterText);
+            row.style.display = isVisible ? '' : 'none';
+            
+            if (ordenesEnFolio.length > 0) {
+                console.log(`✅ Folio ${folio} contiene ${ordenesEnFolio.length} orden(es) que coinciden`);
+            }
+        });
+    } else {
+        // Búsqueda tradicional por texto
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filterText) ? '' : 'none';
+        });
+    }
 }
 
 /**
