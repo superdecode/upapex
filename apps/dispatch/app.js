@@ -633,9 +633,12 @@ function parseOBCDataWithDateFilter(csv, startDate, endDate) {
                 // Parse the order date
                 const orderDate = parseOrderDate(expectedArrival);
                 
-                // Sample dates for debugging
+                // Sample dates for debugging (con hora)
                 if (sampleDates.length < 5) {
-                    sampleDates.push(`${obc}: ${expectedArrival} → ${orderDate ? orderDate.toLocaleDateString('es-MX') : 'INVALID'}`);
+                    const dateTimeStr = orderDate ? 
+                        `${orderDate.toLocaleDateString('es-MX')} ${orderDate.toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit'})}` : 
+                        'INVALID';
+                    sampleDates.push(`${obc}: "${expectedArrival}" → ${dateTimeStr}`);
                 }
                 
                 // Check if order is within date range
@@ -1289,12 +1292,112 @@ function tryRestoreSession() {
     }
 }
 
+// ==================== SESSION GUARD ====================
+/**
+ * Valida si existe una sesión válida al iniciar la aplicación
+ * Previene auto-restauración de sesiones inválidas o expiradas
+ */
+function validateSessionOnStartup() {
+    try {
+        const savedState = localStorage.getItem('dispatch_local_state');
+        const activeSession = localStorage.getItem('dispatch_active_session');
+        
+        // Si no hay estado guardado, es inicio limpio (válido)
+        if (!savedState && !activeSession) {
+            console.log('✅ [SESSION GUARD] Inicio limpio - No hay sesión previa');
+            return true;
+        }
+        
+        // Si hay sesión activa, validar timestamp
+        if (activeSession) {
+            const sessionData = JSON.parse(activeSession);
+            const sessionTimestamp = sessionData.timestamp || 0;
+            const now = Date.now();
+            const sessionAge = now - sessionTimestamp;
+            const MAX_SESSION_AGE = 24 * 60 * 60 * 1000; // 24 horas
+            
+            if (sessionAge > MAX_SESSION_AGE) {
+                console.log('⚠️ [SESSION GUARD] Sesión expirada (>24h) - Invalidando');
+                return false;
+            }
+            
+            // Validar que tenga filtro de fecha
+            if (!sessionData.dateFilter || !sessionData.dateFilter.startDate) {
+                console.log('⚠️ [SESSION GUARD] Sesión sin filtro de fecha válido - Invalidando');
+                return false;
+            }
+            
+            console.log('✅ [SESSION GUARD] Sesión válida encontrada:', {
+                edad: `${Math.round(sessionAge / (60 * 60 * 1000))}h`,
+                filtro: `${sessionData.dateFilter.startDate} → ${sessionData.dateFilter.endDate}`
+            });
+        }
+        
+        return true;
+        
+    } catch (e) {
+        console.error('❌ [SESSION GUARD] Error validando sesión:', e);
+        return false;
+    }
+}
+
+/**
+ * Limpia sesión inválida del localStorage
+ */
+function clearInvalidSession() {
+    console.log('🗑️ [SESSION GUARD] Limpiando sesión inválida...');
+    
+    try {
+        localStorage.removeItem('dispatch_local_state');
+        localStorage.removeItem('dispatch_active_session');
+        localStorage.removeItem('dispatch_date_filter');
+        localStorage.removeItem('localValidated');
+        
+        console.log('✅ [SESSION GUARD] Sesión inválida limpiada');
+    } catch (e) {
+        console.error('❌ Error limpiando sesión inválida:', e);
+    }
+}
+
+/**
+ * Guarda marca de sesión activa al aplicar filtro
+ */
+function markActiveSession() {
+    try {
+        const sessionData = {
+            timestamp: Date.now(),
+            dateFilter: {
+                startDate: STATE.dateFilter.startDate,
+                endDate: STATE.dateFilter.endDate,
+                active: STATE.dateFilter.active
+            },
+            user: CURRENT_USER || USER_EMAIL
+        };
+        
+        localStorage.setItem('dispatch_active_session', JSON.stringify(sessionData));
+        console.log('✅ [SESSION] Sesión activa marcada');
+    } catch (e) {
+        console.error('❌ Error marcando sesión activa:', e);
+    }
+}
+
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', async () => {
     // Disable debug mode first
     if (typeof DebugMode !== 'undefined' && typeof DebugMode.disable === 'function') {
         DebugMode.disable();
         console.log('🔧 Debug mode disabled');
+    }
+
+    // ==================== SESSION GUARD: Validar sesión antes de inicializar ====================
+    console.log('🛡️ [SESSION GUARD] Validando sesión...');
+    
+    const isValidSession = validateSessionOnStartup();
+    
+    if (!isValidSession) {
+        console.log('⚠️ [SESSION GUARD] Sesión inválida o expirada - Forzando inicio limpio');
+        // Limpiar localStorage completamente
+        clearInvalidSession();
     }
 
     // Initialize core components
@@ -2462,20 +2565,31 @@ function showSearchPanel() {
         foliosMgmtContent.style.display = 'none';
     }
     
-    // Check if data is already loaded
-    if (STATE.obcData.size === 0 && !STATE.dateFilter.active) {
-        // No data loaded yet, show modal to select date
+    // ==================== FORZAR SELECCIÓN DE FILTRO ====================
+    // SIEMPRE mostrar modal de filtro si no hay filtro activo
+    // Esto previene el bucle de carga vacía después de cerrar sesión
+    if (!STATE.dateFilter.active) {
+        console.log('🔄 [INICIO] No hay filtro activo - Forzando selección de filtro');
         showDateFilterForDispatch();
-    } else {
-        // Data already loaded, show search panel directly
-        document.getElementById('welcome-state').style.display = 'none';
-        document.getElementById('search-panel').style.display = 'block';
-        document.getElementById('validated-content').style.display = 'none';
-        document.getElementById('folio-details-content').style.display = 'none';
-        document.getElementById('folios-content').style.display = 'none';
-        
-        renderPendingTable();
+        return;
     }
+    
+    // Si hay filtro activo pero no hay datos, cargar datos
+    if (STATE.obcData.size === 0 && STATE.dateFilter.active) {
+        console.log('🔄 [INICIO] Filtro activo pero sin datos - Recargando...');
+        showDateFilterForDispatch();
+        return;
+    }
+    
+    // Data already loaded, show search panel directly
+    console.log('✅ [INICIO] Datos cargados - Mostrando panel de búsqueda');
+    document.getElementById('welcome-state').style.display = 'none';
+    document.getElementById('search-panel').style.display = 'block';
+    document.getElementById('validated-content').style.display = 'none';
+    document.getElementById('folio-details-content').style.display = 'none';
+    document.getElementById('folios-content').style.display = 'none';
+    
+    renderPendingTable();
 }
 
 function showDateFilterForDispatch() {
@@ -2500,6 +2614,8 @@ function activateSearchPanelWithFilter() {
 }
 
 function backToStart() {
+    console.log('🔄 [CIERRE SESIÓN] Iniciando limpieza total...');
+    
     // Ocultar todos los paneles
     document.getElementById('search-panel').style.display = 'none';
     document.getElementById('validated-content').style.display = 'none';
@@ -2518,9 +2634,19 @@ function backToStart() {
     // Limpiar datos filtrados
     STATE.obcDataFiltered.clear();
     
+    // Limpiar TODOS los datos cargados (forzar recarga en próxima sesión)
+    STATE.obcData.clear();
+    STATE.validacionData.clear();
+    STATE.mneData.clear();
+    STATE.bdCajasData.clear();
+    STATE.trsData = [];
+    
     // Limpiar datos de validación local (se recargarán en próxima sesión)
     STATE.localValidated = [];
     STATE.localPending = [];
+    
+    // Limpiar folios de cargas
+    STATE.foliosDeCargas.clear();
     
     // Limpiar orden actual
     STATE.currentOrder = null;
@@ -2537,14 +2663,24 @@ function backToStart() {
     document.getElementById('tab-pending')?.classList.add('active');
     document.getElementById('tab-validated')?.classList.remove('active');
     
-    // Limpiar inputs de filtro de fecha
+    // ==================== LIMPIAR INPUTS DE FILTRO (UNMOUNT) ====================
+    // Limpiar inputs de filtro de fecha para forzar remount
     const dateStart = document.getElementById('date-start');
     const dateEnd = document.getElementById('date-end');
-    if (dateStart) dateStart.value = '';
-    if (dateEnd) dateEnd.value = '';
+    if (dateStart) {
+        dateStart.value = '';
+        dateStart.removeAttribute('value');
+    }
+    if (dateEnd) {
+        dateEnd.value = '';
+        dateEnd.removeAttribute('value');
+    }
     
-    // Actualizar displays de filtro
-    updateDateFilterDisplay();
+    // Limpiar displays de filtro
+    const dateFilterText = document.getElementById('date-filter-text');
+    const dateFilterBtn = document.getElementById('date-filter-display');
+    if (dateFilterText) dateFilterText.textContent = 'Seleccionar fechas';
+    if (dateFilterBtn) dateFilterBtn.classList.remove('active-filter');
     
     // Limpiar contadores del sidebar
     if (window.sidebarComponent) {
@@ -2555,10 +2691,41 @@ function backToStart() {
         });
     }
 
+    // ==================== LIMPIEZA TOTAL DE LOCALSTORAGE ====================
+    console.log('🗑️ [CIERRE SESIÓN] Limpiando localStorage...');
+    
+    try {
+        // Limpiar estado de despacho
+        localStorage.removeItem('dispatch_local_state');
+        
+        // Limpiar validaciones locales
+        localStorage.removeItem('localValidated');
+        
+        // Limpiar filtros guardados
+        localStorage.removeItem('dispatch_date_filter');
+        
+        // Limpiar sesión activa
+        localStorage.removeItem('dispatch_active_session');
+        
+        // Limpiar índice de background (forzar recarga)
+        if (typeof clearBackgroundIndex === 'function') {
+            clearBackgroundIndex();
+        }
+        
+        console.log('✅ [CIERRE SESIÓN] localStorage limpiado completamente');
+    } catch (e) {
+        console.error('❌ Error limpiando localStorage:', e);
+    }
+    
+    // Reset load state para forzar recarga en próxima sesión
+    LOAD_STATE.criticalLoaded = false;
+    LOAD_STATE.referencesLoaded = false;
+    LOAD_STATE.loadedDateRanges = []; // Limpiar rangos cargados en caché
+
     // CHANGE 1: Hide global navigation on welcome screen
     hideGlobalNavigation();
     
-    console.log('🔄 Sesión de despacho cerrada - Datos limpiados');
+    console.log('✅ [CIERRE SESIÓN] Sesión cerrada completamente - Sistema listo para nueva sesión');
 }
 
 /**
@@ -2590,9 +2757,10 @@ function executeExit() {
 }
 
 function updateSummary() {
+    // ==================== USAR MISMA FUENTE QUE TABLAS ====================
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
     
-    // Contar órdenes totales (OBC)
+    // Contar órdenes totales (OBC) - DIRECTAMENTE desde el Map
     const totalCount = dataToUse.size;
     
     // MEJORA: Configurar deep linking en tarjetas de resumen
@@ -2619,13 +2787,22 @@ function updateSummary() {
         validatedCount = STATE.localValidated.length;
     }
     
-    // Contar pendientes desde OBC
+    // Contar pendientes desde OBC - MISMO LOOP que renderOrdersTable
     for (const [orden] of dataToUse.entries()) {
         const { validated: isValidated } = isOrderValidated(orden);
         if (!isValidated) {
             pendingCount++;
         }
     }
+    
+    // ==================== VALIDACIÓN DE SINCRONIZACIÓN ====================
+    console.log('📊 [SYNC] updateSummary - Contadores calculados:', {
+        total: totalCount,
+        validadas: validatedCount,
+        pendientes: pendingCount,
+        fuenteDatos: STATE.dateFilter.active ? 'obcDataFiltered' : 'obcData',
+        filtroActivo: STATE.dateFilter.active
+    });
 
     // Actualizar usando sidebarComponent
     if (window.sidebarComponent) {
@@ -2823,7 +3000,28 @@ function parseOrderDate(dateStr) {
 
     // Intentar formato DD/MM/YYYY HH:MM:SS (con hora)
     const partsWithTime = cleanStr.split(' ');
-    if (partsWithTime.length >= 1) {
+    if (partsWithTime.length >= 2) {
+        const datePart = partsWithTime[0];
+        const timePart = partsWithTime[1];
+        
+        const datePartsOnly = datePart.split(/[/-]/);
+        const timePartsOnly = timePart.split(':');
+        
+        if (datePartsOnly.length === 3 && timePartsOnly.length >= 2) {
+            const d = parseInt(datePartsOnly[0]);
+            const m = parseInt(datePartsOnly[1]);
+            const y = parseInt(datePartsOnly[2]);
+            const year = y < 100 ? 2000 + y : y;
+            
+            const hours = parseInt(timePartsOnly[0]) || 0;
+            const minutes = parseInt(timePartsOnly[1]) || 0;
+            const seconds = timePartsOnly[2] ? parseInt(timePartsOnly[2]) : 0;
+
+            date = new Date(year, m - 1, d, hours, minutes, seconds);
+            if (!isNaN(date.getTime())) return date;
+        }
+    } else if (partsWithTime.length === 1) {
+        // Solo fecha sin hora
         const datePart = partsWithTime[0];
         const datePartsOnly = datePart.split(/[/-]/);
         if (datePartsOnly.length === 3) {
@@ -2916,7 +3114,15 @@ function renderOrdersTable(mode = 'pending') {
         return;
     }
 
+    // ==================== SINCRONIZACIÓN: Usar EXACTAMENTE la misma fuente que contadores ====================
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
+    
+    console.log('📊 [SYNC] renderOrdersTable - Fuente de datos:', {
+        mode,
+        filtroActivo: STATE.dateFilter.active,
+        totalEnFuente: dataToUse.size,
+        rangoFiltro: STATE.dateFilter.active ? `${STATE.dateFilter.startDate} → ${STATE.dateFilter.endDate}` : 'Sin filtro'
+    });
 
     if (dataToUse.size === 0) {
         tableBody.innerHTML = `
@@ -2952,6 +3158,12 @@ function renderOrdersTable(mode = 'pending') {
             return !isValidated;
         }
         return !isValidated;
+    });
+    
+    // ==================== VALIDACIÓN DE SINCRONIZACIÓN ====================
+    console.log('📊 [SYNC] Resultados de filtrado:', {
+        totalDespuesFiltro: filteredOrders.length,
+        modo: mode
     });
 
     tableBody.innerHTML = filteredOrders.map(([orden, data]) => {
@@ -5224,43 +5436,94 @@ async function executeSearch() {
     }
     foundOrders = uniqueOrders;
 
-    // BÚSQUEDA HÍBRIDA: Si no hay resultados, consultar índice de background
+    // ==================== BÚSQUEDA CROSS-FILTER EN ÍNDICE GLOBAL ====================
+    console.log('🔍 [DEBUG] Verificando búsqueda cross-filter:', {
+        foundOrdersLength: foundOrders.length,
+        searchInBackgroundIndexExists: typeof searchInBackgroundIndex === 'function',
+        getBackgroundIndexStatusExists: typeof getBackgroundIndexStatus === 'function',
+        isBackgroundIndexReadyExists: typeof isBackgroundIndexReady === 'function'
+    });
+    
     if (foundOrders.length === 0 && typeof searchInBackgroundIndex === 'function') {
-        console.log('🔍 [Híbrido] No hay resultados en datos cargados, consultando índice de background...');
+        console.log('🔍 [Cross-Filter] No hay resultados en datos cargados, consultando índice global...');
         
-        // Mostrar loader en barra de búsqueda
-        showSearchLoader(true);
+        // ==================== STATUS CHECK: Verificar si índice está listo ====================
+        const indexStatus = typeof getBackgroundIndexStatus === 'function' ? getBackgroundIndexStatus() : null;
         
-        const backgroundResults = searchInBackgroundIndex(query);
+        console.log('📊 [DEBUG] Status del índice:', indexStatus);
         
-        if (backgroundResults && backgroundResults.length > 0) {
-            console.log(`✅ [Híbrido] Encontrados ${backgroundResults.length} OBCs en índice de background`);
+        if (indexStatus && indexStatus.isLoading) {
+            // ÍNDICE CARGANDO: Mostrar preloader con progreso
+            console.log(`⏳ [Cross-Filter] Índice cargando... ${indexStatus.loadProgress.toFixed(0)}%`);
             
-            // Cargar datos completos de los OBCs encontrados
-            for (const obc of backgroundResults) {
-                if (STATE.obcData.has(obc)) {
-                    foundOrders.push({ 
-                        orden: obc, 
-                        source: 'Búsqueda Histórica (Background Index)', 
-                        confidence: 95 
-                    });
-                } else {
-                    // Si el OBC no está en memoria, marcarlo para carga
-                    foundOrders.push({ 
-                        orden: obc, 
-                        source: 'Histórico (Requiere carga)', 
-                        confidence: 90,
-                        needsLoad: true
-                    });
+            showSearchLoader(true, `Cargando base de datos histórica... ${indexStatus.loadProgress.toFixed(0)}%`);
+            showNotification(`⏳ Búsqueda histórica cargando... ${indexStatus.loadProgress.toFixed(0)}% - Por favor espere`, 'info', 3000);
+            
+            // ==================== REINTENTO AUTOMÁTICO ====================
+            // Esperar a que termine de cargar y reintentar búsqueda
+            const retryInterval = setInterval(() => {
+                const currentStatus = getBackgroundIndexStatus();
+                
+                if (currentStatus.isReady) {
+                    clearInterval(retryInterval);
+                    console.log('✅ [Cross-Filter] Índice listo - Reintentando búsqueda automáticamente...');
+                    
+                    showSearchLoader(false);
+                    showNotification('✅ Base de datos histórica lista - Reintentando búsqueda...', 'success', 2000);
+                    
+                    // Reintentar búsqueda automáticamente
+                    setTimeout(() => {
+                        // Restaurar query en input y ejecutar búsqueda
+                        if (searchInput) {
+                            searchInput.value = rawQuery;
+                            executeSearch();
+                        }
+                    }, 500);
+                } else if (!currentStatus.isLoading) {
+                    // Si dejó de cargar pero no está listo (error)
+                    clearInterval(retryInterval);
+                    showSearchLoader(false);
+                    showNotification('❌ Error cargando base de datos histórica', 'error');
                 }
-            }
+            }, 1000); // Verificar cada segundo
             
-            searchedInBackground = true;
-            showNotification(`🔍 Búsqueda histórica: ${backgroundResults.length} resultado${backgroundResults.length > 1 ? 's' : ''} encontrado${backgroundResults.length > 1 ? 's' : ''}`, 'info', 3000);
+            return; // Salir y esperar reintento
         }
         
-        // Ocultar loader
-        showSearchLoader(false);
+        // ÍNDICE LISTO: Buscar en índice
+        if (indexStatus && indexStatus.isReady) {
+            showSearchLoader(true);
+            
+            const backgroundResults = searchInBackgroundIndex(query);
+            
+            if (backgroundResults && backgroundResults.length > 0) {
+                console.log(`✅ [Cross-Filter] Encontrados ${backgroundResults.length} OBCs en índice global`);
+                
+                // Cargar datos completos de los OBCs encontrados
+                for (const obc of backgroundResults) {
+                    if (STATE.obcData.has(obc)) {
+                        foundOrders.push({ 
+                            orden: obc, 
+                            source: 'Búsqueda Histórica (Índice Global)', 
+                            confidence: 95 
+                        });
+                    } else {
+                        // Si el OBC no está en memoria, marcarlo para carga
+                        foundOrders.push({ 
+                            orden: obc, 
+                            source: 'Histórico (Requiere carga)', 
+                            confidence: 90,
+                            needsLoad: true
+                        });
+                    }
+                }
+                
+                searchedInBackground = true;
+                showNotification(`🔍 Búsqueda histórica: ${backgroundResults.length} resultado${backgroundResults.length > 1 ? 's' : ''} encontrado${backgroundResults.length > 1 ? 's' : ''}`, 'info', 3000);
+            }
+            
+            showSearchLoader(false);
+        }
     }
 
     // MEJORA: Limpiar searchbox siempre después de buscar
@@ -5392,10 +5655,24 @@ function hideNormalizedCodeDisplay() {
  * Muestra el loader de búsqueda en background
  * @param {boolean} show - true para mostrar, false para ocultar
  */
-function showSearchLoader(show) {
+function showSearchLoader(show, customMessage = null) {
     const loader = document.getElementById('search-loader');
     if (loader) {
         loader.style.display = show ? 'flex' : 'none';
+        
+        // Actualizar mensaje si se proporciona uno personalizado
+        if (customMessage) {
+            const messageElement = loader.querySelector('.search-loader-text');
+            if (messageElement) {
+                messageElement.textContent = customMessage;
+            }
+        } else {
+            // Restaurar mensaje por defecto
+            const messageElement = loader.querySelector('.search-loader-text');
+            if (messageElement) {
+                messageElement.textContent = 'Buscando en base de datos completa...';
+            }
+        }
     }
 }
 
@@ -6152,7 +6429,7 @@ function renderModalBody(orden, orderData) {
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">HORARIO</div>
-                        <div class="general-info-value">${formatISO8601ForDisplay(orderData.expectedArrival) || 'N/A'}</div>
+                        <div class="general-info-value">${formatISO8601ForDisplay(orderData.expectedArrival, true) || 'N/A'}</div>
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">REFERENCIA</div>
@@ -7478,19 +7755,70 @@ async function applyDateFilter() {
         return;
     }
 
+    // ==================== DETECCIÓN DE CAMBIO DE FILTRO ====================
+    const isFilterChange = STATE.dateFilter.active && 
+                          (STATE.dateFilter.startDate !== startDate || STATE.dateFilter.endDate !== endDate);
+    
+    if (isFilterChange) {
+        console.log('🔄 [CAMBIO FILTRO] Detectado cambio de filtro de fecha - Limpiando contexto anterior...');
+        
+        // LIMPIAR DATOS ANTERIORES COMPLETAMENTE
+        STATE.obcDataFiltered.clear();
+        STATE.obcData.clear();
+        STATE.validacionData.clear();
+        STATE.mneData.clear();
+        STATE.bdCajasData.clear();
+        STATE.trsData = [];
+        
+        // Limpiar validaciones locales del rango anterior
+        STATE.localValidated = [];
+        STATE.localPending = [];
+        
+        // Reset load state para forzar recarga completa
+        LOAD_STATE.criticalLoaded = false;
+        LOAD_STATE.referencesLoaded = false;
+        
+        console.log('✅ [CAMBIO FILTRO] Contexto anterior eliminado - Preparando nueva carga');
+    }
+
     STATE.dateFilter.startDate = startDate;
     STATE.dateFilter.endDate = endDate;
     STATE.dateFilter.active = true;
 
     // ✨ LAZY LOADING: Load data on-demand with date filter
-    console.log('🚀 Triggering lazy loading with date filter...');
+    console.log('🚀 [FILTRO] Iniciando carga de datos para nuevo rango:', { startDate, endDate });
     
     try {
+        // Mostrar indicador de carga
+        STATE.isLoading = true;
+        showNotification('⏳ Cargando datos del nuevo rango de fechas...', 'info', 2000);
+        
+        // ==================== TIMEOUT DE SEGURIDAD ====================
+        // Garantizar que el loader NUNCA persista más de 3 segundos
+        const safetyTimeout = setTimeout(() => {
+            if (STATE.isLoading) {
+                console.warn('⚠️ [LOAD] Timeout de seguridad alcanzado - Forzando isLoading = false');
+                STATE.isLoading = false;
+                renderOrdersList();
+                renderValidatedTable();
+                updateSummary();
+            }
+        }, 3000);
+        
         // Call lazy loading function to fetch data for this date range
         await lazyLoadDataByDate(startDate, endDate);
         
+        // Limpiar timeout si la carga fue exitosa
+        clearTimeout(safetyTimeout);
+        
         // After lazy loading completes, apply local filtering
         filterOrdersByDateRange();
+        
+        // ==================== CRÍTICO: LIMPIAR FLAG DE CARGA ====================
+        // Limpiar INMEDIATAMENTE después de cargar datos del filtro (Prioridad 1)
+        // El índice histórico se carga en background sin bloquear (Prioridad 2)
+        STATE.isLoading = false;
+        console.log('✅ [LOAD] Datos del filtro cargados - isLoading = false');
 
         // Verificar si es inicio de despacho
         const modal = document.getElementById('date-filter-modal');
@@ -7541,10 +7869,19 @@ async function applyDateFilter() {
         // CHANGE 1: Update global navigation date indicator
         updateGlobalDateIndicator();
         
+        // ==================== MARCAR SESIÓN ACTIVA ====================
+        // Guardar marca de sesión válida después de aplicar filtro exitosamente
+        markActiveSession();
+        
     } catch (error) {
         console.error('Error applying date filter with lazy loading:', error);
         showNotification('❌ Error al cargar datos: ' + error.message, 'error');
+        
+        // CRÍTICO: Limpiar flag incluso en error para no bloquear UI
+        STATE.isLoading = false;
     } finally {
+        // Garantizar que isLoading siempre se limpie
+        STATE.isLoading = false;
         closeDateFilter();
     }
 }
