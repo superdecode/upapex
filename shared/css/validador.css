@@ -65,18 +65,19 @@ body {
     width: 100%;
 }
 
+/* COMPACTADO: Reducir espacio vertical para mostrar más listas */
 .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 25px;
+    margin-bottom: 15px; /* Reducido de 25px */
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px; /* Reducido de 10px */
 }
 
 .header h1 {
     color: var(--primary);
-    font-size: 1.8em;
+    font-size: 1.4em; /* Reducido de 1.8em */
     font-weight: 700;
     flex: 1;
     margin: 0;
@@ -84,10 +85,10 @@ body {
 
 .card {
     background: white;
-    padding: 20px;
-    border-radius: 12px;
+    padding: 12px; /* Reducido de 20px */
+    border-radius: 8px; /* Reducido de 12px */
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    margin-bottom: 20px;
+    margin-bottom: 12px; /* Reducido de 20px */
     border: 1px solid #f0f0f0;
 }
 
@@ -259,33 +260,34 @@ body {
 }
 
 /* === INPUTS === */
+/* COMPACTADO: Inline inputs más pequeños */
 .inline-inputs {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* Reducido de 160px */
+    gap: 8px; /* Reducido de 12px */
+    margin-bottom: 10px; /* Reducido de 15px */
 }
 
 .input-group {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px; /* Reducido de 4px */
 }
 
 .input-group label {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 2px; /* Reducido de 4px */
     font-weight: 600;
-    font-size: 0.85em;
+    font-size: 0.8em; /* Reducido de 0.85em */
 }
 
 .input-group input,
 .input-group select {
     width: 100%;
-    padding: 10px;
+    padding: 7px; /* Reducido de 10px */
     border: 2px solid #ddd;
-    border-radius: 6px;
-    font-size: 0.95em;
+    border-radius: 5px; /* Reducido de 6px */
+    font-size: 0.9em; /* Reducido de 0.95em */
 }
 
 .input-group input:focus {

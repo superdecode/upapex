@@ -295,10 +295,32 @@ function updateGlobalSummary() {
     if (totalEl) totalEl.textContent = grandTotal;
 }
 
-// Helper para agregar a la cola de sync (compatibilidad)
-function addToPendingSync(sheet, log) {
-    if (syncManager) {
-        syncManager.addToQueue({ sheet, log }, sheet);
+// Helper para agregar a la cola de sync usando Advanced Sync Manager
+function addToPendingSync(log) {
+    if (!syncManager) {
+        console.warn('⚠️ [VALIDADOR] syncManager no disponible, validación no se sincronizará');
+        return;
+    }
+
+    try {
+        // Formatear el registro para el Advanced Sync Manager
+        const record = {
+            date: log.date,
+            time: log.timestamp,
+            user: log.user,
+            obc: log.obc,
+            codigo: log.code,
+            destino: OBC_INFO.get(log.obc)?.recipient || '-',
+            horario: OBC_INFO.get(log.obc)?.arrivalTime || '-',
+            ubicacion: log.location || '',
+            estatus: 'OK',
+            nota: log.note || ''
+        };
+
+        syncManager.addToQueue(record);
+        console.log('✅ [VALIDADOR] Validación agregada a cola de sincronización:', log.code);
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error al agregar a cola de sync:', error);
     }
 }
 
@@ -357,6 +379,7 @@ window.storage = {
 
 async function loadFromStorage() {
     try {
+        console.log('⏳ [VALIDADOR] Cargando estado desde storage...');
         const stateRes = await window.storage.get('wms_validador_state');
         if (stateRes?.value) {
             const loaded = JSON.parse(stateRes.value);
@@ -364,9 +387,15 @@ async function loadFromStorage() {
             STATE.closedTabs = loaded.closedTabs || {};
             STATE.activeOBC = loaded.activeOBC;
             STATE.sessionStats = loaded.sessionStats || { total: 0, valid: 0, invalid: 0 };
-            console.log('📂 Estado cargado desde storage');
+            console.log('✅ [VALIDADOR] Estado cargado:', {
+                tabs: Object.keys(STATE.tabs).length,
+                activeOBC: STATE.activeOBC
+            });
+        } else {
+            console.log('ℹ️ [VALIDADOR] No hay estado previo guardado');
         }
 
+        console.log('⏳ [VALIDADOR] Cargando BD desde storage...');
         const bdRes = await window.storage.get('wms_validador_bd');
         if (bdRes?.value) {
             const cached = JSON.parse(bdRes.value);
@@ -375,12 +404,18 @@ async function loadFromStorage() {
             OBC_TOTALS = new Map(cached.totals || []);
             OBC_INFO = new Map(cached.info || []);
             LAST_BD_UPDATE = cached.lastUpdate;
-            console.log(`📂 BD cargada: ${BD_CODES.size} códigos`);
+            console.log('✅ [VALIDADOR] BD cargada:', {
+                codes: BD_CODES.size,
+                obcs: OBC_TOTALS.size,
+                lastUpdate: LAST_BD_UPDATE ? new Date(LAST_BD_UPDATE).toLocaleString() : 'N/A'
+            });
+        } else {
+            console.log('ℹ️ [VALIDADOR] No hay BD en caché');
         }
 
         // El historial ahora se carga desde IndexedDB en HistoryIndexedDBManager.init()
     } catch (e) {
-        console.error('Error cargando desde storage:', e);
+        console.error('❌ [VALIDADOR] Error cargando desde storage:', e);
     }
 }
 
@@ -434,17 +469,37 @@ async function savePrerecData() {
 
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', async () => {
-    initAudio();
+    console.log('🚀 [VALIDADOR] Iniciando aplicación...');
 
-    // Inicializar sistema de cache IndexedDB PRIMERO
-    await HistoryIndexedDBManager.init();
+    try {
+        initAudio();
+        console.log('✅ [VALIDADOR] Audio inicializado');
 
-    await loadFromStorage();
-    await loadPrerecData();
-    setupListeners();
-    setupConnectionMonitor();
-    await initSyncManager();
-    renderValidation();
+        // Inicializar sistema de cache IndexedDB PRIMERO
+        console.log('⏳ [VALIDADOR] Inicializando IndexedDB...');
+        await HistoryIndexedDBManager.init();
+        console.log('✅ [VALIDADOR] IndexedDB inicializado');
+
+        console.log('⏳ [VALIDADOR] Cargando datos de storage...');
+        await loadFromStorage();
+        await loadPrerecData();
+        console.log('✅ [VALIDADOR] Datos cargados');
+
+        console.log('⏳ [VALIDADOR] Configurando listeners...');
+        setupListeners();
+        setupConnectionMonitor();
+        console.log('✅ [VALIDADOR] Listeners configurados');
+
+        console.log('⏳ [VALIDADOR] Inicializando Sync Manager...');
+        await initSyncManager();
+        console.log('✅ [VALIDADOR] Sync Manager inicializado');
+
+        renderValidation();
+        console.log('✅ [VALIDADOR] Renderización inicial completada');
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error durante inicialización:', error);
+        showNotification('❌ Error al inicializar la aplicación', 'error');
+    }
     
     // Debug mode: bypass Google auth
     if (DebugMode.autoInit('Validador', (userData) => {
@@ -489,35 +544,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const initAuthManager = async () => {
-        await AuthManager.init(
-            // onAuthSuccess
-            async (userData) => {
-                USER_EMAIL = userData.email;
-                USER_GOOGLE_NAME = userData.name;
+        try {
+            console.log('⏳ [VALIDADOR] Inicializando AuthManager...');
+            await AuthManager.init(
+                // onAuthSuccess
+                async (userData) => {
+                    console.log('✅ [VALIDADOR] Autenticación exitosa:', { email: userData.email, user: userData.user });
 
-                // Verificar si hay alias guardado
-                const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                if (savedAlias) {
-                    CURRENT_USER = savedAlias;
-                } else {
-                    CURRENT_USER = userData.user;
+                    USER_EMAIL = userData.email;
+                    USER_GOOGLE_NAME = userData.name;
+
+                    // Verificar si hay alias guardado
+                    const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                    if (savedAlias) {
+                        CURRENT_USER = savedAlias;
+                        console.log('✅ [VALIDADOR] Alias recuperado:', savedAlias);
+                    } else {
+                        CURRENT_USER = userData.user;
+                        console.log('✅ [VALIDADOR] Usando nombre de usuario:', userData.user);
+                    }
+
+                    showMainApp();
+                    updateUserFooter();
+
+                    console.log('⏳ [VALIDADOR] Cargando base de datos...');
+                    await loadDatabase();
+
+                    // Si no hay alias guardado, mostrar popup de configuración
+                    if (!savedAlias) {
+                        setTimeout(() => showAliasPopup(), 500);
+                    }
+                },
+                // onAuthError
+                (error) => {
+                    console.error('❌ [VALIDADOR] Auth error:', error);
+                    showNotification('❌ Error de autenticación', 'error');
                 }
-
-                showMainApp();
-                updateUserFooter();
-                loadDatabase();
-
-                // Si no hay alias guardado, mostrar popup de configuración
-                if (!savedAlias) {
-                    setTimeout(() => showAliasPopup(), 500);
-                }
-            },
-            // onAuthError
-            (error) => {
-                console.error('Auth error:', error);
-                showNotification('❌ Error de autenticación', 'error');
-            }
-        );
+            );
+            console.log('✅ [VALIDADOR] AuthManager inicializado correctamente');
+        } catch (error) {
+            console.error('❌ [VALIDADOR] Error crítico en initAuthManager:', error);
+            showNotification('❌ Error crítico al inicializar autenticación', 'error');
+        }
     };
 
     initAuth();
@@ -539,8 +607,22 @@ function showLoading(show) {
 
 // ==================== AUTENTICACIÓN ====================
 function handleLogin() {
-    AuthManager.login();
+    try {
+        console.log('🔐 [VALIDADOR] Iniciando proceso de login...');
+        if (!window.AuthManager) {
+            console.error('❌ [VALIDADOR] AuthManager no está disponible');
+            showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
+            return;
+        }
+        AuthManager.login();
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error en handleLogin:', error);
+        showNotification('❌ Error al iniciar sesión', 'error');
+    }
 }
+
+// Hacer disponible globalmente
+window.handleLogin = handleLogin;
 
 function showMainApp() {
     document.getElementById('login-screen').classList.add('hidden');
@@ -562,14 +644,28 @@ function showLoginScreen() {
 }
 
 function toggleGoogleConnection() {
-    if (AuthManager.isAuthenticated()) {
-        AuthManager.logout();
-        showLoginScreen();
-        showNotification('� Desconectado de Google', 'info');
-    } else {
-        handleLogin();
+    try {
+        if (!window.AuthManager) {
+            console.error('❌ [VALIDADOR] AuthManager no disponible');
+            showNotification('❌ Sistema de autenticación no disponible', 'error');
+            return;
+        }
+
+        if (AuthManager.isAuthenticated()) {
+            AuthManager.logout();
+            showLoginScreen();
+            showNotification('🔌 Desconectado de Google', 'info');
+        } else {
+            handleLogin();
+        }
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error en toggleGoogleConnection:', error);
+        showNotification('❌ Error al cambiar conexión', 'error');
     }
 }
+
+// Hacer disponible globalmente
+window.toggleGoogleConnection = toggleGoogleConnection;
 
 async function handleLogout() {
     const confirmLogout = confirm('¿Cerrar sesión?\n\nSe limpiarán todos los datos en caché.');
@@ -740,15 +836,36 @@ function changeUserAlias() {
 function updateUserFooter() {
     // Usar el sistema compartido de Avatar si está disponible
     if (window.AvatarSystem) {
-        window.AvatarSystem.updateDisplay(
-            CURRENT_USER,
-            USER_EMAIL,
-            {
-                onClick: changeUserAlias,
-                title: USER_EMAIL || 'No conectado'
-            }
-        );
+        console.log('✅ [VALIDADOR] Usando AvatarSystem compartido');
+
+        // Actualizar el estado del AvatarSystem
+        if (CURRENT_USER) {
+            window.AvatarSystem.setUserName(CURRENT_USER);
+        }
+        if (USER_EMAIL) {
+            window.AvatarSystem.setUserEmail(USER_EMAIL);
+        }
+
+        // Actualizar la visualización
+        window.AvatarSystem.updateDisplay();
+
+        // Configurar click handler para cambio de alias
+        const avatarEl = document.getElementById('user-avatar');
+        const nameEl = document.getElementById('user-name-display');
+
+        if (avatarEl) {
+            avatarEl.onclick = changeUserAlias;
+            avatarEl.style.cursor = 'pointer';
+            avatarEl.title = `${USER_EMAIL || 'No conectado'}\nClick para cambiar alias`;
+        }
+        if (nameEl) {
+            nameEl.onclick = changeUserAlias;
+            nameEl.style.cursor = 'pointer';
+            nameEl.title = 'Click para cambiar alias';
+        }
     } else {
+        console.warn('⚠️ [VALIDADOR] AvatarSystem no disponible, usando fallback');
+
         // Fallback si el sistema compartido no está disponible
         const avatarEl = document.getElementById('user-avatar');
         const nameEl = document.getElementById('user-name-display');
@@ -796,13 +913,21 @@ function updateConnectionIndicator(syncing = false) {
 }
 
 function updateBdInfo() {
-    const countEl = document.getElementById('bd-count-sidebar');
+    const countEl = document.getElementById('bd-count');
     const timeEl = document.getElementById('bd-update-time');
     if (countEl) countEl.textContent = BD_CODES.size;
     if (timeEl) timeEl.textContent = LAST_BD_UPDATE
         ? `Actualizado: ${new Date(LAST_BD_UPDATE).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
         : 'Sin actualizar';
 }
+
+// Función para recargar la base de datos (llamada desde HTML)
+async function reloadBD() {
+    await loadDatabase();
+}
+
+// Hacer disponible globalmente
+window.reloadBD = reloadBD;
 
 // ==================== BASE DE DATOS ====================
 async function loadDatabase() {
@@ -823,17 +948,32 @@ async function loadDatabase() {
         if (resRes.result.values) {
             OBC_INFO.clear();
             OBC_TOTALS.clear();
+
+            // Log header para debug
+            if (resRes.result.values.length > 0) {
+                console.log('📊 [VALIDADOR] Estructura de Resumen:', resRes.result.values[0]);
+            }
+
             for (let i = 1; i < resRes.result.values.length; i++) {
                 const row = resRes.result.values[i];
                 const obc = (row[0] || '').toUpperCase();
                 if (obc) {
-                    OBC_TOTALS.set(obc, parseInt(row[1]) || 0);
+                    // Estructura correcta de la hoja Resumen:
+                    // A: OBC, B: Total Cajas, C: Destino, D: Horario
+                    const totalCajas = parseInt(row[1]) || 0;
+                    const destino = row[2] || '-';
+                    const horario = row[3] || '-';
+
+                    OBC_TOTALS.set(obc, totalCajas);
                     OBC_INFO.set(obc, {
-                        recipient: row[2] || '-',
-                        arrivalTime: row[3] || '-'
+                        recipient: destino,
+                        arrivalTime: horario
                     });
+
+                    console.log(`📦 [VALIDADOR] OBC: ${obc}, Total: ${totalCajas}, Destino: ${destino}, Horario: ${horario}`);
                 }
             }
+            console.log(`✅ [VALIDADOR] Cargadas ${OBC_TOTALS.size} órdenes con info completa`);
         }
 
         // Cargar códigos solo de la hoja BD principal
@@ -895,63 +1035,61 @@ async function loadDatabase() {
         showLoading(false);
         showNotification(`✅ ${BD_CODES.size} códigos cargados`, 'success');
     } catch (error) {
-        console.error('Error loading database:', error);
+        console.error('❌ [VALIDADOR] Error loading database:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            status: error.status,
+            statusText: error.statusText
+        });
         showLoading(false);
-        showNotification('❌ Error cargando BD', 'error');
+        showNotification(`❌ Error cargando BD: ${error.message || 'Error desconocido'}`, 'error');
     }
 }
 
 function startValidation() {
-    document.getElementById('dashboard').classList.add('hidden');
-    document.getElementById('validation-screen').classList.remove('hidden');
-    
-    STATE.sessionStats = { total: 0, valid: 0, invalid: 0 };
-    STATE.currentLocation = '';
-    updateSessionStats();
-    
+    // CORREGIDO: Referencias a dashboard/validation-screen eliminadas
+    // El diseño actual usa empty-state y validation-content
+
+    renderValidation();
+
     setTimeout(() => {
-        const locationInput = document.getElementById('location-input');
-        if (locationInput) {
-            locationInput.focus();
-        } else {
-            document.getElementById('validation-input').focus();
-        }
+        const scanner = document.getElementById('scanner');
+        if (scanner) scanner.focus();
     }, 100);
 
     setupValidationListeners();
 }
 
 function setupValidationListeners() {
-    const input = document.getElementById('validation-input');
+    // FUNCIÓN OBSOLETA: validation-input no existe en el HTML
+    // El scanner real es manejado por setupListeners()
+    // Solo mantenemos el location-input validation
+
     const locationInput = document.getElementById('location-input');
-    
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && input.value.trim()) {
-            e.preventDefault();
-            validateCode(input.value.trim());
-            input.value = '';
-        }
-    });
-    
     if (locationInput) {
-        locationInput.addEventListener('blur', () => {
-            const location = locationInput.value.trim();
+        // Remove old listeners to avoid duplicates
+        locationInput.replaceWith(locationInput.cloneNode(true));
+        const newLocationInput = document.getElementById('location-input');
+
+        newLocationInput.addEventListener('blur', () => {
+            const location = newLocationInput.value.trim();
             if (location) {
                 validateLocationInput(location);
             }
         });
-        
-        locationInput.addEventListener('keydown', (e) => {
+
+        newLocationInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                const location = locationInput.value.trim();
+                const location = newLocationInput.value.trim();
                 if (location) {
                     validateLocationInput(location);
                 }
             }
         });
-        
-        locationInput.addEventListener('input', (e) => {
+
+        newLocationInput.addEventListener('input', (e) => {
             e.target.value = e.target.value.toUpperCase();
         });
     }
@@ -1053,16 +1191,30 @@ async function processScan(raw, isManual = false) {
 
     const obc = STATE.activeOBC;
     const location = tab.location || '';
+
     // Primero extraer el código usando extractCode, luego normalizarlo
     const extractedCode = extractCode(raw);
     const code = normalizeCode(extractedCode);
     const concatenated = code + obc.toLowerCase();
 
+    console.log('🔍 [VALIDADOR] Procesando scan:', {
+        raw,
+        extractedCode,
+        normalizedCode: code,
+        obc,
+        concatenated,
+        existeEnBD: BD_CODES.has(concatenated)
+    });
+
     // Verificar si existe en BD
     if (!BD_CODES.has(concatenated)) {
+        console.warn('❌ [VALIDADOR] Código NO encontrado en BD:', concatenated);
         await handleRejection('NO_EXISTE_EN_BD', raw, code, obc);
         return;
     }
+
+    console.log('✅ [VALIDADOR] Código encontrado en BD');
+
 
     // Verificar historial global
     if (HISTORY.has(concatenated)) {
@@ -1107,7 +1259,7 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
     // Guardar en IndexedDB para cache persistente
     await HistoryIndexedDBManager.addValidation(concatenated, historyData);
 
-    addToPendingSync('Validaciones', log);
+    addToPendingSync(log);
     await saveState();
     await saveHistory();
 
@@ -1140,7 +1292,8 @@ async function handleRejection(reason, raw, code, obc) {
     };
 
     STATE.tabs[obc].rejections.push(log);
-    addToPendingSync('Rechazos', log);
+    // Los rechazos no se sincronizan, solo se guardan localmente
+    // addToPendingSync(log);
 
     await saveState();
 
@@ -1485,9 +1638,9 @@ async function addOBC() {
 // Las funciones de validación están en shared/js/wms-utils.js
 
 function endValidation() {
-    document.getElementById('validation-screen').classList.add('hidden');
-    document.getElementById('dashboard').classList.remove('hidden');
-    updateDashboard();
+    // CORREGIDO: Referencias obsoletas eliminadas
+    // El diseño actual maneja el estado con renderValidation()
+    renderValidation();
 }
 
 function confirmReloadOrder() {
@@ -2308,6 +2461,40 @@ function closeUserStats() {
 
 window.showUserStats = showUserStats;
 window.closeUserStats = closeUserStats;
+
+// ==================== EXPORTACIONES GLOBALES ====================
+// Asegurar que todas las funciones llamadas desde HTML estén disponibles globalmente
+window.addOBC = addOBC;
+window.cancelReloadOrder = cancelReloadOrder;
+window.closePopup = closePopup;
+window.confirmReloadOrder = confirmReloadOrder;
+window.continueToNewOrder = continueToNewOrder;
+window.continueViewing = continueViewing;
+window.exportData = exportData;
+window.forceDuplicate = forceDuplicate;
+window.forceHistoryValidation = forceHistoryValidation;
+window.openManualInput = openManualInput;
+window.submitManualCode = submitManualCode;
+window.showResumen = showResumen;
+window.showFaltantes = showFaltantes;
+window.showConsulta = showConsulta;
+window.showPrerecepcion = showPrerecepcion;
+window.hideResumen = hideResumen;
+window.hideFaltantes = hideFaltantes;
+window.hideConsulta = hideConsulta;
+window.hideReconteo = hideReconteo;
+window.openReconteo = openReconteo;
+window.clearReconteo = clearReconteo;
+window.executeConsulta = executeConsulta;
+window.confirmPrerecepcion = confirmPrerecepcion;
+window.closePrerecepcion = closePrerecepcion;
+window.saveAndClose = saveAndClose;
+window.saveAndContinue = saveAndContinue;
+window.switchOBC = switchOBC;
+window.closeTab = closeTab;
+window.updateState = updateState;
+
+console.log('✅ [VALIDADOR] Todas las funciones exportadas globalmente');
 
 function testLocationValidator() {
     console.log('🧪 Testing Location Validator (usando wms-utils.js)...');

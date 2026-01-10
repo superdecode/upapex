@@ -2776,9 +2776,18 @@ function parseOrderDate(dateStr) {
     // Remover espacios extras
     const cleanStr = dateStr.trim();
 
-    // Intentar parse directo (formato ISO: YYYY-MM-DD)
+    // Intentar parse directo (formato ISO: YYYY-MM-DD o YYYY-MM-DD HH:mm:ss)
     let date = new Date(cleanStr);
     if (!isNaN(date.getTime())) return date;
+
+    // Intentar formato ISO 8601 explícito: YYYY-MM-DD HH:mm:ss
+    const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+    if (isoMatch) {
+        const [, year, month, day, hours, minutes, seconds] = isoMatch;
+        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 
+                       parseInt(hours), parseInt(minutes), parseInt(seconds));
+        if (!isNaN(date.getTime())) return date;
+    }
 
     // Intentar formato dd/mm/yyyy o dd-mm-yyyy
     const parts = cleanStr.split(/[/-]/);
@@ -2821,6 +2830,31 @@ function parseOrderDate(dateStr) {
     }
 
     return null;
+}
+
+/**
+ * Formatea una fecha ISO 8601 (YYYY-MM-DD HH:mm:ss) a formato legible
+ * @param {string} isoDateStr - Fecha en formato ISO 8601
+ * @param {boolean} includeTime - Si se debe incluir la hora en el formato de salida
+ * @returns {string} Fecha formateada (DD/MM/YYYY o DD/MM/YYYY HH:mm)
+ */
+function formatISO8601ForDisplay(isoDateStr, includeTime = false) {
+    if (!isoDateStr) return '';
+    
+    const date = parseOrderDate(isoDateStr);
+    if (!date || isNaN(date.getTime())) return isoDateStr; // Retornar original si no se puede parsear
+    
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    
+    if (includeTime) {
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
+    }
+    
+    return `${day}/${month}/${year}`;
 }
 
 function formatDateDDMMYYYY(date) {
@@ -4177,7 +4211,7 @@ function renderValidatedTable() {
                 <td><span class="order-code">${makeCopyable(record.orden)}</span></td>
                 <td class="fecha-validacion">${fechaValidacion}</td>
                 <td class="td-wrap">${record.destino || orderData.recipient || '<span class="empty-cell">N/A</span>'}</td>
-                <td>${record.horario || orderData.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
+                <td>${formatISO8601ForDisplay(record.horario || orderData.expectedArrival) || '<span class="empty-cell">N/A</span>'}</td>
                 <td style="text-align: center;">${totalCajas || '<span class="empty-cell">0</span>'}</td>
                 <td>
                     ${validationDisplay}
@@ -4364,7 +4398,65 @@ function closeCancelOrderModal() {
 }
 
 /**
- * Formatea fecha y hora de manera consistente para BD
+ * Normaliza y valida una fecha de envío para la columna G (Horario/Delivery Date)
+ * Asegura formato ISO 8601 (YYYY-MM-DD HH:mm:ss) para evitar conversión a número de serie
+ * @param {string|Date} dateInput - Fecha en cualquier formato
+ * @returns {string} Fecha normalizada en formato ISO 8601 o string vacío si es inválida
+ */
+function normalizeDeliveryDate(dateInput) {
+    if (!dateInput) return '';
+    
+    let date;
+    
+    // Si ya es un objeto Date
+    if (dateInput instanceof Date) {
+        date = dateInput;
+    }
+    // Si es string, intentar parsearlo
+    else if (typeof dateInput === 'string') {
+        const trimmed = dateInput.trim();
+        
+        // Intentar parsear con parseOrderDate primero (maneja múltiples formatos)
+        date = parseOrderDate(trimmed);
+        
+        // Si falla, intentar Date constructor
+        if (!date || isNaN(date.getTime())) {
+            date = new Date(trimmed);
+        }
+    }
+    // Si es número (número de serie de Excel), convertir
+    else if (typeof dateInput === 'number') {
+        // Excel epoch: 1900-01-01 (pero con bug de año bisiesto 1900)
+        // Días desde 1900-01-01 (número de serie de Excel)
+        const excelEpoch = new Date(1899, 11, 30); // 30 de diciembre de 1899
+        date = new Date(excelEpoch.getTime() + dateInput * 86400000);
+    }
+    else {
+        return '';
+    }
+    
+    // Validar que la fecha sea válida
+    if (!date || isNaN(date.getTime())) {
+        console.warn(`⚠️ [NORMALIZE] Fecha inválida recibida: ${dateInput}`);
+        return '';
+    }
+    
+    // Formatear a ISO 8601: YYYY-MM-DD HH:mm:ss
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    const normalized = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    
+    console.log(`📅 [NORMALIZE] ${dateInput} → ${normalized}`);
+    return normalized;
+}
+
+/**
+ * Formatea fecha y hora para guardar en la base de datos
  * @param {Date} date - Fecha a formatear
  * @returns {Object} { fecha: string, hora: string } en formato DD/MM/YYYY y HH:MM
  */
@@ -4499,7 +4591,7 @@ async function executeConfirmCancelOrder() {
             usuario: CURRENT_USER || USER_GOOGLE_NAME || '', // D: Usuario (quien cancela)
             orden: STATE.currentOrder,                      // E: Orden
             destino: orderData.recipient || '',             // F: Destino
-            horario: orderData.expectedArrival || '',       // G: Horario
+            horario: normalizeDeliveryDate(orderData.expectedArrival) || '',  // G: Horario (Fecha de Envío normalizada)
             codigo: orderData.trackingCode || '',           // H: Código
             codigo2: orderData.referenceNo || '',           // I: Código 2
             estatus: 'Cancelada',                           // J: Estatus
@@ -5871,7 +5963,7 @@ function renderModalBody(orden, orderData) {
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">HORARIO</div>
-                        <div class="general-info-value">${orderData.expectedArrival || 'N/A'}</div>
+                        <div class="general-info-value">${formatISO8601ForDisplay(orderData.expectedArrival) || 'N/A'}</div>
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">REFERENCIA</div>
@@ -6566,7 +6658,7 @@ function showConfirmDispatchModal() {
     // Llenar modal de confirmación
     document.getElementById('confirm-orden').textContent = STATE.currentOrder;
     document.getElementById('confirm-destino').textContent = orderData.recipient || 'N/A';
-    document.getElementById('confirm-horario').textContent = orderData.expectedArrival || 'N/A';
+    document.getElementById('confirm-horario').textContent = formatISO8601ForDisplay(orderData.expectedArrival) || 'N/A';
     document.getElementById('confirm-cantidad').textContent = cantidadDespachar + ' cajas';
     document.getElementById('confirm-calidad').textContent = estatusCalidad;
     document.getElementById('confirm-conductor').textContent = operador;
@@ -6645,7 +6737,7 @@ async function executeConfirmDispatch() {
         usuario: CURRENT_USER,                  // D: Usuario
         orden: STATE.currentOrder,              // E: Orden
         destino: orderData.recipient || '',     // F: Destino
-        horario: orderData.expectedArrival || '', // G: Horario
+        horario: normalizeDeliveryDate(orderData.expectedArrival) || '', // G: Horario (Fecha de Envío normalizada ISO 8601)
         codigo: orderData.trackingCode || '',   // H: Código
         codigo2: orderData.referenceNo || '',   // I: Código 2
         estatus: 'Procesado',                   // J: Estatus
@@ -7712,15 +7804,43 @@ function renderFoliosTable() {
     let useFoliosFilter = FOLIOS_DATE_FILTER.active && FOLIOS_DATE_FILTER.startDate && FOLIOS_DATE_FILTER.endDate;
     
     if (useGlobalFilter) {
-        // FIX: Usar parseDateLocal para evitar -1 día
+        // ============================================================
+        // NUEVA LÓGICA DE TRIANGULACIÓN (Solo para filtro global)
+        // Paso A: Identificar órdenes por Fecha de Envío
+        // Paso B: Extraer IDs de Folios de esas órdenes
+        // Paso C: Mostrar solo esos folios (DISTINCT)
+        // ============================================================
+        
         const startDate = parseDateLocal(STATE.dateFilter.startDate);
         const endDate = parseDateLocal(STATE.dateFilter.endDate);
         endDate.setHours(23, 59, 59, 999);
 
-        folios = folios.filter(folio => {
-            const folioDate = parseDateLocal(folio.fecha);
-            return folioDate >= startDate && folioDate <= endDate;
+        // PASO A: Filtrar órdenes validadas por Fecha de Envío (columna G - horario)
+        const ordenesEnRango = STATE.localValidated.filter(record => {
+            const orderData = STATE.obcData.get(record.orden) || {};
+            const dateStr = record.horario || orderData.expectedArrival;
+            
+            if (!dateStr) return false;
+            
+            const orderDate = parseOrderDate(dateStr);
+            return orderDate && orderDate >= startDate && orderDate <= endDate;
         });
+
+        // PASO B: Extraer IDs de Folios únicos (DISTINCT)
+        const foliosIdsEnRango = new Set();
+        ordenesEnRango.forEach(record => {
+            if (record.folio) {
+                foliosIdsEnRango.add(record.folio);
+            }
+        });
+
+        // PASO C: Filtrar folios que estén en el Set de IDs
+        folios = folios.filter(folio => foliosIdsEnRango.has(folio.folio));
+        
+        console.log(`📋 [TRIANGULACIÓN] Filtro Global Activo:`);
+        console.log(`   - Órdenes en rango de fecha de envío: ${ordenesEnRango.length}`);
+        console.log(`   - Folios únicos encontrados: ${foliosIdsEnRango.size}`);
+        console.log(`   - Folios a mostrar: ${folios.length}`);
         
         // Actualizar texto del botón de filtro de folios (mismo formato que otras pestañas)
         const filterText = document.getElementById('folios-date-filter-text');
@@ -7730,7 +7850,8 @@ function renderFoliosTable() {
             filterText.textContent = `${startFormatted} → ${endFormatted}`;
         }
     } else if (useFoliosFilter) {
-        // FIX: Usar parseDateLocal para evitar -1 día
+        // Filtro propio de folios (NO usa triangulación, filtro directo por fecha de folio)
+        // Este filtro se usa cuando el usuario aplica filtro desde la pestaña de Folios
         const startDate = parseDateLocal(FOLIOS_DATE_FILTER.startDate);
         const endDate = parseDateLocal(FOLIOS_DATE_FILTER.endDate);
         endDate.setHours(23, 59, 59, 999);

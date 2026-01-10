@@ -3,7 +3,7 @@ import http.server
 import socketserver
 import os
 
-PORT = 3000
+PORT = 5500
 HOST = "localhost"
 
 class DebugHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):

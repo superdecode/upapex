@@ -77,6 +77,12 @@ async function initAdvancedSync() {
                     cantDespacho: record.cantDespacho || ''
                 });
                 
+                // Normalizar fecha de envío (columna G) si existe
+                let horarioNormalizado = record.horario || '';
+                if (horarioNormalizado && typeof window.normalizeDeliveryDate === 'function') {
+                    horarioNormalizado = window.normalizeDeliveryDate(horarioNormalizado);
+                }
+                
                 return [
                     record.folio || '',              // A: Folio
                     fecha,                           // B: Fecha (DD/MM/YYYY)
@@ -84,7 +90,7 @@ async function initAdvancedSync() {
                     record.usuario || '',            // D: Usuario
                     record.orden || '',              // E: Orden
                     record.destino || '',            // F: Destino
-                    record.horario || '',            // G: Horario
+                    horarioNormalizado,              // G: Horario (Fecha de Envío normalizada ISO 8601)
                     record.codigo || '',             // H: Código
                     record.codigo2 || '',            // I: Código 2
                     record.estatus || '',            // J: Estatus
