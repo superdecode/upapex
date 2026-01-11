@@ -5,6 +5,8 @@ const CONFIG = {
     SPREADSHEET_WRITE: '1_dkq4puGs3g9DvOGv96FqsoNGYV7bHXNMX680PU-X_o',
     // Spreadsheet ID principal para consolidación de órdenes
     SPREADSHEET_ORDENES_ID: '1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck',
+    // Spreadsheet OBC para Background Index (mismo que ORDENES_ID)
+    SPREADSHEET_OBC: '1nKqd0mqEkZ1l8wqW83_d5fyarp5BKbV1nXSNJBk4-Ck',
     SOURCES: {
         // Pestaña "BD" - Base de datos completa de cajas (fuente principal) - IGUAL QUE TRACK OBC_BD
         BD_CAJAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSdSDQ8ktYA3YAsWMUokYd_S6_rANUz8XdfEAjsV-v0eAlfiYZctHuj3hP4m3wOghf4rnT_YvuA4BPA/pub?output=csv',
@@ -3204,11 +3206,11 @@ function renderOrdersTable(mode = 'pending') {
 
         return `
             <tr data-orden="${orden}" class="${rowClass}">
-                <td><span class="order-code">${makeCopyable(orden)}</span></td>
+                <td style="white-space: nowrap;"><span class="order-code">${makeCopyable(orden)}</span></td>
                 <td class="td-wrap">${data.recipient || '<span class="empty-cell">Sin destino</span>'}</td>
-                <td>${data.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
-                <td>${makeCopyable(data.referenceNo || 'N/A')}</td>
-                <td>${makeCopyable(data.trackingCode || 'N/A')}</td>
+                <td style="white-space: nowrap;">${data.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
+                <td style="white-space: nowrap;">${makeCopyable(data.referenceNo || 'N/A')}</td>
+                <td style="white-space: nowrap;">${makeCopyable(data.trackingCode || 'N/A')}</td>
                 <td style="text-align: center;">${totalCajas || '<span class="empty-cell">0</span>'}</td>
                 <td>
                     ${validationDisplay}
@@ -4681,12 +4683,15 @@ function normalizeDeliveryDate(dateInput) {
  * @returns {Object} { fecha: string, hora: string } en formato DD/MM/YYYY y HH:MM
  */
 function formatDateTimeForDB(date = new Date()) {
+    // Convertir a zona horaria de México (America/Mexico_City)
     const d = date instanceof Date ? date : new Date(date);
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const mexicoDate = new Date(d.toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+    
+    const day = String(mexicoDate.getDate()).padStart(2, '0');
+    const month = String(mexicoDate.getMonth() + 1).padStart(2, '0');
+    const year = mexicoDate.getFullYear();
+    const hours = String(mexicoDate.getHours()).padStart(2, '0');
+    const minutes = String(mexicoDate.getMinutes()).padStart(2, '0');
     
     return {
         fecha: `${day}/${month}/${year}`,
@@ -5498,28 +5503,43 @@ async function executeSearch() {
             
             if (backgroundResults && backgroundResults.length > 0) {
                 console.log(`✅ [Cross-Filter] Encontrados ${backgroundResults.length} OBCs en índice global`);
-                
-                // Cargar datos completos de los OBCs encontrados
-                for (const obc of backgroundResults) {
-                    if (STATE.obcData.has(obc)) {
-                        foundOrders.push({ 
-                            orden: obc, 
-                            source: 'Búsqueda Histórica (Índice Global)', 
-                            confidence: 95 
-                        });
-                    } else {
-                        // Si el OBC no está en memoria, marcarlo para carga
-                        foundOrders.push({ 
-                            orden: obc, 
-                            source: 'Histórico (Requiere carga)', 
-                            confidence: 90,
-                            needsLoad: true
-                        });
-                    }
+
+                // backgroundResults ahora incluye {obc, fecha, recipient, etc} ordenados por fecha
+                for (const result of backgroundResults) {
+                    foundOrders.push({
+                        orden: result.obc,
+                        source: 'Búsqueda Histórica (Índice Global)',
+                        confidence: 95,
+                        fecha: result.fecha,
+                        recipient: result.recipient
+                    });
+                }
+
+                // Log de múltiples coincidencias
+                if (backgroundResults.length > 1) {
+                    console.log(`📋 [Cross-Filter] Múltiples coincidencias encontradas (${backgroundResults.length}):`,
+                        backgroundResults.map(r => `${r.obc} (${r.fecha})`));
                 }
                 
                 searchedInBackground = true;
-                showNotification(`🔍 Búsqueda histórica: ${backgroundResults.length} resultado${backgroundResults.length > 1 ? 's' : ''} encontrado${backgroundResults.length > 1 ? 's' : ''}`, 'info', 3000);
+
+                // Mostrar alerta con fecha de la primera orden encontrada y status temporal
+                const primeraOrden = backgroundResults[0];
+                let temporalStatus = '';
+
+                if (STATE.dateFilter.active && primeraOrden.fecha && primeraOrden.fecha !== 'N/A') {
+                    const orderDate = new Date(primeraOrden.fecha);
+                    const filterStart = new Date(STATE.dateFilter.startDate);
+                    const filterEnd = new Date(STATE.dateFilter.endDate);
+
+                    if (orderDate < filterStart) {
+                        temporalStatus = ' ⏪ (Orden pasada)';
+                    } else if (orderDate > filterEnd) {
+                        temporalStatus = ' ⏩ (Orden futura)';
+                    }
+                }
+
+                showNotification(`📦 ${primeraOrden.obc} - Fecha: ${primeraOrden.fecha}${temporalStatus}`, 'info', 5000);
             }
             
             showSearchLoader(false);
@@ -5589,16 +5609,22 @@ async function executeSearch() {
         // ESCENARIO C: Sin coincidencias en filtro, pero sí en historial → MODAL DE CONFIRMACIÓN
         if (ordersInFilter.length === 0 && ordersOutFilter.length > 0) {
             console.log(`⚠️ ESCENARIO C: ${ordersOutFilter.length} coincidencias fuera del filtro - Mostrando modal de confirmación`);
-            
+
             if (ordersOutFilter.length === 1) {
                 // Orden única fuera del filtro: mostrar modal de confirmación
-                showHistoricalOrderConfirmationModal(ordersOutFilter[0].orden, query);
+                // Pasar todos los datos disponibles del background index
+                const orderMatch = ordersOutFilter[0];
+                showHistoricalOrderConfirmationModal(orderMatch.orden, query, {
+                    fecha: orderMatch.fecha,
+                    recipient: orderMatch.recipient,
+                    source: orderMatch.source
+                });
             } else {
                 // Múltiples órdenes fuera del filtro: mostrar selector
                 ordersOutFilter.forEach(o => o.source += ' (Histórico)');
                 showMultipleMatchesModal(ordersOutFilter, query);
             }
-            
+
             if (searchInput) searchInput.value = '';
             return;
         }
@@ -5710,18 +5736,37 @@ function showMultipleMatchesModal(foundOrders, query) {
     const matchesList = document.getElementById('matches-list');
 
     matchesList.innerHTML = uniqueFoundOrders.map((match) => {
+        // Prioridad 1: Usar datos del match si están disponibles (background index)
+        // Prioridad 2: Buscar en STATE.obcData (datos del filtro actual)
         const orderData = STATE.obcData.get(match.orden);
+
+        const recipient = match.recipient || orderData?.recipient || 'N/A';
+        const expectedArrival = match.fecha || orderData?.expectedArrival || 'N/A';
         const totalCajas = orderData?.totalCajas || 0;
+
+        // Determinar si la orden es del pasado o futuro
+        let timeIndicator = '';
+        if (STATE.dateFilter.active && expectedArrival !== 'N/A') {
+            const orderDate = new Date(expectedArrival);
+            const filterStart = new Date(STATE.dateFilter.startDate);
+            const filterEnd = new Date(STATE.dateFilter.endDate);
+
+            if (orderDate < filterStart) {
+                timeIndicator = ' <span style="color: #6c757d; font-size: 0.9em;">⏪ Pasado</span>';
+            } else if (orderDate > filterEnd) {
+                timeIndicator = ' <span style="color: #17a2b8; font-size: 0.9em;">⏩ Futuro</span>';
+            }
+        }
 
         return `
             <div class="match-item" onclick="selectMatch('${match.orden}')">
                 <div class="match-header">
-                    <div class="match-obc">${match.orden}</div>
+                    <div class="match-obc">${match.orden}${timeIndicator}</div>
                     <div class="match-confidence">${match.confidence}% coincidencia</div>
                 </div>
                 <div class="match-details">
-                    <div class="match-detail">📍 ${orderData?.recipient || 'N/A'}</div>
-                    <div class="match-detail">📅 ${orderData?.expectedArrival || 'N/A'}</div>
+                    <div class="match-detail">📍 ${recipient}</div>
+                    <div class="match-detail">📅 ${expectedArrival}</div>
                     <div class="match-detail">📦 ${totalCajas} cajas</div>
                 </div>
                 <div class="match-source">Fuente: ${match.source}</div>
@@ -5746,41 +5791,126 @@ function closeMultipleMatchesModal() {
  * @param {string} orden - ID de la orden
  * @param {string} searchQuery - Código buscado
  */
-function showHistoricalOrderConfirmationModal(orden, searchQuery) {
+async function showHistoricalOrderConfirmationModal(orden, searchQuery, backgroundData = null) {
     console.log('⚠️ [Confirmación Histórica] Mostrando modal para orden fuera del filtro:', orden);
-    
-    const orderData = STATE.obcData.get(orden);
-    
-    if (!orderData) {
-        console.error('❌ No se encontraron datos para la orden:', orden);
-        showNotification('❌ Error al cargar datos de la orden', 'error');
-        return;
+
+    let orderData = null;
+    let recipient = 'N/A';
+    let expectedArrival = 'N/A';
+    let totalCajas = 0;
+    let trackingCode = 'N/A';
+    let referenceNo = 'N/A';
+
+    // Prioridad 1: Usar datos del background index si están disponibles
+    if (backgroundData && backgroundData.fecha) {
+        console.log('✅ [Confirmación Histórica] Usando datos del Background Index:', backgroundData);
+        recipient = backgroundData.recipient || 'N/A';
+        expectedArrival = backgroundData.fecha || 'N/A';
+        trackingCode = 'N/A'; // Background index no tiene trackingCode en este contexto
+        referenceNo = 'N/A';  // Background index no tiene referenceNo en este contexto
+        totalCajas = 0;
+    } else {
+        // Prioridad 2: Intentar obtener datos de STATE.obcData (datos completos sin filtro)
+        orderData = STATE.obcData.get(orden);
+
+        // Si no está en obcData, cargar desde BD_CAJAS
+        if (!orderData) {
+            console.log('📥 [Confirmación Histórica] Orden no en caché, cargando desde BD_CAJAS...');
+            showNotification('⏳ Cargando datos de la orden...', 'info', 2000);
+
+            try {
+                const response = await fetch(CONFIG.SOURCES.BD_CAJAS);
+                const csv = await response.text();
+                const lines = csv.split('\n').filter(l => l.trim());
+
+                // Buscar la orden en el CSV
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    if (cols.length >= 9 && cols[0]?.trim() === orden) {
+                        orderData = {
+                            orden: cols[0]?.trim(),
+                            referenceNo: cols[1]?.trim() || '',
+                            shippingService: cols[2]?.trim() || '',
+                            trackingCode: cols[3]?.trim() || '',
+                            expectedArrival: cols[4]?.trim() || '',
+                            remark: cols[5]?.trim() || '',
+                            recipient: cols[6]?.trim() || '',
+                            boxType: cols[7]?.trim() || '',
+                            customBarcode: cols[8]?.trim() || '',
+                            totalCajas: 0,
+                            isValidated: false
+                        };
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error cargando datos de BD_CAJAS:', error);
+            }
+        }
+
+        if (!orderData) {
+            console.error('❌ No se encontraron datos para la orden:', orden);
+            showNotification('❌ Error al cargar datos de la orden', 'error');
+            return;
+        }
+
+        // Obtener información de la orden
+        recipient = orderData.recipient || 'N/A';
+        expectedArrival = orderData.expectedArrival || 'N/A';
+        totalCajas = orderData.totalCajas || 0;
+        trackingCode = orderData.trackingCode || 'N/A';
+        referenceNo = orderData.referenceNo || 'N/A';
     }
-    
-    // Obtener información de la orden
-    const recipient = orderData.recipient || 'N/A';
-    const expectedArrival = orderData.expectedArrival || 'N/A';
-    const totalCajas = orderData.totalCajas || 0;
-    const trackingCode = orderData.trackingCode || 'N/A';
-    const referenceNo = orderData.referenceNo || 'N/A';
-    
+
+    // Determinar si la orden es del pasado o futuro comparando con el filtro
+    let timeStatus = '';
+    let timeIcon = '⚠️';
+    let timeColor = '#ffc107';
+
+    if (STATE.dateFilter.active && expectedArrival !== 'N/A') {
+        const orderDate = new Date(expectedArrival);
+        const filterStart = new Date(STATE.dateFilter.startDate);
+        const filterEnd = new Date(STATE.dateFilter.endDate);
+
+        if (orderDate < filterStart) {
+            timeStatus = 'del pasado';
+            timeIcon = '⏪';
+            timeColor = '#6c757d';
+        } else if (orderDate > filterEnd) {
+            timeStatus = 'del futuro';
+            timeIcon = '⏩';
+            timeColor = '#17a2b8';
+        } else {
+            timeStatus = 'fuera del rango filtrado';
+            timeIcon = '⚠️';
+            timeColor = '#ffc107';
+        }
+    }
+
+    const warningMessage = timeStatus
+        ? `Esta orden es <strong>${timeStatus}</strong> y no corresponde al rango de fechas actual.`
+        : `Esta orden <strong>no está dentro del rango de fechas del filtro activo</strong>.`;
+
     // Crear modal HTML
     const modalHTML = `
         <div id="historical-order-modal" class="modal-overlay" style="display: flex; z-index: 10000;">
             <div class="modal-content" style="max-width: 500px;">
-                <div class="modal-header" style="background: #fff3cd; border-bottom: 2px solid #ffc107;">
-                    <h3 style="margin: 0; color: #856404;">⚠️ Orden Fuera del Filtro Activo</h3>
+                <div class="modal-header" style="background: #fff3cd; border-bottom: 2px solid ${timeColor};">
+                    <h3 style="margin: 0; color: #856404;">${timeIcon} Orden Fuera del Filtro Activo</h3>
                 </div>
                 <div class="modal-body" style="padding: 24px;">
                     <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
                         <p style="margin: 0 0 12px 0; font-size: 0.95em; color: #6c757d;">
-                            Esta orden <strong>no está dentro del rango de fechas del filtro activo</strong>. 
+                            ${warningMessage}
                             ¿Estás seguro de que deseas abrirla?
                         </p>
-                        <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                        <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid ${timeColor};">
                             <div style="font-size: 0.9em; color: #495057; margin-bottom: 8px;">
                                 <strong>Código buscado:</strong> ${searchQuery}
                             </div>
+                            ${timeStatus ? `<div style="font-size: 0.85em; color: #856404; margin-top: 8px; font-weight: 500;">
+                                ${timeIcon} Orden ${timeStatus}
+                            </div>` : ''}
                         </div>
                     </div>
                     
@@ -6313,7 +6443,7 @@ function renderKPICards(orderData) {
     });
 
     kpiCards.innerHTML = `
-        <div class="kpi-card orden" onclick="scrollToSection('section-general')">
+        <div class="kpi-card orden" onclick="scrollToSection('section-detalle-obc')">
             <div class="kpi-card-label">📦 Orden</div>
             <div class="kpi-card-value">${makeCopyable(orderData.orden)}</div>
         </div>
@@ -6428,8 +6558,8 @@ function renderModalBody(orden, orderData) {
                         <div class="general-info-value">${orderData.recipient || 'N/A'}</div>
                     </div>
                     <div class="general-info-field">
-                        <div class="general-info-label">HORARIO</div>
-                        <div class="general-info-value">${formatISO8601ForDisplay(orderData.expectedArrival, true) || 'N/A'}</div>
+                        <div class="general-info-label">FECHA Y HORA</div>
+                        <div class="general-info-value">${orderData.expectedArrival || 'N/A'}</div>
                     </div>
                     <div class="general-info-field">
                         <div class="general-info-label">REFERENCIA</div>

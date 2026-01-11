@@ -6,10 +6,11 @@
  */
 
 const BACKGROUND_INDEX = {
-    obcIndex: new Map(),           // Map: codigoCaja -> OBC
-    trackIndex: new Map(),         // Map: codigoTrack -> OBC
-    refIndex: new Map(),           // Map: codigoReferencia -> OBC
-    mneIndex: new Map(),           // Map: rastreoMNE -> OBC
+    obcIndex: new Map(),           // Map: codigoCaja -> {obc, fecha}
+    trackIndex: new Map(),         // Map: codigoTrack -> {obc, fecha}
+    refIndex: new Map(),           // Map: codigoReferencia -> {obc, fecha}
+    mneIndex: new Map(),           // Map: rastreoMNE -> {obc, fecha}
+    obcData: new Map(),            // Map: OBC -> {fecha, recipient, etc}
     isLoading: false,
     isReady: false,
     loadProgress: 0,
@@ -66,10 +67,10 @@ async function loadOBCIndex() {
     }
 
     try {
-        // Obtener solo las columnas necesarias: A (OBC), C (Caja), D (Track), G (Referencia)
+        // Obtener columnas A:J - A (OBC), I (Código Caja), D (Track), G (Referencia)
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SPREADSHEET_OBC,
-            range: 'BD!A:G'  // Solo columnas necesarias
+            range: 'BD!A:J'  // Rango completo hasta columna J
         });
 
         const rows = response.result.values;
@@ -86,15 +87,29 @@ async function loadOBCIndex() {
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             
-            const obc = row[0]?.trim();
-            const codigoCaja = row[2]?.trim();
-            const codigoTrack = row[3]?.trim();
-            const codigoRef = row[6]?.trim();
+            // Mapeo de columnas BD: A=OBC, B=Ref, C=Service, D=Track, E=Fecha, F=Remark, G=Recipient, I=Código Caja
+            const obc = row[0]?.trim();           // Columna A
+            const referenceNo = row[1]?.trim();   // Columna B
+            const codigoTrack = row[3]?.trim();   // Columna D
+            const expectedArrival = row[4]?.trim(); // Columna E - FECHA
+            const recipient = row[6]?.trim();     // Columna G
+            const codigoCaja = row[8]?.trim();    // Columna I (índice 8)
             
             if (!obc) continue;
             
             // Normalizar códigos
             const obcNorm = normalizeCodeShared(obc).toUpperCase();
+            
+            // Guardar datos básicos del OBC (incluye fecha)
+            if (!BACKGROUND_INDEX.obcData.has(obcNorm)) {
+                BACKGROUND_INDEX.obcData.set(obcNorm, {
+                    obc: obc,
+                    fecha: expectedArrival || 'N/A',
+                    recipient: recipient || 'N/A',
+                    referenceNo: referenceNo || 'N/A',
+                    trackingCode: codigoTrack || 'N/A'
+                });
+            }
             
             // Indexar por código de caja
             if (codigoCaja) {
@@ -115,8 +130,8 @@ async function loadOBCIndex() {
             }
             
             // Indexar por código de referencia
-            if (codigoRef) {
-                const refNorm = normalizeCodeShared(codigoRef).toUpperCase();
+            if (referenceNo) {
+                const refNorm = normalizeCodeShared(referenceNo).toUpperCase();
                 if (!BACKGROUND_INDEX.refIndex.has(refNorm)) {
                     BACKGROUND_INDEX.refIndex.set(refNorm, []);
                 }
@@ -193,7 +208,7 @@ async function loadMNEIndex() {
 /**
  * Busca en el índice de background
  * @param {string} query - Código a buscar
- * @returns {Array<string>} - Array de OBCs encontrados
+ * @returns {Array<Object>} - Array de objetos {obc, fecha, recipient, etc}
  */
 function searchInBackgroundIndex(query) {
     if (!BACKGROUND_INDEX.isReady) {
@@ -224,13 +239,48 @@ function searchInBackgroundIndex(query) {
         BACKGROUND_INDEX.mneIndex.get(queryNorm).forEach(obc => results.add(obc));
     }
     
-    const found = Array.from(results);
-    
-    if (found.length > 0) {
-        console.log(`🔍 [Background Index] Encontrados ${found.length} OBCs para "${query}":`, found);
+    // Convertir OBCs a objetos con datos completos
+    const foundWithData = Array.from(results).map(obc => {
+        const data = BACKGROUND_INDEX.obcData.get(obc);
+
+        if (!data) {
+            console.warn(`⚠️ [Background Index] No se encontraron datos para OBC: ${obc}`);
+            return {
+                obc: obc,
+                fecha: 'N/A',
+                recipient: 'N/A',
+                referenceNo: 'N/A',
+                trackingCode: 'N/A'
+            };
+        }
+
+        return {
+            obc: data.obc || obc,  // Usar OBC original si está disponible
+            fecha: data.fecha || 'N/A',
+            recipient: data.recipient || 'N/A',
+            referenceNo: data.referenceNo || 'N/A',
+            trackingCode: data.trackingCode || 'N/A'
+        };
+    });
+
+    // Ordenar por fecha (más reciente primero)
+    foundWithData.sort((a, b) => {
+        if (a.fecha === 'N/A' && b.fecha === 'N/A') return 0;
+        if (a.fecha === 'N/A') return 1;  // N/A al final
+        if (b.fecha === 'N/A') return -1; // N/A al final
+
+        const dateA = new Date(a.fecha);
+        const dateB = new Date(b.fecha);
+
+        // Más reciente primero (descendente)
+        return dateB - dateA;
+    });
+
+    if (foundWithData.length > 0) {
+        console.log(`🔍 [Background Index] Encontrados ${foundWithData.length} OBCs para "${query}" (ordenados por fecha):`, foundWithData);
     }
-    
-    return found;
+
+    return foundWithData;
 }
 
 /**
