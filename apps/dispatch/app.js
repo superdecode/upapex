@@ -1058,9 +1058,24 @@ function validateEditOperation(orden, operationType) {
 /**
  * Obtiene la fecha actual en formato YYYY-MM-DD
  */
+/**
+ * Obtiene la clave de fecha para folios
+ * NUEVA LÓGICA: Si hay filtro activo, usa la Fecha Inicial como referencia
+ * Si no hay filtro, usa la fecha actual (hoy)
+ * @returns {string} Fecha en formato YYYY-MM-DD
+ */
 function getCurrentDateKey() {
+    // REGLA DE NEGOCIO CRÍTICA: Los folios se parametrizan por Fecha Inicial del filtro
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate) {
+        console.log(`📅 [FOLIO] Usando Fecha Inicial del filtro como referencia: ${STATE.dateFilter.startDate}`);
+        return STATE.dateFilter.startDate;
+    }
+
+    // Si no hay filtro activo, usar fecha actual
     const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    console.log(`📅 [FOLIO] Usando fecha actual (sin filtro): ${todayKey}`);
+    return todayKey;
 }
 
 /**
@@ -5348,37 +5363,79 @@ async function executeSearch() {
             }
         }
 
-        // NUEVA PRIORIDAD 3: Búsqueda por Código Track (trackingCode)
+        // NUEVA PRIORIDAD 3: Búsqueda por Código Track (trackingCode) - BÚSQUEDA EN CASCADA
         if (foundOrders.length === 0) {
-            console.log('🔍 Buscando por Código Track...');
+            console.log('🔍 Buscando por Código Track (cascada)...');
             for (const [orden, data] of STATE.obcData.entries()) {
                 if (data.trackingCode) {
                     const trackNormalized = normalizeCodeShared(data.trackingCode).toUpperCase();
-                    // Match exacto prioritario
+
+                    // PASO 1: Match con Código Normalizado
                     if (data.trackingCode.toUpperCase() === query || trackNormalized === queryNormalized) {
-                        foundOrders.push({ orden, source: 'Código Track (Exacto)', confidence: 100 });
+                        foundOrders.push({ orden, source: 'Código Track (Normalizado)', confidence: 100 });
+                        console.log(`✅ Match Track Normalizado: ${data.trackingCode} → ${orden}`);
                     }
-                    // Match parcial
-                    else if (data.trackingCode.toUpperCase().includes(query) || trackNormalized.includes(queryNormalized)) {
-                        foundOrders.push({ orden, source: 'Código Track (Parcial)', confidence: 90 });
+                    // PASO 2: Match parcial con Código Normalizado
+                    else if (trackNormalized.includes(queryNormalized)) {
+                        foundOrders.push({ orden, source: 'Código Track (Normalizado Parcial)', confidence: 95 });
+                        console.log(`✅ Match Track Normalizado Parcial: ${data.trackingCode} → ${orden}`);
+                    }
+                }
+            }
+
+            // PASO 3: Si no hay resultados, buscar por Código Base (sin número de caja)
+            if (foundOrders.length === 0) {
+                console.log('🔍 Buscando por Código Track BASE (sin número de caja)...');
+                const queryBase = extractBaseCode(queryNormalized);
+
+                for (const [orden, data] of STATE.obcData.entries()) {
+                    if (data.trackingCode) {
+                        const trackNormalized = normalizeCodeShared(data.trackingCode).toUpperCase();
+                        const trackBase = extractBaseCode(trackNormalized);
+
+                        if (trackBase === queryBase || trackBase.includes(queryBase)) {
+                            foundOrders.push({ orden, source: 'Código Track (Base)', confidence: 85 });
+                            console.log(`✅ Match Track Base: ${data.trackingCode} (base: ${trackBase}) → ${orden}`);
+                        }
                     }
                 }
             }
         }
 
-        // NUEVA PRIORIDAD 4: Búsqueda por Código Referencia (referenceNo)
+        // NUEVA PRIORIDAD 4: Búsqueda por Código Referencia (referenceNo) - BÚSQUEDA EN CASCADA
         if (foundOrders.length === 0) {
-            console.log('🔍 Buscando por Código Referencia...');
+            console.log('🔍 Buscando por Código Referencia (cascada)...');
             for (const [orden, data] of STATE.obcData.entries()) {
                 if (data.referenceNo) {
                     const refNormalized = normalizeCodeShared(data.referenceNo).toUpperCase();
-                    // Match exacto prioritario
+
+                    // PASO 1: Match con Código Normalizado
                     if (data.referenceNo.toUpperCase() === query || refNormalized === queryNormalized) {
-                        foundOrders.push({ orden, source: 'Código Referencia (Exacto)', confidence: 100 });
+                        foundOrders.push({ orden, source: 'Código Referencia (Normalizado)', confidence: 100 });
+                        console.log(`✅ Match Referencia Normalizado: ${data.referenceNo} → ${orden}`);
                     }
-                    // Match parcial
-                    else if (data.referenceNo.toUpperCase().includes(query) || refNormalized.includes(queryNormalized)) {
-                        foundOrders.push({ orden, source: 'Código Referencia (Parcial)', confidence: 90 });
+                    // PASO 2: Match parcial con Código Normalizado
+                    else if (refNormalized.includes(queryNormalized)) {
+                        foundOrders.push({ orden, source: 'Código Referencia (Normalizado Parcial)', confidence: 95 });
+                        console.log(`✅ Match Referencia Normalizado Parcial: ${data.referenceNo} → ${orden}`);
+                    }
+                }
+            }
+
+            // PASO 3: Si no hay resultados, buscar por Código Base (sin número de caja)
+            if (foundOrders.length === 0) {
+                console.log('🔍 Buscando por Código Referencia BASE (sin número de caja)...');
+                const queryBase = extractBaseCode(queryNormalized);
+
+                for (const [orden, data] of STATE.obcData.entries()) {
+                    if (data.referenceNo) {
+                        const refNormalized = normalizeCodeShared(data.referenceNo).toUpperCase();
+                        const refBase = extractBaseCode(refNormalized);
+
+                        if (refBase === queryBase || refBase.includes(queryBase)) {
+                            foundOrders.push({ orden, source: 'Código Referencia (Base)', confidence: 85 });
+                            console.log(`✅ Match Referencia Base: ${data.referenceNo} (base: ${refBase}) → ${orden}`);
+                        }
                     }
                 }
             }
