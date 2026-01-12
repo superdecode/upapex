@@ -90,15 +90,41 @@ function normalizeCode(rawCode) {
 
 /**
  * Extrae el código base (sin sufijos) para búsquedas flexibles
+ * Remueve sufijos numéricos, slashes, guiones y variantes comunes
+ *
  * @param {string} code - Código normalizado
- * @returns {string} - Código base
+ * @returns {string} - Código base sin sufijos
+ *
+ * @example
+ * extractBaseCode('58470794/1')         → '58470794'
+ * extractBaseCode('58470794-A')         → '58470794'
+ * extractBaseCode('FBA178RH0NL9U000001') → 'FBA178RH0NL9'
+ * extractBaseCode('50243727/36')        → '50243727'
  */
 function extractBaseCode(code) {
     if (!code) return '';
-    
-    // Remover sufijos comunes: -A, -B, -01, etc.
-    const baseMatch = code.match(/^([A-Z0-9]+?)(?:-[A-Z0-9]{1,2})?$/);
-    return baseMatch ? baseMatch[1] : code;
+
+    // Paso 1: Remover todo después de "/" (número de caja con slash)
+    let baseCode = code.split('/')[0];
+
+    // Paso 2: Remover todo después de "-" (sufijos con guión)
+    baseCode = baseCode.split('-')[0];
+
+    // Paso 3: Remover sufijos numéricos largos (ej: FBA178RH0NL9U000001 → FBA178RH0NL9)
+    // Patrón: Si termina con U seguido de 6+ dígitos, removerlo
+    const uSuffixMatch = baseCode.match(/^(.+?)U\d{6,}$/);
+    if (uSuffixMatch) {
+        baseCode = uSuffixMatch[1];
+    }
+
+    // Paso 4: Remover secuencias numéricas largas al final (ej: ABC123000001 → ABC123)
+    // Solo si hay más de 6 ceros consecutivos seguidos de dígitos
+    const longZeroMatch = baseCode.match(/^(.+?)0{6,}\d*$/);
+    if (longZeroMatch) {
+        baseCode = longZeroMatch[1];
+    }
+
+    return baseCode || code; // Si todo falla, retornar código original
 }
 
 /**

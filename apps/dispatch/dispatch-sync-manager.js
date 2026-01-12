@@ -305,6 +305,27 @@ class DispatchSyncManager {
             }
         } catch (error) {
             console.error('❌ [POLLING] Error consultando BD operativa:', error);
+
+            // Detectar error de autenticación (401 UNAUTHENTICATED)
+            if (error && error.result && error.result.error && error.result.error.code === 401) {
+                console.warn('🔒 [AUTH] Sesión de Google expirada - Requiere reconexión manual');
+
+                // Mostrar notificación al usuario SOLO UNA VEZ
+                if (!window._authErrorShown) {
+                    window._authErrorShown = true;
+
+                    // Usar la función showNotification si está disponible
+                    if (typeof showNotification === 'function') {
+                        showNotification(
+                            '🔒 Sesión expirada - Por favor recarga la página para reconectar con Google',
+                            'warning',
+                            8000
+                        );
+                    } else {
+                        alert('🔒 Tu sesión de Google ha expirado.\n\nPor favor recarga la página (F5) para reconectar.');
+                    }
+                }
+            }
         }
     }
 
