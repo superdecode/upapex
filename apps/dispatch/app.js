@@ -2256,6 +2256,21 @@ function parseBDCajasData(csv) {
     console.log(`✅ BD Completa cargada: ${STATE.obcData.size} órdenes consolidadas, ${STATE.bdCajasData.size} códigos de caja únicos`);
     console.log(`📊 Total de registros procesados: ${lines.length - 1} filas`);
 
+    // 🔍 DEBUG: Auditoría de OBCs problemáticos
+    const debugOBCs = ['OBC3822601050RS', 'OBC0592601040S1', 'OBC4102601090RY'];
+    debugOBCs.forEach(obc => {
+        if (STATE.obcData.has(obc)) {
+            const data = STATE.obcData.get(obc);
+            console.log(`🔍 AUDIT BD_CAJAS ${obc}:`);
+            console.log(`   - Existe en obcData: true`);
+            console.log(`   - Total cajas (filas): ${data.totalCajas}`);
+            console.log(`   - Destino: ${data.recipient}`);
+            console.log(`   - Fecha: ${data.expectedArrival}`);
+        } else {
+            console.warn(`🔍 AUDIT BD_CAJAS ${obc}: ⚠️ NO ENCONTRADO en obcData`);
+        }
+    });
+
     // Debug: Mostrar primeras 3 órdenes
     let debugCount = 0;
     for (const [obc, data] of STATE.obcData.entries()) {
@@ -2323,10 +2338,17 @@ function parseValidacionData(csv) {
     const lines = csv.split('\n').filter(l => l.trim());
     STATE.validacionData.clear();
 
+    // 🔍 DEBUG: Contadores para auditoría
+    const debugOBCs = ['OBC3822601050RS', 'OBC0592601040S1', 'OBC4102601090RY'];
+    const debugCounters = new Map();
+    const debugCodigosUnicos = new Map();
+
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length >= 5) {
             const orden = cols[3]?.trim();
+            const codigo = cols[4]?.trim();
+
             if (orden) {
                 if (!STATE.validacionData.has(orden)) {
                     STATE.validacionData.set(orden, []);
@@ -2336,14 +2358,76 @@ function parseValidacionData(csv) {
                     hora: cols[1]?.trim() || '',
                     usuario: cols[2]?.trim() || '',
                     orden: orden,
-                    codigo: cols[4]?.trim() || '',
+                    codigo: codigo || '',
                     ubicacion: cols[5]?.trim() || '',
                     porcentaje: cols[6]?.trim() || '',
                     nota: cols[7]?.trim() || ''
                 });
+
+                // 🔍 DEBUG: Rastrear OBCs problemáticos
+                if (debugOBCs.includes(orden)) {
+                    debugCounters.set(orden, (debugCounters.get(orden) || 0) + 1);
+                    if (!debugCodigosUnicos.has(orden)) {
+                        debugCodigosUnicos.set(orden, new Set());
+                    }
+                    if (codigo) {
+                        debugCodigosUnicos.get(orden).add(codigo);
+                    }
+                }
             }
         }
     }
+
+    console.log('✅ Validacion Data parsed:', STATE.validacionData.size, 'orders');
+
+    // 🔍 DEBUG: Reportar problemas detectados
+    debugOBCs.forEach(obc => {
+        const registros = debugCounters.get(obc) || 0;
+        const codigosUnicos = debugCodigosUnicos.get(obc)?.size || 0;
+        const existe = STATE.validacionData.has(obc);
+
+        console.log(`🔍 AUDIT ${obc}:`);
+        console.log(`   - Existe en validacionData: ${existe}`);
+        console.log(`   - Registros totales: ${registros}`);
+        console.log(`   - Códigos únicos: ${codigosUnicos}`);
+
+        if (registros > codigosUnicos) {
+            console.warn(`   ⚠️ DUPLICIDAD DETECTADA: ${registros} registros vs ${codigosUnicos} códigos únicos`);
+        }
+
+        // Comparar con obcData
+        if (STATE.obcData.has(obc)) {
+            const totalCajasEsperadas = STATE.obcData.get(obc).totalCajas;
+            console.log(`   - Cajas esperadas (obcData): ${totalCajasEsperadas}`);
+            if (registros !== totalCajasEsperadas) {
+                console.warn(`   ⚠️ DESAJUSTE: ${registros} validaciones vs ${totalCajasEsperadas} cajas esperadas`);
+            }
+        }
+    });
+}
+
+/**
+ * Cuenta el número de cajas únicas validadas para una orden
+ * Maneja duplicados contando solo códigos de caja únicos
+ * @param {string} orden - El código OBC de la orden
+ * @returns {number} - Cantidad de cajas únicas validadas
+ */
+function getCajasValidadasUnicas(orden) {
+    const validaciones = STATE.validacionData.get(orden) || [];
+
+    if (validaciones.length === 0) {
+        return 0;
+    }
+
+    // Extraer códigos únicos (ignorando registros duplicados)
+    const codigosUnicos = new Set(
+        validaciones
+            .map(v => v.codigo)
+            .filter(c => c && c.trim() !== '') // Ignorar códigos vacíos
+            .map(c => c.trim().toUpperCase())   // Normalizar (trim + mayúsculas)
+    );
+
+    return codigosUnicos.size;
 }
 
 function parseMNEData(csv) {
@@ -3232,8 +3316,24 @@ function renderOrdersTable(mode = 'pending') {
         const rastreoData = STATE.mneData.get(orden) || [];
         // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES), not from validation/rastreo
         const totalCajas = data.totalCajas || 0;
-        const cajasValidadas = validaciones.length;
+        // FIXED: Count unique validated boxes instead of total records
+        const cajasValidadas = getCajasValidadasUnicas(orden);
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
+
+        // 🔍 DEBUG: Auditoría en renderizado
+        const debugOBCs = ['OBC3822601050RS', 'OBC0592601040S1', 'OBC4102601090RY'];
+        if (debugOBCs.includes(orden)) {
+            console.log(`🔍 RENDER ${orden}:`);
+            console.log(`   - validaciones.length (registros): ${validaciones.length}`);
+            console.log(`   - cajasValidadas (únicos): ${cajasValidadas}`);
+            console.log(`   - totalCajas (obcData): ${totalCajas}`);
+            console.log(`   - porcentaje calculado: ${porcentajeValidacion}%`);
+            console.log(`   - rastreoData.length: ${rastreoData.length}`);
+
+            if (validaciones.length !== cajasValidadas) {
+                console.warn(`   ⚠️ DUPLICADOS CORREGIDOS: ${validaciones.length} registros → ${cajasValidadas} cajas únicas`);
+            }
+        }
 
         const tieneRastreo = rastreoData.length > 0;
         const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
@@ -3262,10 +3362,21 @@ function renderOrdersTable(mode = 'pending') {
             statusBadge = createStatusBadge('pendiente', 'Pendiente');
         }
 
-        // CHANGE 6: Only show validation % if validaciones.length > 0
-        const validationDisplay = validaciones.length > 0
-            ? `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`
-            : '<span class="empty-cell">N/A</span>';
+        // CHANGE 6: Only show validation % if cajasValidadas > 0 AND totalCajas > 0
+        // Handle over-validation case (more validated than expected)
+        let validationDisplay;
+        if (cajasValidadas === 0 || totalCajas === 0) {
+            validationDisplay = '<span class="empty-cell">N/A</span>';
+        } else if (cajasValidadas > totalCajas) {
+            // Over-validation warning
+            const exceso = cajasValidadas - totalCajas;
+            validationDisplay = `
+                <div class="progress-bar"><div class="progress-fill" style="width: 100%; background: #f59e0b;"></div></div>
+                <span class="progress-text" style="color: #f59e0b;" title="⚠️ Sobre-validación: ${cajasValidadas} validadas vs ${totalCajas} esperadas (+${exceso})">⚠️ ${porcentajeValidacion}%</span>
+            `;
+        } else {
+            validationDisplay = `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`;
+        }
 
         // Add validated-order class for visual highlight
         const rowClass = isValidated ? 'validated-order' : '';
@@ -4476,8 +4587,23 @@ function executeSwitchTab(tab) {
         // PASO 2: Mostrar solo el panel correspondiente
         showContentPanel('validated-content');
 
-        // Render validated orders table
-        renderValidatedTable();
+        // OPTIMIZACIÓN: Mostrar skeleton/loading y renderizar después
+        const tableBody = document.getElementById('validated-table-body');
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="15" class="table-empty-state">
+                        <div class="table-empty-icon">⏳</div>
+                        <div class="table-empty-text">Cargando órdenes validadas...</div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // Diferir el renderizado pesado para que la UI responda primero
+        requestAnimationFrame(() => {
+            renderValidatedTable();
+        });
     } else if (tab === 'otros') {
         // Limpiar flag de "viene desde folios" si estaba activo
         STATE.fromFolios = false;
@@ -4538,10 +4664,16 @@ function renderOtrosTable() {
     const tableBody = document.getElementById('otros-table-body');
     if (!tableBody) return;
 
+    // DEBUG: Ver todos los registros en localValidated
+    console.log('🔍 Total registros en localValidated:', STATE.localValidated.length);
+    console.log('🔍 Estatus de todos los registros:', STATE.localValidated.map(r => ({ orden: r.orden, estatus: r.estatus })));
+
     // Filtrar solo órdenes con estatus "Cancelada" o "No Procesable"
     let otrosOrders = STATE.localValidated.filter(record =>
         record.estatus === 'Cancelada' || record.estatus === 'No Procesable'
     );
+
+    console.log('🔍 Órdenes filtradas para Otros:', otrosOrders.length, otrosOrders.map(r => ({ orden: r.orden, estatus: r.estatus })));
 
     // Aplicar filtro de fecha si está activo
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
@@ -4867,14 +4999,26 @@ function renderValidatedTable() {
         const rastreoData = STATE.mneData.get(record.orden) || [];
         // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES) as primary source
         const totalCajas = orderData.totalCajas || record.totalCajas || 0;
-        const cajasValidadas = validaciones.length;
+        // FIXED: Count unique validated boxes instead of total records
+        const cajasValidadas = getCajasValidadasUnicas(record.orden);
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
         const tieneRastreo = rastreoData.length > 0;
 
-        // CHANGE 6: Only show validation % if validaciones.length > 0
-        const validationDisplay = validaciones.length > 0
-            ? `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`
-            : '<span class="empty-cell">N/A</span>';
+        // CHANGE 6: Only show validation % if cajasValidadas > 0 AND totalCajas > 0
+        // Handle over-validation case (more validated than expected)
+        let validationDisplay;
+        if (cajasValidadas === 0 || totalCajas === 0) {
+            validationDisplay = '<span class="empty-cell">N/A</span>';
+        } else if (cajasValidadas > totalCajas) {
+            // Over-validation warning
+            const exceso = cajasValidadas - totalCajas;
+            validationDisplay = `
+                <div class="progress-bar"><div class="progress-fill" style="width: 100%; background: #f59e0b;"></div></div>
+                <span class="progress-text" style="color: #f59e0b;" title="⚠️ Sobre-validación: ${cajasValidadas} validadas vs ${totalCajas} esperadas (+${exceso})">⚠️ ${porcentajeValidacion}%</span>
+            `;
+        } else {
+            validationDisplay = `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`;
+        }
 
         // FIXED: Calculate dispatch status instead of sync status
         // IMPORTANTE: cantidadDespachar apunta a cantDespacho (Columna N)
@@ -4906,21 +5050,26 @@ function renderValidatedTable() {
             statusColor = dispatchStatus.color;
         }
 
-        // Buscar TRS relacionados
-        const boxCodes = new Set();
-        validaciones.forEach(v => { if (v.codigo) boxCodes.add(v.codigo.trim()); });
-        rastreoData.forEach(r => { if (r.codigo) boxCodes.add(r.codigo.trim()); });
-
+        // OPTIMIZACIÓN: Buscar TRS relacionados (simplificado para mejor rendimiento)
         let trsCount = 0;
-        STATE.trsData.forEach(t => {
-            for (const code of boxCodes) {
-                if ((t.codigoOriginal && t.codigoOriginal.includes(code)) ||
-                    (t.codigoNuevo && t.codigoNuevo.includes(code))) {
-                    trsCount++;
-                    break;
+        if (validaciones.length > 0 || rastreoData.length > 0) {
+            const boxCodes = new Set();
+            validaciones.forEach(v => { if (v.codigo) boxCodes.add(v.codigo.trim()); });
+            rastreoData.forEach(r => { if (r.codigo) boxCodes.add(r.codigo.trim()); });
+
+            // Solo buscar si hay códigos
+            if (boxCodes.size > 0 && STATE.trsData.length > 0) {
+                for (const t of STATE.trsData) {
+                    for (const code of boxCodes) {
+                        if ((t.codigoOriginal && t.codigoOriginal.includes(code)) ||
+                            (t.codigoNuevo && t.codigoNuevo.includes(code))) {
+                            trsCount++;
+                            break;
+                        }
+                    }
                 }
             }
-        });
+        }
 
         // Estatus de calidad
         let estatusCalidad = 'N/A';
@@ -7180,7 +7329,8 @@ function toggleOrderNoProcesable() {
 function renderKPICards(orderData) {
     const kpiCards = document.getElementById('kpi-cards');
     const validaciones = STATE.validacionData.get(orderData.orden) || [];
-    const cajasValidadas = validaciones.length;
+    // FIXED: Count unique validated boxes instead of total records
+    const cajasValidadas = getCajasValidadasUnicas(orderData.orden);
     const rastreoData = STATE.mneData.get(orderData.orden) || [];
     // FIXED: Use totalCajas from OBC database
     const totalCajas = orderData.totalCajas || 0;
@@ -9634,23 +9784,37 @@ function setupFolioRowClickListeners() {
  */
 function updateFoliosBadges() {
     const tableBody = document.getElementById('folios-table-body');
-    if (!tableBody) return;
+    if (!tableBody) {
+        console.warn('⚠️ folios-table-body no encontrado');
+        return;
+    }
 
-    // Count visible rows
-    const visibleRows = Array.from(tableBody.querySelectorAll('tr')).filter(row => row.style.display !== 'none');
+    // Count visible rows (excluyendo empty state)
+    const visibleRows = Array.from(tableBody.querySelectorAll('tr')).filter(row => {
+        return row.style.display !== 'none' && !row.classList.contains('table-empty-state');
+    });
+
     const totalFolios = visibleRows.length;
     let totalOrders = 0;
     let totalBoxes = 0;
 
-    visibleRows.forEach(row => {
+    console.log('🔍 Folios - Total filas visibles:', totalFolios);
+
+    visibleRows.forEach((row, index) => {
         // Get values from table cells
-        // Column 3: Cant. Órdenes, Column 2: Cant. Cajas
+        // Column 2: Cant. Cajas, Column 3: Cant. Órdenes
         const cajasText = row.cells[2]?.textContent.trim() || '0';
         const ordenesText = row.cells[3]?.textContent.trim() || '0';
 
-        totalBoxes += parseInt(cajasText) || 0;
-        totalOrders += parseInt(ordenesText) || 0;
+        if (index < 3) { // Log primeras 3 filas para debug
+            console.log(`🔍 Fila ${index}:`, { cajas: cajasText, ordenes: ordenesText });
+        }
+
+        totalBoxes += parseInt(cajasText.replace(/[^\d]/g, '')) || 0;
+        totalOrders += parseInt(ordenesText.replace(/[^\d]/g, '')) || 0;
     });
+
+    console.log('🔍 Folios - Totales calculados:', { folios: totalFolios, ordenes: totalOrders, cajas: totalBoxes });
 
     const foliosCountEl = document.getElementById('folios-count');
     const ordersCountEl = document.getElementById('folios-orders-count');
@@ -11187,7 +11351,8 @@ function groupOrdersByDestino(ordersData) {
         const validaciones = STATE.validacionData.get(orden) || [];
         const rastreoData = STATE.mneData.get(orden) || [];
         const totalCajas = data.totalCajas || 0;
-        const cajasValidadas = validaciones.length;
+        // FIXED: Count unique validated boxes instead of total records
+        const cajasValidadas = getCajasValidadasUnicas(orden);
         const porcentajeSurtido = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
         const { validated: isValidated } = isOrderValidated(orden);
         const estatusTexto = isValidated ? 'Validada' : 'Pendiente';
