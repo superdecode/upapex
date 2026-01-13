@@ -96,35 +96,68 @@ function normalizeCode(rawCode) {
  * @returns {string} - Código base sin sufijos
  *
  * @example
- * extractBaseCode('58470794/1')         → '58470794'
- * extractBaseCode('58470794-A')         → '58470794'
+ * // Sufijos con slash (/)
+ * extractBaseCode('58470794/1')          → '58470794'
+ * extractBaseCode('50243727/36')         → '50243727'
+ *
+ * // Sufijos con guión (-)
+ * extractBaseCode('58470794-A')          → '58470794'
+ *
+ * // Sufijos U + dígitos
  * extractBaseCode('FBA178RH0NL9U000001') → 'FBA178RH0NL9'
- * extractBaseCode('50243727/36')        → '50243727'
+ * extractBaseCode('FBA178RH0NL9U001')    → 'FBA178RH0NL9'
+ * extractBaseCode('FBA178RH0NL9U01')     → 'FBA178RH0NL9'
+ * extractBaseCode('xzh2509038316u001')   → 'XZH2509038316'
+ * extractBaseCode('xzh2509038316u011')   → 'XZH2509038316'
+ * extractBaseCode('xzh2509038316u100')   → 'XZH2509038316'
+ *
+ * // Secuencias de 2-8 ceros + dígitos
+ * extractBaseCode('ABC12300')            → 'ABC123'
+ * extractBaseCode('ABC123000')           → 'ABC123'
+ * extractBaseCode('ABC1230001')          → 'ABC123'
+ * extractBaseCode('ABC123000001')        → 'ABC123'
+ * extractBaseCode('XYZ00000000')         → 'XYZ'
  */
 function extractBaseCode(code) {
     if (!code) return '';
 
+    // Convertir a mayúsculas para procesamiento consistente
+    let baseCode = code.toUpperCase();
+
     // Paso 1: Remover todo después de "/" (número de caja con slash)
-    let baseCode = code.split('/')[0];
+    baseCode = baseCode.split('/')[0];
 
     // Paso 2: Remover todo después de "-" (sufijos con guión)
     baseCode = baseCode.split('-')[0];
 
-    // Paso 3: Remover sufijos numéricos largos (ej: FBA178RH0NL9U000001 → FBA178RH0NL9)
-    // Patrón: Si termina con U seguido de 6+ dígitos, removerlo
-    const uSuffixMatch = baseCode.match(/^(.+?)U\d{6,}$/);
+    // Paso 3: Remover sufijos con patrón U + cualquier cantidad de dígitos
+    // Ejemplos:
+    //   FBA178RH0NL9U000001 → FBA178RH0NL9
+    //   FBA178RH0NL9U001    → FBA178RH0NL9
+    //   FBA178RH0NL9U01     → FBA178RH0NL9
+    //   xzh2509038316u001   → xzh2509038316 (case insensitive)
+    //   xzh2509038316u011   → xzh2509038316
+    //   xzh2509038316u100   → xzh2509038316
+    const uSuffixMatch = baseCode.match(/^(.+?)U\d+$/);
     if (uSuffixMatch) {
         baseCode = uSuffixMatch[1];
     }
 
-    // Paso 4: Remover secuencias numéricas largas al final (ej: ABC123000001 → ABC123)
-    // Solo si hay más de 6 ceros consecutivos seguidos de dígitos
-    const longZeroMatch = baseCode.match(/^(.+?)0{6,}\d*$/);
+    // Paso 4: Remover secuencias numéricas con 2-8 ceros al final seguidos de dígitos
+    // Ejemplos:
+    //   
+    //   ABC123000 → ABC123     (3 ceros)
+    //   ABC1230001 → ABC123    (3 ceros + 1)
+    //   ABC12300001 → ABC123   (4 ceros + 1)
+    //   ABC123000001 → ABC123  (5 ceros + 1)
+    //   XYZ00000000 → XYZ      (8 ceros)
+    const longZeroMatch = baseCode.match(/^(.+?)0{3,8}\d*$/);
     if (longZeroMatch) {
         baseCode = longZeroMatch[1];
     }
 
-    return baseCode || code; // Si todo falla, retornar código original
+    // Retornar en el mismo case que el original
+    return baseCode || code.toUpperCase();
 }
 
 /**

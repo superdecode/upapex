@@ -76,9 +76,20 @@ let STATE = {
         'folio-details': {
             criterion: '',
             selectedValues: [] // Array of {criterion, value}
+        },
+        'folios-mgmt': {
+            criterion: '',
+            selectedValues: [] // Array of {criterion, value}
         }
     },
-    currentFolio: null // Current folio being viewed in details screen
+    currentFolio: null, // Current folio being viewed in details screen
+    // Filter persistence across tabs
+    filterPersistence: {
+        pending: '',      // Search filter for pending tab
+        validated: '',    // Search filter for validated tab
+        otros: '',        // Search filter for otros tab
+        folios: ''        // Search filter for folios tab
+    }
 };
 
 // ==================== SYNC MANAGER GLOBALS ====================
@@ -1015,6 +1026,27 @@ function isOrderValidated(orden) {
     return { validated: false };
 }
 
+/**
+ * Verifica si una orden está en la categoría "Otros" (Cancelada o No Procesable)
+ * @param {string} orden - Número de orden
+ * @returns {object} - { isOtros: boolean, estatus: string, data: object }
+ */
+function isOrderOtros(orden) {
+    const localMatch = STATE.localValidated.find(v =>
+        v.orden === orden || v.orden?.toUpperCase() === orden?.toUpperCase()
+    );
+
+    if (localMatch && (localMatch.estatus === 'Cancelada' || localMatch.estatus === 'No Procesable')) {
+        return {
+            isOtros: true,
+            estatus: localMatch.estatus,
+            data: localMatch
+        };
+    }
+
+    return { isOtros: false };
+}
+
 // Safe function to update validation badges (prevents ReferenceError)
 function updateValidationBadges() {
     try {
@@ -1559,6 +1591,8 @@ function setupTableClickDelegation() {
             if (tableBody.id === 'orders-table-body') {
                 showOrderInfo(orden);
             } else if (tableBody.id === 'validated-table-body') {
+                showValidatedDetails(orden);
+            } else if (tableBody.id === 'otros-table-body') {
                 showValidatedDetails(orden);
             }
             return;
@@ -2598,15 +2632,18 @@ function showSearchPanel() {
         return;
     }
     
-    // Data already loaded, show search panel directly
-    console.log('✅ [INICIO] Datos cargados - Mostrando panel de búsqueda');
-    document.getElementById('welcome-state').style.display = 'none';
-    document.getElementById('search-panel').style.display = 'block';
-    document.getElementById('validated-content').style.display = 'none';
-    document.getElementById('folio-details-content').style.display = 'none';
-    document.getElementById('folios-content').style.display = 'none';
+    // ==================== INICIAR DESDE CERO ====================
+    // Resetear a vista TODO limpia
+    console.log('✅ [INICIO] Iniciando despacho desde cero - Vista TODO');
     
-    renderPendingTable();
+    // Limpiar todos los filtros
+    clearAllFilters();
+    
+    // Resetear selecciones
+    resetAllSelections();
+    
+    // Forzar cambio a pestaña TODO
+    switchValidationTab('todo');
 }
 
 function showDateFilterForDispatch() {
@@ -3161,17 +3198,24 @@ function renderOrdersTable(mode = 'pending') {
         const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
 
         if (mode === 'todo') {
-            // Mostrar todas las órdenes
+            // Mostrar todas las órdenes (Pendiente + Validada + Otros)
             return true;
         } else if (mode === 'pending') {
             // Solo mostrar órdenes Pendiente o Pendiente Calidad
+            // EXCLUIR: Canceladas, No Procesables, y Validadas normales
             if (isValidated && validatedData) {
-                // Verificar si tiene estado "Pendiente Calidad"
-                const calidad = validatedData.calidad || '';
                 const estatus = validatedData.estatus || '';
+                const calidad = validatedData.calidad || '';
+
+                // EXCLUIR Canceladas y No Procesables
+                if (estatus === 'Cancelada' || estatus === 'No Procesable') {
+                    return false;
+                }
+
+                // Incluir solo si es Pendiente Calidad
                 return calidad.includes('Pendiente') || estatus === 'Pendiente Calidad';
             }
-            // Mostrar si no está validada (Pendiente)
+            // Incluir si no está validada (Pendiente genuino)
             return !isValidated;
         }
         return !isValidated;
@@ -3194,21 +3238,28 @@ function renderOrdersTable(mode = 'pending') {
         const tieneRastreo = rastreoData.length > 0;
         const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
 
-        // Determinar estado basado en lógica de calidad
-        let statusClass = 'warning';
-        let statusText = '⏳ Pendiente';
+        // Determinar estado basado en lógica
+        let statusBadge = '';
 
         if (isValidated && validatedData) {
-            const calidad = validatedData.calidad || '';
             const estatus = validatedData.estatus || '';
+            const calidad = validatedData.calidad || '';
 
-            if (calidad.includes('Pendiente') || estatus === 'Pendiente Calidad') {
-                statusClass = 'warning';
-                statusText = '🔧 Pendiente Calidad';
+            // Verificar si es "Otros" (Cancelada o No Procesable)
+            if (estatus === 'Cancelada') {
+                statusBadge = createStatusBadge('cancelada', 'Cancelada');
+            } else if (estatus === 'No Procesable') {
+                statusBadge = createStatusBadge('no-procesable', 'No Procesable');
+            } else if (calidad.includes('Pendiente') || estatus === 'Pendiente Calidad') {
+                // Pendiente Calidad
+                statusBadge = createStatusBadge('pendiente', 'Pendiente Calidad');
             } else {
-                statusClass = 'success';
-                statusText = '✅ Validada';
+                // Validada
+                statusBadge = createStatusBadge('validado', 'Validada');
             }
+        } else {
+            // No validada = Pendiente
+            statusBadge = createStatusBadge('pendiente', 'Pendiente');
         }
 
         // CHANGE 6: Only show validation % if validaciones.length > 0
@@ -3221,6 +3272,9 @@ function renderOrdersTable(mode = 'pending') {
 
         return `
             <tr data-orden="${orden}" class="${rowClass}">
+                <td style="text-align: center;">
+                    <input type="checkbox" class="row-checkbox" data-orden="${orden}" onclick="event.stopPropagation(); updateSelectionCount('orders');" style="cursor: pointer;">
+                </td>
                 <td style="white-space: nowrap;"><span class="order-code">${makeCopyable(orden)}</span></td>
                 <td class="td-wrap">${data.recipient || '<span class="empty-cell">Sin destino</span>'}</td>
                 <td style="white-space: nowrap;">${data.expectedArrival || '<span class="empty-cell">N/A</span>'}</td>
@@ -3234,7 +3288,7 @@ function renderOrdersTable(mode = 'pending') {
                     <span class="rastreo-badge ${tieneRastreo ? 'si' : 'no'}">${tieneRastreo ? 'SI' : 'NO'}</span>
                 </td>
                 <td>
-                    <span class="status-badge ${statusClass}">${statusText}</span>
+                    ${statusBadge}
                 </td>
                 <td>
                     <button class="btn-action dispatch" title="Ver detalles de orden">
@@ -3265,8 +3319,8 @@ function updateOrdersBadges(mode) {
     let totalBoxes = 0;
 
     visibleRows.forEach(row => {
-        // Get boxes count from column 5 (Cant. Cajas)
-        const boxesText = row.cells[5]?.textContent.trim() || '0';
+        // Get boxes count from column 6 (Cant. Cajas) - adjusted for checkbox column
+        const boxesText = row.cells[6]?.textContent.trim() || '0';
         totalBoxes += parseInt(boxesText) || 0;
     });
 
@@ -3287,41 +3341,15 @@ function renderOrdersList() {
 }
 
 function filterOrdersTable() {
-    // CHANGE 5: Use advanced filters if active
-    if (STATE.advancedFilters.orders.selectedValues.length > 0) {
-        applyAdvancedFilters('orders');
-        return;
-    }
-
-    const filterText = document.getElementById('filter-orders')?.value.toLowerCase() || '';
-    const rows = document.querySelectorAll('#orders-table-body tr');
-
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filterText) ? '' : 'none';
-    });
-
-    // Update badges to reflect filtered results
-    updateOrdersBadges(STATE.activeTab);
+    // CHANGE 5: Use advanced filters if active - ALWAYS call applyAdvancedFilters
+    // This ensures both text search AND dropdown filters work together
+    applyAdvancedFilters('orders');
 }
 
 function filterValidatedTable() {
-    // CHANGE 5: Use advanced filters if active
-    if (STATE.advancedFilters.validated.selectedValues.length > 0) {
-        applyAdvancedFilters('validated');
-        return;
-    }
-
-    const filterText = document.getElementById('filter-validated')?.value.toLowerCase() || '';
-    const rows = document.querySelectorAll('#validated-table-body tr');
-
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filterText) ? '' : 'none';
-    });
-
-    // Update badges to reflect filtered results
-    updateValidatedBadges();
+    // CHANGE 5: Use advanced filters if active - ALWAYS call applyAdvancedFilters
+    // This ensures both text search AND dropdown filters work together
+    applyAdvancedFilters('validated');
 }
 
 // Mantener compatibilidad con código existente
@@ -3352,16 +3380,17 @@ function getUniqueFilterValues(view, criterion) {
             let value = '';
             switch(criterion) {
                 case 'destino':
-                    value = row.cells[1]?.textContent.trim() || '';
+                    value = row.cells[2]?.textContent.trim() || ''; // +1 for checkbox
                     break;
                 case 'rastreo':
                     // Check rastreo from MNE data
-                    const rastreoText = row.cells[7]?.textContent.trim() || '';
+                    // Columns: 0-Checkbox, 1-Orden, 2-Destino, 3-Horario, 4-Código, 5-Track, 6-Cajas, 7-Validaciones, 8-Rastreo, 9-Estatus
+                    const rastreoText = row.cells[8]?.textContent.trim() || '';
                     value = rastreoText.includes('SI') ? 'SI' : 'NO';
                     break;
                 case 'estatus':
                     // Get estatus from table
-                    const estatusText = row.cells[8]?.textContent.trim() || '';
+                    const estatusText = row.cells[9]?.textContent.trim() || '';
                     value = estatusText;
                     break;
                 case 'conductor':
@@ -3375,7 +3404,7 @@ function getUniqueFilterValues(view, criterion) {
         });
     } else if (view === 'validated') {
         // Get data from validated orders - from actual table
-        // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-%Surtido, 6-Rastreo, 7-TRS, 8-CantDesp, 9-Estatus, 10-Calidad, 11-Conductor, 12-Unidad, 13-Folio
+        // Columns: 0-Checkbox, 1-Orden, 2-FechaVal, 3-Destino, 4-Horario, 5-Cajas, 6-%Surtido, 7-Rastreo, 8-TRS, 9-CantDesp, 10-Estatus, 11-Calidad, 12-Conductor, 13-Unidad, 14-Folio
         const tableBody = document.getElementById('validated-table-body');
         if (!tableBody) return [];
 
@@ -3384,20 +3413,20 @@ function getUniqueFilterValues(view, criterion) {
             let value = '';
             switch(criterion) {
                 case 'destino':
-                    value = row.cells[2]?.textContent.trim() || 'N/A';
+                    value = row.cells[3]?.textContent.trim() || 'N/A'; // +1 for checkbox
                     break;
                 case 'conductor':
-                    value = row.cells[11]?.textContent.trim() || 'N/A';
+                    value = row.cells[12]?.textContent.trim() || 'N/A'; // +1 for checkbox
                     break;
                 case 'unidad':
-                    value = row.cells[12]?.textContent.trim() || 'N/A';
+                    value = row.cells[13]?.textContent.trim() || 'N/A'; // +1 for checkbox
                     break;
                 case 'rastreo':
-                    const rastreoText = row.cells[6]?.textContent.trim() || '';
+                    const rastreoText = row.cells[7]?.textContent.trim() || ''; // +1 for checkbox
                     value = rastreoText.includes('SI') ? 'SI' : 'NO';
                     break;
                 case 'estatus':
-                    const estatusText = row.cells[9]?.textContent.trim() || 'N/A';
+                    const estatusText = row.cells[10]?.textContent.trim() || 'N/A'; // +1 for checkbox
                     value = estatusText;
                     break;
             }
@@ -3473,6 +3502,24 @@ function getUniqueFilterValues(view, criterion) {
                 }
                 if (value) uniqueValues.add(value);
             });
+        });
+    } else if (view === 'folios-mgmt') {
+        // Get data from folios management table
+        const tableBody = document.getElementById('folios-mgmt-table-body');
+        if (!tableBody) return [];
+
+        const rows = tableBody.querySelectorAll('tr[data-folio]');
+        rows.forEach(row => {
+            let value = '';
+            switch(criterion) {
+                case 'conductor':
+                    value = row.cells[6]?.textContent.trim() || 'N/A';
+                    break;
+                case 'unidad':
+                    value = row.cells[7]?.textContent.trim() || 'N/A';
+                    break;
+            }
+            if (value) uniqueValues.add(value);
         });
     }
 
@@ -3838,6 +3885,7 @@ function applyAdvancedFilters(view) {
     else if (view === 'validated') tableBodyId = 'validated-table-body';
     else if (view === 'folios') tableBodyId = 'folios-table-body';
     else if (view === 'folio-details') tableBodyId = 'folio-details-table-body';
+    else if (view === 'folios-mgmt') tableBodyId = 'folios-mgmt-table-body';
 
     const rows = document.querySelectorAll(`#${tableBodyId} tr`);
 
@@ -3857,26 +3905,27 @@ function applyAdvancedFilters(view) {
 
                 if (view === 'orders') {
                     // Map criterion to column index
-                    if (filter.criterion === 'destino') {
-                        cellValue = cells[1]?.textContent.trim() || '';
-                    } else if (filter.criterion === 'rastreo') {
-                        cellValue = cells[7]?.textContent.trim() || '';
-                    } else if (filter.criterion === 'estatus') {
-                        cellValue = cells[8]?.textContent.trim() || '';
-                    }
-                } else if (view === 'validated') {
-                    // Map criterion to column index for validated
-                    // Columns: 0-Orden, 1-FechaVal, 2-Destino, 3-Horario, 4-Cajas, 5-%Surtido, 6-Rastreo, 7-TRS, 8-CantDesp, 9-Estatus, 10-Calidad, 11-Conductor, 12-Unidad, 13-Folio
+                    // Columns: 0-Checkbox, 1-Orden, 2-Destino, 3-Horario, 4-Código, 5-Track, 6-Cajas, 7-%Surtido, 8-Rastreo, 9-Estatus, 10-Acción
                     if (filter.criterion === 'destino') {
                         cellValue = cells[2]?.textContent.trim() || '';
                     } else if (filter.criterion === 'rastreo') {
-                        cellValue = cells[6]?.textContent.trim() || '';
+                        cellValue = cells[8]?.textContent.trim() || '';
                     } else if (filter.criterion === 'estatus') {
                         cellValue = cells[9]?.textContent.trim() || '';
+                    }
+                } else if (view === 'validated') {
+                    // Map criterion to column index for validated
+                    // Columns: 0-Checkbox, 1-Orden, 2-FechaVal, 3-Destino, 4-Horario, 5-Cajas, 6-%Surtido, 7-Rastreo, 8-TRS, 9-CantDesp, 10-Estatus, 11-Calidad, 12-Conductor, 13-Unidad, 14-Folio
+                    if (filter.criterion === 'destino') {
+                        cellValue = cells[3]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'rastreo') {
+                        cellValue = cells[7]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'estatus') {
+                        cellValue = cells[10]?.textContent.trim() || '';
                     } else if (filter.criterion === 'conductor') {
-                        cellValue = cells[11]?.textContent.trim() || '';
-                    } else if (filter.criterion === 'unidad') {
                         cellValue = cells[12]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'unidad') {
+                        cellValue = cells[13]?.textContent.trim() || '';
                     }
                 } else if (view === 'folios') {
                     // Map criterion to column index for folios
@@ -3897,12 +3946,18 @@ function applyAdvancedFilters(view) {
                     } else if (filter.criterion === 'estatus') {
                         cellValue = cells[6]?.textContent.trim() || '';
                     }
+                } else if (view === 'folios-mgmt') {
+                    // Map criterion to column index for folios-mgmt
+                    // Columns: 0-Folio, 1-Fecha, 2-Cajas, 3-Ordenes, 4-HorarioInicial, 5-HorarioFinal, 6-Conductor, 7-Unidad, 8-Acciones
+                    if (filter.criterion === 'conductor') {
+                        cellValue = cells[6]?.textContent.trim() || '';
+                    } else if (filter.criterion === 'unidad') {
+                        cellValue = cells[7]?.textContent.trim() || '';
+                    }
                 }
 
-                // Row must match at least one value from each criterion group
-                // Group filters by criterion
-                const sameFilterGroup = selectedValues.filter(f => f.criterion === filter.criterion);
-                return sameFilterGroup.some(f => f.value === cellValue);
+                // Row must match the filter value
+                return filter.value === cellValue;
             });
         }
 
@@ -3915,6 +3970,16 @@ function applyAdvancedFilters(view) {
         updateFoliosBadges();
     } else if (view === 'validated') {
         updateValidatedBadges();
+    } else if (view === 'folios-mgmt') {
+        // For folios-mgmt, we need to count visible rows and update badges
+        const visibleRows = Array.from(rows).filter(row => row.style.display !== 'none');
+        const foliosData = visibleRows.map(row => {
+            const folio = row.getAttribute('data-folio');
+            const cajas = parseInt(row.cells[2]?.textContent.trim() || '0');
+            const ordenes = parseInt(row.cells[3]?.textContent.trim() || '0');
+            return { folio, totalCajas: cajas, ordenes: ordenes };
+        });
+        updateFoliosManagementBadges(foliosData);
     }
     // Note: orders view doesn't have badges in the table header
 }
@@ -4109,7 +4174,129 @@ function updateSortIndicators(table, columnIndex, direction) {
 }
 
 // ==================== VALIDATION TABS ====================
+// Variable global para debouncing de cambio de pestañas
+let tabSwitchTimeout = null;
+
+/**
+ * Oculta todas las vistas/paneles de contenido
+ */
+function hideAllContentPanels() {
+    const panels = [
+        'welcome-state',
+        'search-panel',
+        'validated-content',
+        'otros-content',
+        'folios-content',
+        'folio-details-content',
+        'folios-management-content'
+    ];
+
+    panels.forEach(panelId => {
+        const panel = document.getElementById(panelId);
+        if (panel) {
+            // Usar !important para forzar el ocultamiento
+            panel.style.setProperty('display', 'none', 'important');
+            // Limpiar z-index y visibility
+            panel.style.zIndex = '';
+            panel.style.visibility = '';
+            panel.style.opacity = '';
+            // Remover clase active si existe
+            panel.classList.remove('active', 'show');
+        }
+    });
+}
+
+/**
+ * Muestra un panel específico de forma robusta
+ */
+function showContentPanel(panelId) {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+        // Remover el estilo inline de display con !important
+        panel.style.removeProperty('display');
+        // Establecer display: block sin !important para que CSS pueda sobreescribir si es necesario
+        panel.style.display = 'block';
+        // Asegurar visibilidad
+        panel.style.visibility = 'visible';
+        panel.style.opacity = '1';
+    }
+}
+
+/**
+ * Limpia todos los filtros de búsqueda y la persistencia (llamado al cambiar de pestaña)
+ */
+function clearAllFilters() {
+    // Limpiar inputs de filtro
+    const filterInputs = [
+        'filter-orders',
+        'filter-validated',
+        'filter-otros'
+    ];
+
+    filterInputs.forEach(inputId => {
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.value = '';
+        }
+
+        // Ocultar botón de limpiar si existe
+        const clearBtn = document.getElementById(`clear-${inputId}`);
+        if (clearBtn) {
+            clearBtn.style.display = 'none';
+        }
+    });
+
+    // Limpiar persistencia de filtros en STATE
+    STATE.filterPersistence = {
+        pending: '',
+        validated: '',
+        otros: '',
+        folios: ''
+    };
+
+    // NUEVO: Limpiar filtros avanzados (dropdowns de selección)
+    const views = ['orders', 'validated', 'folios', 'folio-details', 'folios-mgmt', 'agenda'];
+    views.forEach(view => {
+        // Reset advanced filter state
+        if (STATE.advancedFilters[view]) {
+            STATE.advancedFilters[view].criterion = '';
+            STATE.advancedFilters[view].selectedValues = [];
+        }
+
+        // Reset criterion selector
+        const criterionSelect = document.getElementById(`filter-${view}-criterion`);
+        if (criterionSelect) {
+            criterionSelect.value = '';
+        }
+
+        // Hide dropdown
+        const dropdown = document.getElementById(`filter-${view}-dropdown`);
+        if (dropdown) {
+            dropdown.style.display = 'none';
+        }
+
+        // Clear active filter chips
+        const chipsContainer = document.getElementById(`active-filters-${view}`);
+        if (chipsContainer) {
+            chipsContainer.innerHTML = '';
+        }
+    });
+
+    console.log('🧹 Filtros de búsqueda y selección limpiados');
+}
+
 function switchValidationTab(tab) {
+    // DEBOUNCING: Prevenir clics múltiples rápidos
+    if (tabSwitchTimeout) {
+        clearTimeout(tabSwitchTimeout);
+    }
+
+    tabSwitchTimeout = setTimeout(() => {
+        executeSwitchTab(tab);
+    }, 100);
+}
+
+function executeSwitchTab(tab) {
     // CHANGE 1: Enforce date filter before switching to pending
     if (tab === 'pending' && !enforceDateFilter()) {
         return; // Don't switch if date filter not active
@@ -4117,13 +4304,18 @@ function switchValidationTab(tab) {
 
     // CHANGE 1: Show global navigation when switching tabs
     showGlobalNavigation();
-    
-    // Ocultar vista de Gestión de Folios si está visible (transición suave)
-    const foliosMgmtContent = document.getElementById('folios-management-content');
-    if (foliosMgmtContent && foliosMgmtContent.style.display !== 'none') {
-        isInFoliosManagementView = false;
-        foliosMgmtContent.style.display = 'none';
-    }
+
+    // PASO 1: OCULTAR TODAS LAS VISTAS INMEDIATAMENTE (sin setTimeout)
+    hideAllContentPanels();
+
+    // PASO 2: RESETEAR CHECKBOXES Y SELECCIÓN
+    resetAllSelections();
+
+    // PASO 3: LIMPIAR FILTROS DE BÚSQUEDA Y PERSISTENCIA
+    clearAllFilters();
+
+    // Reset flag de gestión de folios
+    isInFoliosManagementView = false;
 
     STATE.activeTab = tab;
 
@@ -4163,25 +4355,25 @@ function switchValidationTab(tab) {
         toggleTodo?.classList.add('active');
         togglePending?.classList.remove('active');
         toggleValidated?.classList.remove('active');
+        const toggleOtrosHeader = document.getElementById('toggle-otros');
+        toggleOtrosHeader?.classList.remove('active');
 
         // Actualizar botones en panel de validadas
         toggleTodoValidated?.classList.add('active');
         togglePendingValidated?.classList.remove('active');
         toggleValidatedValidated?.classList.remove('active');
+        const toggleOtrosValidated = document.getElementById('toggle-otros-validated');
+        toggleOtrosValidated?.classList.remove('active');
 
         // Actualizar botones en panel de folios
         toggleTodoFolios?.classList.add('active');
         togglePendingFolios?.classList.remove('active');
         toggleValidatedFolios?.classList.remove('active');
+        const toggleOtrosFolios = document.getElementById('toggle-otros-folios');
+        toggleOtrosFolios?.classList.remove('active');
 
-        // Show search panel / orders - HIDE ALL OTHERS
-        document.getElementById('welcome-state').style.display = 'none';
-        document.getElementById('validated-content').style.display = 'none';
-        document.getElementById('folios-content').style.display = 'none';
-        document.getElementById('folio-details-content').style.display = 'none';
-        const searchPanelTodo = document.getElementById('search-panel');
-        searchPanelTodo.style.display = 'none';
-        setTimeout(() => { searchPanelTodo.style.display = 'block'; }, 10);
+        // PASO 2: Mostrar solo el panel correspondiente
+        showContentPanel('search-panel');
 
         // Render ALL orders (todo)
 
@@ -4215,25 +4407,25 @@ function switchValidationTab(tab) {
         toggleTodo?.classList.remove('active');
         togglePending?.classList.add('active');
         toggleValidated?.classList.remove('active');
+        const toggleOtrosHeader = document.getElementById('toggle-otros');
+        toggleOtrosHeader?.classList.remove('active');
 
         // Actualizar botones en panel de validadas
         toggleTodoValidated?.classList.remove('active');
         togglePendingValidated?.classList.add('active');
         toggleValidatedValidated?.classList.remove('active');
+        const toggleOtrosValidated = document.getElementById('toggle-otros-validated');
+        toggleOtrosValidated?.classList.remove('active');
 
         // Actualizar botones en panel de folios
         toggleTodoFolios?.classList.remove('active');
         togglePendingFolios?.classList.add('active');
         toggleValidatedFolios?.classList.remove('active');
+        const toggleOtrosFolios = document.getElementById('toggle-otros-folios');
+        toggleOtrosFolios?.classList.remove('active');
 
-        // Show search panel / orders - HIDE ALL OTHERS
-        document.getElementById('welcome-state').style.display = 'none';
-        document.getElementById('validated-content').style.display = 'none';
-        document.getElementById('folios-content').style.display = 'none';
-        document.getElementById('folio-details-content').style.display = 'none';
-        const searchPanelPending = document.getElementById('search-panel');
-        searchPanelPending.style.display = 'none';
-        setTimeout(() => { searchPanelPending.style.display = 'block'; }, 10);
+        // PASO 2: Mostrar solo el panel correspondiente
+        showContentPanel('search-panel');
 
         // Render pending orders table (filtered)
         renderOrdersTable('pending');
@@ -4247,7 +4439,7 @@ function switchValidationTab(tab) {
         if (agendaBtnPending) agendaBtnPending.style.display = 'none';
         if (sectionTitlePending) sectionTitlePending.textContent = '📋 Órdenes Pendientes';
         if (searchPanelTitlePending) searchPanelTitlePending.textContent = '📋 Órdenes Pendientes';
-    } else {
+    } else if (tab === 'validated') {
         // Si NO venimos desde folios, habilitar el botón normalmente
         if (!STATE.fromFolios && togglePendingValidated) {
             togglePendingValidated.disabled = false;
@@ -4264,28 +4456,72 @@ function switchValidationTab(tab) {
         toggleTodo?.classList.remove('active');
         togglePending?.classList.remove('active');
         toggleValidated?.classList.add('active');
+        const toggleOtrosHeader = document.getElementById('toggle-otros');
+        toggleOtrosHeader?.classList.remove('active');
 
         // Actualizar botones en panel de validadas
         toggleTodoValidated?.classList.remove('active');
         togglePendingValidated?.classList.remove('active');
         toggleValidatedValidated?.classList.add('active');
+        const toggleOtrosValidated = document.getElementById('toggle-otros-validated');
+        toggleOtrosValidated?.classList.remove('active');
 
         // Actualizar botones en panel de folios
         toggleTodoFolios?.classList.remove('active');
         togglePendingFolios?.classList.remove('active');
         toggleValidatedFolios?.classList.add('active');
+        const toggleOtrosFolios = document.getElementById('toggle-otros-folios');
+        toggleOtrosFolios?.classList.remove('active');
 
-        // Show validated content - HIDE ALL OTHERS
-        document.getElementById('welcome-state').style.display = 'none';
-        document.getElementById('search-panel').style.display = 'none';
-        document.getElementById('folios-content').style.display = 'none';
-        document.getElementById('folio-details-content').style.display = 'none';
-        const validatedContent = document.getElementById('validated-content');
-        validatedContent.style.display = 'none';
-        setTimeout(() => { validatedContent.style.display = 'block'; }, 10);
+        // PASO 2: Mostrar solo el panel correspondiente
+        showContentPanel('validated-content');
 
         // Render validated orders table
         renderValidatedTable();
+    } else if (tab === 'otros') {
+        // Limpiar flag de "viene desde folios" si estaba activo
+        STATE.fromFolios = false;
+
+        // Actualizar tabs del sidebar (si existen)
+        tabPending?.classList.remove('active');
+        tabValidated?.classList.remove('active');
+
+        // Actualizar botones en panel de búsqueda
+        toggleTodo?.classList.remove('active');
+        togglePending?.classList.remove('active');
+        toggleValidated?.classList.remove('active');
+        const toggleOtrosHeader = document.getElementById('toggle-otros');
+        toggleOtrosHeader?.classList.add('active');
+
+        // Actualizar botones en panel de validadas
+        toggleTodoValidated?.classList.remove('active');
+        togglePendingValidated?.classList.remove('active');
+        toggleValidatedValidated?.classList.remove('active');
+        const toggleOtrosValidated = document.getElementById('toggle-otros-validated');
+        toggleOtrosValidated?.classList.add('active');
+
+        // Actualizar botones en panel de folios
+        toggleTodoFolios?.classList.remove('active');
+        togglePendingFolios?.classList.remove('active');
+        toggleValidatedFolios?.classList.remove('active');
+        const toggleOtrosFolios = document.getElementById('toggle-otros-folios');
+        toggleOtrosFolios?.classList.add('active');
+
+        // Actualizar botones en panel de otros
+        const toggleTodoOtros = document.getElementById('toggle-todo-otros');
+        const togglePendingOtros = document.getElementById('toggle-pending-otros');
+        const toggleValidatedOtros = document.getElementById('toggle-validated-otros');
+        const toggleOtrosOtros = document.getElementById('toggle-otros-otros');
+        toggleTodoOtros?.classList.remove('active');
+        togglePendingOtros?.classList.remove('active');
+        toggleValidatedOtros?.classList.remove('active');
+        toggleOtrosOtros?.classList.add('active');
+
+        // PASO 2: Mostrar solo el panel correspondiente
+        showContentPanel('otros-content');
+
+        // Render otros orders table
+        renderOtrosTable();
     }
 
     // Update badges
@@ -4293,6 +4529,262 @@ function switchValidationTab(tab) {
 
     // CHANGE 1: Update global navigation
     updateGlobalNavigation();
+}
+
+/**
+ * Renderiza la tabla de órdenes "Otros" (Canceladas y No Procesables)
+ */
+function renderOtrosTable() {
+    const tableBody = document.getElementById('otros-table-body');
+    if (!tableBody) return;
+
+    // Filtrar solo órdenes con estatus "Cancelada" o "No Procesable"
+    let otrosOrders = STATE.localValidated.filter(record =>
+        record.estatus === 'Cancelada' || record.estatus === 'No Procesable'
+    );
+
+    // Aplicar filtro de fecha si está activo
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+        const startDate = parseDateLocal(STATE.dateFilter.startDate);
+        const endDate = parseDateLocal(STATE.dateFilter.endDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        otrosOrders = otrosOrders.filter(record => {
+            const orderData = STATE.obcData.get(record.orden) || {};
+            const dateStr = record.horario || orderData.expectedArrival;
+            if (!dateStr) return false;
+            const orderDate = parseOrderDate(dateStr);
+            return orderDate && orderDate >= startDate && orderDate <= endDate;
+        });
+    }
+
+    // Si no hay órdenes, mostrar mensaje
+    if (otrosOrders.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 40px; color: #999;">
+                    <div style="font-size: 3em; margin-bottom: 10px;">📦</div>
+                    <p>No hay órdenes canceladas o no procesables</p>
+                </td>
+            </tr>
+        `;
+        updateOtrosBadges(0, 0);
+        return;
+    }
+
+    // Renderizar filas
+    tableBody.innerHTML = otrosOrders.map(record => {
+        const orderData = STATE.obcData.get(record.orden) || {};
+        const totalCajas = orderData.totalCajas || 0;
+
+        let statusBadge;
+        if (record.estatus === 'Cancelada') {
+            statusBadge = createStatusBadge('cancelada', 'Cancelada');
+        } else {
+            statusBadge = createStatusBadge('no-procesable', 'No Procesable');
+        }
+
+        return `
+            <tr data-orden="${record.orden}" class="clickable-row">
+                <td style="text-align: center;">
+                    <input type="checkbox" class="row-checkbox" data-orden="${record.orden}" onclick="event.stopPropagation(); updateSelectionCount('otros');" style="cursor: pointer;">
+                </td>
+                <td>${makeCopyable(record.orden)}</td>
+                <td>${record.fecha || 'N/A'}</td>
+                <td>${record.destino || 'N/A'}</td>
+                <td>${record.horario || 'N/A'}</td>
+                <td>${totalCajas}</td>
+                <td>
+                    ${statusBadge}
+                </td>
+                <td>${record.usuario || 'N/A'}</td>
+                <td class="actions-cell">
+                    <div class="actions-buttons">
+                        <button class="btn-action dispatch" onclick="showValidatedDetails('${record.orden}')" title="Ver detalles de orden">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 7h-9"></path>
+                                <path d="M14 17H5"></path>
+                                <circle cx="17" cy="17" r="3"></circle>
+                                <circle cx="7" cy="7" r="3"></circle>
+                            </svg>
+                        </button>
+                        <button class="btn-delete-validated" onclick="revertirOrden('${record.orden}')" title="Revertir orden (eliminar de Otros)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Actualizar contadores
+    const totalCajas = otrosOrders.reduce((sum, r) => sum + (STATE.obcData.get(r.orden)?.totalCajas || 0), 0);
+    updateOtrosBadges(otrosOrders.length, totalCajas);
+}
+
+/**
+ * Actualiza los badges de contadores de la tabla "Otros"
+ */
+function updateOtrosBadges(ordersCount, boxesCount) {
+    const ordersCountEl = document.getElementById('otros-orders-count');
+    const boxesCountEl = document.getElementById('otros-boxes-count');
+
+    if (ordersCountEl) {
+        ordersCountEl.textContent = `${ordersCount} orden${ordersCount !== 1 ? 'es' : ''}`;
+    }
+    if (boxesCountEl) {
+        boxesCountEl.textContent = `${boxesCount} caja${boxesCount !== 1 ? 's' : ''}`;
+    }
+}
+
+/**
+ * Filtra la tabla de "Otros" según el input de búsqueda
+ */
+function filterOtrosTable() {
+    const filterInput = document.getElementById('filter-otros');
+    const clearBtn = document.getElementById('clear-filter-otros');
+    const filter = filterInput?.value.toLowerCase() || '';
+
+    // Save filter state to persistence
+    STATE.filterPersistence.otros = filter;
+
+    // Show/hide clear button
+    if (clearBtn) {
+        clearBtn.style.display = filter ? 'flex' : 'none';
+    }
+
+    const table = document.getElementById('otros-table');
+    const rows = table?.querySelectorAll('tbody tr') || [];
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filter) ? '' : 'none';
+    });
+}
+
+/**
+ * Ordena la tabla de "Otros"
+ */
+let otrosSortColumn = null;
+let otrosSortDirection = 'asc';
+
+function sortOtrosTable(columnIndex) {
+    const table = document.getElementById('otros-table');
+    const tbody = table?.querySelector('tbody');
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // Si es la misma columna, invertir dirección
+    if (otrosSortColumn === columnIndex) {
+        otrosSortDirection = otrosSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        otrosSortColumn = columnIndex;
+        otrosSortDirection = 'asc';
+    }
+
+    rows.sort((a, b) => {
+        const aCell = a.cells[columnIndex]?.textContent.trim() || '';
+        const bCell = b.cells[columnIndex]?.textContent.trim() || '';
+
+        let comparison = 0;
+        if (!isNaN(aCell) && !isNaN(bCell)) {
+            comparison = Number(aCell) - Number(bCell);
+        } else {
+            comparison = aCell.localeCompare(bCell);
+        }
+
+        return otrosSortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    // Reordenar tabla
+    rows.forEach(row => tbody.appendChild(row));
+
+    // Actualizar indicadores visuales
+    updateSortIndicators(table, columnIndex, otrosSortDirection);
+}
+
+/**
+ * Revierte una orden desde "Otros" (Cancelada/No Procesable) a estado normal
+ */
+// Flag para prevenir eliminaciones duplicadas
+let deletingOrders = new Set();
+
+async function revertirOrden(orden) {
+    // PREVENIR CLICS DUPLICADOS
+    if (deletingOrders.has(orden)) {
+        console.warn(`⚠️ Ya se está procesando la eliminación de la orden ${orden}`);
+        return;
+    }
+
+    const record = STATE.localValidated.find(v => v.orden === orden);
+    if (!record) {
+        showNotification('❌ Orden no encontrada', 'error');
+        return;
+    }
+
+    const estatusOriginal = record.estatus;
+    const confirmed = confirm(
+        `¿Revertir el estatus de la orden ${orden}?\n\n` +
+        `Estatus actual: ${estatusOriginal}\n\n` +
+        `La orden volverá a estar disponible para despacho.`
+    );
+
+    if (!confirmed) return;
+
+    // Marcar como "en proceso de eliminación"
+    deletingOrders.add(orden);
+
+    try {
+        showNotification('🔄 Revirtiendo orden...', 'info');
+
+        // Eliminar registro de localValidated (SOLO UNA VEZ)
+        const index = STATE.localValidated.findIndex(v => v.orden === orden);
+        if (index !== -1) {
+            STATE.localValidated.splice(index, 1);
+            saveLocalState();
+        } else {
+            console.warn(`⚠️ Orden ${orden} no encontrada en localValidated`);
+        }
+
+        // Intentar eliminar de Google Sheets si hay syncManager disponible
+        if (window.syncManager && typeof window.syncManager.deleteRecord === 'function') {
+            await window.syncManager.deleteRecord(record);
+        }
+
+        // FORZAR RE-RENDER INMEDIATO de TODAS las tablas para sincronización completa
+        const activeTab = STATE.activeTab;
+
+        // Re-renderizar TODAS las tablas, no solo la activa
+        renderOtrosTable();
+        renderValidatedTable();
+        renderOrdersList(); // Esto actualiza pendientes y todo
+        
+        console.log('✅ Todas las tablas re-renderizadas tras revertir orden');
+
+        // Actualizar badges de TODAS las pestañas
+        updateTabBadges();
+        updateOrdersBadges(activeTab);
+        updateValidatedBadges();
+        updateSummary();
+
+        showNotification(`✅ Orden ${orden} revertida exitosamente`, 'success');
+
+    } catch (error) {
+        console.error('Error al revertir orden:', error);
+        showNotification('❌ Error al revertir la orden: ' + error.message, 'error');
+    } finally {
+        // Liberar el flag después de un breve delay
+        setTimeout(() => {
+            deletingOrders.delete(orden);
+        }, 500);
+    }
 }
 
 function renderValidatedTable() {
@@ -4315,7 +4807,11 @@ function renderValidatedTable() {
     }
 
     // Filter validated orders by date range if active
-    let filteredValidated = [...STATE.localValidated];
+    // CRÍTICO: Excluir "Cancelada" y "No Procesable" de esta pestaña (deben ir a "Otros")
+    let filteredValidated = STATE.localValidated.filter(record => {
+        const estatus = record.estatus || '';
+        return estatus !== 'Cancelada' && estatus !== 'No Procesable';
+    });
 
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
         // Parse dates as local time to avoid timezone offset issues
@@ -4399,8 +4895,11 @@ function renderValidatedTable() {
         let dispatchStatus, statusBadge, statusColor;
 
         if (record.estatus === 'Cancelada') {
-            statusBadge = '🚫 CANCELADA';
-            statusColor = '#ef4444';
+            statusBadge = 'Cancelada';
+            statusColor = '#ef4444';  // Rojo
+        } else if (record.estatus === 'No Procesable') {
+            statusBadge = 'No Procesable';
+            statusColor = '#eab308';  // Amarillo
         } else {
             dispatchStatus = calculateOrderStatus(totalCajas, cantidadDespachar);
             statusBadge = dispatchStatus.status;
@@ -4445,6 +4944,9 @@ function renderValidatedTable() {
 
         return `
             <tr data-orden="${record.orden}" class="${rowClass}">
+                <td style="text-align: center;">
+                    <input type="checkbox" class="row-checkbox" data-orden="${record.orden}" onclick="event.stopPropagation(); updateSelectionCount('validated');" style="cursor: pointer;">
+                </td>
                 <td><span class="order-code">${makeCopyable(record.orden)}</span></td>
                 <td class="fecha-validacion">${fechaValidacion}</td>
                 <td class="td-wrap">${record.destino || orderData.recipient || '<span class="empty-cell">N/A</span>'}</td>
@@ -4506,8 +5008,8 @@ function updateValidatedBadges() {
     let totalBoxes = 0;
 
     visibleRows.forEach(row => {
-        // Get cantidad from column 8 (Cant. Despachar) - after removing Código and Track columns
-        const cantidadText = row.cells[8]?.textContent.trim() || '0';
+        // Get cantidad from column 9 (Cant. Despachar) - adjusted for checkbox column
+        const cantidadText = row.cells[9]?.textContent.trim() || '0';
         totalBoxes += parseInt(cantidadText) || 0;
     });
 
@@ -4629,6 +5131,39 @@ function showCancelOrderModal() {
  */
 function closeCancelOrderModal() {
     const modal = document.getElementById('cancel-order-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Show "No Procesable" order modal
+ */
+function showNoProcesableModal() {
+    const orderData = STATE.obcData.get(STATE.currentOrder);
+    if (!orderData) return;
+
+    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
+    const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
+    const totalCajas = orderData.totalCajas || rastreoData.length || validaciones.length || 0;
+
+    // Fill modal with order data
+    document.getElementById('noprocesable-orden-numero').textContent = STATE.currentOrder;
+    document.getElementById('noprocesable-orden-destino').textContent = orderData.recipient || 'N/A';
+    document.getElementById('noprocesable-orden-cajas').textContent = totalCajas;
+
+    // Show modal
+    const modal = document.getElementById('noprocesable-order-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Close "No Procesable" order modal
+ */
+function closeNoProcesableModal() {
+    const modal = document.getElementById('noprocesable-order-modal');
     if (modal) {
         modal.style.display = 'none';
     }
@@ -4867,8 +5402,13 @@ async function executeConfirmCancelOrder() {
         saveLocalState();
 
         // Add to sync queue to write to database
-        if (window.syncManager) {
+        if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
+            await window.syncManager.pushImmediate(validationRecord);
+        } else if (window.syncManager && typeof window.syncManager.addToQueue === 'function') {
+            // Fallback para compatibilidad con versiones anteriores
             await window.syncManager.addToQueue(validationRecord);
+        } else {
+            console.warn('⚠️ syncManager no disponible - la sincronización se realizará más tarde');
         }
 
         // Close modals
@@ -4887,6 +5427,101 @@ async function executeConfirmCancelOrder() {
         console.error('Error al cancelar orden:', error);
         showNotification('❌ Error al cancelar la orden: ' + error.message, 'error');
         closeCancelOrderModal();
+    }
+}
+
+/**
+ * Marca una orden como "No Procesable"
+ * Similar a cancelación pero con estatus y color diferente (amarillo)
+ */
+async function executeConfirmNoProcesable() {
+    if (!STATE.currentOrder) {
+        closeNoProcesableModal();
+        return;
+    }
+
+    const orderData = STATE.obcData.get(STATE.currentOrder);
+    if (!orderData) {
+        showNotification('❌ Error al obtener datos de la orden', 'error');
+        closeNoProcesableModal();
+        return;
+    }
+
+    try {
+        // Get current date and time for validation record
+        const now = new Date();
+        const { fecha, hora } = formatDateTimeForDB(now);
+
+        // Prepare validation record for non-processable order
+        const validationRecord = {
+            folio: '',                                      // A: Folio (vacío para no procesables)
+            timestamp: now.toISOString(),                   // Timestamp ISO para referencia interna
+            fecha: fecha,                                   // B: Fecha (DD/MM/YYYY)
+            hora: hora,                                     // C: Hora (HH:MM)
+            usuario: CURRENT_USER || USER_GOOGLE_NAME || '', // D: Usuario (quien marca)
+            orden: STATE.currentOrder,                      // E: Orden
+            destino: orderData.recipient || '',             // F: Destino
+            horario: normalizeDeliveryDate(orderData.expectedArrival) || '',  // G: Horario
+            codigo: orderData.trackingCode || '',           // H: Código
+            codigo2: orderData.referenceNo || '',           // I: Código 2
+            estatus: 'No Procesable',                       // J: Estatus (NUEVO)
+            tarea: 'No Procesable',                         // K: Tarea (NUEVO)
+            estatus2: 'N/A',                                // L: Estatus2
+            cantInicial: orderData.totalCajas || 0,         // M: Cant Inicial
+            cantDespacho: 0,                                // N: Cant Despacho (0 para no procesables)
+            incidencias: '',                                // O: Incidencias
+            operador: '',                                   // P: Operador (vacío)
+            conductor: '',                                  // Alias para operador
+            unidad: '',                                     // Q: Unidad (vacía)
+            observaciones: 'Orden no procesable',           // R: Observaciones
+            notaDespacho: 'Orden no procesable',            // Alias para observaciones
+            // Campos adicionales para compatibilidad UI
+            totalCajas: orderData.totalCajas || 0,
+            cantidadDespachar: 0,
+            porcentajeSurtido: 0,
+            calidad: 'N/A',
+            nota: 'Orden no procesable',
+            track: orderData.trackingCode || ''
+        };
+
+        // VALIDACIÓN antes de agregar a sync
+        const validation = validateDispatchRecord(validationRecord);
+        if (!validation.valid) {
+            console.error('❌ Registro de no procesable inválido:', validation.errors);
+            showNotification('❌ Error de validación: ' + validation.errors.join(', '), 'error');
+            return;
+        }
+
+        // Add to local validated
+        STATE.localValidated.push(validationRecord);
+        saveLocalState();
+
+        // Add to sync queue to write to database
+        if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
+            await window.syncManager.pushImmediate(validationRecord);
+        } else if (window.syncManager && typeof window.syncManager.addToQueue === 'function') {
+            // Fallback para compatibilidad con versiones anteriores
+            await window.syncManager.addToQueue(validationRecord);
+        } else {
+            console.warn('⚠️ syncManager no disponible - la sincronización se realizará más tarde');
+        }
+
+        // Close modals
+        closeNoProcesableModal();
+        closeInfoModal();
+
+        // Re-render tables and update badges
+        renderValidatedTable();
+        renderOrdersTable();
+        updateTabBadges();
+
+        // Show success notification
+        showNotification('⚠️ Orden marcada como No Procesable y agregada a sincronización', 'info');
+
+    } catch (error) {
+        console.error('Error al marcar orden como no procesable:', error);
+        showNotification('❌ Error al marcar la orden: ' + error.message, 'error');
+        closeNoProcesableModal();
     }
 }
 
@@ -4942,8 +5577,9 @@ async function executeDeleteValidated() {
         // PASO 5: Guardar estado local
         saveLocalState();
 
-        // PASO 6: Re-render UI
+        // PASO 6: Re-render ALL UI tables for complete synchronization
         renderValidatedTable();
+        renderOtrosTable(); // Also update Otros table
         renderOrdersList(); // La orden AHORA SÍ reaparecerá en pendientes
         
         // Actualizar vista de folios si está activa
@@ -4954,6 +5590,7 @@ async function executeDeleteValidated() {
 
         // Update badges and summary
         updateTabBadges();
+        updateValidatedBadges();
         updateSummary();
 
         showNotification(`✅ Orden ${orden} eliminada y regresada a pendientes`, 'success');
@@ -6305,7 +6942,7 @@ function showOrderInfo(orden) {
         // Change button text to "Guardar cambios" for validated orders
         const confirmBtn = document.getElementById('confirm-dispatch-btn');
         if (confirmBtn) {
-            confirmBtn.innerHTML = '💾 Guardar Cambios';
+            confirmBtn.innerHTML = '💾 Guardar';
             confirmBtn.onclick = function() { saveValidatedOrderChanges(orden); };
         }
 
@@ -6320,10 +6957,16 @@ function showOrderInfo(orden) {
         // Set cancellation toggle state if order is cancelled
         setTimeout(() => {
             const cancelToggle = document.getElementById('orden-cancelada-toggle');
+            const noProcesableToggle = document.getElementById('orden-noprocesable-toggle');
+
             if (cancelToggle && savedData.estatus === 'Cancelada') {
                 cancelToggle.checked = true;
                 // Trigger toggle function to disable fields
                 toggleOrderCancellation();
+            } else if (noProcesableToggle && savedData.estatus === 'No Procesable') {
+                noProcesableToggle.checked = true;
+                // Trigger toggle function to disable fields
+                toggleOrderNoProcesable();
             }
         }, 200);
     } else {
@@ -6367,7 +7010,7 @@ function initializeLockMode(isValidated) {
             const unlockButton = document.createElement('button');
             unlockButton.id = 'unlock-btn';
             unlockButton.className = 'btn btn-warning';
-            unlockButton.innerHTML = '🔓 Desbloquear para Editar';
+            unlockButton.innerHTML = '🔓 Desbloquear';
             unlockButton.onclick = toggleLockMode;
 
             // Insert before the confirm button (which is inside modal-buttons div)
@@ -6380,7 +7023,7 @@ function initializeLockMode(isValidated) {
             }
         } else if (unlockBtn) {
             // Reset button to locked state if it already exists
-            unlockBtn.innerHTML = '🔓 Desbloquear para Editar';
+            unlockBtn.innerHTML = '🔓 Desbloquear';
             unlockBtn.className = 'btn btn-warning';
         }
 
@@ -6422,7 +7065,7 @@ function toggleLockMode() {
         disableModalInputs(true);
 
         if (unlockBtn) {
-            unlockBtn.innerHTML = '🔓 Desbloquear para Editar';
+            unlockBtn.innerHTML = '🔓 Desbloquear';
             unlockBtn.className = 'btn btn-warning';
         }
 
@@ -6450,6 +7093,7 @@ function disableModalInputs(disable) {
 // Toggle order cancellation state
 function toggleOrderCancellation() {
     const toggle = document.getElementById('orden-cancelada-toggle');
+    const noProcesableToggle = document.getElementById('orden-noprocesable-toggle');
     const operadorSelect = document.getElementById('modal-operador');
     const unidadSelect = document.getElementById('modal-unidad');
     const folioSelect = document.getElementById('modal-folio-carga');
@@ -6457,6 +7101,11 @@ function toggleOrderCancellation() {
     if (!toggle) return;
 
     const isCancelled = toggle.checked;
+
+    // If this is being checked, uncheck No Procesable toggle (mutually exclusive)
+    if (isCancelled && noProcesableToggle && noProcesableToggle.checked) {
+        noProcesableToggle.checked = false;
+    }
 
     // Disable/enable Conductor, Unidad, and Folio fields based on cancellation state
     if (operadorSelect) operadorSelect.disabled = isCancelled;
@@ -6480,6 +7129,49 @@ function toggleOrderCancellation() {
     // Show notification
     if (isCancelled) {
         showNotification('⚠️ Orden marcada como Cancelada - Campos bloqueados', 'warning');
+    } else {
+        showNotification('✅ Orden reactivada - Campos habilitados', 'info');
+    }
+}
+
+function toggleOrderNoProcesable() {
+    const toggle = document.getElementById('orden-noprocesable-toggle');
+    const cancelToggle = document.getElementById('orden-cancelada-toggle');
+    const operadorSelect = document.getElementById('modal-operador');
+    const unidadSelect = document.getElementById('modal-unidad');
+    const folioSelect = document.getElementById('modal-folio-carga');
+
+    if (!toggle) return;
+
+    const isNoProcesable = toggle.checked;
+
+    // If this is being checked, uncheck Cancelada toggle (mutually exclusive)
+    if (isNoProcesable && cancelToggle && cancelToggle.checked) {
+        cancelToggle.checked = false;
+    }
+
+    // Disable/enable Conductor, Unidad, and Folio fields based on No Procesable state
+    if (operadorSelect) operadorSelect.disabled = isNoProcesable;
+    if (unidadSelect) unidadSelect.disabled = isNoProcesable;
+    if (folioSelect) folioSelect.disabled = isNoProcesable;
+
+    // Add visual feedback with yellow theme
+    const fieldsToStyle = [operadorSelect, unidadSelect, folioSelect];
+    fieldsToStyle.forEach(field => {
+        if (field) {
+            if (isNoProcesable) {
+                field.style.opacity = '0.5';
+                field.style.background = '#fef9c3';
+            } else {
+                field.style.opacity = '1';
+                field.style.background = 'white';
+            }
+        }
+    });
+
+    // Show notification
+    if (isNoProcesable) {
+        showNotification('⚠️ Orden marcada como No Procesable - Campos bloqueados', 'warning');
     } else {
         showNotification('✅ Orden reactivada - Campos habilitados', 'info');
     }
@@ -6612,6 +7304,13 @@ function renderModalBody(orden, orderData) {
                         <span class="qc-toggle-label" style="font-size: 0.85em; color: #ea580c;">🚫 Cancelada</span>
                         <label class="qc-toggle-switch" style="margin: 0;">
                             <input type="checkbox" id="orden-cancelada-toggle" onchange="toggleOrderCancellation()">
+                            <span class="qc-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="qc-toggle-container" style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; padding: 6px 12px; background: #fef9c3; border: 1px solid #fde047; border-radius: 6px;">
+                        <span class="qc-toggle-label" style="font-size: 0.85em; color: #a16207;">⚠️ No Procesable</span>
+                        <label class="qc-toggle-switch" style="margin: 0;">
+                            <input type="checkbox" id="orden-noprocesable-toggle" onchange="toggleOrderNoProcesable()">
                             <span class="qc-toggle-slider"></span>
                         </label>
                     </div>
@@ -7170,13 +7869,19 @@ async function saveValidatedOrderChanges(orden) {
             await syncPendingData();
         }
 
-        // Update validated table
+        // Update ALL tables to ensure synchronization
         renderValidatedTable();
+        renderOtrosTable(); // Also update Otros table
+        renderOrdersList(); // Update pending orders
 
         // If we're viewing folio details, also update that view
         if (STATE.currentFolio) {
             renderFolioDetailsTable(STATE.currentFolio);
         }
+        
+        // Update all badges
+        updateTabBadges();
+        updateValidatedBadges();
 
         // Close modal
         closeInfoModal();
@@ -7202,7 +7907,9 @@ async function confirmDispatch() {
     const cantidadDespachar = document.getElementById('cantidad-despachar')?.value || '';
     const notaDespacho = document.getElementById('nota-despacho')?.value?.trim() || '';
     const cancelToggle = document.getElementById('orden-cancelada-toggle');
+    const noProcesableToggle = document.getElementById('orden-noprocesable-toggle');
     const isCancelled = cancelToggle && cancelToggle.checked;
+    const isNoProcesable = noProcesableToggle && noProcesableToggle.checked;
 
     if (!STATE.currentOrder) {
         showNotification('❌ No hay orden seleccionada', 'error');
@@ -7212,6 +7919,12 @@ async function confirmDispatch() {
     // If order is marked as cancelled, show cancellation confirmation modal
     if (isCancelled) {
         showCancelOrderModal();
+        return;
+    }
+
+    // If order is marked as No Procesable, show No Procesable confirmation modal
+    if (isNoProcesable) {
+        showNoProcesableModal();
         return;
     }
 
@@ -7526,25 +8239,56 @@ async function initSyncManager() {
         formatRecord: (record) => {
             let fecha = record?.fecha || '';
             let hora = record?.hora || '';
-            
+
             // Si no hay fecha/hora, generar desde timestamp
             if ((!fecha || !hora) && record?.timestamp) {
                 const formatted = formatDateTimeForDB(new Date(record.timestamp));
                 fecha = fecha || formatted.fecha;
                 hora = hora || formatted.hora;
             }
-            
+
             // Validación de formato
             if (fecha && !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
                 const d = new Date(record.timestamp || Date.now());
                 fecha = formatDateTimeForDB(d).fecha;
             }
-            
+
             if (hora && !/^\d{2}:\d{2}$/.test(hora)) {
                 const d = new Date(record.timestamp || Date.now());
                 hora = formatDateTimeForDB(d).hora;
             }
-            
+
+            // NORMALIZACIÓN: Convertir horario (Columna G) a formato legible
+            // Si es un número (serie de Excel), convertirlo a formato de fecha legible
+            let horarioNormalizado = record.horario || '';
+            if (horarioNormalizado && typeof horarioNormalizado === 'number') {
+                // Es un número de serie de Excel, convertir a fecha
+                const excelEpoch = new Date(1899, 11, 30);
+                const dateFromSerial = new Date(excelEpoch.getTime() + horarioNormalizado * 86400000);
+
+                // Formatear como DD/MM/YYYY HH:mm
+                const day = String(dateFromSerial.getDate()).padStart(2, '0');
+                const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
+                const year = dateFromSerial.getFullYear();
+                const hours = String(dateFromSerial.getHours()).padStart(2, '0');
+                const minutes = String(dateFromSerial.getMinutes()).padStart(2, '0');
+
+                horarioNormalizado = `${day}/${month}/${year} ${hours}:${minutes}`;
+            } else if (horarioNormalizado && typeof horarioNormalizado === 'string') {
+                // Si ya es string, verificar si necesita normalización
+                const parsedDate = parseOrderDate(horarioNormalizado);
+                if (parsedDate && !isNaN(parsedDate.getTime())) {
+                    // Re-formatear para consistencia
+                    const day = String(parsedDate.getDate()).padStart(2, '0');
+                    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+                    const year = parsedDate.getFullYear();
+                    const hours = String(parsedDate.getHours()).padStart(2, '0');
+                    const minutes = String(parsedDate.getMinutes()).padStart(2, '0');
+
+                    horarioNormalizado = `${day}/${month}/${year} ${hours}:${minutes}`;
+                }
+            }
+
             return [
                 record.folio || '',
                 fecha,
@@ -7552,7 +8296,7 @@ async function initSyncManager() {
                 record.usuario || '',
                 record.orden || '',
                 record.destino || '',
-                record.horario || '',
+                horarioNormalizado,  // Columna G - Ahora normalizada
                 record.codigo || '',
                 record.codigo2 || '',
                 record.estatus || '',
@@ -7766,9 +8510,11 @@ function updateTabBadges() {
     const validatedBadgeFolios = document.getElementById('validated-badge-folios');
     const pendingBadgeFolios = document.getElementById('pending-badge-folios');
 
-    // Calculate validated count - filter by date range if active
-    let validatedCount = STATE.localValidated.length;
-    
+    // Calculate validated count - EXCLUIR Canceladas y No Procesables
+    // Filtrar por fecha si está activo
+    let validatedCount = 0;
+    let otrosCount = 0;
+
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
         const startParts = STATE.dateFilter.startDate.split('-');
         const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
@@ -7778,13 +8524,29 @@ function updateTabBadges() {
         const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
         endDate.setHours(23, 59, 59, 999);
 
-        validatedCount = STATE.localValidated.filter(record => {
+        STATE.localValidated.forEach(record => {
             const orderData = STATE.obcData.get(record.orden) || {};
             const dateStr = record.horario || orderData.expectedArrival;
-            if (!dateStr) return false;
+            if (!dateStr) return;
             const orderDate = parseOrderDate(dateStr);
-            return orderDate && orderDate >= startDate && orderDate <= endDate;
-        }).length;
+            if (orderDate && orderDate >= startDate && orderDate <= endDate) {
+                // Separar "Otros" de "Validadas"
+                if (record.estatus === 'Cancelada' || record.estatus === 'No Procesable') {
+                    otrosCount++;
+                } else {
+                    validatedCount++;
+                }
+            }
+        });
+    } else {
+        // Sin filtro de fecha - contar todos pero separar Otros
+        STATE.localValidated.forEach(record => {
+            if (record.estatus === 'Cancelada' || record.estatus === 'No Procesable') {
+                otrosCount++;
+            } else {
+                validatedCount++;
+            }
+        });
     }
 
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
@@ -7866,6 +8628,41 @@ function updateTabBadges() {
 
     if (globalValidatedBadge) {
         globalValidatedBadge.textContent = validatedCount;
+    }
+
+    // Update "Otros" badges (Canceladas + No Procesables)
+    const globalOtrosBadge = document.getElementById('global-otros-badge');
+    const otrosBadgeHeader = document.getElementById('otros-badge-header');
+    const otrosBadgeValidated = document.getElementById('otros-badge-validated');
+    const otrosBadgeFolios = document.getElementById('otros-badge-folios');
+    const otrosBadgeOtros = document.getElementById('otros-badge-otros');
+    const todoBadgeOtros = document.getElementById('todo-badge-otros');
+    const pendingBadgeOtros = document.getElementById('pending-badge-otros');
+    const validatedBadgeOtros = document.getElementById('validated-badge-otros');
+
+    if (globalOtrosBadge) {
+        globalOtrosBadge.textContent = otrosCount;
+    }
+    if (otrosBadgeHeader) {
+        otrosBadgeHeader.textContent = otrosCount;
+    }
+    if (otrosBadgeValidated) {
+        otrosBadgeValidated.textContent = otrosCount;
+    }
+    if (otrosBadgeFolios) {
+        otrosBadgeFolios.textContent = otrosCount;
+    }
+    if (otrosBadgeOtros) {
+        otrosBadgeOtros.textContent = otrosCount;
+    }
+    if (todoBadgeOtros) {
+        todoBadgeOtros.textContent = todoCount;
+    }
+    if (pendingBadgeOtros) {
+        pendingBadgeOtros.textContent = pendingCount;
+    }
+    if (validatedBadgeOtros) {
+        validatedBadgeOtros.textContent = validatedCount;
     }
 }
 
@@ -8030,9 +8827,10 @@ async function applyDateFilter() {
             modal.removeAttribute('data-dispatch-init');
             activateSearchPanelWithFilter();
         } else {
-            // Solo actualizar filtro - both Pendientes and Validadas
+            // Solo actualizar filtro - Pendientes, Validadas y Otros
             renderOrdersList();
-            renderValidatedTable(); // Also update Validadas with same filter
+            renderValidatedTable();
+            renderOtrosTable(); // También actualizar pestaña Otros con el filtro
             updateSummary();
         }
 
@@ -8045,7 +8843,7 @@ async function applyDateFilter() {
         const startFormatted = formatDateDDMMYYYY(startDateForDisplay);
         const endFormatted = formatDateDDMMYYYY(endDateForDisplay);
 
-        // Actualizar botón de filtro en Pendientes
+        // Actualizar botón de filtro en todas las pestañas
         const dateFilterText = document.getElementById('date-filter-text');
         const dateFilterBtn = document.getElementById('date-filter-display');
         if (dateFilterText) {
@@ -8054,8 +8852,28 @@ async function applyDateFilter() {
         if (dateFilterBtn) {
             dateFilterBtn.classList.add('active-filter');
         }
-        
-        // También actualizar botón de filtro en Folios tab
+
+        // Actualizar en pestaña Validadas
+        const validatedDateFilterText = document.getElementById('validated-date-filter-text');
+        const validatedDateFilterBtn = document.getElementById('validated-date-filter-display');
+        if (validatedDateFilterText) {
+            validatedDateFilterText.textContent = `${startFormatted} → ${endFormatted}`;
+        }
+        if (validatedDateFilterBtn) {
+            validatedDateFilterBtn.classList.add('active-filter');
+        }
+
+        // Actualizar en pestaña Otros
+        const otrosDateFilterText = document.getElementById('otros-date-filter-text');
+        const otrosDateFilterBtn = document.getElementById('otros-date-filter-display');
+        if (otrosDateFilterText) {
+            otrosDateFilterText.textContent = `${startFormatted} → ${endFormatted}`;
+        }
+        if (otrosDateFilterBtn) {
+            otrosDateFilterBtn.classList.add('active-filter');
+        }
+
+        // Actualizar en pestaña Folios
         const foliosDateFilterText = document.getElementById('folios-date-filter-text');
         const foliosDateFilterBtn = document.getElementById('folios-date-filter-display');
         if (foliosDateFilterText) {
@@ -8104,11 +8922,13 @@ function clearDateFilter() {
     document.getElementById('date-start-display').textContent = 'Seleccionar fecha...';
     document.getElementById('date-end-display').textContent = 'Seleccionar fecha...';
 
-    // Restaurar texto del botón en Pendientes
+    // Restaurar texto del botón en todas las pestañas
     const dateFilterText = document.getElementById('date-filter-text');
     const dateFilterBtn = document.getElementById('date-filter-display');
     const validatedDateFilterText = document.getElementById('validated-date-filter-text');
     const validatedDateFilterBtn = document.getElementById('validated-date-filter-display');
+    const otrosDateFilterText = document.getElementById('otros-date-filter-text');
+    const otrosDateFilterBtn = document.getElementById('otros-date-filter-display');
     const foliosDateFilterText = document.getElementById('folios-date-filter-text');
     const foliosDateFilterBtn = document.getElementById('folios-date-filter-display');
 
@@ -8124,7 +8944,12 @@ function clearDateFilter() {
     if (validatedDateFilterBtn) {
         validatedDateFilterBtn.classList.remove('active-filter');
     }
-    // También actualizar el botón de folios tab
+    if (otrosDateFilterText) {
+        otrosDateFilterText.textContent = 'Mostrando Todo';
+    }
+    if (otrosDateFilterBtn) {
+        otrosDateFilterBtn.classList.remove('active-filter');
+    }
     if (foliosDateFilterText) {
         foliosDateFilterText.textContent = 'Mostrando Todo';
     }
@@ -8366,6 +9191,48 @@ function makeCopyable(value) {
     return `<span class="copyable">${value}<span class="copy-icon" onclick="event.stopPropagation(); copyToClipboard('${String(value).replace(/'/g, "\\'")}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></span>`;
 }
 
+/**
+ * Crea un badge redondeado consistente para estatus
+ * @param {string} type - Tipo de estatus: 'validado', 'pendiente', 'otros', 'cancelada', 'no-procesable'
+ * @param {string} text - Texto a mostrar en el badge
+ * @returns {string} HTML del badge
+ */
+function createStatusBadge(type, text) {
+    const badgeStyles = {
+        'validado': {
+            bg: '#d1fae5',
+            color: '#065f46',
+            icon: '✅'
+        },
+        'pendiente': {
+            bg: '#fef3c7',
+            color: '#92400e',
+            icon: '⏳'
+        },
+        'otros': {
+            bg: '#e5e7eb',
+            color: '#374151',
+            icon: '📦'
+        },
+        'cancelada': {
+            bg: '#fee2e2',
+            color: '#991b1b',
+            icon: '🚫'
+        },
+        'no-procesable': {
+            bg: '#fef3c7',
+            color: '#92400e',
+            icon: '⚠️'
+        }
+    };
+
+    const style = badgeStyles[type] || badgeStyles['otros'];
+
+    return `<span class="status-badge-unified" style="background: ${style.bg}; color: ${style.color}; padding: 4px 12px; border-radius: 12px; font-size: 0.75em; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
+        ${style.icon} ${text}
+    </span>`;
+}
+
 // CHANGE 11: Format multiple services (comma-separated) with badges
 function formatMultipleServices(servicesString) {
     if (!servicesString || servicesString === '-' || servicesString === 'N/A') {
@@ -8456,14 +9323,10 @@ function showFoliosManagement() {
         if (btn) btn.classList.add('active');
     });
 
-    // Ocultar todos los demás paneles (incluyendo vista de gestión independiente)
-    document.getElementById('welcome-state').style.display = 'none';
-    document.getElementById('search-panel').style.display = 'none';
-    document.getElementById('validated-content').style.display = 'none';
-    document.getElementById('folio-details-content').style.display = 'none';
-    const foliosMgmtContent = document.getElementById('folios-management-content');
-    if (foliosMgmtContent) foliosMgmtContent.style.display = 'none';
-    document.getElementById('folios-content').style.display = 'block';
+    // Ocultar todos los demás paneles usando la función centralizada
+    hideAllContentPanels();
+    // Mostrar solo folios-content
+    showContentPanel('folios-content');
     
     // Actualizar texto del filtro de fecha según el filtro global (mismo diseño que validated)
     const filterText = document.getElementById('folios-date-filter-text');
@@ -8729,25 +9592,40 @@ function renderFoliosTable() {
 }
 
 /**
- * MEJORA: Configura listeners para click en filas de folios
+ * MEJORA: Configura listeners para click en filas de folios usando event delegation
+ * Se llama solo una vez en DOMContentLoaded para evitar duplicados
  */
+let folioRowListenerInitialized = false;
+
 function setupFolioRowClickListeners() {
-    const folioRows = document.querySelectorAll('.folio-row-clickable');
-    
-    folioRows.forEach(row => {
-        row.addEventListener('click', (e) => {
-            // No hacer nada si el click fue en un botón o su contenedor
-            if (e.target.closest('button') || e.target.closest('.btn-action')) {
-                return;
-            }
-            
-            const folio = row.getAttribute('data-folio');
-            if (folio) {
-                console.log(`📋 Click en fila de folio: ${folio}`);
-                viewFolioOrders(folio);
-            }
-        });
+    // PREVENIR MÚLTIPLES LISTENERS: Solo inicializar una vez
+    if (folioRowListenerInitialized) {
+        return;
+    }
+
+    const foliosTableBody = document.getElementById('folios-table-body');
+    if (!foliosTableBody) return;
+
+    // Usar EVENT DELEGATION en lugar de listeners individuales
+    foliosTableBody.addEventListener('click', (e) => {
+        // Buscar la fila clickeable más cercana
+        const row = e.target.closest('.folio-row-clickable');
+        if (!row) return;
+
+        // No hacer nada si el click fue en un botón o su contenedor
+        if (e.target.closest('button') || e.target.closest('.btn-action')) {
+            return;
+        }
+
+        const folio = row.getAttribute('data-folio');
+        if (folio) {
+            console.log(`📋 Click en fila de folio: ${folio}`);
+            viewFolioOrders(folio);
+        }
     });
+
+    folioRowListenerInitialized = true;
+    console.log('✅ Folio row click listener initialized (event delegation)');
 }
 
 /**
@@ -9081,18 +9959,10 @@ async function showFoliosManagementView() {
     const globalNav = document.getElementById('global-nav-header');
     if (globalNav) globalNav.style.display = 'none';
     
-    // Ocultar todos los paneles
-    document.getElementById('welcome-state').style.display = 'none';
-    document.getElementById('search-panel').style.display = 'none';
-    document.getElementById('validated-content').style.display = 'none';
-    document.getElementById('folios-content').style.display = 'none';
-    document.getElementById('folio-details-content').style.display = 'none';
-    
-    // Mostrar vista de gestión de folios
-    const foliosMgmtContent = document.getElementById('folios-management-content');
-    if (foliosMgmtContent) {
-        foliosMgmtContent.style.display = 'block';
-    }
+    // Ocultar todos los demás paneles usando la función centralizada
+    hideAllContentPanels();
+    // Mostrar solo folios-management-content
+    showContentPanel('folios-management-content');
     
     // Mostrar estado de carga inicial
     const tableBody = document.getElementById('folios-mgmt-table-body');
@@ -9188,7 +10058,19 @@ function renderFoliosManagementTable() {
     const tableBody = document.getElementById('folios-mgmt-table-body');
     if (!tableBody) return;
 
-    let folios = getAllFolios();
+    // Mostrar indicador de carga inicial
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="9" class="table-empty-state">
+                <div class="table-empty-icon">⏳</div>
+                <div class="table-empty-text">Cargando folios...</div>
+            </td>
+        </tr>
+    `;
+
+    // Usar setTimeout para permitir que el UI se actualice
+    setTimeout(() => {
+        let folios = getAllFolios();
 
     // Aplicar filtro de fecha SOLO si está activo (por defecto NO está activo)
     if (FOLIOS_MGMT_DATE_FILTER.active && FOLIOS_MGMT_DATE_FILTER.startDate && FOLIOS_MGMT_DATE_FILTER.endDate) {
@@ -9289,6 +10171,7 @@ function renderFoliosManagementTable() {
     
     // MEJORA: Añadir event listeners para click en filas de gestión de folios
     setupFolioRowClickListeners();
+    }, 0); // Close setTimeout
 }
 
 /**
@@ -10879,3 +11762,242 @@ document.addEventListener('click', function(event) {
         }
     });
 });
+
+// ==================== MULTI-SELECTION SYSTEM ====================
+
+/**
+ * Reset all selections across all tables (called when switching tabs)
+ */
+function resetAllSelections() {
+    const tables = ['orders', 'validated', 'otros'];
+
+    tables.forEach(table => {
+        // Clear all row checkboxes
+        const tableBody = document.getElementById(`${table === 'orders' ? 'orders-table-body' : table === 'validated' ? 'validated-table-body' : 'otros-table-body'}`);
+        if (tableBody) {
+            tableBody.querySelectorAll('.row-checkbox').forEach(cb => {
+                cb.checked = false;
+            });
+        }
+
+        // Clear select-all checkbox
+        const selectAllCheckbox = document.getElementById(`select-all-${table}`);
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+
+        // Hide selection header
+        const selectionHeader = document.getElementById(`selection-header-${table}`);
+        if (selectionHeader) {
+            selectionHeader.style.display = 'none';
+        }
+    });
+}
+
+/**
+ * Toggle select all checkboxes for a specific table
+ */
+function toggleSelectAll(table) {
+    const selectAllCheckbox = document.getElementById(`select-all-${table}`);
+    const tableBody = document.getElementById(`${table === 'orders' ? 'orders-table-body' : table === 'validated' ? 'validated-table-body' : 'otros-table-body'}`);
+
+    if (!tableBody) return;
+
+    const visibleCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox'))
+        .filter(cb => cb.closest('tr').style.display !== 'none');
+
+    visibleCheckboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+
+    updateSelectionCount(table);
+}
+
+/**
+ * Update selection counter and show/hide export button
+ */
+function updateSelectionCount(table) {
+    const tableBody = document.getElementById(`${table === 'orders' ? 'orders-table-body' : table === 'validated' ? 'validated-table-body' : 'otros-table-body'}`);
+    const selectAllCheckbox = document.getElementById(`select-all-${table}`);
+
+    if (!tableBody) return;
+
+    const allCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox'))
+        .filter(cb => cb.closest('tr').style.display !== 'none');
+    const checkedCheckboxes = allCheckboxes.filter(cb => cb.checked);
+
+    // Update select-all checkbox state
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
+        selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < allCheckboxes.length;
+    }
+
+    // Show/hide selection header
+    const selectionCount = checkedCheckboxes.length;
+    showSelectionHeader(table, selectionCount);
+}
+
+/**
+ * Show or hide the selection header with counter and export button
+ */
+function showSelectionHeader(table, count) {
+    let selectionHeader = document.getElementById(`selection-header-${table}`);
+
+    if (count > 0) {
+        // Create header if it doesn't exist
+        if (!selectionHeader) {
+            selectionHeader = document.createElement('div');
+            selectionHeader.id = `selection-header-${table}`;
+            selectionHeader.className = 'selection-header';
+            selectionHeader.innerHTML = `
+                <div class="selection-info">
+                    <span id="selection-count-${table}" class="selection-count">${count} seleccionada(s)</span>
+                </div>
+                <div class="selection-actions">
+                    <button class="btn btn-primary" onclick="exportSelectedOrders('${table}')">
+                        📥 Exportar Selección
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearSelection('${table}')">
+                        ✕ Limpiar
+                    </button>
+                </div>
+            `;
+
+            // Insert header before the table container
+            const tableContainer = document.querySelector(`#${table === 'orders' ? 'orders-table' : table === 'validated' ? 'validated-table' : 'otros-table'}`)?.closest('.orders-table-container');
+            if (tableContainer) {
+                tableContainer.parentElement.insertBefore(selectionHeader, tableContainer);
+            }
+        } else {
+            // Update count
+            const countSpan = document.getElementById(`selection-count-${table}`);
+            if (countSpan) {
+                countSpan.textContent = `${count} seleccionada(s)`;
+            }
+            selectionHeader.style.display = 'flex';
+        }
+    } else {
+        // Hide header if no selection
+        if (selectionHeader) {
+            selectionHeader.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Clear all selections for a table
+ */
+function clearSelection(table) {
+    const tableBody = document.getElementById(`${table === 'orders' ? 'orders-table-body' : table === 'validated' ? 'validated-table-body' : 'otros-table-body'}`);
+    const selectAllCheckbox = document.getElementById(`select-all-${table}`);
+
+    if (tableBody) {
+        tableBody.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+
+    updateSelectionCount(table);
+}
+
+/**
+ * Export selected orders to CSV
+ */
+function exportSelectedOrders(table) {
+    const tableBody = document.getElementById(`${table === 'orders' ? 'orders-table-body' : table === 'validated' ? 'validated-table-body' : 'otros-table-body'}`);
+
+    if (!tableBody) return;
+
+    const selectedCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox:checked'));
+    const selectedOrders = selectedCheckboxes.map(cb => cb.dataset.orden);
+
+    if (selectedOrders.length === 0) {
+        showNotification('⚠️ No hay órdenes seleccionadas', 'warning');
+        return;
+    }
+
+    // Collect data based on table type
+    let csvData = [];
+    let headers = [];
+
+    if (table === 'orders') {
+        headers = ['N° Orden', 'Destino', 'Horario', 'Código', 'Track', 'Cant. Cajas', 'Estatus'];
+        selectedOrders.forEach(orden => {
+            const data = STATE.obcData.get(orden);
+            if (data) {
+                const { validated } = isOrderValidated(orden);
+                const validatedData = validated ? STATE.localValidated.find(v => v.orden === orden) : null;
+                const estatus = validatedData ? (validatedData.estatus || 'Validada') : 'Pendiente';
+
+                csvData.push([
+                    orden,
+                    data.recipient || 'N/A',
+                    data.expectedArrival || 'N/A',
+                    data.referenceNo || 'N/A',
+                    data.trackingCode || 'N/A',
+                    data.totalCajas || 0,
+                    estatus
+                ]);
+            }
+        });
+    } else if (table === 'validated') {
+        headers = ['N° Orden', 'Fecha Validación', 'Destino', 'Horario', 'Cant. Cajas', 'Estatus', 'Conductor', 'Unidad', 'Folio'];
+        selectedOrders.forEach(orden => {
+            const record = STATE.localValidated.find(v => v.orden === orden);
+            if (record) {
+                const orderData = STATE.obcData.get(orden) || {};
+                csvData.push([
+                    orden,
+                    record.timestamp ? formatValidationDateTime(record.timestamp) : `${record.fecha || ''} ${record.hora || ''}`,
+                    record.destino || orderData.recipient || 'N/A',
+                    record.horario || orderData.expectedArrival || 'N/A',
+                    orderData.totalCajas || record.totalCajas || 0,
+                    record.estatus || 'Validada',
+                    record.operador || 'N/A',
+                    record.unidad || 'N/A',
+                    record.folio || 'N/A'
+                ]);
+            }
+        });
+    } else if (table === 'otros') {
+        headers = ['N° Orden', 'Fecha Marcado', 'Destino', 'Horario', 'Cant. Cajas', 'Estatus', 'Usuario'];
+        selectedOrders.forEach(orden => {
+            const record = STATE.localValidated.find(v => v.orden === orden && (v.estatus === 'Cancelada' || v.estatus === 'No Procesable'));
+            if (record) {
+                const orderData = STATE.obcData.get(orden) || {};
+                csvData.push([
+                    orden,
+                    record.fecha || 'N/A',
+                    record.destino || 'N/A',
+                    record.horario || 'N/A',
+                    orderData.totalCajas || 0,
+                    record.estatus || 'N/A',
+                    record.usuario || 'N/A'
+                ]);
+            }
+        });
+    }
+
+    // Generate CSV
+    const csvContent = [
+        headers.join(','),
+        ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ordenes_${table}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showNotification(`✅ ${selectedOrders.length} órdenes exportadas correctamente`, 'success');
+}

@@ -72,6 +72,9 @@
                         <button class="global-nav-btn" id="global-nav-validated" onclick="switchValidationTab('validated')">
                             ✅ Validadas <span class="global-nav-badge" id="global-validated-badge">0</span>
                         </button>
+                        <button class="global-nav-btn" id="global-nav-otros" onclick="switchValidationTab('otros')">
+                            🗂️ Otros <span class="global-nav-badge" id="global-otros-badge">0</span>
+                        </button>
                         <button class="global-nav-btn" id="global-nav-folios" onclick="showFoliosManagement()">
                             🚚 Folios
                         </button>
@@ -110,6 +113,9 @@
                                 </button>
                                 <button class="status-toggle-btn" id="toggle-validated-folios" onclick="switchValidationTab('validated')">
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-folios">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-otros-folios" onclick="switchValidationTab('otros')">
+                                    🗂️ Otros <span class="toggle-badge" id="otros-badge-folios">0</span>
                                 </button>
                                 <button class="status-toggle-btn active" id="toggle-folios-folios" onclick="showFoliosManagement()">
                                     🚚 Folios
@@ -314,6 +320,9 @@
                                 <button class="status-toggle-btn active" id="toggle-validated-validated" onclick="switchValidationTab('validated')">
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-validated">0</span>
                                 </button>
+                                <button class="status-toggle-btn" id="toggle-otros-validated" onclick="switchValidationTab('otros')">
+                                    🗂️ Otros <span class="toggle-badge" id="otros-badge-validated">0</span>
+                                </button>
                                 <button class="status-toggle-btn" id="toggle-folios-validated" onclick="showFoliosManagement()">
                                     🚚 Folios
                                 </button>
@@ -351,24 +360,94 @@
                             <table class="orders-table" id="validated-table">
                                 <thead>
                                     <tr>
-                                        <th onclick="sortValidatedTable(0)">N° Orden <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(1)">Fecha Validación <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(2)">Destino <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(3)">Horario <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(4)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(5)">% Surtido <span class="sort-indicator">⇅</span></th>
+                                        <th style="width: 40px; text-align: center;">
+                                            <input type="checkbox" id="select-all-validated" onchange="toggleSelectAll('validated')" style="cursor: pointer;">
+                                        </th>
+                                        <th onclick="sortValidatedTable(1)">N° Orden <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(2)">Fecha Validación <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(3)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(4)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(6)">% Surtido <span class="sort-indicator">⇅</span></th>
                                         <th>Rastreo</th>
-                                        <th onclick="sortValidatedTable(7)">TRS <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(8)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(9)">Estatus <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(10)">Calidad <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(11)">Conductor <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(12)">Unidad <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortValidatedTable(13)">Folio <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(8)">TRS <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(9)">Cant. Despachar <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(10)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(11)">Calidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(12)">Conductor <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(13)">Unidad <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortValidatedTable(14)">Folio <span class="sort-indicator">⇅</span></th>
                                         <th style="width: 80px;">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="validated-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OTROS TAB CONTENT (Canceladas y No Procesables) -->
+                <div id="otros-content" class="tab-content" style="display: none;">
+                    <div class="header">
+                        <div class="header-left">
+                            <h1>🗂️ Otros </h1>
+                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="otros-date-filter-display" style="margin-left: 20px;">
+                                📅 <span id="otros-date-filter-text">Mostrando Todo</span>
+                            </button>
+                        </div>
+                        <div class="header-right">
+                            <div class="status-toggle-container">
+                                <button class="status-toggle-btn" id="toggle-todo-otros" onclick="switchValidationTab('todo')">
+                                    📋 Todo <span class="toggle-badge" id="todo-badge-otros">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-pending-otros" onclick="switchValidationTab('pending')">
+                                    ⏳ Pendientes <span class="toggle-badge" id="pending-badge-otros">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-validated-otros" onclick="switchValidationTab('validated')">
+                                    ✅ Validadas <span class="toggle-badge" id="validated-badge-otros">0</span>
+                                </button>
+                                <button class="status-toggle-btn active" id="toggle-otros-otros" onclick="switchValidationTab('otros')">
+                                    🗂️ Otros <span class="toggle-badge" id="otros-badge-otros">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-folios-otros" onclick="showFoliosManagement()">
+                                    🚚 Folios
+                                </button>
+                            </div>
+                            <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="section-header-inline">
+                            <div class="header-with-badges">
+                                <h3>📋 Órdenes - Otros</h3>
+                                <span class="badge badge-warning" id="otros-orders-count">0 órdenes</span>
+                                <span class="badge badge-info" id="otros-boxes-count">0 cajas</span>
+                            </div>
+                            <div class="filter-controls">
+                                <div class="search-input-wrapper">
+                                    <input type="text" id="filter-otros" class="filter-input" placeholder="🔍 Buscar..." oninput="filterOtrosTable()">
+                                    <button class="clear-search-btn" id="clear-filter-otros" onclick="clearSearchInput('filter-otros')" style="display: none;">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="orders-table-container">
+                            <table class="orders-table" id="otros-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px; text-align: center;">
+                                            <input type="checkbox" id="select-all-otros" onchange="toggleSelectAll('otros')" style="cursor: pointer;">
+                                        </th>
+                                        <th onclick="sortOtrosTable(1)">N° Orden <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortOtrosTable(2)">Fecha Marcado <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortOtrosTable(3)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortOtrosTable(4)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortOtrosTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortOtrosTable(6)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortOtrosTable(7)">Usuario <span class="sort-indicator">⇅</span></th>
+                                        <th style="width: 100px; text-align: center;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="otros-table-body"></tbody>
                             </table>
                         </div>
                     </div>
@@ -393,6 +472,9 @@
                                 </button>
                                 <button class="status-toggle-btn" id="toggle-validated" onclick="switchValidationTab('validated')">
                                     ✅ Validadas <span class="toggle-badge" id="validated-badge-header">0</span>
+                                </button>
+                                <button class="status-toggle-btn" id="toggle-otros" onclick="switchValidationTab('otros')">
+                                    🗂️ Otros <span class="toggle-badge" id="otros-badge-header">0</span>
                                 </button>
                                 <button class="status-toggle-btn" id="toggle-folios" onclick="showFoliosManagement()">
                                     🚚 Folios
@@ -463,15 +545,18 @@
                             <table class="orders-table" id="orders-table">
                                 <thead>
                                     <tr>
-                                        <th onclick="sortTable(0)">N° Orden <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(1)">Destino <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(2)">Horario <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(3)">Código <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(4)">Track <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(5)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
-                                        <th onclick="sortTable(6)">% Surtido <span class="sort-indicator">⇅</span></th>
+                                        <th style="width: 40px; text-align: center;">
+                                            <input type="checkbox" id="select-all-orders" onchange="toggleSelectAll('orders')" style="cursor: pointer;">
+                                        </th>
+                                        <th onclick="sortTable(1)">N° Orden <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(2)">Destino <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(3)">Horario <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(4)">Código <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(5)">Track <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(6)">Cant. Cajas <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(7)">% Surtido <span class="sort-indicator">⇅</span></th>
                                         <th>Rastreo</th>
-                                        <th onclick="sortTable(8)">Estatus <span class="sort-indicator">⇅</span></th>
+                                        <th onclick="sortTable(9)">Estatus <span class="sort-indicator">⇅</span></th>
                                         <th>Acción</th>
                                     </tr>
                                 </thead>
@@ -1007,6 +1092,46 @@
                     🚫 Confirmar Cancelación
                 </button>
                 <button class="btn btn-secondary" onclick="closeCancelOrderModal()">
+                    Cancelar Operación
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NO PROCESABLE ORDER CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="noprocesable-order-modal" style="display: none;">
+        <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>⚠️</span>
+                    <span>MARCAR COMO NO PROCESABLE</span>
+                </div>
+                <button class="modal-close" onclick="closeNoProcesableModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 3em; margin-bottom: 15px;">⚠️</div>
+                    <p style="font-size: 1.1em; color: #666; margin-bottom: 15px;">
+                        ¿Marcar esta orden como No Procesable?
+                    </p>
+                    <div style="background: #fefce8; border-left: 4px solid #eab308; padding: 15px; border-radius: 8px; text-align: left; margin-bottom: 15px;">
+                        <p style="margin: 5px 0;"><strong>Orden:</strong> <span id="noprocesable-orden-numero">-</span></p>
+                        <p style="margin: 5px 0;"><strong>Destino:</strong> <span id="noprocesable-orden-destino">-</span></p>
+                        <p style="margin: 5px 0;"><strong>Cajas:</strong> <span id="noprocesable-orden-cajas">-</span></p>
+                    </div>
+                    <p style="font-size: 0.95em; color: #ca8a04; font-weight: 600; background: #fefce8; padding: 12px; border-radius: 8px; text-align: left;">
+                        La orden será marcada como <strong>NO PROCESABLE</strong>.<br>
+                        Indica que no puede despacharse por razones operativas.<br>
+                        Podrá editarse posteriormente para revertir este estado.
+                    </p>
+                    <p style="font-size: 0.9em; color: #999; margin-top: 15px;">¿Desea continuar?</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-warning" onclick="executeConfirmNoProcesable()" style="background: #eab308; color: white;">
+                    ⚠️ Confirmar No Procesable
+                </button>
+                <button class="btn btn-secondary" onclick="closeNoProcesableModal()">
                     Cancelar Operación
                 </button>
             </div>

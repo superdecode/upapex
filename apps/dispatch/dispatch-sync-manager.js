@@ -131,10 +131,11 @@ class DispatchSyncManager {
             console.log('📤 [PUSH] Enviando inmediatamente:', record.orden || record.folio);
 
             // Enviar sin esperar cola - PUSH DIRECTO
+            // Usar RAW para columnas de fecha/texto para evitar conversión automática
             const response = await gapi.client.sheets.spreadsheets.values.append({
                 spreadsheetId: this.config.spreadsheetId,
                 range: `${this.config.sheetName}!A:R`,
-                valueInputOption: 'USER_ENTERED',
+                valueInputOption: 'RAW',  // Cambiado de USER_ENTERED a RAW para preservar formato de texto
                 insertDataOption: 'INSERT_ROWS',
                 resource: { values }
             });
@@ -211,7 +212,7 @@ class DispatchSyncManager {
             const response = await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: this.config.spreadsheetId,
                 range: `${this.config.sheetName}!A${rowIndex}:R${rowIndex}`,
-                valueInputOption: 'USER_ENTERED',
+                valueInputOption: 'RAW',  // Cambiado de USER_ENTERED a RAW para preservar formato de texto
                 resource: { values }
             });
 

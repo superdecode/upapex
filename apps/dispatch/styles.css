@@ -40,14 +40,20 @@
     z-index: 15;
 }
 
+/* Paneles de contenido - mismo z-index para evitar sobreposición */
 #search-panel,
 #validated-content,
-#folios-content {
+#otros-content,
+#folios-content,
+#folio-details-content,
+#folios-management-content {
     z-index: 5;
+    position: relative;
 }
 
 #welcome-state {
     z-index: 1;
+    position: relative;
 }
 
 /* Ensure desktop layout persists after data load */
@@ -1819,6 +1825,7 @@ select option[data-is-current="true"] {
     background: #fff5ed;
     transform: scale(1.01);
     box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
+    cursor: pointer;
 }
 
 /* Highlight validated orders with light green background */
@@ -2818,6 +2825,16 @@ textarea:focus {
     color: #065f46;
 }
 
+.badge-warning {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.badge-info {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
 /* Folio de carga selector */
 .folio-selector {
     padding: 8px 12px;
@@ -3194,4 +3211,102 @@ textarea:focus {
         flex: 1;
         justify-content: center;
     }
+}
+
+/* ==================== MULTI-SELECTION SYSTEM ==================== */
+
+.selection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 16px;
+    background: linear-gradient(135deg,  #FCEFE6 60%, #FCEFE6 5%);
+    border-radius: 6px;
+    color: #ea580c;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 6px rgba(251, 146, 60, 0.15);
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.selection-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.selection-count {
+    font-size: 0.9em;
+    font-weight: 600;
+    color: #7c2d12;
+}
+
+.selection-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.selection-actions .btn {
+    padding: 6px 12px;
+    font-size: 0.85em;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    font-weight: 500;
+}
+
+.selection-actions .btn-primary {
+    background: white;
+    color: #ea580c;
+}
+
+.selection-actions .btn-primary:hover {
+    background: #fff7ed;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.selection-actions .btn-secondary {
+    background: rgba(255, 255, 255, 0.3);
+    color: #7c2d12;
+    border: 1px solid rgba(124, 45, 18, 0.3);
+}
+
+.selection-actions .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+/* Checkbox styling */
+.row-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #ea580c;
+}
+
+#select-all-orders,
+#select-all-validated,
+#select-all-otros {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #ea580c;
+}
+
+/* Indeterminate checkbox state */
+input[type="checkbox"]:indeterminate {
+    background-color: #fb923c;
+    border-color: #fb923c;
 }
