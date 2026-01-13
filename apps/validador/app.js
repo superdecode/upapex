@@ -34,6 +34,105 @@ let lastScanned = null;
 let pendingReloadOBC = null;
 let RECONTEO_STATE = { obc: null, scans: [], stats: { ok: 0, dup: 0, missing: 0, extra: 0 } };
 
+// ==================== SISTEMA DE DEDUPLICACIÓN ====================
+// Registro de validaciones ya sincronizadas para evitar duplicados (similar a scan.html)
+let SYNCED_VALIDATIONS = new Set();
+
+const DeduplicationManager = {
+    // Genera una clave única para una validación
+    generateValidationKey(code, obc, location) {
+        // Validar que los parámetros existan antes de usar métodos de string
+        const safeCode = (code || '').toString().toUpperCase();
+        const safeObc = (obc || '').toString().toUpperCase();
+        const safeLocation = (location || '').toString().toUpperCase();
+        return `${safeCode}|${safeObc}|${safeLocation}`;
+    },
+
+    // Verifica si una validación ya fue sincronizada
+    isValidationSynced(code, obc, location) {
+        const key = this.generateValidationKey(code, obc, location);
+        return SYNCED_VALIDATIONS.has(key);
+    },
+
+    // Marca una validación como sincronizada
+    markValidationAsSynced(code, obc, location) {
+        const key = this.generateValidationKey(code, obc, location);
+        SYNCED_VALIDATIONS.add(key);
+        this.saveSyncedValidations();
+        console.log(`✅ [DEDUP] Validación marcada como sincronizada: ${key}`);
+    },
+
+    // Guarda el registro en localStorage
+    saveSyncedValidations() {
+        try {
+            localStorage.setItem('validador_synced_validations', JSON.stringify([...SYNCED_VALIDATIONS]));
+        } catch (e) {
+            console.error('❌ [DEDUP] Error guardando validaciones sincronizadas:', e);
+        }
+    },
+
+    // Carga el registro desde localStorage
+    loadSyncedValidations() {
+        try {
+            const saved = localStorage.getItem('validador_synced_validations');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    SYNCED_VALIDATIONS = new Set(parsed);
+                    console.log(`📂 [DEDUP] Cargadas ${SYNCED_VALIDATIONS.size} validaciones sincronizadas`);
+                } else {
+                    console.warn('⚠️ [DEDUP] Datos corruptos en localStorage, limpiando...');
+                    SYNCED_VALIDATIONS = new Set();
+                    this.saveSyncedValidations();
+                }
+            }
+        } catch (e) {
+            console.error('❌ [DEDUP] Error cargando validaciones sincronizadas:', e);
+            SYNCED_VALIDATIONS = new Set();
+            localStorage.removeItem('validador_synced_validations');
+        }
+    },
+
+    // Limpia validaciones antiguas (más de 24 horas)
+    cleanOldValidations() {
+        const now = Date.now();
+        const oneDayAgo = now - (24 * 60 * 60 * 1000);
+        let cleaned = 0;
+
+        for (const key of SYNCED_VALIDATIONS) {
+            // Las claves tienen formato: CODE|OBC|LOCATION
+            const parts = key.split('|');
+            if (parts.length >= 2) {
+                const obc = parts[1];
+                const obcParts = obc.split('-');
+                if (obcParts.length >= 2) {
+                    try {
+                        const timestamp = parseInt(obcParts[1], 36);
+                        if (!isNaN(timestamp) && timestamp < oneDayAgo) {
+                            SYNCED_VALIDATIONS.delete(key);
+                            cleaned++;
+                        }
+                    } catch (e) {
+                        // Si no se puede parsear, mantener la validación
+                    }
+                }
+            }
+        }
+
+        if (cleaned > 0) {
+            this.saveSyncedValidations();
+            console.log(`🧹 [DEDUP] Limpiadas ${cleaned} validaciones antiguas`);
+        }
+    },
+
+    // Limpia completamente el cache
+    clearSyncedValidations() {
+        SYNCED_VALIDATIONS.clear();
+        localStorage.removeItem('validador_synced_validations');
+        console.log('🧹 [DEDUP] Cache de validaciones sincronizadas limpiado completamente');
+    }
+};
+
 // ==================== INDEXEDDB CACHE SYSTEM ====================
 // Sistema avanzado de cache con IndexedDB para sincronización y validación de duplicados
 let HISTORY_DB = null;
@@ -270,10 +369,21 @@ function updateGlobalSummary() {
     let totalRejected = 0;
     let totalExpected = 0;
 
+    // CORRECCIÓN: Log para debug
+    console.log('📊 [VALIDADOR] Actualizando resumen global...');
+
     // Calcular totales de todas las órdenes activas
     Object.keys(STATE.tabs).forEach(obc => {
         const tab = STATE.tabs[obc];
         const total = OBC_TOTALS.get(obc) || 0;
+
+        // CORRECCIÓN: Log detallado para detectar valores incorrectos
+        console.log(`📦 [VALIDADOR] OBC: ${obc}, Total esperado: ${total}, Validadas: ${tab.validations.length}, Rechazadas: ${tab.rejections.length}`);
+
+        // CORRECCIÓN: Validar si el total es sospechosamente alto
+        if (total > 10000) {
+            console.error(`❌ [VALIDADOR] VALOR ANÓMALO: OBC ${obc} tiene ${total} cajas esperadas (revisar hoja Resumen)`);
+        }
 
         totalValidated += tab.validations.length;
         totalRejected += tab.rejections.length;
@@ -282,6 +392,9 @@ function updateGlobalSummary() {
 
     const totalPending = Math.max(0, totalExpected - totalValidated);
     const grandTotal = totalValidated + totalRejected;
+
+    // CORRECCIÓN: Log del resultado final
+    console.log(`✅ [VALIDADOR] Resumen: Validadas=${totalValidated}, Pendientes=${totalPending}, Rechazadas=${totalRejected}, Total=${grandTotal}`);
 
     // Actualizar UI
     const validatedEl = document.getElementById('summary-validated');
@@ -467,6 +580,63 @@ async function savePrerecData() {
     }
 }
 
+// ==================== SIDEBAR COMPONENT ====================
+function initSidebarComponent() {
+    // Verificar que SidebarComponent esté disponible
+    if (typeof SidebarComponent === 'undefined') {
+        console.warn('⚠️ SidebarComponent no está disponible, usando implementación local');
+        return;
+    }
+    
+    try {
+        // Inicializar SidebarComponent con configuración de validador
+        window.sidebarComponent = new SidebarComponent({
+            containerId: 'sidebar-footer-container',
+            syncManager: window.syncManager,
+            onReloadBD: async () => {
+                await loadDatabase();
+            },
+            onLogout: handleLogoutAndClearCache,
+            onToggleConnection: toggleGoogleConnection,
+            buttons: [
+                { label: '🔄 Recargar BD', onClick: 'reloadBD()', class: 'sidebar-btn-secondary' },
+                { label: '🔌 Desconectar Google', onClick: 'toggleGoogleConnection()', class: 'sidebar-btn-secondary' },
+                { label: '🚪 Salir', onClick: 'handleLogoutAndClearCache()', class: 'sidebar-btn-secondary' }
+            ]
+        });
+
+        window.sidebarComponent.render();
+        console.log('✅ SidebarComponent renderizado');
+    } catch (error) {
+        console.error('❌ Error inicializando SidebarComponent:', error);
+    }
+}
+
+// Función para actualizar BD info en el sidebar
+function updateBdInfo() {
+    if (window.sidebarComponent) {
+        window.sidebarComponent.updateBDInfo(BD_CODES.size);
+    }
+    
+    // Fallback para elementos DOM directos (compatibilidad)
+    const countEl = document.getElementById('bd-count');
+    const timeEl = document.getElementById('bd-update-time');
+    if (countEl) countEl.textContent = BD_CODES.size;
+    if (timeEl) timeEl.textContent = LAST_BD_UPDATE
+        ? `Actualizado: ${new Date(LAST_BD_UPDATE).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
+        : 'Sin actualizar';
+}
+
+// Función reloadBD para el botón del sidebar
+async function reloadBD() {
+    await loadDatabase();
+}
+
+// Hacer funciones globales
+window.reloadBD = reloadBD;
+window.handleLogoutAndClearCache = handleLogoutAndClearCache;
+window.toggleGoogleConnection = toggleGoogleConnection;
+
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 [VALIDADOR] Iniciando aplicación...');
@@ -479,6 +649,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('⏳ [VALIDADOR] Inicializando IndexedDB...');
         await HistoryIndexedDBManager.init();
         console.log('✅ [VALIDADOR] IndexedDB inicializado');
+
+        // Cargar sistema de deduplicación
+        console.log('⏳ [VALIDADOR] Cargando sistema de deduplicación...');
+        DeduplicationManager.loadSyncedValidations();
+        DeduplicationManager.cleanOldValidations();
+        console.log('✅ [VALIDADOR] Sistema de deduplicación cargado');
 
         console.log('⏳ [VALIDADOR] Cargando datos de storage...');
         await loadFromStorage();
@@ -494,6 +670,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initSyncManager();
         console.log('✅ [VALIDADOR] Sync Manager inicializado');
 
+        console.log('⏳ [VALIDADOR] Inicializando SidebarComponent...');
+        initSidebarComponent();
+        console.log('✅ [VALIDADOR] SidebarComponent inicializado');
+
         renderValidation();
         console.log('✅ [VALIDADOR] Renderización inicial completada');
     } catch (error) {
@@ -502,7 +682,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Debug mode: bypass Google auth
-    if (DebugMode.autoInit('Validador', (userData) => {
+    if (DebugMode.autoInit('Validador', async (userData) => {
         CURRENT_USER = userData.user;
         USER_EMAIL = userData.email;
         USER_GOOGLE_NAME = userData.name;
@@ -510,7 +690,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateUserFooter();
         showNotification('🔧 DEBUG MODE: Sesión simulada', 'info');
         // Cargar datos mock o reales según necesites
-        loadDatabase();
+        await loadDatabase();
+        // Iniciar auto-refresh de BD cada 30 minutos
+        startBDAutoRefresh();
     })) {
         return; // Si debug está activo, no cargar Google API
     }
@@ -546,10 +728,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initAuthManager = async () => {
         try {
             console.log('⏳ [VALIDADOR] Inicializando AuthManager...');
+            
+            // Intentar restaurar sesión guardada primero
+            const restored = await tryRestoreSession();
+            if (restored) {
+                console.log('✅ [VALIDADOR] Sesión restaurada desde token guardado');
+                return;
+            }
+            
             await AuthManager.init(
                 // onAuthSuccess
                 async (userData) => {
                     console.log('✅ [VALIDADOR] Autenticación exitosa:', { email: userData.email, user: userData.user });
+
+                    // Guardar token para persistencia
+                    const tokenObj = gapi?.client?.getToken();
+                    if (tokenObj) {
+                        localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
+                        const expiresIn = tokenObj.expires_in || 3600;
+                        const expiryTime = Date.now() + (expiresIn * 1000);
+                        localStorage.setItem('gapi_token_expiry', expiryTime.toString());
+                        console.log('✅ [VALIDADOR] Token guardado en localStorage');
+                    }
 
                     USER_EMAIL = userData.email;
                     USER_GOOGLE_NAME = userData.name;
@@ -567,8 +767,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     showMainApp();
                     updateUserFooter();
 
+                    // Actualizar conexión de Google en SidebarComponent
+                    if (window.sidebarComponent) {
+                        window.sidebarComponent.setUserEmail(USER_EMAIL);
+                        window.sidebarComponent.setUserName(CURRENT_USER);
+                        window.sidebarComponent.saveGoogleConnection(
+                            tokenObj.access_token,
+                            (tokenObj.expires_in || 3600)
+                        );
+                    }
+
                     console.log('⏳ [VALIDADOR] Cargando base de datos...');
                     await loadDatabase();
+
+                    // Iniciar auto-refresh de BD cada 30 minutos
+                    startBDAutoRefresh();
 
                     // Si no hay alias guardado, mostrar popup de configuración
                     if (!savedAlias) {
@@ -590,6 +803,74 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     initAuth();
 });
+
+// ==================== TOKEN PERSISTENCE ====================
+async function tryRestoreSession() {
+    const savedToken = localStorage.getItem('gapi_token');
+    const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+
+    if (!savedToken || !tokenExpiry) {
+        return false;
+    }
+
+    const expiryTime = parseInt(tokenExpiry, 10);
+    const now = Date.now();
+
+    // Verificar si el token aún es válido (con margen de 5 min)
+    if (expiryTime > now + (5 * 60 * 1000)) {
+        try {
+            const tokenObj = JSON.parse(savedToken);
+            gapi.client.setToken(tokenObj);
+
+            // Verificar que el token funcione
+            const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${tokenObj.access_token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                USER_EMAIL = data.email || '';
+                USER_GOOGLE_NAME = data.name || 'Usuario';
+
+                const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                CURRENT_USER = savedAlias || data.name || 'Usuario';
+
+                showMainApp();
+                updateUserFooter();
+                
+                // Actualizar conexión de Google en SidebarComponent
+                if (window.sidebarComponent) {
+                    window.sidebarComponent.setUserEmail(USER_EMAIL);
+                    window.sidebarComponent.setUserName(CURRENT_USER);
+                    window.sidebarComponent.saveGoogleConnection(
+                        tokenObj.access_token,
+                        (tokenObj.expires_in || 3600)
+                    );
+                }
+                
+                console.log('⏳ [VALIDADOR] Cargando base de datos...');
+                await loadDatabase();
+                startBDAutoRefresh();
+
+                console.log('✅ [VALIDADOR] Sesión de Google restaurada');
+                showNotification(`✅ Sesión restaurada: ${CURRENT_USER}`, 'success');
+                return true;
+            } else {
+                throw new Error('Token inválido');
+            }
+        } catch (e) {
+            console.log('⚠️ Token inválido o expirado, requiere nuevo login');
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
+            return false;
+        }
+    } else {
+        console.log('⚠️ Token expirado, requiere nuevo login');
+        localStorage.removeItem('gapi_token');
+        localStorage.removeItem('gapi_token_expiry');
+        return false;
+    }
+}
 
 function initAudio() {
     try {
@@ -645,18 +926,19 @@ function showLoginScreen() {
 
 function toggleGoogleConnection() {
     try {
-        if (!window.AuthManager) {
-            console.error('❌ [VALIDADOR] AuthManager no disponible');
-            showNotification('❌ Sistema de autenticación no disponible', 'error');
-            return;
-        }
-
-        if (AuthManager.isAuthenticated()) {
-            AuthManager.logout();
-            showLoginScreen();
-            showNotification('🔌 Desconectado de Google', 'info');
+        const hasToken = gapi?.client?.getToken();
+        
+        if (hasToken) {
+            // Ya está conectado, preguntar si desea desconectar
+            if (confirm('¿Desconectar de Google?\n\nDeberás volver a iniciar sesión para usar la aplicación.')) {
+                handleLogout();
+            }
         } else {
-            handleLogin();
+            // No está conectado, mostrar alerta y permitir reconexión
+            const reconnect = confirm('⚠️ No estás conectado a Google\n\n¿Deseas conectarte ahora?');
+            if (reconnect) {
+                handleLogin();
+            }
         }
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en toggleGoogleConnection:', error);
@@ -667,21 +949,42 @@ function toggleGoogleConnection() {
 // Hacer disponible globalmente
 window.toggleGoogleConnection = toggleGoogleConnection;
 
-async function handleLogout() {
-    const confirmLogout = confirm('¿Cerrar sesión?\n\nSe limpiarán todos los datos en caché.');
+async function handleLogoutAndClearCache() {
+    const confirmLogout = confirm('¿Salir de la aplicación?\n\n⚠️ Se cerrará la sesión de Google y se limpiará toda la caché del navegador.');
     if (!confirmLogout) return;
 
     try {
-        // Detener sincronización
+        showLoading(true);
+        
+        // 1. Revocar token de Google
+        const token = gapi?.client?.getToken();
+        if (token !== null && token?.access_token) {
+            try {
+                google.accounts.oauth2.revoke(token.access_token);
+                console.log('✅ Token de Google revocado');
+            } catch (e) {
+                console.warn('⚠️ No se pudo revocar token:', e);
+            }
+            gapi.client.setToken('');
+        }
+
+        // 2. Limpiar tokens guardados
+        localStorage.removeItem('gapi_token');
+        localStorage.removeItem('gapi_token_expiry');
+
+        // 3. Detener sincronización
         if (window.syncManager) {
             await window.syncManager.stopSync();
         }
 
-        // Detener sincronización automática del historial
+        // 4. Detener sincronización automática del historial
         if (HistoryIndexedDBManager && HistoryIndexedDBManager.intervalId) {
             clearInterval(HistoryIndexedDBManager.intervalId);
             HistoryIndexedDBManager.intervalId = null;
         }
+
+        // 5. Detener auto-refresh de BD
+        stopBDAutoRefresh();
 
         // Limpiar caché procesado
         if (window.processedCacheManager && window.processedCacheManager.clearCache) {
@@ -704,10 +1007,7 @@ async function handleLogout() {
             pendingLocationValidation: null
         };
 
-        // Cerrar sesión de Google
-        if (AuthManager.isAuthenticated()) {
-            AuthManager.logout();
-        }
+        // AuthManager ya no es necesario, el logout se hace arriba
 
         // Limpiar localStorage de la app (excepto alias)
         const alias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
@@ -720,18 +1020,72 @@ async function handleLogout() {
             localStorage.setItem(`wms_alias_${USER_EMAIL}`, alias);
         }
 
+        // 6. Limpiar TODA la caché del navegador (localStorage completo)
+        console.log('🧹 Limpiando caché completa del navegador...');
+        const keysToPreserve = [];
+        if (alias && USER_EMAIL) {
+            keysToPreserve.push(`wms_alias_${USER_EMAIL}`);
+        }
+        
+        // Guardar claves a preservar
+        const preserved = {};
+        keysToPreserve.forEach(key => {
+            const value = localStorage.getItem(key);
+            if (value) preserved[key] = value;
+        });
+        
+        // Limpiar TODO el localStorage
+        localStorage.clear();
+        
+        // Restaurar solo las claves preservadas
+        Object.keys(preserved).forEach(key => {
+            localStorage.setItem(key, preserved[key]);
+        });
+        
+        // 7. Limpiar IndexedDB si existe
+        if (window.indexedDB) {
+            try {
+                const dbs = await window.indexedDB.databases();
+                for (const db of dbs) {
+                    if (db.name && (db.name.includes('validador') || db.name.includes('wms'))) {
+                        window.indexedDB.deleteDatabase(db.name);
+                        console.log(`🗑️ IndexedDB eliminada: ${db.name}`);
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudo limpiar IndexedDB:', e);
+            }
+        }
+        
+        // 8. Limpiar sessionStorage
+        sessionStorage.clear();
+        console.log('✅ SessionStorage limpiado');
+
+        // 9. Limpiar sistema de deduplicación
+        DeduplicationManager.clearSyncedValidations();
+        console.log('✅ Sistema de deduplicación limpiado');
+
         // Reiniciar variables
         CURRENT_USER = '';
         USER_EMAIL = '';
         USER_GOOGLE_NAME = '';
         LAST_BD_UPDATE = null;
 
+        showLoading(false);
         showLoginScreen();
-        showNotification('✅ Sesión cerrada y caché limpiada', 'success');
+        showNotification('✅ Sesión cerrada y caché del navegador limpiada completamente', 'success');
+        
+        console.log('✅ [LOGOUT] Proceso de salida completado exitosamente');
     } catch (error) {
-        console.error('Error during logout:', error);
+        console.error('❌ [LOGOUT] Error durante el proceso de salida:', error);
+        showLoading(false);
         showNotification('⚠️ Error al cerrar sesión, intenta de nuevo', 'warning');
     }
+}
+
+// Mantener handleLogout() para compatibilidad con código existente
+async function handleLogout() {
+    await handleLogoutAndClearCache();
 }
 
 // Hacer disponible globalmente
@@ -834,54 +1188,20 @@ function changeUserAlias() {
 }
 
 function updateUserFooter() {
-    // Usar el sistema compartido de Avatar si está disponible
-    if (window.AvatarSystem) {
-        console.log('✅ [VALIDADOR] Usando AvatarSystem compartido');
-
-        // Actualizar el estado del AvatarSystem
+    // Usar SidebarComponent compartido
+    if (window.sidebarComponent) {
+        console.log('✅ [VALIDADOR] Actualizando SidebarComponent');
+        
         if (CURRENT_USER) {
-            window.AvatarSystem.setUserName(CURRENT_USER);
+            window.sidebarComponent.setUserName(CURRENT_USER);
         }
         if (USER_EMAIL) {
-            window.AvatarSystem.setUserEmail(USER_EMAIL);
+            window.sidebarComponent.setUserEmail(USER_EMAIL);
         }
-
-        // Actualizar la visualización
-        window.AvatarSystem.updateDisplay();
-
-        // Configurar click handler para cambio de alias
-        const avatarEl = document.getElementById('user-avatar');
-        const nameEl = document.getElementById('user-name-display');
-
-        if (avatarEl) {
-            avatarEl.onclick = changeUserAlias;
-            avatarEl.style.cursor = 'pointer';
-            avatarEl.title = `${USER_EMAIL || 'No conectado'}\nClick para cambiar alias`;
-        }
-        if (nameEl) {
-            nameEl.onclick = changeUserAlias;
-            nameEl.style.cursor = 'pointer';
-            nameEl.title = 'Click para cambiar alias';
-        }
+        
+        window.sidebarComponent.updateAvatarDisplay();
     } else {
-        console.warn('⚠️ [VALIDADOR] AvatarSystem no disponible, usando fallback');
-
-        // Fallback si el sistema compartido no está disponible
-        const avatarEl = document.getElementById('user-avatar');
-        const nameEl = document.getElementById('user-name-display');
-
-        if (avatarEl) {
-            avatarEl.textContent = CURRENT_USER ? CURRENT_USER.charAt(0).toUpperCase() : '?';
-            avatarEl.title = USER_EMAIL || 'No conectado';
-            avatarEl.style.cursor = 'pointer';
-            avatarEl.onclick = changeUserAlias;
-        }
-        if (nameEl) {
-            nameEl.textContent = CURRENT_USER || 'No conectado';
-            nameEl.title = `Click para cambiar alias\n${USER_EMAIL}`;
-            nameEl.style.cursor = 'pointer';
-            nameEl.onclick = changeUserAlias;
-        }
+        console.warn('⚠️ [VALIDADOR] SidebarComponent no disponible aún');
     }
 
     const authBtn = document.getElementById('sidebar-auth-btn');
@@ -912,101 +1232,122 @@ function updateConnectionIndicator(syncing = false) {
     }
 }
 
-function updateBdInfo() {
-    const countEl = document.getElementById('bd-count');
-    const timeEl = document.getElementById('bd-update-time');
-    if (countEl) countEl.textContent = BD_CODES.size;
-    if (timeEl) timeEl.textContent = LAST_BD_UPDATE
-        ? `Actualizado: ${new Date(LAST_BD_UPDATE).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
-        : 'Sin actualizar';
-}
-
-// Función para recargar la base de datos (llamada desde HTML)
-async function reloadBD() {
-    await loadDatabase();
-}
-
-// Hacer disponible globalmente
-window.reloadBD = reloadBD;
-
 // ==================== BASE DE DATOS ====================
-async function loadDatabase() {
+async function loadDatabase(silent = false) {
     if (!gapi?.client?.getToken()) {
-        showNotification('⚠️ Conecta primero con Google', 'warning');
+        if (!silent) showNotification('⚠️ Conecta primero con Google', 'warning');
         return;
     }
 
     try {
-        showLoading(true);
+        if (!silent) showLoading(true);
 
-        // Cargar resumen
-        const resRes = await gapi.client.sheets.spreadsheets.values.get({
+        console.log('🧹 [VALIDADOR] Limpiando cache antes de cargar...');
+        OBC_INFO.clear();
+        OBC_TOTALS.clear();
+        OBC_MAP.clear();
+        BD_CODES.clear();
+
+        // Cargar datos desde la hoja BD
+        // Estructura de columnas:
+        // A: Outbound (Número de Orden/OBC)
+        // B: Reference order No.
+        // C: Shipping service
+        // D: Tracking code
+        // E: Expected Arrival Time
+        // F: Remark
+        // G: Recipient (Destino)
+        // H: (vacío)
+        // I: Custom box barcode (Código de Caja)
+        const bdRes = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_BD,
-            range: 'Resumen!A:F'
+            range: 'BD!A:I'
         });
 
-        if (resRes.result.values) {
-            OBC_INFO.clear();
-            OBC_TOTALS.clear();
-
-            // Log header para debug
-            if (resRes.result.values.length > 0) {
-                console.log('📊 [VALIDADOR] Estructura de Resumen:', resRes.result.values[0]);
-            }
-
-            for (let i = 1; i < resRes.result.values.length; i++) {
-                const row = resRes.result.values[i];
-                const obc = (row[0] || '').toUpperCase();
-                if (obc) {
-                    // Estructura correcta de la hoja Resumen:
-                    // A: OBC, B: Total Cajas, C: Destino, D: Horario
-                    const totalCajas = parseInt(row[1]) || 0;
-                    const destino = row[2] || '-';
-                    const horario = row[3] || '-';
-
-                    OBC_TOTALS.set(obc, totalCajas);
-                    OBC_INFO.set(obc, {
-                        recipient: destino,
-                        arrivalTime: horario
-                    });
-
-                    console.log(`📦 [VALIDADOR] OBC: ${obc}, Total: ${totalCajas}, Destino: ${destino}, Horario: ${horario}`);
-                }
-            }
-            console.log(`✅ [VALIDADOR] Cargadas ${OBC_TOTALS.size} órdenes con info completa`);
+        if (!bdRes.result.values || bdRes.result.values.length <= 1) {
+            throw new Error('No hay datos en la hoja BD');
         }
 
-        // Cargar códigos solo de la hoja BD principal
-        const sheets = ['BD'];
-        for (const sheet of sheets) {
-            try {
-                const codesRes = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: SPREADSHEET_BD,
-                    range: `${sheet}!A:J`
-                });
-                if (codesRes.result.values?.length > 1) {
-                    for (let i = 1; i < codesRes.result.values.length; i++) {
-                        const row = codesRes.result.values[i];
-                        const code = (row[0] || '').toUpperCase();
-                        const obc = (row[4] || '').toUpperCase();
-                        if (code && obc) {
-                            const concatenated = code + obc.toLowerCase();
-                            BD_CODES.add(concatenated);
-                            if (!OBC_MAP.has(obc)) OBC_MAP.set(obc, new Set());
-                            OBC_MAP.get(obc).add(concatenated);
-                        }
+        const rows = bdRes.result.values;
+        console.log('📊 [VALIDADOR] Estructura de BD:', rows[0]);
+        console.log('📊 [VALIDADOR] Total de filas en BD:', rows.length - 1);
+
+        // Mapa temporal para agrupar por orden
+        const orderGroups = new Map();
+
+        // Procesar todas las filas (saltar header en índice 0)
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            
+            // Extraer datos de las columnas
+            // CORRECCIÓN: Columna G (índice 6) es Recipient, NO tracking
+            const outbound = (row[0] || '').toString().trim().toUpperCase();
+            const referenceNo = (row[1] || '').toString().trim();
+            const shippingService = (row[2] || '').toString().trim();
+            const trackingCode = (row[3] || '').toString().trim();
+            const arrivalTime = (row[4] || '').toString().trim();
+            const remark = (row[5] || '').toString().trim();
+            const recipient = (row[6] || '').toString().trim(); // Columna G = Recipient
+            const boxCode = (row[8] || '').toString().trim().toUpperCase();
+
+            // Validar que tengamos al menos orden y código de caja
+            if (!outbound || !boxCode) {
+                continue;
+            }
+
+            // Crear clave única: Orden + Código de Caja
+            const concatenated = boxCode + outbound.toLowerCase();
+            BD_CODES.add(concatenated);
+
+            // Agregar a mapa de orden
+            if (!OBC_MAP.has(outbound)) {
+                OBC_MAP.set(outbound, new Set());
+            }
+            OBC_MAP.get(outbound).add(concatenated);
+
+            // Agrupar por orden para contar totales
+            if (!orderGroups.has(outbound)) {
+                orderGroups.set(outbound, {
+                    boxes: new Set(),
+                    firstRow: {
+                        referenceNo,
+                        shippingService,
+                        trackingCode,
+                        arrivalTime,
+                        remark,
+                        recipient
                     }
-                }
-            } catch (e) {
-                console.log(`Sheet ${sheet} no disponible`);
+                });
             }
+            
+            // Agregar código de caja al set (evita duplicados automáticamente)
+            orderGroups.get(outbound).boxes.add(boxCode);
         }
+
+        // Calcular totales y extraer metadata de cada orden
+        for (const [outbound, data] of orderGroups) {
+            const totalBoxes = data.boxes.size;
+            
+            OBC_TOTALS.set(outbound, totalBoxes);
+            OBC_INFO.set(outbound, {
+                recipient: data.firstRow.recipient || '-',
+                arrivalTime: data.firstRow.arrivalTime || '-',
+                referenceNo: data.firstRow.referenceNo || '-',
+                shippingService: data.firstRow.shippingService || '-',
+                trackingCode: data.firstRow.trackingCode || '-',
+                remark: data.firstRow.remark || ''
+            });
+
+            console.log(`📦 [VALIDADOR] Orden: ${outbound}, Total cajas: ${totalBoxes}, Destino: ${data.firstRow.recipient}, Horario: ${data.firstRow.arrivalTime}`);
+        }
+
+        console.log(`✅ [VALIDADOR] Procesadas ${orderGroups.size} órdenes con ${BD_CODES.size} códigos únicos`);
 
         // Cargar historial desde la hoja de validaciones
         try {
             const histRes = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: SPREADSHEET_WRITE,
-                range: 'Validaciones!A:I'
+                range: 'Val3!A:I'
             });
             if (histRes.result.values?.length > 1) {
                 HISTORY.clear();
@@ -1026,14 +1367,19 @@ async function loadDatabase() {
                 }
             }
         } catch (e) {
-            console.log('No se pudo cargar historial');
+            console.log('No se pudo cargar historial:', e.message);
         }
 
         LAST_BD_UPDATE = Date.now();
         await saveBD();
         updateBdInfo();
-        showLoading(false);
-        showNotification(`✅ ${BD_CODES.size} códigos cargados`, 'success');
+        
+        if (!silent) {
+            showLoading(false);
+            showNotification(`✅ ${BD_CODES.size} códigos cargados de ${orderGroups.size} órdenes`, 'success');
+        } else {
+            console.log(`🔄 [VALIDADOR] BD actualizada silenciosamente: ${BD_CODES.size} códigos`);
+        }
     } catch (error) {
         console.error('❌ [VALIDADOR] Error loading database:', error);
         console.error('Error details:', {
@@ -1042,10 +1388,47 @@ async function loadDatabase() {
             status: error.status,
             statusText: error.statusText
         });
-        showLoading(false);
-        showNotification(`❌ Error cargando BD: ${error.message || 'Error desconocido'}`, 'error');
+        if (!silent) {
+            showLoading(false);
+            showNotification(`❌ Error cargando BD: ${error.message || 'Error desconocido'}`, 'error');
+        }
     }
 }
+
+// ==================== AUTO-REFRESH SYSTEM ====================
+let BD_AUTO_REFRESH_INTERVAL = null;
+const BD_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos
+
+function startBDAutoRefresh() {
+    // Limpiar intervalo previo si existe
+    if (BD_AUTO_REFRESH_INTERVAL) {
+        clearInterval(BD_AUTO_REFRESH_INTERVAL);
+    }
+
+    // Configurar nuevo intervalo de 30 minutos
+    BD_AUTO_REFRESH_INTERVAL = setInterval(async () => {
+        if (IS_ONLINE && gapi?.client?.getToken()) {
+            console.log('🔄 [VALIDADOR] Iniciando actualización silenciosa de BD (cada 30 min)...');
+            await loadDatabase(true); // true = silent mode
+        } else {
+            console.log('⚠️ [VALIDADOR] Auto-refresh omitido: sin conexión o sin token');
+        }
+    }, BD_REFRESH_INTERVAL_MS);
+
+    console.log('✅ [VALIDADOR] Auto-refresh de BD iniciado (cada 30 minutos)');
+}
+
+function stopBDAutoRefresh() {
+    if (BD_AUTO_REFRESH_INTERVAL) {
+        clearInterval(BD_AUTO_REFRESH_INTERVAL);
+        BD_AUTO_REFRESH_INTERVAL = null;
+        console.log('🛑 [VALIDADOR] Auto-refresh de BD detenido');
+    }
+}
+
+// Hacer disponibles globalmente
+window.startBDAutoRefresh = startBDAutoRefresh;
+window.stopBDAutoRefresh = stopBDAutoRefresh;
 
 function startValidation() {
     // CORREGIDO: Referencias a dashboard/validation-screen eliminadas
@@ -1238,6 +1621,15 @@ async function processScan(raw, isManual = false) {
 }
 
 async function handleValidationOK(raw, code, obc, location, note = '', isManual = false) {
+    // DEDUPLICACIÓN: Verificar si esta validación ya fue sincronizada
+    if (DeduplicationManager.isValidationSynced(code, obc, location)) {
+        console.warn(`⚠️ [DEDUP] Validación duplicada detectada: ${code}|${obc}|${location}`);
+        showNotification('⚠️ Esta validación ya fue registrada anteriormente', 'warning');
+        playSound('error');
+        flashInput('error');
+        return;
+    }
+
     const now = new Date();
     const log = {
         id: Date.now() + Math.random(),
@@ -1258,6 +1650,9 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
 
     // Guardar en IndexedDB para cache persistente
     await HistoryIndexedDBManager.addValidation(concatenated, historyData);
+
+    // DEDUPLICACIÓN: Marcar como sincronizada ANTES de agregar a la cola
+    DeduplicationManager.markValidationAsSynced(code, obc, location);
 
     addToPendingSync(log);
     await saveState();

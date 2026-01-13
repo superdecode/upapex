@@ -1332,11 +1332,15 @@
     align-items: center;
     justify-content: center;
     padding: 40px 20px;
+    width: 100%; /* CORRECCIÓN: Ocupar todo el ancho */
+    min-height: 0; /* CORRECCIÓN: Permitir que flex funcione correctamente */
 }
 
 .welcome-content {
     text-align: center;
     max-width: 500px;
+    width: 100%; /* CORRECCIÓN: Ocupar ancho disponible */
+    margin: 0 auto; /* CORRECCIÓN: Centrar horizontalmente */
 }
 
 .welcome-icon {

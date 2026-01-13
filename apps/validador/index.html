@@ -12,23 +12,6 @@
     <link rel="stylesheet" href="../../shared/css/sidebar.css?v=2.3">
     <link rel="stylesheet" href="../../shared/css/avatar-system.css?v=2.3">
     <link rel="stylesheet" href="../../shared/css/validador.css?v=2.3">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script src="../../shared/js/debug-mode.js"></script>
-    <script src="../../shared/js/auth-manager.js?v=3.0.1"></script>
-    <script src="../../shared/js/wms-utils.js"></script>
-    
-    <!-- Advanced Sync System -->
-    <script src="../../shared/js/sync-utils.js?v=3.0.3"></script>
-    <script src="../../shared/js/processed-cache-manager.js?v=3.0.3"></script>
-    <script src="../../shared/js/advanced-sync-manager.js?v=3.0.3"></script>
-    
-    <script src="../../shared/js/sidebar-component.js"></script>
-    <script src="../../shared/js/avatar-system.js"></script>
-    <script src="../../shared/js/location-validator-ui.js"></script>
-    
-    <!-- Sync Configuration -->
-    <script src="sync-config.js?v=3.0.3"></script>
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -125,30 +108,10 @@
                 </div>
 
                 <hr>
-                <div id="obc-list" style="flex: 1; overflow-y: auto;"></div>
+                <!-- CORRECCIÓN: obc-list eliminado del sidebar -->
 
-                <!-- User Footer -->
-                <div class="user-footer" id="user-footer">
-                    <div class="user-info">
-                        <div class="user-avatar" id="user-avatar">?</div>
-                        <div class="user-details">
-                            <div class="user-name" id="user-name-display">No conectado</div>
-                            <div class="connection-indicator">
-                                <div class="connection-dot" id="connection-dot"></div>
-                                <span id="connection-text">Offline</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="user-footer-actions">
-                        <button class="btn btn-secondary btn-small" onclick="reloadBD()" title="Actualizar BD">🔄 BD</button>
-                        <button class="btn btn-secondary btn-small" onclick="toggleGoogleConnection()" id="sidebar-auth-btn" title="Conectar/Desconectar">🔗</button>
-                        <button class="btn btn-secondary btn-small" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
-                    </div>
-                    <div class="bd-info">
-                        <div><span id="bd-count">0</span> códigos cargados</div>
-                        <div id="bd-update-time">Sin actualizar</div>
-                    </div>
-                </div>
+                <!-- User Footer - Renderizado por SidebarComponent -->
+                <div id="sidebar-footer-container"></div>
             </div>
 
             <div class="main-content">
@@ -567,6 +530,27 @@
     </div>
     <!-- End MAIN APP -->
 
-    <script src="app.js?v=3.0.1"></script>
+    <!-- Google APIs -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+
+    <!-- Shared Scripts -->
+    <script src="../../shared/js/debug-mode.js"></script>
+    <script src="../../shared/js/wms-utils.js"></script>
+    <script src="../../shared/js/auth-manager.js?v=3.0.1"></script>
+    <script src="../../shared/js/sidebar-component.js"></script>
+    <script src="../../shared/js/avatar-system.js"></script>
+    <script src="../../shared/js/location-validator-ui.js"></script>
+
+    <!-- Advanced Sync System -->
+    <script src="../../shared/js/sync-utils.js?v=3.0.3"></script>
+    <script src="../../shared/js/processed-cache-manager.js?v=3.0.3"></script>
+    <script src="../../shared/js/advanced-sync-manager.js?v=3.0.3"></script>
+
+    <!-- Sync Configuration -->
+    <script src="sync-config.js?v=3.0.3"></script>
+
+    <!-- App Script -->
+    <script src="app.js?v=3.2.1&nocache=true"></script>
 </body>
 </html>

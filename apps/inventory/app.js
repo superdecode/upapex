@@ -472,16 +472,33 @@ const UnifiedModule = {
             return;
         }
 
-        const locationCheck = confirmInvalidLocation(destLocation);
-        if (!locationCheck.confirmed) {
-            showNotification('❌ Envío cancelado - Verifica la ubicación', 'warning');
-            return;
+        const validation = validateAndNormalizeLocation(destLocation);
+        
+        let finalLocation = destLocation;
+        
+        if (!validation.valid) {
+            const forceInsert = confirm(`⚠️ Ubicación con formato inválido: ${destLocation}\n\n${validation.message || 'Formato incorrecto'}\n\n¿Deseas insertar de todas formas?`);
+            if (!forceInsert) {
+                document.getElementById('unified-dest-location')?.focus();
+                return;
+            }
+            finalLocation = destLocation;
+            showNotification('⚠️ Ubicación insertada sin validar', 'warning');
+        } else {
+            if (validation.needsCorrection) {
+                if (!confirm(`La ubicación será corregida a: ${validation.normalized}\n\n¿Continuar?`)) {
+                    document.getElementById('unified-dest-location')?.focus();
+                    return;
+                }
+            }
+            finalLocation = validation.normalized;
+            document.getElementById('unified-dest-location').value = finalLocation;
         }
 
         const isCancelados = this.isCancelados();
         const modeText = isCancelados ? ' como CANCELADOS' : '';
 
-        if (!confirm(`¿Enviar ${this.items.length} registros a ${locationCheck.formatted}${modeText}?`)) {
+        if (!confirm(`¿Enviar ${this.items.length} registros a ${finalLocation}${modeText}?`)) {
             return;
         }
 
@@ -503,7 +520,7 @@ const UnifiedModule = {
                     user: STATE.userAlias || STATE.userName || 'Usuario',
                     scan1: item.code,
                     scan2: '',
-                    location: locationCheck.formatted,
+                    location: finalLocation,
                     status: finalStatus,
                     note: note,
                     pallet: palletId,
@@ -2747,6 +2764,7 @@ window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
 window.refreshInventory = refreshInventory;
 window.exportData = exportData;
+window.showAliasPopup = showAliasPopup;
 window.saveUserAlias = saveUserAlias;
 window.toggleGoogleConnection = toggleGoogleConnection;
 window.showCountValidationModal = showCountValidationModal;

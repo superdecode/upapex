@@ -1115,28 +1115,95 @@ function getCurrentDateKey() {
  * - Si es la misma combinación, puede reutilizar el folio existente
  * - Si es diferente, debe usar un folio no utilizado
  */
+/**
+ * NUEVA LÓGICA DE FOLIOS DINÁMICOS
+ * - Muestra máximo 5 folios disponibles para elegir (sin contar los ya seleccionados por el usuario)
+ * - A medida que los folios se ocupen, habilita automáticamente nuevos números
+ * - Los folios ya ocupados por el usuario actual se muestran y pueden reutilizarse
+ * - Los folios ocupados por otros usuarios se muestran en el historial pero no en la selección activa
+ */
 function getAvailableFolios(conductor, unidad) {
     const dateKey = getCurrentDateKey();
     const foliosDelDia = STATE.foliosDeCargas.get(dateKey) || new Map();
 
-    const allFolios = ['01', '02', '03', '04', '05'];
-
-    return allFolios.map(folio => {
-        const folioInfo = foliosDelDia.get(folio);
-
-        // Si el folio no está usado, está disponible
-        if (!folioInfo) {
-            return { value: folio, disabled: false };
+    // Obtener folios del usuario actual (pueden reutilizarse)
+    const foliosDelUsuario = [];
+    foliosDelDia.forEach((info, folio) => {
+        if (info.conductor === conductor && info.unidad === unidad) {
+            foliosDelUsuario.push(folio);
         }
-
-        // Si el folio está usado por la misma combinación conductor+unidad, puede reutilizarse
-        if (folioInfo.conductor === conductor && folioInfo.unidad === unidad) {
-            return { value: folio, disabled: false, reutilizable: true };
-        }
-
-        // Si el folio está usado por otra combinación, está bloqueado
-        return { value: folio, disabled: true, usadoPor: `${folioInfo.conductor}/${folioInfo.unidad}` };
     });
+
+    // Obtener folios ocupados por otros usuarios
+    const foliosOcupadosPorOtros = new Set();
+    foliosDelDia.forEach((info, folio) => {
+        if (info.conductor !== conductor || info.unidad !== unidad) {
+            foliosOcupadosPorOtros.add(folio);
+        }
+    });
+
+    // Generar lista de folios disponibles
+    const foliosDisponibles = [];
+    let folioNum = 1;
+    let disponiblesCount = 0;
+    const MAX_DISPONIBLES = 5;
+
+    // Primero agregar los folios del usuario actual (pueden reutilizarse)
+    foliosDelUsuario.forEach(folio => {
+        foliosDisponibles.push({
+            value: folio,
+            disabled: false,
+            reutilizable: true
+        });
+    });
+
+    // Luego agregar folios no ocupados hasta completar 5 disponibles
+    while (disponiblesCount < MAX_DISPONIBLES && folioNum <= 99) {
+        const folioStr = String(folioNum).padStart(2, '0');
+        
+        // Saltar si ya está en la lista del usuario
+        if (foliosDelUsuario.includes(folioStr)) {
+            folioNum++;
+            continue;
+        }
+
+        // Si no está ocupado por otros, agregarlo como disponible
+        if (!foliosOcupadosPorOtros.has(folioStr)) {
+            foliosDisponibles.push({
+                value: folioStr,
+                disabled: false
+            });
+            disponiblesCount++;
+        }
+        
+        folioNum++;
+    }
+
+    // Agregar folios ocupados por otros (solo para visualización en historial)
+    foliosOcupadosPorOtros.forEach(folio => {
+        const folioInfo = foliosDelDia.get(folio);
+        foliosDisponibles.push({
+            value: folio,
+            disabled: true,
+            usadoPor: `${folioInfo.conductor}/${folioInfo.unidad}`
+        });
+    });
+
+    // Ordenar: primero los del usuario, luego disponibles, luego ocupados
+    foliosDisponibles.sort((a, b) => {
+        if (a.reutilizable && !b.reutilizable) return -1;
+        if (!a.reutilizable && b.reutilizable) return 1;
+        if (!a.disabled && b.disabled) return -1;
+        if (a.disabled && !b.disabled) return 1;
+        return parseInt(a.value) - parseInt(b.value);
+    });
+
+    console.log(`📋 [FOLIO DINÁMICO] Usuario: ${conductor}/${unidad}`);
+    console.log(`   - Folios del usuario: ${foliosDelUsuario.length}`);
+    console.log(`   - Folios disponibles: ${disponiblesCount}`);
+    console.log(`   - Folios ocupados por otros: ${foliosOcupadosPorOtros.size}`);
+
+    return foliosDisponibles;
 }
 
 /**

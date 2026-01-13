@@ -8145,8 +8145,8 @@
                         _timestamp: generateTimestamp(),
                         _status: 'draft',
                         _sessionId: adjustmentSessionId,
-                        _category: status && status.includes('OK') && !status.includes('BLOQUEADO') ? 'ok' :
-                                  status && status.includes('BLOQUEADO') ? 'blocked' : 'nowms',
+                        _category: status && typeof status === 'string' && status.includes('OK') && !status.includes('BLOQUEADO') ? 'ok' :
+                                  status && typeof status === 'string' && status.includes('BLOQUEADO') ? 'blocked' : 'nowms',
                         _palletId: palletCode
                     };
 
@@ -8154,11 +8154,12 @@
                     await PersistenceManager.saveDraftBox(box);
 
                     // Clasificar en RAM
-                    if (status && status.includes('OK') && !status.includes('BLOQUEADO')) {
+                    const safeStatus = (status || '').toString();
+                    if (safeStatus.includes('OK') && !safeStatus.includes('BLOQUEADO')) {
                         STATE.pallets.ok.boxes.push(box);
-                    } else if (status && status.includes('BLOQUEADO')) {
+                    } else if (safeStatus.includes('BLOQUEADO')) {
                         STATE.pallets.blocked.boxes.push(box);
-                    } else if (status && status.includes('NO WMS')) {
+                    } else if (safeStatus.includes('NO WMS')) {
                         STATE.pallets.nowms.boxes.push(box);
                     }
                 }
