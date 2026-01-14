@@ -28,6 +28,16 @@ async function validateFolioAgainstWriteDB(folioNumber, conductor, unidad, dateK
     }
 
     try {
+        // Verificar autenticación
+        const token = gapi.client.getToken();
+        if (!token) {
+            console.warn('⚠️ [SSOT] Usuario no autenticado, no se puede validar folio');
+            return {
+                available: true, // Permitir por defecto si no hay autenticación
+                reason: 'No autenticado - validación omitida'
+            };
+        }
+
         // Construir el folio completo en formato esperado
         const dateStr = dateKey.replace(/-/g, ''); // YYYY-MM-DD → YYYYMMDD
         const folioCompleto = `DSP-${dateStr}-${folioNumber}`;
@@ -45,7 +55,7 @@ async function validateFolioAgainstWriteDB(folioNumber, conductor, unidad, dateK
                 sheetName = sheets[0].properties.title;
             }
         } catch (e) {
-            console.warn('⚠️ [SSOT] No se pudo obtener metadata, usando nombre por defecto');
+            console.warn('⚠️ [SSOT] No se pudo obtener metadata, usando nombre por defecto:', e.message);
         }
 
         // Consultar DIRECTAMENTE la BD de escritura

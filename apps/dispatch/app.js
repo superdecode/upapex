@@ -4480,6 +4480,15 @@ function executeSwitchTab(tab) {
         return; // Don't switch if date filter not active
     }
 
+    // OPTIMIZACIÓN: Verificar si ya tenemos datos en caché para este filtro
+    // No hacer nuevas peticiones a BD si solo estamos cambiando de pestaña
+    const currentFilterKey = STATE.dateFilter.active ? 
+        `${STATE.dateFilter.startDate}_${STATE.dateFilter.endDate}` : null;
+    
+    if (currentFilterKey && LOAD_STATE.lastDateFilter === currentFilterKey) {
+        console.log('⚡ [NAV] Usando datos en caché - No se requiere recarga de BD');
+    }
+
     // CHANGE 1: Show global navigation when switching tabs
     showGlobalNavigation();
 
@@ -7424,29 +7433,44 @@ function renderKPICards(orderData) {
 
     kpiCards.innerHTML = `
         <div class="kpi-card orden" onclick="scrollToSection('section-detalle-obc')">
-            <div class="kpi-card-label">📦 Orden</div>
-            <div class="kpi-card-value">${makeCopyable(orderData.orden)}</div>
+            <div class="kpi-card-icon">📦</div>
+            <div class="kpi-card-content">
+                <div class="kpi-card-label">Orden</div>
+                <div class="kpi-card-value">${makeCopyable(orderData.orden)}</div>
+            </div>
         </div>
         <div class="kpi-card destino" onclick="scrollToSection('section-general')">
-            <div class="kpi-card-label">🏢 Destino</div>
-            <div class="kpi-card-value">${orderData.recipient || 'N/A'}</div>
+            <div class="kpi-card-icon">🏢</div>
+            <div class="kpi-card-content">
+                <div class="kpi-card-label">Destino</div>
+                <div class="kpi-card-value">${orderData.recipient || 'N/A'}</div>
+            </div>
         </div>
         <div class="kpi-card estatus" onclick="scrollToSection('section-validaciones')">
-            <div class="kpi-card-label">✅ Validación</div>
-            <div class="kpi-card-value">${cajasValidadas}/${totalCajas} cajas</div>
-            ${totalCajas > 0 ? `
-                <div class="kpi-progress">
-                    <div class="kpi-progress-bar" style="width: ${(cajasValidadas/totalCajas*100).toFixed(0)}%"></div>
-                </div>
-            ` : ''}
+            <div class="kpi-card-icon">✅</div>
+            <div class="kpi-card-content">
+                <div class="kpi-card-label">Validación</div>
+                <div class="kpi-card-value">${cajasValidadas}/${totalCajas} cajas</div>
+                ${totalCajas > 0 ? `
+                    <div class="kpi-progress">
+                        <div class="kpi-progress-bar" style="width: ${(cajasValidadas/totalCajas*100).toFixed(0)}%"></div>
+                    </div>
+                ` : ''}
+            </div>
         </div>
         <div class="kpi-card trs" onclick="scrollToSection('section-trs')">
-            <div class="kpi-card-label">🔄 TRS</div>
-            <div class="kpi-card-value">${trsCount} relacionados</div>
+            <div class="kpi-card-icon">🔄</div>
+            <div class="kpi-card-content">
+                <div class="kpi-card-label">TRS</div>
+                <div class="kpi-card-value">${trsCount} relacionados</div>
+            </div>
         </div>
         <div class="kpi-card cajas" onclick="scrollToSection('section-rastreo')">
-            <div class="kpi-card-label">📍 Rastreo</div>
-            <div class="kpi-card-value">${rastreoData.length} cajas</div>
+            <div class="kpi-card-icon">📍</div>
+            <div class="kpi-card-content">
+                <div class="kpi-card-label">Rastreo</div>
+                <div class="kpi-card-value">${rastreoData.length} cajas</div>
+            </div>
         </div>
     `;
 }
@@ -10209,11 +10233,27 @@ async function showFoliosManagementView() {
         `;
     }
     
-    // Cargar TODOS los folios sin filtro de fecha (por defecto) - AWAIT
-    await loadAllFoliosForManagement();
-    
-    // Renderizar tabla después de cargar datos
-    renderFoliosManagementTable();
+    // OPTIMIZACIÓN: Cargar folios de forma asíncrona con baja prioridad
+    // No bloquear la UI mientras se carga el historial completo
+    setTimeout(async () => {
+        try {
+            await loadAllFoliosForManagement();
+            renderFoliosManagementTable();
+        } catch (error) {
+            console.error('❌ Error cargando folios:', error);
+            if (tableBody) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="table-empty-state">
+                            <div class="table-empty-icon">⚠️</div>
+                            <div class="table-empty-text">Error cargando folios</div>
+                            <div class="table-empty-subtext">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+    }, 100); // Pequeño delay para no bloquear el hilo principal
 }
 
 /**

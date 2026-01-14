@@ -396,16 +396,26 @@ function updateGlobalSummary() {
     // CORRECCIÓN: Log del resultado final
     console.log(`✅ [VALIDADOR] Resumen: Validadas=${totalValidated}, Pendientes=${totalPending}, Rechazadas=${totalRejected}, Total=${grandTotal}`);
 
-    // Actualizar UI
-    const validatedEl = document.getElementById('summary-validated');
-    const pendingEl = document.getElementById('summary-pending');
-    const rejectedEl = document.getElementById('summary-rejected');
-    const totalEl = document.getElementById('summary-total');
+    // Actualizar UI usando SidebarComponent si está disponible
+    if (window.sidebarComponent) {
+        window.sidebarComponent.updateSummary({
+            validated: totalValidated,
+            pending: totalPending,
+            rejected: totalRejected,
+            summaryTotal: grandTotal
+        });
+    } else {
+        // Fallback: actualizar elementos DOM directamente
+        const validatedEl = document.getElementById('summary-validated');
+        const pendingEl = document.getElementById('summary-pending');
+        const rejectedEl = document.getElementById('summary-rejected');
+        const totalEl = document.getElementById('summary-total');
 
-    if (validatedEl) validatedEl.textContent = totalValidated;
-    if (pendingEl) pendingEl.textContent = totalPending;
-    if (rejectedEl) rejectedEl.textContent = totalRejected;
-    if (totalEl) totalEl.textContent = grandTotal;
+        if (validatedEl) validatedEl.textContent = totalValidated;
+        if (pendingEl) pendingEl.textContent = totalPending;
+        if (rejectedEl) rejectedEl.textContent = totalRejected;
+        if (totalEl) totalEl.textContent = grandTotal;
+    }
 }
 
 // Helper para agregar a la cola de sync usando Advanced Sync Manager
@@ -587,11 +597,12 @@ function initSidebarComponent() {
         console.warn('⚠️ SidebarComponent no está disponible, usando implementación local');
         return;
     }
-    
+
     try {
-        // Inicializar SidebarComponent con configuración de validador
+        // Inicializar SidebarComponent con configuración de validador usando preset
         window.sidebarComponent = new SidebarComponent({
-            containerId: 'sidebar-footer-container',
+            ...SidebarComponent.presets.validador,
+            containerId: 'sidebar',
             syncManager: window.syncManager,
             onReloadBD: async () => {
                 await loadDatabase();
@@ -599,9 +610,11 @@ function initSidebarComponent() {
             onLogout: handleLogoutAndClearCache,
             onToggleConnection: toggleGoogleConnection,
             buttons: [
-                { label: '🔄 Recargar BD', onClick: 'reloadBD()', class: 'sidebar-btn-secondary' },
-                { label: '🔌 Desconectar Google', onClick: 'toggleGoogleConnection()', class: 'sidebar-btn-secondary' },
-                { label: '🚪 Salir', onClick: 'handleLogoutAndClearCache()', class: 'sidebar-btn-secondary' }
+                { label: 'Nueva Orden', icon: '➕', onClick: 'addOBC()', class: 'sidebar-btn-primary' },
+                { label: 'Resumen', icon: '📋', onClick: 'showResumen()', class: 'sidebar-btn-secondary' },
+                { label: 'Faltantes', icon: '🔍', onClick: 'showFaltantes()', class: 'sidebar-btn-secondary' },
+                { label: 'Prerecepción', icon: '📋', onClick: 'showPrerecepcion()', class: 'sidebar-btn-secondary' },
+                { label: 'Consulta', icon: '🔎', onClick: 'showConsulta()', class: 'sidebar-btn-secondary' }
             ]
         });
 

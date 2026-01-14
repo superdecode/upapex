@@ -437,7 +437,7 @@ class SidebarComponent {
             if (totalEl) totalEl.textContent = summary.total;
         }
 
-        // Para dispatch: total, validated, pending
+        // Para dispatch y validador: total, validated, pending, rejected
         if (summary.validated !== undefined) {
             const validatedEl = document.getElementById('summary-validated');
             if (validatedEl) validatedEl.textContent = summary.validated;
@@ -445,6 +445,10 @@ class SidebarComponent {
         if (summary.pending !== undefined) {
             const pendingEl = document.getElementById('summary-pending');
             if (pendingEl) pendingEl.textContent = summary.pending;
+        }
+        if (summary.rejected !== undefined) {
+            const rejectedEl = document.getElementById('summary-rejected');
+            if (rejectedEl) rejectedEl.textContent = summary.rejected;
         }
         if (summary.summaryTotal !== undefined) {
             const summaryTotalEl = document.getElementById('summary-total');
@@ -617,12 +621,13 @@ SidebarComponent.presets = {
     validador: {
         appName: 'Validador',
         appIcon: '🎯',
-        appSubtitle: 'Validación de cajas',
+        appSubtitle: 'Validación de cajas WMS',
         summaryConfig: {
             title: '📊 Resumen',
             items: [
                 { id: 'summary-validated', icon: '✅', label: 'Validadas', class: 'validated' },
                 { id: 'summary-pending', icon: '⏳', label: 'Pendientes', class: 'pending' },
+                { id: 'summary-rejected', icon: '❌', label: 'Rechazadas', class: 'nowms' },
                 { id: 'summary-total', icon: '📦', label: 'Total', class: 'total' }
             ]
         }

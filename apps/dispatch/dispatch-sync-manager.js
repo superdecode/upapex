@@ -268,11 +268,13 @@ class DispatchSyncManager {
      * Ejecuta una consulta de datos operativos (BD principal)
      */
     async pollOperationalData() {
-        if (!gapi?.client?.getToken()) return;
+        if (!gapi?.client?.getToken()) {
+            // Silently skip if not authenticated
+            return;
+        }
 
         try {
-            console.log('🔍 [POLLING] Consultando BD operativa...');
-            
+            // Silently poll without logging
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: this.config.spreadsheetId,
                 range: `${this.config.sheetName}!A:R`
@@ -301,11 +303,15 @@ class DispatchSyncManager {
                         });
                     }, 0);
                 }
-            } else {
-                console.log('✓ [POLLING] Sin cambios en BD operativa');
             }
+            // Silently skip if no changes
         } catch (error) {
-            console.error('❌ [POLLING] Error consultando BD operativa:', error);
+            // Only log errors, not routine polling
+            if (error?.result?.error?.code === 401) {
+                console.warn('🔒 [AUTH] Sesión de Google expirada');
+            } else {
+                console.error('❌ [POLLING] Error consultando BD operativa:', error);
+            }
 
             // Detectar error de autenticación (401 UNAUTHENTICATED)
             if (error && error.result && error.result.error && error.result.error.code === 401) {
