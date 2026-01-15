@@ -58,8 +58,104 @@ class ConcurrencyControl {
             console.error('   - SpreadsheetId:', spreadsheetId);
             console.error('   - SheetName:', sheetName);
             console.error('   - Error completo:', error);
+            
+            // Detectar errores de autenticación
+            if (error.status === 401 || error.status === 400) {
+                this.handleAuthError(error);
+            }
+            
             throw error;
         }
+    }
+    
+    /**
+     * Maneja errores de autenticación (401/400)
+     */
+    handleAuthError(error) {
+        console.error('🔐 [AUTH-ERROR] Error de autenticación detectado:', error.status);
+        
+        // Mostrar banner de error con botón de reconexión
+        if (typeof showAuthErrorBanner === 'function') {
+            showAuthErrorBanner();
+        } else {
+            // Fallback: crear banner manualmente
+            this.createAuthErrorBanner();
+        }
+    }
+    
+    /**
+     * Crea un banner de error de autenticación
+     */
+    createAuthErrorBanner() {
+        // Evitar duplicados
+        const existing = document.getElementById('auth-error-banner');
+        if (existing) return;
+        
+        const banner = document.createElement('div');
+        banner.id = 'auth-error-banner';
+        banner.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 10000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s ease-out;
+        `;
+        
+        banner.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
+                <span style="font-size: 24px;">🔐</span>
+                <div>
+                    <div style="font-weight: 700; font-size: 1.1em;">Sesión expirada o error de conexión</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Tu sesión ha caducado. Reconecta para continuar.</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="handleReconnect()" style="
+                    background: white;
+                    color: #e74c3c;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 6px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    font-size: 1em;
+                    transition: transform 0.2s;
+                ">
+                    🔄 Reconectar
+                </button>
+                <button onclick="document.getElementById('auth-error-banner').remove()" style="
+                    background: rgba(255,255,255,0.2);
+                    color: white;
+                    border: none;
+                    padding: 10px 15px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 1em;
+                ">
+                    ✕
+                </button>
+            </div>
+        `;
+        
+        document.body.prepend(banner);
+        
+        // Agregar animación
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideDown {
+                from { transform: translateY(-100%); }
+                to { transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     /**

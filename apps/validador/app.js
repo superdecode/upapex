@@ -917,16 +917,36 @@ function toggleGoogleConnection() {
         const hasToken = gapi?.client?.getToken();
         
         if (hasToken) {
-            // Ya está conectado, preguntar si desea desconectar
-            if (confirm('¿Desconectar de Google?\n\nDeberás volver a iniciar sesión para usar la aplicación.')) {
-                handleLogout();
+            // Ya está conectado - DESCONECTAR (cerrar sesión simple, sin limpiar todo)
+            if (confirm('¿Desconectar de Google?\n\nSe cerrará tu sesión actual.')) {
+                // Revocar token
+                const token = gapi.client.getToken();
+                if (token?.access_token) {
+                    try {
+                        google.accounts.oauth2.revoke(token.access_token);
+                        console.log('✅ Token revocado');
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo revocar token:', e);
+                    }
+                }
+                
+                // Limpiar token
+                gapi.client.setToken('');
+                localStorage.removeItem('gapi_token');
+                localStorage.removeItem('gapi_token_expiry');
+                
+                // Actualizar UI
+                CURRENT_USER = '';
+                USER_EMAIL = '';
+                USER_GOOGLE_NAME = '';
+                updateUIAfterAuth();
+                
+                showNotification('✅ Sesión cerrada', 'success');
             }
         } else {
-            // No está conectado, mostrar alerta y permitir reconexión
-            const reconnect = confirm('⚠️ No estás conectado a Google\n\n¿Deseas conectarte ahora?');
-            if (reconnect) {
-                handleLogin();
-            }
+            // No está conectado - CONECTAR (sin redireccionar, mantener vista actual)
+            console.log('🔗 Iniciando flujo de autenticación...');
+            handleLogin(); // Esto lanzará el flujo de Google Identity Services
         }
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en toggleGoogleConnection:', error);
@@ -936,6 +956,27 @@ function toggleGoogleConnection() {
 
 // Hacer disponible globalmente
 window.toggleGoogleConnection = toggleGoogleConnection;
+
+/**
+ * Función global para reconectar después de error de autenticación
+ */
+function handleReconnect() {
+    console.log('🔄 [VALIDADOR] Iniciando reconexión...');
+    
+    // Cerrar banner de error
+    const banner = document.getElementById('auth-error-banner');
+    if (banner) banner.remove();
+    
+    // Limpiar token actual
+    if (gapi?.client) {
+        gapi.client.setToken('');
+    }
+    
+    // Iniciar flujo de login
+    handleLogin();
+}
+
+window.handleReconnect = handleReconnect;
 
 async function handleLogoutAndClearCache() {
     const confirmLogout = confirm('¿Salir de la aplicación?\n\n⚠️ Se cerrará la sesión de Google y se limpiará toda la caché del navegador.');
@@ -961,22 +1002,38 @@ async function handleLogoutAndClearCache() {
         localStorage.removeItem('gapi_token_expiry');
 
         // 3. Detener sincronización
-        if (window.syncManager) {
-            await window.syncManager.stopSync();
+        if (window.syncManager && typeof window.syncManager.stopAutoSync === 'function') {
+            window.syncManager.stopAutoSync();
+            console.log('✅ Sincronización automática detenida');
         }
 
         // 4. Detener sincronización automática del historial
-        if (HistoryIndexedDBManager && HistoryIndexedDBManager.intervalId) {
+        if (typeof HistoryIndexedDBManager !== 'undefined' && HistoryIndexedDBManager.intervalId) {
             clearInterval(HistoryIndexedDBManager.intervalId);
             HistoryIndexedDBManager.intervalId = null;
+            console.log('✅ Sincronización de historial detenida');
         }
 
         // 5. Detener auto-refresh de BD
-        stopBDAutoRefresh();
+        if (typeof stopBDAutoRefresh === 'function') {
+            stopBDAutoRefresh();
+            console.log('✅ Auto-refresh de BD detenido');
+        }
 
-        // Limpiar caché procesado
-        if (window.processedCacheManager && window.processedCacheManager.clearCache) {
+        // 6. Limpiar caché procesado
+        if (window.processedCacheManager && typeof window.processedCacheManager.clearCache === 'function') {
             await window.processedCacheManager.clearCache();
+            console.log('✅ Caché procesado limpiado');
+        }
+
+        // 7. Limpiar IndexedDB
+        try {
+            const dbName = 'ValidadorPersistenceDB';
+            const deleteRequest = indexedDB.deleteDatabase(dbName);
+            deleteRequest.onsuccess = () => console.log('✅ IndexedDB eliminada');
+            deleteRequest.onerror = (e) => console.warn('⚠️ Error eliminando IndexedDB:', e);
+        } catch (e) {
+            console.warn('⚠️ Error al intentar eliminar IndexedDB:', e);
         }
 
         // Limpiar datos locales
@@ -1222,11 +1279,17 @@ function updateConnectionIndicator(syncing = false) {
 
 // ==================== BASE DE DATOS ====================
 async function loadDatabase(silent = false) {
-    if (!gapi?.client?.getToken()) {
-        if (!silent) showNotification('⚠️ Conecta primero con Google', 'warning');
+    if (!gapi?.client?.sheets) {
+        showNotification('⚠️ Google Sheets API no disponible', 'warning');
         return;
     }
 
+    const token = gapi.client.getToken();
+    if (!token) {
+        showNotification('⚠️ Inicia sesión primero', 'warning');
+        return;
+    }
+    
     try {
         if (!silent) showLoading(true);
 
@@ -1370,18 +1433,109 @@ async function loadDatabase(silent = false) {
         }
     } catch (error) {
         console.error('❌ [VALIDADOR] Error loading database:', error);
-        console.error('Error details:', {
-            message: error.message,
-            stack: error.stack,
-            status: error.status,
-            statusText: error.statusText
-        });
-        if (!silent) {
-            showLoading(false);
-            showNotification(`❌ Error cargando BD: ${error.message || 'Error desconocido'}`, 'error');
+        
+        // Detectar errores de autenticación (401/400)
+        if (error.status === 401 || error.status === 400 || error.result?.error?.code === 401) {
+            console.error('🔐 [AUTH-ERROR] Error de autenticación al cargar BD');
+            showNotification('🔐 Sesión expirada. Reconecta para continuar.', 'error');
+            
+            // Mostrar banner de reconexión
+            if (typeof showAuthErrorBanner === 'function') {
+                showAuthErrorBanner();
+            } else {
+                // Crear banner manualmente
+                createAuthErrorBanner();
+            }
+        } else {
+            showNotification('❌ Error cargando base de datos', 'error');
         }
+        
+        updateBdInfo('Error');
+        
+        if (!silent) showLoading(false);
     }
 }
+
+/**
+ * Crea un banner de error de autenticación
+ */
+function createAuthErrorBanner() {
+    // Evitar duplicados
+    const existing = document.getElementById('auth-error-banner');
+    if (existing) return;
+    
+    const banner = document.createElement('div');
+    banner.id = 'auth-error-banner';
+    banner.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(135deg, #e74c3c, #c0392b);
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 10000;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        animation: slideDown 0.3s ease-out;
+    `;
+    
+    banner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
+            <span style="font-size: 24px;">🔐</span>
+            <div>
+                <div style="font-weight: 700; font-size: 1.1em;">Sesión expirada o error de conexión</div>
+                <div style="font-size: 0.9em; opacity: 0.9;">Tu sesión ha caducado. Reconecta para continuar.</div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="handleReconnect()" style="
+                background: white;
+                color: #e74c3c;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: 700;
+                cursor: pointer;
+                font-size: 1em;
+                transition: transform 0.2s;
+            ">
+                🔄 Reconectar
+            </button>
+            <button onclick="document.getElementById('auth-error-banner').remove()" style="
+                background: rgba(255,255,255,0.2);
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1em;
+            ">
+                ✕
+            </button>
+        </div>
+    `;
+    
+    document.body.prepend(banner);
+    
+    // Agregar animación si no existe
+    if (!document.getElementById('auth-error-animation')) {
+        const style = document.createElement('style');
+        style.id = 'auth-error-animation';
+        style.textContent = `
+            @keyframes slideDown {
+                from { transform: translateY(-100%); }
+                to { transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+window.createAuthErrorBanner = createAuthErrorBanner;
+window.showAuthErrorBanner = createAuthErrorBanner;
 
 // ==================== AUTO-REFRESH SYSTEM ====================
 let BD_AUTO_REFRESH_INTERVAL = null;
@@ -1537,13 +1691,64 @@ function showConnectionBanner(status) {
 function setupListeners() {
     const scanner = document.getElementById('scanner');
     if (scanner) {
+        // Variables para detectar entrada de escáner vs manual
+        let lastInputTime = 0;
+        let inputBuffer = '';
+        const SCANNER_THRESHOLD = 50; // ms - escáneres escriben muy rápido
+        
+        // Bloquear entrada manual - solo permitir escáner o paste
         scanner.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && scanner.value.trim()) {
-                e.preventDefault();
-                processScan(scanner.value.trim());
-                scanner.value = '';
+            const now = Date.now();
+            const timeDiff = now - lastInputTime;
+            
+            // Permitir teclas especiales (Enter, Backspace, Delete, Tab, etc.)
+            const allowedKeys = ['Enter', 'Backspace', 'Delete', 'Tab', 'Escape', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            
+            if (allowedKeys.includes(e.key)) {
+                if (e.key === 'Enter' && scanner.value.trim()) {
+                    e.preventDefault();
+                    processScan(scanner.value.trim());
+                    scanner.value = '';
+                    inputBuffer = '';
+                }
+                lastInputTime = now;
+                return;
             }
+            
+            // Permitir Ctrl+V, Cmd+V (paste)
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                lastInputTime = now;
+                return;
+            }
+            
+            // Detectar entrada rápida (escáner) vs lenta (manual)
+            if (timeDiff > SCANNER_THRESHOLD && inputBuffer.length > 0) {
+                // Entrada lenta = manual typing - BLOQUEAR
+                e.preventDefault();
+                showMiniAlert('⚠️ Usa el escáner o pega el código');
+                scanner.value = '';
+                inputBuffer = '';
+                return;
+            }
+            
+            // Entrada rápida = escáner - PERMITIR
+            inputBuffer += e.key;
+            lastInputTime = now;
         });
+        
+        // Permitir paste
+        scanner.addEventListener('paste', (e) => {
+            lastInputTime = Date.now();
+            inputBuffer = '';
+        });
+        
+        // Limpiar buffer después de inactividad
+        setInterval(() => {
+            const now = Date.now();
+            if (now - lastInputTime > 1000) {
+                inputBuffer = '';
+            }
+        }, 1000);
     }
 }
 
@@ -1563,34 +1768,53 @@ async function processScan(raw, isManual = false) {
     const obc = STATE.activeOBC;
     const location = tab.location || '';
 
-    // Primero extraer el código usando extractCode, luego normalizarlo
-    const extractedCode = extractCode(raw);
-    const code = normalizeCode(extractedCode);
-    const concatenated = code + obc.toLowerCase();
-
+    // CRÍTICO: Asegurar que raw sea string para evitar [object Object]
+    const rawStr = (raw !== null && raw !== undefined) ? String(raw) : '';
+    
+    // Usar función compartida normalizeCode de wms-utils.js que maneja extracción y normalización
+    const code = normalizeCode(rawStr);
+    
+    // Generar variaciones para búsqueda inteligente
+    const variations = generateCodeVariations(code);
+    
     console.log('🔍 [VALIDADOR] Procesando scan:', {
-        raw,
-        extractedCode,
+        raw: rawStr,
         normalizedCode: code,
+        variations,
         obc,
-        concatenated,
-        existeEnBD: BD_CODES.has(concatenated)
+        isManual
     });
+    
+    // Buscar el código en BD usando todas las variaciones
+    let found = false;
+    let concatenated = '';
+    for (const variant of variations) {
+        concatenated = variant + obc.toLowerCase();
+        if (BD_CODES.has(concatenated)) {
+            found = true;
+            console.log(`✅ [VALIDADOR] Código encontrado con variante: ${variant}`);
+            break;
+        }
+    }
 
     // Verificar si existe en BD
-    if (!BD_CODES.has(concatenated)) {
-        console.warn('❌ [VALIDADOR] Código NO encontrado en BD:', concatenated);
-        await handleRejection('NO_EXISTE_EN_BD', raw, code, obc);
+    if (!found) {
+        console.warn('❌ [VALIDADOR] Código NO encontrado en BD:', {
+            code,
+            variations,
+            obc
+        });
+        await handleRejection('NO_EXISTE_EN_BD', rawStr, code, obc);
         return;
     }
 
-    console.log('✅ [VALIDADOR] Código encontrado en BD');
+    console.log('✅ [VALIDADOR] Código encontrado en BD:', concatenated);
 
 
     // Verificar historial global
     if (HISTORY.has(concatenated)) {
         const histData = HISTORY.get(concatenated);
-        lastScanned = { raw, code, obc, location, histData, isManual };
+        lastScanned = { raw: rawStr, code, obc, location, histData, isManual };
         showPopup('history', code, histData);
         playSound('duplicate');
         return;
@@ -1599,13 +1823,13 @@ async function processScan(raw, isManual = false) {
     // Verificar duplicado en sesión
     const isDup = tab.validations.find(v => v.code === code);
     if (isDup) {
-        lastScanned = { raw, code, obc, location, duplicate: isDup, isManual };
+        lastScanned = { raw: rawStr, code, obc, location, duplicate: isDup, isManual };
         showPopup('dup', code, isDup);
         playSound('duplicate');
         return;
     }
 
-    await handleValidationOK(raw, code, obc, location, '', isManual);
+    await handleValidationOK(rawStr, code, obc, location, '', isManual);
 }
 
 async function handleValidationOK(raw, code, obc, location, note = '', isManual = false) {
@@ -1689,7 +1913,7 @@ async function handleRejection(reason, raw, code, obc) {
     updateGlobalSummary();
     playSound('error');
     flashInput('error');
-    showPopup('error', { code: raw, reason });
+    showPopup('error', raw, reason);
 }
 
 /**
@@ -1702,10 +1926,13 @@ async function syncRejectionToSheets(rejection) {
     }
 
     try {
+        // Convertir fecha a objeto Date para que Sheets la reconozca correctamente
+        const dateObj = rejection.date ? new Date(rejection.date) : new Date();
+        
         const row = [
-            rejection.date || '',
+            dateObj,  // Fecha como Date object
             rejection.timestamp || '',
-            rejection.user || '',
+            rejection.user || CURRENT_USER || '',  // Asegurar que se incluya el usuario
             rejection.obc || '',
             rejection.raw || '',
             rejection.code || '',
@@ -1715,7 +1942,7 @@ async function syncRejectionToSheets(rejection) {
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_WRITE,
             range: 'Validaciones_RECHAZADAS!A:G',
-            valueInputOption: 'RAW',
+            valueInputOption: 'USER_ENTERED',  // USER_ENTERED para que Sheets interprete tipos de datos
             resource: {
                 values: [row]
             }
@@ -1842,9 +2069,10 @@ function extractCode(raw) {
     return code.trim();
 }
 
-function normalizeCode(code) {
-    return code.toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
-}
+// Función local comentada - usar la de wms-utils.js que preserva separadores (/ y -)
+// La función global normalizeCode de wms-utils.js ya maneja correctamente:
+// - 52187553/29 → 52187553/29 (preserva /)
+// - 52187553-29 → 52187553-29 (preserva -)
 
 // ==================== RENDER ====================
 function renderValidation() {
@@ -2368,21 +2596,145 @@ function handleConsultaScan(event) {
 }
 
 function executeConsulta() {
-    const code = normalizeCode(document.getElementById('consulta-scanner').value);
-    if (!code) {
-        showNotification('⚠️ Ingresa un código', 'warning');
+    const rawInput = document.getElementById('consulta-scanner').value.trim();
+    
+    if (!rawInput) {
+        showNotification('⚠️ Ingresa un código o número de orden', 'warning');
+        return;
+    }
+
+    // Verificar conexión antes de consultar
+    if (!IS_ONLINE) {
+        showNotification('❌ Sin conexión a internet. No se puede consultar la base de datos.', 'error');
+        return;
+    }
+
+    // Verificar que la BD esté cargada
+    if (OBC_MAP.size === 0) {
+        showNotification('❌ Base de datos no cargada. Recarga la página e intenta nuevamente.', 'error');
         return;
     }
 
     const resultDiv = document.getElementById('consulta-result');
     const matches = [];
-
-    for (const [obc, codes] of OBC_MAP.entries()) {
-        const concat = code + obc.toLowerCase();
-        if (codes.has(concat)) {
-            const histKey = code + obc.toLowerCase();
+    
+    // Detectar si es un número de orden (OBC) o un código de caja
+    const inputUpper = rawInput.toUpperCase();
+    const isOrderNumber = OBC_MAP.has(inputUpper) || OBC_TOTALS.has(inputUpper);
+    
+    if (isOrderNumber) {
+        // BÚSQUEDA POR NÚMERO DE ORDEN: Mostrar todas las cajas de esa orden
+        console.log(`🔍 [CONSULTA] Buscando por número de orden: ${inputUpper}`);
+        
+        const obc = inputUpper;
+        const codes = OBC_MAP.get(obc);
+        const total = OBC_TOTALS.get(obc) || 0;
+        const info = OBC_INFO.get(obc) || {};
+        
+        if (!codes || codes.size === 0) {
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `
+                <div class="consulta-result">
+                    <div class="consulta-header">
+                        <div class="consulta-code-display">
+                            <div class="consulta-code-label">Orden</div>
+                            <div class="consulta-code-value">${obc}</div>
+                        </div>
+                        <div class="consulta-status not-found">Sin cajas</div>
+                    </div>
+                    <p style="text-align: center; color: #666;">Esta orden no tiene cajas registradas</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Obtener todas las cajas de la orden
+        const allBoxes = [];
+        for (const concat of codes) {
+            // Extraer el código de la caja (remover el sufijo de orden)
+            const boxCode = concat.substring(0, concat.length - obc.toLowerCase().length);
+            const histKey = concat;
             const histData = HISTORY.get(histKey);
-            matches.push({ obc, isValidated: !!histData, histData });
+            allBoxes.push({
+                code: boxCode,
+                isValidated: !!histData,
+                histData
+            });
+        }
+        
+        // Ordenar: validadas al final, pendientes al inicio
+        allBoxes.sort((a, b) => {
+            if (a.isValidated === b.isValidated) return 0;
+            return a.isValidated ? 1 : -1;
+        });
+        
+        const validated = allBoxes.filter(b => b.isValidated).length;
+        const pending = total - validated;
+        
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+            <div class="order-search-header">
+                <h3>📦 Orden: ${obc}</h3>
+                <div class="order-search-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total:</span>
+                        <span class="stat-value">${total}</span>
+                    </div>
+                    <div class="stat-item success">
+                        <span class="stat-label">✅ Validadas:</span>
+                        <span class="stat-value">${validated}</span>
+                    </div>
+                    <div class="stat-item warning">
+                        <span class="stat-label">⏳ Pendientes:</span>
+                        <span class="stat-value">${pending}</span>
+                    </div>
+                </div>
+                <div class="order-info-grid">
+                    <div><strong>Destino:</strong> ${info.recipient || '-'}</div>
+                    <div><strong>Horario:</strong> ${info.arrivalTime || '-'}</div>
+                </div>
+            </div>
+            <div class="boxes-list">
+                ${allBoxes.map(box => `
+                    <div class="box-item ${box.isValidated ? 'validated' : 'pending'}">
+                        <div class="box-code">${box.code}</div>
+                        <div class="box-status">
+                            ${box.isValidated ? `
+                                <span class="status-badge validated">✅ Validada</span>
+                                <div class="box-details">
+                                    <small>Por: ${box.histData.user}</small>
+                                    <small>${box.histData.date} ${box.histData.timestamp}</small>
+                                </div>
+                            ` : `
+                                <span class="status-badge pending">⏳ Pendiente</span>
+                            `}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        showNotification(`📦 Mostrando ${allBoxes.length} cajas de la orden ${obc}`, 'info');
+        playSound('ok');
+        return;
+    }
+    
+    // BÚSQUEDA POR CÓDIGO DE CAJA: Buscar en todas las órdenes
+    console.log(`🔍 [CONSULTA] Buscando por código de caja: ${rawInput}`);
+    const code = normalizeCode(rawInput);
+    const variations = generateCodeVariations(code);
+    
+    for (const [obc, codes] of OBC_MAP.entries()) {
+        let found = false;
+        for (const variant of variations) {
+            const concat = variant + obc.toLowerCase();
+            if (codes.has(concat)) {
+                const histKey = variant + obc.toLowerCase();
+                const histData = HISTORY.get(histKey);
+                matches.push({ obc, code: variant, isValidated: !!histData, histData });
+                found = true;
+                break;
+            }
         }
     }
 
@@ -2400,49 +2752,86 @@ function executeConsulta() {
                 <p style="text-align: center; color: #666;">Este código no existe en la base de datos</p>
             </div>
         `;
+        playSound('error');
         return;
     }
 
+    // Mostrar múltiples tarjetas si el código pertenece a varias órdenes
     resultDiv.style.display = 'block';
-    resultDiv.innerHTML = matches.map(match => {
+    
+    if (matches.length > 1) {
+        showNotification(`🔍 Código encontrado en ${matches.length} órdenes`, 'info');
+    }
+    
+    resultDiv.innerHTML = '<div class="obc-cards-container">' + matches.map(match => {
         const info = OBC_INFO.get(match.obc) || {};
         const total = OBC_TOTALS.get(match.obc) || 0;
+        const tabData = STATE.tabs[match.obc];
+        const validated = tabData ? tabData.validations.length : 0;
+        const progress = total > 0 ? Math.round((validated / total) * 100) : 0;
+        const isComplete = tabData?.completed || false;
 
         return `
-            <div class="consulta-result" style="margin-bottom: 15px;">
-                <div class="consulta-header">
-                    <div class="consulta-code-display">
-                        <div class="consulta-code-label">Código</div>
-                        <div class="consulta-code-value">${code}</div>
-                    </div>
-                    <div class="consulta-obc">${match.obc}</div>
-                    <div class="consulta-status ${match.isValidated ? 'validated' : 'pending'}">
-                        ${match.isValidated ? '✅ Validado' : '⏳ Pendiente'}
+            <div class="obc-card">
+                <div class="obc-card-header">
+                    <div class="obc-card-title">${match.obc}</div>
+                    <div class="obc-card-badge ${isComplete ? 'complete' : validated > 0 ? 'partial' : 'pending'}">
+                        ${isComplete ? '✅ Completa' : validated > 0 ? `${progress}%` : 'Pendiente'}
                     </div>
                 </div>
-                <div class="consulta-grid">
-                    <div class="consulta-item">
-                        <div class="consulta-item-label">Destino</div>
-                        <div class="consulta-item-value">${info.recipient || '-'}</div>
+                <div class="obc-card-info">
+                    <div class="obc-card-info-row">
+                        <span class="obc-card-label">Código:</span>
+                        <span class="obc-card-value">${match.code}</span>
                     </div>
-                    <div class="consulta-item">
-                        <div class="consulta-item-label">Horario</div>
-                        <div class="consulta-item-value">${info.arrivalTime || '-'}</div>
+                    <div class="obc-card-info-row">
+                        <span class="obc-card-label">Destino:</span>
+                        <span class="obc-card-value">${info.recipient || '-'}</span>
                     </div>
-                    <div class="consulta-item">
-                        <div class="consulta-item-label">Total Cajas</div>
-                        <div class="consulta-item-value">${total}</div>
+                    <div class="obc-card-info-row">
+                        <span class="obc-card-label">Horario:</span>
+                        <span class="obc-card-value">${info.arrivalTime || '-'}</span>
+                    </div>
+                    <div class="obc-card-info-row">
+                        <span class="obc-card-label">Estado:</span>
+                        <span class="obc-card-value" style="color: ${match.isValidated ? 'var(--success)' : 'var(--warning)'}">
+                            ${match.isValidated ? '✅ Validado' : '⏳ Pendiente'}
+                        </span>
+                    </div>
+                    ${match.isValidated ? `
+                        <div class="obc-card-info-row">
+                            <span class="obc-card-label">Validado por:</span>
+                            <span class="obc-card-value">${match.histData.user}</span>
+                        </div>
+                        <div class="obc-card-info-row">
+                            <span class="obc-card-label">Fecha:</span>
+                            <span class="obc-card-value">${match.histData.date} ${match.histData.timestamp}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="obc-card-progress">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="font-size: 0.85em; color: #666;">Progreso</span>
+                        <span style="font-size: 0.85em; font-weight: 700;">${validated}/${total}</span>
+                    </div>
+                    <div class="obc-card-progress-bar">
+                        <div class="obc-card-progress-fill ${isComplete ? 'complete' : ''}" style="width: ${progress}%"></div>
                     </div>
                 </div>
-                ${match.isValidated ? `
-                    <div class="consulta-validation-info">
-                        <strong>Validado por:</strong> ${match.histData.user}<br>
-                        <strong>Fecha:</strong> ${match.histData.date} ${match.histData.timestamp}
+                ${!match.isValidated ? `
+                    <button class="obc-card-button" onclick="goToValidateOrder('${match.obc}')">
+                        🎯 Ir a Validar
+                    </button>
+                ` : `
+                    <div style="text-align: center; padding: 10px; color: var(--success); font-weight: 600;">
+                        ✅ Ya validado
                     </div>
-                ` : ''}
+                `}
             </div>
         `;
-    }).join('');
+    }).join('') + '</div>';
+    
+    playSound('ok');
 }
 
 // Prerecepcion
@@ -2908,6 +3297,28 @@ window.hideReconteo = hideReconteo;
 window.openReconteo = openReconteo;
 window.clearReconteo = clearReconteo;
 window.executeConsulta = executeConsulta;
+
+// Función para ir a validar una orden desde consulta
+function goToValidateOrder(obc) {
+    hideConsulta();
+    
+    // Si la orden ya está abierta, cambiar a ella
+    if (STATE.tabs[obc]) {
+        switchOBC(obc);
+        showNotification(`🎯 Cambiado a orden ${obc}`, 'success');
+    } else {
+        // Si no está abierta, crear nueva tab
+        createNewOBC(obc);
+        showNotification(`✅ Orden ${obc} abierta para validación`, 'success');
+    }
+    
+    // Enfocar el scanner
+    setTimeout(() => {
+        document.getElementById('scanner')?.focus();
+    }, 100);
+}
+
+window.goToValidateOrder = goToValidateOrder;
 window.confirmPrerecepcion = confirmPrerecepcion;
 window.closePrerecepcion = closePrerecepcion;
 window.saveAndClose = saveAndClose;

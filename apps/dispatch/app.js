@@ -1369,18 +1369,32 @@ function setupFolioSelectorListeners() {
     }
 
     // NUEVO: Validar existencia de folio al seleccionarlo
+    // Guardar folio anterior para detectar cambios reales
+    let previousSelectedFolio = folioSelect ? folioSelect.value : '';
+
     if (folioSelect) {
         folioSelect.addEventListener('change', async function() {
             const selectedFolio = this.value;
-            if (!selectedFolio) return;
+            if (!selectedFolio) {
+                previousSelectedFolio = '';
+                return;
+            }
 
-            // Verificar si el folio ya existe
+            // Solo mostrar alerta si el usuario cambió a un folio DIFERENTE al anterior
+            if (selectedFolio === previousSelectedFolio) {
+                return; // Mismo folio, no hacer nada
+            }
+
+            // Verificar si el folio ya existe (tiene órdenes)
             const folioCheck = checkFolioExists(selectedFolio);
-            
+
+            // Solo mostrar confirmación si:
+            // 1. El folio ya tiene órdenes (existe)
+            // 2. Es un cambio a un folio diferente al que estaba antes
             if (folioCheck.exists) {
                 // Mostrar confirmación al usuario
                 const confirmMsg = `⚠️ El folio ${folioCheck.folio} ya existe con ${folioCheck.orders.length} orden(es).\n\n¿Deseas cargar la información existente del folio?`;
-                
+
                 if (confirm(confirmMsg)) {
                     // Auto-cargar información del folio existente
                     await loadExistingFolioData(folioCheck);
@@ -1391,6 +1405,9 @@ function setupFolioSelectorListeners() {
             } else {
                 console.log(`✅ [FOLIO] Folio ${folioCheck.folio} disponible para crear`);
             }
+
+            // Actualizar el folio anterior
+            previousSelectedFolio = selectedFolio;
         });
     }
 

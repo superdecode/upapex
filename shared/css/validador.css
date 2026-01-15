@@ -74,14 +74,14 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px; /* Reducido de 25px */
+    margin-bottom: 10px; /* Reducido de 15px para maximizar espacio */
     flex-wrap: wrap;
-    gap: 8px; /* Reducido de 10px */
+    gap: 6px; /* Reducido de 8px */
 }
 
 .header h1 {
     color: var(--primary);
-    font-size: 1.4em; /* Reducido de 1.8em */
+    font-size: 1.2em; /* Reducido de 1.4em para compactar */
     font-weight: 700;
     flex: 1;
     margin: 0;
