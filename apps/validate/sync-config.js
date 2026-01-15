@@ -49,14 +49,15 @@ async function initAdvancedSync() {
             dbName: 'ValidadorPersistenceDB',
             
             // Formato de registro para Validador
-            // IMPORTANTE: Enviar datos con tipos correctos para Google Sheets
+            // IMPORTANTE: Enviar datos como strings para evitar problemas de formato
             // 7 columnas: A=Fecha, B=Hora, C=Usuario, D=OBC, E=Código, F=Ubicación, G=Nota
             formatRecord: (record) => {
-                // Convertir fecha string a objeto Date para que Sheets lo reconozca
-                const dateObj = record.date ? new Date(record.date) : new Date();
+                // CRÍTICO: Usar string de fecha en formato DD/MM/YYYY
+                // NO usar Date objects porque Google Sheets puede formatearlos incorrectamente
+                const dateStr = record.date || SyncUtils.formatDate();
                 
                 return [
-                    dateObj,  // A: Fecha como Date object
+                    dateStr,  // A: Fecha como string DD/MM/YYYY
                     record.time || SyncUtils.formatTime(),  // B: Hora
                     record.user || CURRENT_USER || '',  // C: Usuario activo
                     record.obc || '',  // D: OBC
