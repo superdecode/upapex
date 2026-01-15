@@ -338,6 +338,12 @@ const UnifiedModule = {
         const code = result.code;
         const item = result.item;
 
+        // If no item found, require second code
+        if (!item) {
+            this.showSecondCodePrompt(rawCode, code);
+            return;
+        }
+
         // Check duplicates
         const dupIndex = this.items.findIndex(i => i.code === code);
         if (dupIndex !== -1) {
@@ -349,17 +355,15 @@ const UnifiedModule = {
         let status = 'nowms';
         let statusText = 'NO WMS';
 
-        if (item) {
-            if (item.isBlocked) {
-                status = 'blocked';
-                statusText = 'BLOQUEADO';
-            } else if (item.isAvailable) {
-                status = 'ok';
-                statusText = 'OK';
-            } else {
-                status = 'blocked';
-                statusText = 'SIN STOCK';
-            }
+        if (item.isBlocked) {
+            status = 'blocked';
+            statusText = 'BLOQUEADO';
+        } else if (item.isAvailable) {
+            status = 'ok';
+            statusText = 'OK';
+        } else {
+            status = 'blocked';
+            statusText = 'SIN STOCK';
         }
 
         const newItem = {
@@ -380,6 +384,125 @@ const UnifiedModule = {
         updateGlobalSummaryFromTabs();
 
         playSound(status === 'ok' ? 'success' : status === 'blocked' ? 'warning' : 'error');
+    },
+
+    showSecondCodePrompt(rawCode1, code1) {
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay show';
+        overlay.id = 'unified-second-code-modal';
+        overlay.innerHTML = `
+            <div class="popup-content" style="max-width: 450px;">
+                <div class="popup-header">
+                    <span>⚠️ Código No Encontrado</span>
+                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove(); document.getElementById('unified-scan-input')?.focus();">×</button>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid var(--warning);">
+                        <strong>Código 1 no encontrado en WMS</strong><br>
+                        <code style="font-size: 1.1em; font-weight: 600;">${code1}</code>
+                    </div>
+                    <p style="margin-bottom: 15px; color: #666;">
+                        Se requiere un <strong>Segundo Código</strong> para continuar:
+                    </p>
+                    <input type="text" id="unified-code2-input" class="scan-input" 
+                           placeholder="🔍 Escanea Código 2..." 
+                           autocomplete="off"
+                           style="width: 100%; margin-bottom: 15px;">
+                    <div class="popup-buttons">
+                        <button class="btn btn-primary btn-full" id="unified-validate-btn" disabled onclick="UnifiedModule.processSecondCode('${rawCode1}', '${code1}')">
+                            ✅ Validar con Código 2
+                        </button>
+                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove(); document.getElementById('unified-scan-input')?.focus();">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+            const input = document.getElementById('unified-code2-input');
+            const validateBtn = document.getElementById('unified-validate-btn');
+            
+            if (input) {
+                input.focus();
+                input.addEventListener('input', () => {
+                    if (validateBtn) {
+                        validateBtn.disabled = !input.value.trim();
+                    }
+                });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && input.value.trim()) {
+                        e.preventDefault();
+                        this.processSecondCode(rawCode1, code1);
+                    }
+                });
+            }
+        }, 100);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                document.getElementById('unified-scan-input')?.focus();
+            }
+        });
+    },
+
+    processSecondCode(rawCode1, code1) {
+        const input = document.getElementById('unified-code2-input');
+        const rawCode2 = input?.value.trim() || '';
+        
+        if (!rawCode2) {
+            showNotification('⚠️ Ingresa el Código 2', 'warning');
+            return;
+        }
+
+        document.getElementById('unified-second-code-modal')?.remove();
+
+        const result = findCodeInInventory(rawCode2, STATE.inventory);
+        const code2 = result.code;
+        const item = result.item;
+
+        let status = 'nowms';
+        let statusText = 'NO WMS';
+
+        if (item) {
+            if (item.isBlocked) {
+                status = 'blocked';
+                statusText = 'BLOQUEADO';
+            } else if (item.isAvailable) {
+                status = 'ok';
+                statusText = 'OK (Código 2)';
+            } else {
+                status = 'blocked';
+                statusText = 'SIN STOCK';
+            }
+        } else {
+            statusText = 'NO WMS (Ambos códigos)';
+        }
+
+        const newItem = {
+            raw: rawCode1,
+            code: code1,
+            code2: code2,
+            status: status,
+            statusText: statusText,
+            sku: item?.sku || '-',
+            product: item?.productName || '-',
+            location: item?.cellNo || '-',
+            timestamp: getTimestamp()
+        };
+
+        this.items.push(newItem);
+        this.updateUI();
+        this.showResult(status, code1, statusText);
+        GlobalTabs.saveToStorage();
+        updateGlobalSummaryFromTabs();
+
+        playSound(status === 'ok' ? 'success' : status === 'blocked' ? 'warning' : 'error');
+        
+        setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
     },
 
     showResult(type, code, title) {
@@ -519,7 +642,7 @@ const UnifiedModule = {
                     time: timeStr,
                     user: STATE.userAlias || STATE.userName || 'Usuario',
                     scan1: item.code,
-                    scan2: '',
+                    scan2: item.code2 || '',
                     location: finalLocation,
                     status: finalStatus,
                     note: note,

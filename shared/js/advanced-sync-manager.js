@@ -1421,7 +1421,7 @@ class AdvancedSyncManager {
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay show sync-panel-overlay';
         overlay.innerHTML = `
-            <div class="popup-content sync-modal-content">
+            <div class="popup-content sync-modal-content" style="max-width: 500px; width: 50%; max-height: 80vh; overflow-y: auto;">
                 <div class="popup-header">
                     <span>${this.config.appIcon} Estado de Sincronización</span>
                     <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>

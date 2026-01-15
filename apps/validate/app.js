@@ -580,11 +580,10 @@ function initSidebarComponent() {
             ...SidebarComponent.presets.validador,
             containerId: 'sidebar',
             syncManager: window.syncManager,
-            onReloadBD: async () => {
-                await loadDatabase();
-            },
-            onLogout: handleLogoutAndClearCache,
-            onToggleConnection: toggleGoogleConnection,
+            // Usar las funciones específicas para los botones del footer
+            onReloadBD: handleSyncBD,
+            onLogout: handleFullLogout,
+            onToggleConnection: handleToggleGoogleAuth,
             buttons: [
                 { label: 'Nueva Orden', icon: '➕', onClick: 'addOBC()', class: 'sidebar-btn-primary' },
                 { label: 'Resumen', icon: '📋', onClick: 'showResumen()', class: 'sidebar-btn-secondary' },
@@ -1885,6 +1884,12 @@ function validateLocationInput(location) {
                 }
             }
             showNotification(`✅ Ubicación válida: ${normalizedLocation}`, 'success');
+            
+            // Mover focus al scanner después de validación exitosa
+            const scanner = document.getElementById('scanner');
+            if (scanner) {
+                scanner.focus();
+            }
         },
         (forcedLocation) => {
             const locationInput = document.getElementById('location-input');
@@ -1899,6 +1904,12 @@ function validateLocationInput(location) {
                 }
             }
             showNotification(`⚠️ Ubicación insertada forzadamente: ${forcedLocation}`, 'warning');
+            
+            // Mover focus al scanner después de inserción forzada
+            const scanner = document.getElementById('scanner');
+            if (scanner) {
+                scanner.focus();
+            }
         }
     );
 }

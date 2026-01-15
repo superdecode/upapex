@@ -668,7 +668,9 @@ const syncStyles = `
     }
     .sync-modal-content {
         max-width: 500px !important;
-        width: 90% !important;
+        width: 50% !important;
+        max-height: 80vh !important;
+        overflow-y: auto !important;
     }
     .sync-panel-overlay .popup-content,
     .exit-dialog-overlay .popup-content {
