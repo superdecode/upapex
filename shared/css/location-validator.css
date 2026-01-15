@@ -1,0 +1,193 @@
+/* ==================== LOCATION VALIDATION POPUP ==================== */
+
+.location-validation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.location-validation-popup {
+    background: white;
+    border-radius: 12px;
+    max-width: 550px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.location-validation-header {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+    color: white;
+    padding: 20px 25px;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.location-validation-header h3 {
+    margin: 0;
+    font-size: 1.3em;
+    font-weight: 700;
+}
+
+.location-validation-body {
+    padding: 25px;
+}
+
+.location-error-box {
+    background: #fff3e0;
+    border-left: 4px solid #ff9800;
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.location-error-box strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #e65100;
+    font-size: 0.95em;
+}
+
+.location-error-code {
+    font-family: 'Courier New', monospace;
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #d32f2f;
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+    border: 2px solid #ffccbc;
+    margin-top: 5px;
+}
+
+.location-format-info {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 6px;
+}
+
+.location-format-info strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #424242;
+    font-size: 0.95em;
+}
+
+.location-format-pattern {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1em;
+    font-weight: 700;
+    color: #1976d2;
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+    border: 2px solid #bbdefb;
+    margin-bottom: 15px;
+}
+
+.location-examples {
+    margin-bottom: 15px;
+}
+
+.location-examples ul {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+}
+
+.location-examples li {
+    font-family: 'Courier New', monospace;
+    font-size: 0.95em;
+    padding: 6px 10px;
+    background: white;
+    border-left: 3px solid #4caf50;
+    margin-bottom: 5px;
+    border-radius: 3px;
+}
+
+.location-tip {
+    background: #e3f2fd;
+    padding: 12px;
+    border-radius: 6px;
+    border-left: 4px solid #2196f3;
+}
+
+.location-tip strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #1565c0;
+}
+
+.location-tip ul {
+    margin: 8px 0 0 20px;
+    padding: 0;
+}
+
+.location-tip li {
+    margin-bottom: 5px;
+    color: #424242;
+    font-size: 0.9em;
+}
+
+.location-validation-buttons {
+    display: flex;
+    gap: 10px;
+    padding: 20px 25px;
+    background: #fafafa;
+    border-radius: 0 0 12px 12px;
+}
+
+.location-validation-buttons .btn {
+    flex: 1;
+    padding: 12px 20px;
+    font-size: 1em;
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .location-validation-popup {
+        width: 95%;
+        max-height: 90vh;
+    }
+    
+    .location-validation-buttons {
+        flex-direction: column;
+    }
+    
+    .location-validation-buttons .btn {
+        width: 100%;
+    }
+}

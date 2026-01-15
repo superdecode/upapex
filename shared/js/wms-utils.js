@@ -272,8 +272,8 @@ function normalizeLocation(location) {
     return location
         .trim()
         .toUpperCase()
-        .replace(/['´`']/g, '-')  // Comillas a guiones
-        .replace(/\s+/g, '');      // Eliminar espacios
+        .replace(/['´`'\/]/g, '-')  // Comillas y slashes a guiones
+        .replace(/\s+/g, '');        // Eliminar espacios
 }
 
 /**

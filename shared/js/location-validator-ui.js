@@ -44,6 +44,12 @@ const LocationValidatorUI = {
         this.onSuccessCallback = onSuccess;
         this.onForceCallback = onForce;
 
+        // Cerrar popup anterior si existe
+        if (this.currentPopup) {
+            this.currentPopup.remove();
+            this.currentPopup = null;
+        }
+        
         const overlay = document.createElement('div');
         overlay.className = 'location-validation-overlay';
         overlay.innerHTML = `
@@ -61,17 +67,11 @@ const LocationValidatorUI = {
                     </div>
                     
                     <div class="location-format-info">
-                        <strong>Formato esperado:</strong>
-                        <div class="location-format-pattern">Letra(s)-Número(s)-Número(s)-Número(s)</div>
                         
                         <div class="location-examples">
                             <strong>Ejemplos válidos:</strong>
                             <ul>
                                 <li>A26-06-01-02</li>
-                                <li>B11-11-02-01</li>
-                                <li>A1-11-02-01</li>
-                                <li>C9-11-02-01</li>
-                                <li>A1-01-01-01</li>
                             </ul>
                         </div>
                         
@@ -80,7 +80,6 @@ const LocationValidatorUI = {
                             <ul style="margin: 8px 0 0 20px; font-size: 0.9em;">
                                 <li>Comillas simples (') se convierten automáticamente a guiones (-)</li>
                                 <li>Zona (primer número): puede ser 1-999, sin cero a la izquierda</li>
-                                <li>Pasillo, Rack, Nivel: deben ser 01-99, con cero a la izquierda</li>
                                 <li>Ejemplo: A1-1-1-1 → A1-01-01-01</li>
                             </ul>
                         </div>
@@ -97,6 +96,13 @@ const LocationValidatorUI = {
         document.body.appendChild(overlay);
         this.currentPopup = overlay;
 
+        // Cerrar al hacer click en el overlay (fuera del popup)
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                this.closePopup();
+            }
+        });
+
         // Cerrar con ESC
         const escHandler = (e) => {
             if (e.key === 'Escape') {
@@ -105,6 +111,9 @@ const LocationValidatorUI = {
             }
         };
         document.addEventListener('keydown', escHandler);
+        
+        // Guardar el handler para poder removerlo después
+        this.escHandler = escHandler;
     },
 
     /**
@@ -124,6 +133,11 @@ const LocationValidatorUI = {
         if (this.currentPopup) {
             this.currentPopup.remove();
             this.currentPopup = null;
+        }
+        // Remover event listener de ESC si existe
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
         }
     }
 };

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="../../shared/css/sidebar.css?v=2.3">
     <link rel="stylesheet" href="../../shared/css/avatar-system.css?v=2.3">
     <link rel="stylesheet" href="../../shared/css/validador.css?v=2.3">
+    <link rel="stylesheet" href="../../shared/css/location-validator.css?v=1.0">
 </head>
 <body>
     <div class="connection-banner" id="connection-banner"></div>
@@ -472,8 +473,8 @@
     <!-- End MAIN APP -->
 
     <!-- Google APIs -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://apis.google.com/js/api.js" onload="console.log('✅ GAPI loaded')" onerror="console.error('❌ Error loading GAPI')"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer onload="console.log('✅ GIS loaded')" onerror="console.error('❌ Error loading GIS')"></script>
 
     <!-- Shared Scripts -->
     <script src="../../shared/js/debug-mode.js"></script>

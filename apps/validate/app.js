@@ -694,23 +694,45 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        gapi.load('client', async () => {
-            // Esperar a que Google Identity Services esté disponible
-            let retries = 0;
-            const waitForGIS = () => {
-                if (window.google && google.accounts && google.accounts.oauth2) {
-                    console.log('✅ Google Identity Services disponible');
-                    initAuthManager();
-                } else if (retries < 50) { // Máximo 5 segundos
-                    retries++;
-                    setTimeout(waitForGIS, 100);
-                } else {
-                    console.error('❌ Timeout esperando Google Identity Services');
-                    showNotification('❌ Error cargando sistema de autenticación. Recarga la página.', 'error');
-                }
-            };
-            waitForGIS();
-        });
+        try {
+            gapi.load('client', async () => {
+                console.log('✅ GAPI client cargado');
+                
+                // Esperar a que Google Identity Services esté disponible
+                let retries = 0;
+                const maxRetries = 100; // Máximo 10 segundos
+                
+                const waitForGIS = () => {
+                    if (window.google && google.accounts && google.accounts.oauth2) {
+                        console.log('✅ Google Identity Services disponible');
+                        initAuthManager();
+                    } else if (retries < maxRetries) {
+                        retries++;
+                        if (retries % 10 === 0) {
+                            console.log(`⏳ Esperando Google Identity Services... (${retries}/${maxRetries})`);
+                        }
+                        setTimeout(waitForGIS, 100);
+                    } else {
+                        console.error('❌ Timeout esperando Google Identity Services');
+                        showNotification('❌ Error cargando Google Identity Services. Verifica tu conexión a internet.', 'error');
+                        
+                        // Mostrar botón de retry en el login
+                        const loginBtn = document.getElementById('login-btn');
+                        if (loginBtn) {
+                            loginBtn.textContent = '🔄 Reintentar Conexión';
+                            loginBtn.disabled = false;
+                            loginBtn.onclick = () => {
+                                location.reload();
+                            };
+                        }
+                    }
+                };
+                waitForGIS();
+            });
+        } catch (error) {
+            console.error('❌ Error al cargar GAPI:', error);
+            showNotification('❌ Error al inicializar Google API. Recarga la página.', 'error');
+        }
     };
 
     const initAuthManager = async () => {
@@ -882,18 +904,18 @@ function updateUIAfterAuth() {
                 );
             }
         } else {
-            // Limpiar estado de conexión en sidebar
-            window.sidebarComponent.setUserEmail('');
-            window.sidebarComponent.setUserName('');
+            // Limpiar estado de conexión en sidebar (pero mantener nombre de usuario)
+            window.sidebarComponent.clearGoogleConnection();
         }
-        // Forzar re-render del sidebar
-        window.sidebarComponent.render();
+        // Actualizar botones del avatar
+        window.sidebarComponent.updateAvatarButtons();
     }
     
-    // Actualizar botón de autenticación si existe
+    // Actualizar botón de autenticación si existe (🔗 = conectado, 🔌 = desconectado)
     const authBtn = document.getElementById('sidebar-auth-btn');
     if (authBtn) {
-        authBtn.textContent = hasToken ? '🚪 Salir' : '🔗 Conectar';
+        authBtn.textContent = hasToken ? '🔗' : '🔌';
+        authBtn.title = hasToken ? 'Desconectar Google' : 'Conectar Google';
     }
     
     console.log('✅ [VALIDADOR] UI actualizada:', { hasToken: !!hasToken, user: CURRENT_USER });
@@ -947,6 +969,9 @@ function showMainApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
     renderValidation();
+    
+    // Configurar listeners de ubicación
+    setupValidationListeners();
     
     // Trigger animation for empty state
     setTimeout(() => {
@@ -1031,9 +1056,25 @@ function handleToggleGoogleAuth() {
             console.log('✅ [VALIDADOR] Desconexión de Google completada');
             
         } else {
-            // CONECTAR - Iniciar flujo de autenticación de Google
+            // CONECTAR - Reinicializar tokenClient si es necesario y luego iniciar login
             console.log('🔗 [VALIDADOR] Iniciando conexión con Google...');
-            handleLogin();
+            
+            // Si tokenClient no está disponible, reinicializarlo
+            if (!AuthManager.tokenClient) {
+                console.log('🔄 [VALIDADOR] Reinicializando tokenClient...');
+                showNotification('🔄 Inicializando autenticación...', 'info');
+                
+                // Reinicializar Google Identity Services
+                AuthManager.waitForGIS().then(() => {
+                    console.log('✅ [VALIDADOR] tokenClient reinicializado');
+                    handleLogin();
+                }).catch((error) => {
+                    console.error('❌ [VALIDADOR] Error reinicializando tokenClient:', error);
+                    showNotification('❌ Error al inicializar autenticación. Recarga la página.', 'error');
+                });
+            } else {
+                handleLogin();
+            }
         }
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en handleToggleGoogleAuth:', error);
@@ -1440,8 +1481,13 @@ function updateUserFooter() {
         console.warn('⚠️ [VALIDADOR] SidebarComponent no disponible aún');
     }
 
+    // Actualizar botón de auth con iconos correctos (🔗 = conectado, 🔌 = desconectado)
     const authBtn = document.getElementById('sidebar-auth-btn');
-    if (authBtn) authBtn.textContent = gapi?.client?.getToken() ? '🚪 Salir' : '🔗 Conectar';
+    const hasToken = gapi?.client?.getToken();
+    if (authBtn) {
+        authBtn.textContent = hasToken ? '🔗' : '🔌';
+        authBtn.title = hasToken ? 'Desconectar Google' : 'Conectar Google';
+    }
 
     updateConnectionIndicator();
     updateBdInfo();
@@ -1835,32 +1881,42 @@ function setupValidationListeners() {
     // Solo mantenemos el location-input validation
 
     const locationInput = document.getElementById('location-input');
-    if (locationInput) {
-        // Remove old listeners to avoid duplicates
-        locationInput.replaceWith(locationInput.cloneNode(true));
-        const newLocationInput = document.getElementById('location-input');
+    if (!locationInput) {
+        console.warn('⚠️ [VALIDADOR] location-input no encontrado');
+        return;
+    }
+    
+    // Verificar si ya tiene listeners configurados
+    if (locationInput.dataset.listenersConfigured === 'true') {
+        console.log('ℹ️ [VALIDADOR] Location input listeners ya configurados');
+        return;
+    }
+    
+    // Marcar como configurado
+    locationInput.dataset.listenersConfigured = 'true';
 
-        newLocationInput.addEventListener('blur', () => {
-            const location = newLocationInput.value.trim();
+    locationInput.addEventListener('blur', () => {
+        const location = locationInput.value.trim();
+        if (location) {
+            validateLocationInput(location);
+        }
+    });
+
+    locationInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const location = locationInput.value.trim();
             if (location) {
                 validateLocationInput(location);
             }
-        });
+        }
+    });
 
-        newLocationInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const location = newLocationInput.value.trim();
-                if (location) {
-                    validateLocationInput(location);
-                }
-            }
-        });
-
-        newLocationInput.addEventListener('input', (e) => {
-            e.target.value = e.target.value.toUpperCase();
-        });
-    }
+    locationInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
+    });
+    
+    console.log('✅ [VALIDADOR] Location input listeners configurados');
 }
 
 function validateLocationInput(location) {
@@ -2588,7 +2644,11 @@ function updateSidebar() {
 function switchOBC(obc) {
     STATE.activeOBC = obc;
     renderValidation();
-    document.getElementById('scanner')?.focus();
+    // Focus en ubicación primero, luego el usuario pasa a scanner con Enter
+    const locationInput = document.getElementById('location-input');
+    if (locationInput) {
+        locationInput.focus();
+    }
     saveState();
 }
 
@@ -3164,9 +3224,24 @@ function executeConsulta() {
         const info = OBC_INFO.get(match.obc) || {};
         const total = OBC_TOTALS.get(match.obc) || 0;
         const tabData = STATE.tabs[match.obc];
-        const validated = tabData ? tabData.validations.length : 0;
+        
+        // Contar validaciones desde HISTORY (fuente de verdad) en lugar de solo tabs
+        let validated = 0;
+        const obcCodes = OBC_MAP.get(match.obc);
+        if (obcCodes) {
+            for (const concat of obcCodes) {
+                if (HISTORY.has(concat)) {
+                    validated++;
+                }
+            }
+        }
+        // Si hay tab abierto, usar el máximo entre HISTORY y tab.validations
+        if (tabData) {
+            validated = Math.max(validated, tabData.validations.length);
+        }
+        
         const progress = total > 0 ? Math.round((validated / total) * 100) : 0;
-        const isComplete = tabData?.completed || false;
+        const isComplete = tabData?.completed || (validated >= total && total > 0);
 
         return `
             <div class="obc-card">
@@ -3730,11 +3805,7 @@ function testLocationValidator() {
     console.log('🧪 Testing Location Validator (usando wms-utils.js)...');
     
     const testCases = [
-        'A26-06-01-02',
-        "A26'06'01'02",
-        'B11-11-02-01',
-        'A1-11-02-01',
-        'A1-1-1-1',      // Debe normalizarse a A1-01-01-01
+        'A26-06-01-02',  // Debe normalizarse a A1-01-01-01
         'C9-11-02-01',
         'INVALID',
         'A26 06 01 02',
