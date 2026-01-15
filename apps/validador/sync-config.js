@@ -37,7 +37,7 @@ async function initAdvancedSync() {
         // Configuración del Advanced Sync Manager
         const syncConfig = {
             spreadsheetId: SPREADSHEET_WRITE || '',
-            sheetName: 'Validaciones',
+            sheetName: 'Val3',  // Nombre de la hoja en Google Sheets
             appName: 'Validador',
             appIcon: '🎯',
             autoSyncInterval: 45000,      // 45 segundos
@@ -119,7 +119,7 @@ async function initAdvancedSync() {
         // Inicializar Processed Cache Manager
         processedCacheManager = new ProcessedCacheManager({
             spreadsheetId: SPREADSHEET_WRITE || '',
-            sheetName: 'Validaciones',
+            sheetName: 'Val3',
             syncInterval: 60 * 60 * 1000, // 1 hora
             dbName: 'ValidadorProcessedCache'
         });

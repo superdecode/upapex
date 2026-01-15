@@ -99,9 +99,6 @@
                     <div class="header">
                         <div class="header-left">
                             <h1>🚚 Folios de Carga</h1>
-                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="folios-date-filter-display" style="margin-left: 20px;">
-                                📅 <span id="folios-date-filter-text">Mostrando Todo</span>
-                            </button>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
@@ -121,7 +118,12 @@
                                     🚚 Folios
                                 </button>
                             </div>
-                            <button class="btn-close-modern" onclick="confirmExitFolios()" title="Cerrar">×</button>
+                            <div class="header-controls-right">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="folios-date-filter-display">
+                                    📅 <span id="folios-date-filter-text">Mostrando Todo</span>
+                                </button>
+                                <button class="btn-close-modern" onclick="confirmExitFolios()" title="Cerrar">×</button>
+                            </div>
                         </div>
                     </div>
                     <div class="card">
@@ -175,12 +177,14 @@
                     <div class="header">
                         <div class="header-left">
                             <h1>📋 Gestión General de Folios</h1>
-                            <button class="btn btn-secondary date-filter-btn" onclick="showFoliosManagementDateFilter()" id="folios-mgmt-date-filter-display" style="margin-left: 20px;">
-                                📅 <span id="folios-mgmt-date-filter-text">Mostrando Todo</span>
-                            </button>
                         </div>
                         <div class="header-right">
-                            <button class="btn-close-modern" onclick="closeFoliosManagementView()" title="Cerrar">×</button>
+                            <div class="header-controls-right">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showFoliosManagementDateFilter()" id="folios-mgmt-date-filter-display">
+                                    📅 <span id="folios-mgmt-date-filter-text">Mostrando Todo</span>
+                                </button>
+                                <button class="btn-close-modern" onclick="closeFoliosManagementView()" title="Cerrar">×</button>
+                            </div>
                         </div>
                     </div>
                     <div class="card">
@@ -304,10 +308,7 @@
                 <div id="validated-content" class="tab-content" style="display: none;">
                     <div class="header">
                         <div class="header-left">
-                            <h1>✅ Despachos Validados</h1>
-                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="validated-date-filter-display" style="margin-left: 20px;">
-                                📅 <span id="validated-date-filter-text">Mostrando Todo</span>
-                            </button>
+                            <h1>✅ Ordenes Validadas</h1>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
@@ -327,7 +328,12 @@
                                     🚚 Folios
                                 </button>
                             </div>
-                            <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                            <div class="header-controls-right">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="validated-date-filter-display">
+                                    📅 <span id="validated-date-filter-text">Mostrando Todo</span>
+                                </button>
+                                <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                            </div>
                         </div>
                     </div>
                     <div class="card">
@@ -391,9 +397,6 @@
                     <div class="header">
                         <div class="header-left">
                             <h1>🗂️ Otros </h1>
-                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="otros-date-filter-display" style="margin-left: 20px;">
-                                📅 <span id="otros-date-filter-text">Mostrando Todo</span>
-                            </button>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
@@ -413,7 +416,12 @@
                                     🚚 Folios
                                 </button>
                             </div>
-                            <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                            <div class="header-controls-right">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="otros-date-filter-display">
+                                    📅 <span id="otros-date-filter-text">Mostrando Todo</span>
+                                </button>
+                                <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                            </div>
                         </div>
                     </div>
                     <div class="card">
@@ -458,9 +466,6 @@
                     <div class="header">
                         <div class="header-left">
                             <h1 id="search-panel-title">📋 Órdenes Pendientes</h1>
-                            <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display" style="margin-left: 20px;">
-                                📅 <span id="date-filter-text">Mostrando Todo</span>
-                            </button>
                         </div>
                         <div class="header-right">
                             <div class="status-toggle-container">
@@ -480,7 +485,12 @@
                                     🚚 Folios
                                 </button>
                             </div>
-                            <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                            <div class="header-controls-right">
+                                <button class="btn btn-secondary date-filter-btn" onclick="showDateFilter()" id="date-filter-display">
+                                    📅 <span id="date-filter-text">Mostrando Todo</span>
+                                </button>
+                                <button class="btn-close-modern" onclick="confirmExit()" title="Cerrar">×</button>
+                            </div>
                         </div>
                     </div>
 

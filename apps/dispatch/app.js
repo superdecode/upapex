@@ -996,10 +996,21 @@ function canEdit() {
     return true;
 }
 
+/**
+ * Genera el número de folio basado en la fecha del filtro (fecha inicial)
+ * REGLA: El folio debe usar la fecha de la mercancía (fecha inicial del filtro), no la fecha actual
+ * Ejemplo: Si hoy es 14-01-2026 pero valido mercancía del 15-01-2026, el folio debe ser DSP-20260115-0X
+ * @param {string} folioCarga - Número de folio (ej: '01', '02', etc.)
+ * @returns {string} - Folio completo en formato DSP-YYYYMMDD-XX
+ */
 function generateFolio(folioCarga) {
-    const date = new Date();
-    const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-    return `DSP-${dateStr}-${folioCarga}`;
+    // Usar getCurrentDateKey() que ya implementa la lógica de fecha del filtro
+    const dateKey = getCurrentDateKey(); // Formato: YYYY-MM-DD
+    const dateStr = dateKey.replace(/-/g, ''); // Convertir a YYYYMMDD
+    const folioCompleto = `DSP-${dateStr}-${folioCarga}`;
+    
+    console.log(`📋 [FOLIO] Generado: ${folioCompleto} (Fecha: ${dateKey})`);
+    return folioCompleto;
 }
 
 // Verificar si una orden ya fue despachada (no confundir con validación de surtido)
@@ -1207,6 +1218,33 @@ function getAvailableFolios(conductor, unidad) {
 }
 
 /**
+ * Verifica si ya existe un folio para la fecha actual (del filtro)
+ * @param {string} folioNum - Número de folio (ej: '01', '02')
+ * @returns {object} - { exists: boolean, folio: string, orders: array }
+ */
+function checkFolioExists(folioNum) {
+    const dateKey = getCurrentDateKey();
+    const folioCompleto = generateFolio(folioNum);
+    
+    // Buscar órdenes con este folio en localValidated
+    const ordersWithFolio = STATE.localValidated.filter(record => 
+        record.folio === folioCompleto
+    );
+    
+    if (ordersWithFolio.length > 0) {
+        console.log(`⚠️ [FOLIO] Ya existe folio ${folioCompleto} con ${ordersWithFolio.length} órdenes`);
+        return {
+            exists: true,
+            folio: folioCompleto,
+            orders: ordersWithFolio,
+            dateKey: dateKey
+        };
+    }
+    
+    return { exists: false, folio: folioCompleto, dateKey: dateKey };
+}
+
+/**
  * Marca un folio como utilizado para una combinación conductor-unidad
  */
 function markFolioAsUsed(conductor, unidad, folio) {
@@ -1320,17 +1358,83 @@ function updateFolioSelector() {
 function setupFolioSelectorListeners() {
     const conductorSelect = document.getElementById('modal-operador');
     const unidadSelect = document.getElementById('modal-unidad');
+    const folioSelect = document.getElementById('modal-folio-carga');
 
-    if (conductorSelect && unidadSelect) {
-        // Remover listeners anteriores si existen
-        const newConductorSelect = conductorSelect.cloneNode(true);
-        const newUnidadSelect = unidadSelect.cloneNode(true);
-        conductorSelect.parentNode.replaceChild(newConductorSelect, conductorSelect);
-        unidadSelect.parentNode.replaceChild(newUnidadSelect, unidadSelect);
+    if (conductorSelect) {
+        conductorSelect.addEventListener('change', updateFolioSelector);
+    }
 
-        // Agregar nuevos listeners
-        newConductorSelect.addEventListener('change', updateFolioSelector);
-        newUnidadSelect.addEventListener('change', updateFolioSelector);
+    if (unidadSelect) {
+        unidadSelect.addEventListener('change', updateFolioSelector);
+    }
+
+    // NUEVO: Validar existencia de folio al seleccionarlo
+    if (folioSelect) {
+        folioSelect.addEventListener('change', async function() {
+            const selectedFolio = this.value;
+            if (!selectedFolio) return;
+
+            // Verificar si el folio ya existe
+            const folioCheck = checkFolioExists(selectedFolio);
+            
+            if (folioCheck.exists) {
+                // Mostrar confirmación al usuario
+                const confirmMsg = `⚠️ El folio ${folioCheck.folio} ya existe con ${folioCheck.orders.length} orden(es).\n\n¿Deseas cargar la información existente del folio?`;
+                
+                if (confirm(confirmMsg)) {
+                    // Auto-cargar información del folio existente
+                    await loadExistingFolioData(folioCheck);
+                } else {
+                    // Usuario decidió no cargar, puede continuar agregando al folio existente
+                    console.log(`ℹ️ [FOLIO] Usuario decidió continuar con folio existente sin cargar datos`);
+                }
+            } else {
+                console.log(`✅ [FOLIO] Folio ${folioCheck.folio} disponible para crear`);
+            }
+        });
+    }
+
+    console.log('[Folio de Carga] Event listeners configurados');
+}
+
+/**
+ * Carga automáticamente los datos de un folio existente
+ * @param {object} folioCheck - Resultado de checkFolioExists
+ */
+async function loadExistingFolioData(folioCheck) {
+    try {
+        console.log(`🔄 [FOLIO] Cargando datos existentes del folio ${folioCheck.folio}`);
+        
+        // Obtener la primera orden del folio para extraer conductor y unidad
+        const firstOrder = folioCheck.orders[0];
+        
+        if (firstOrder) {
+            // Auto-completar conductor y unidad
+            const conductorSelect = document.getElementById('modal-operador');
+            const unidadSelect = document.getElementById('modal-unidad');
+            
+            if (conductorSelect && firstOrder.operador) {
+                conductorSelect.value = firstOrder.operador;
+            }
+            
+            if (unidadSelect && firstOrder.unidad) {
+                unidadSelect.value = firstOrder.unidad;
+            }
+            
+            // Actualizar el selector de folios con la nueva combinación
+            updateFolioSelector();
+            
+            // Mostrar notificación de éxito
+            showNotification(
+                `✅ Folio ${folioCheck.folio} cargado: ${firstOrder.operador}/${firstOrder.unidad} con ${folioCheck.orders.length} orden(es)`,
+                'success'
+            );
+            
+            console.log(`✅ [FOLIO] Datos cargados exitosamente`);
+        }
+    } catch (error) {
+        console.error('❌ [FOLIO] Error al cargar datos del folio:', error);
+        showNotification('❌ Error al cargar datos del folio', 'error');
     }
 }
 
@@ -5004,8 +5108,8 @@ function renderValidatedTable() {
             <tr>
                 <td colspan="15" class="table-empty-state">
                     <div class="table-empty-icon">📋</div>
-                    <div class="table-empty-text">No hay despachos validados</div>
-                    <div class="table-empty-subtext">Los despachos confirmados aparecerán aquí</div>
+                    <div class="table-empty-text">No hay ordenes validadas</div>
+                    <div class="table-empty-subtext">Las ordenes confirmados aparecerán aquí</div>
                 </td>
             </tr>
         `;

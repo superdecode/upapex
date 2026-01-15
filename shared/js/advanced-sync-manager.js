@@ -30,6 +30,19 @@ class ConcurrencyControl {
      */
     async getLastRow(spreadsheetId, sheetName) {
         try {
+            // Verificar que gapi esté disponible
+            if (typeof gapi === 'undefined' || !gapi.client || !gapi.client.sheets) {
+                throw new Error('Google API (gapi) no está inicializado');
+            }
+
+            // Verificar que haya token de autenticación
+            const token = gapi.client.getToken();
+            if (!token) {
+                throw new Error('No hay token de autenticación. Usuario no ha iniciado sesión.');
+            }
+
+            console.log(`📊 [CONCURRENCY] Leyendo última fila de ${sheetName}...`);
+
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: spreadsheetId,
                 range: `${sheetName}!A:A`,
@@ -42,6 +55,9 @@ class ConcurrencyControl {
             return lastRow;
         } catch (error) {
             console.error('❌ [CONCURRENCY] Error obteniendo última fila:', error);
+            console.error('   - SpreadsheetId:', spreadsheetId);
+            console.error('   - SheetName:', sheetName);
+            console.error('   - Error completo:', error);
             throw error;
         }
     }
@@ -91,7 +107,12 @@ class ConcurrencyControl {
                         throw new Error(`Status ${writeResponse.status} en escritura`);
                     }
 
-                    console.log(`📝 [CONCURRENCY] Escritura completada, iniciando verificación...`);
+                    console.log(`✅ [CONCURRENCY] Escritura completada!`);
+                    console.log(`   - SpreadsheetId: ${spreadsheetId}`);
+                    console.log(`   - Hoja: ${sheetName}`);
+                    console.log(`   - Rango escrito: ${range}`);
+                    console.log(`   - Datos escritos:`, values);
+                    console.log(`📝 [CONCURRENCY] Iniciando verificación post-escritura...`);
 
                     // PASO 4: VERIFICACIÓN POST-ESCRITURA
                     const verifyResponse = await gapi.client.sheets.spreadsheets.values.get({
@@ -738,6 +759,46 @@ class AdvancedSyncManager {
     }
 
     /**
+     * Deduplicación interna del batch
+     * Elimina registros duplicados DENTRO del mismo lote antes de enviar
+     */
+    _deduplicateBatch(records) {
+        const seen = new Set();
+        const deduplicated = [];
+
+        for (const record of records) {
+            // Generar clave única para el registro
+            // Para pallets: pallet + location
+            // Para validaciones: codigo + obc + ubicacion
+            let key;
+
+            if (record.pallet && record.location) {
+                // Es un registro de pallets (scan.html)
+                key = `${(record.pallet || '').toString().trim()}|${(record.location || '').toString().trim()}`;
+            } else if (record.codigo || record.code) {
+                // Es un registro de validación (validador)
+                const code = record.codigo || record.code || '';
+                const obc = record.obc || record.orden || '';
+                const location = record.ubicacion || record.location || '';
+                key = `${code.toString().trim()}|${obc.toString().trim()}|${location.toString().trim()}`;
+            } else {
+                // Fallback: usar todos los campos
+                key = JSON.stringify(record);
+            }
+
+            if (seen.has(key)) {
+                console.warn('⚠️ [DEDUP-INTERNAL] Duplicado detectado y eliminado:', key);
+                continue;
+            }
+
+            seen.add(key);
+            deduplicated.push(record);
+        }
+
+        return deduplicated;
+    }
+
+    /**
      * Agrega registros a la cola de sincronización evitando duplicados
      */
     async addToQueue(records, sheet = null) {
@@ -937,8 +998,15 @@ class AdvancedSyncManager {
                 }
             }
 
-            if (recordsToSync.length === 0) {
-                console.log('✅ [DEDUP-SYNC] Todos los registros pendientes ya fueron sincronizados');
+            // NUEVO: Deduplicación INTERNA del batch
+            const deduplicatedRecords = this._deduplicateBatch(recordsToSync);
+            const duplicatesRemoved = recordsToSync.length - deduplicatedRecords.length;
+            if (duplicatesRemoved > 0) {
+                console.warn(`⚠️ [DEDUP-INTERNAL] ${duplicatesRemoved} duplicados internos eliminados del batch`);
+            }
+
+            if (deduplicatedRecords.length === 0) {
+                console.log('✅ [DEDUP-SYNC] Todos los registros pendientes ya fueron sincronizados o eran duplicados');
                 this.pendingSync = [];
                 await this.save();
                 this.updateUI(true);
@@ -948,8 +1016,8 @@ class AdvancedSyncManager {
                 return { success: true, synced: 0 };
             }
 
-            // Formatear registros
-            const values = recordsToSync.map(r => {
+            // Formatear registros (usar deduplicatedRecords en lugar de recordsToSync)
+            const values = deduplicatedRecords.map(r => {
                 if (this.config.formatRecord) {
                     return this.config.formatRecord(r);
                 }
@@ -985,14 +1053,23 @@ class AdvancedSyncManager {
                         if (singleResponse && singleResponse.success) {
                             synced++;
                             // Marcar este registro específico como sincronizado
-                            await this.persistenceManager.markAsSynced([recordsToSync[i]]);
+                            await this.persistenceManager.markAsSynced([deduplicatedRecords[i]]);
                             const palletKey = this.deduplicationManager.generatePalletKey(
-                                recordsToSync[i].pallet,
-                                recordsToSync[i].location
+                                deduplicatedRecords[i].pallet,
+                                deduplicatedRecords[i].location
                             );
                             this.deduplicationManager.syncedPallets.add(palletKey);
+
+                            // NUEVO: Actualizar processed cache en modo lento también
+                            if (window.processedCacheManager && typeof window.processedCacheManager.addSyncedRecords === 'function') {
+                                try {
+                                    await window.processedCacheManager.addSyncedRecords([deduplicatedRecords[i]]);
+                                } catch (error) {
+                                    console.error('❌ [SYNC] Error actualizando processed cache (modo lento):', error);
+                                }
+                            }
                         } else {
-                            failed.push(recordsToSync[i]);
+                            failed.push(deduplicatedRecords[i]);
                         }
 
                         // Delay entre registros en modo lento
@@ -1001,7 +1078,7 @@ class AdvancedSyncManager {
                         }
                     } catch (err) {
                         console.error(`❌ [SLOW-SYNC] Error en registro ${i + 1}:`, err);
-                        failed.push(recordsToSync[i]);
+                        failed.push(deduplicatedRecords[i]);
                     }
                 }
 
@@ -1035,36 +1112,46 @@ class AdvancedSyncManager {
 
                 const updatedRows = response.updatedRows;
 
-                if (!updatedRows || updatedRows !== recordsToSync.length) {
-                    throw new Error(`Handshake fallido: Se enviaron ${recordsToSync.length} registros pero se confirmaron ${updatedRows || 0}`);
+                if (!updatedRows || updatedRows !== deduplicatedRecords.length) {
+                    throw new Error(`Handshake fallido: Se enviaron ${deduplicatedRecords.length} registros pero se confirmaron ${updatedRows || 0}`);
                 }
 
                 console.log('✅ HANDSHAKE CONFIRMADO:');
                 console.log('  - Registros confirmados:', updatedRows);
                 console.log('  - Filas escritas:', `${response.startRow}-${response.endRow}`);
 
-                synced = recordsToSync.length;
+                synced = deduplicatedRecords.length;
             }
-            
+
             // Marcar como sincronizados
-            await this.persistenceManager.markAsSynced(recordsToSync);
-            
+            await this.persistenceManager.markAsSynced(deduplicatedRecords);
+
             for (const palletKey of palletLocationPairs) {
                 this.deduplicationManager.syncedPallets.add(palletKey);
             }
             this.deduplicationManager.saveSyncedPallets();
-            
+
+            // NUEVO: Actualizar processedCacheManager con registros sincronizados
+            if (window.processedCacheManager && typeof window.processedCacheManager.addSyncedRecords === 'function') {
+                try {
+                    await window.processedCacheManager.addSyncedRecords(deduplicatedRecords);
+                    console.log('✅ [SYNC] Processed cache actualizado con', deduplicatedRecords.length, 'registros');
+                } catch (error) {
+                    console.error('❌ [SYNC] Error actualizando processed cache:', error);
+                }
+            }
+
             // Actualizar pendientes
             this.pendingSync = await this.persistenceManager.getPendingSync();
             this.lastSyncTime = new Date();
-            
+
             this.retryCount = 0;
             this.updateUI(true);
 
             if (showMessages && typeof showNotification === 'function') {
                 showNotification(`✅ ${synced} registros sincronizados y confirmados`, 'success');
             }
-            
+
             if (this.config.onSyncEnd) this.config.onSyncEnd();
             
             return { success: true, synced, confirmed: true };

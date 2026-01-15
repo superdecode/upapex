@@ -623,10 +623,9 @@ SidebarComponent.presets = {
         appIcon: '🎯',
         appSubtitle: 'Validación de cajas WMS',
         summaryConfig: {
-            title: '📊 Resumen',
+            title: '📊 Resumen Global',
             items: [
                 { id: 'summary-validated', icon: '✅', label: 'Validadas', class: 'validated' },
-                { id: 'summary-pending', icon: '⏳', label: 'Pendientes', class: 'pending' },
                 { id: 'summary-rejected', icon: '❌', label: 'Rechazadas', class: 'nowms' },
                 { id: 'summary-total', icon: '📦', label: 'Total', class: 'total' }
             ]

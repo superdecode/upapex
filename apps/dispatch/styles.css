@@ -1634,9 +1634,8 @@ select option[data-is-current="true"] {
 /* ==================== HEADER STYLES ==================== */
 .header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
+    flex-direction: column;
+    gap: 12px;
     margin-bottom: 15px;
     position: sticky;
     top: 0;
@@ -1647,28 +1646,28 @@ select option[data-is-current="true"] {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* Title row - full width */
 .header-left {
     display: flex;
     align-items: center;
     gap: 15px;
-    flex: 0 1 auto;
-    min-width: 0;
+    width: 100%;
 }
 
 .header-left h1 {
     white-space: nowrap;
     margin: 0;
     font-size: 1.3em;
+    flex: 0 0 auto;
 }
 
+/* Navigation row - space-between layout */
 .header-right {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
-    flex-wrap: nowrap;
-    flex: 0 1 auto;
-    justify-content: flex-end;
-    min-width: 0;
+    width: 100%;
 }
 
 .status-toggle-container {
@@ -1677,7 +1676,15 @@ select option[data-is-current="true"] {
     background: #f1f5f9;
     padding: 4px;
     border-radius: 8px;
-    flex: 0 0 auto; /* Don't grow, just fit content */
+    flex: 0 0 auto;
+}
+
+/* Right side controls container */
+.header-controls-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
 }
 
 .status-toggle-btn {
@@ -1707,12 +1714,12 @@ select option[data-is-current="true"] {
     box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
 }
 
-/* Date filter INSIDE status-toggle-container */
+/* Date filter button - now in header-right */
 .date-filter-btn {
     white-space: nowrap;
     min-width: 140px;
     font-weight: 600;
-    background: transparent;
+    background: #f1f5f9;
     color: #666;
     cursor: pointer;
     font-size: 0.9em;
@@ -1723,6 +1730,17 @@ select option[data-is-current="true"] {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Icon-only mode for date filter */
+.date-filter-btn.icon-only {
+    min-width: auto;
+    padding: 10px;
+}
+
+.date-filter-btn.icon-only span {
+    display: none;
 }
 
 .date-filter-btn:hover {
@@ -1761,7 +1779,7 @@ select option[data-is-current="true"] {
 /* Level 0: Prevent overflow at 1300px */
 @media (max-width: 1300px) {
     .header {
-        gap: 15px;
+        gap: 10px;
     }
     
     .header-left {
@@ -1777,6 +1795,11 @@ select option[data-is-current="true"] {
     }
     
     .status-toggle-btn {
+        padding: 9px 16px;
+        font-size: 0.88em;
+    }
+    
+    .date-filter-btn {
         padding: 9px 16px;
         font-size: 0.88em;
     }
@@ -1799,6 +1822,11 @@ select option[data-is-current="true"] {
     .header-left h1 {
         font-size: 1.15em;
     }
+    
+    .date-filter-btn {
+        padding: 8px 14px;
+        font-size: 0.85em;
+    }
 }
 
 /* Level 2: Further reduce sizes (950px-900px) */
@@ -1816,6 +1844,16 @@ select option[data-is-current="true"] {
     
     .status-toggle-container {
         gap: 6px;
+    }
+    
+    /* Switch date filter to icon-only mode */
+    .date-filter-btn {
+        min-width: auto;
+        padding: 8px 12px;
+    }
+    
+    .date-filter-btn span {
+        display: none;
     }
 }
 
@@ -1843,10 +1881,6 @@ select option[data-is-current="true"] {
         padding: 8px;
         min-width: 44px;
         justify-content: center;
-    }
-    
-    /* Hide text but show icon and badge */
-    .status-toggle-btn {
         font-size: 0;
     }
     
@@ -1857,70 +1891,145 @@ select option[data-is-current="true"] {
         margin-left: 4px;
     }
     
-    /* Show emoji icon before badge */
+    /* Show emoji icons before badge - ALL VARIATIONS */
+    /* Todos/Pendientes screen */
     #toggle-todo::before { content: '📋'; font-size: 1.3rem; }
     #toggle-pending::before { content: '⏳'; font-size: 1.3rem; }
     #toggle-validated::before { content: '✅'; font-size: 1.3rem; }
     #toggle-otros::before { content: '🗂️'; font-size: 1.3rem; }
     #toggle-folios::before { content: '🚚'; font-size: 1.3rem; }
+    
+    /* Validated screen variations */
+    #toggle-todo-validated::before { content: '📋'; font-size: 1.3rem; }
+    #toggle-pending-validated::before { content: '⏳'; font-size: 1.3rem; }
+    #toggle-validated-validated::before { content: '✅'; font-size: 1.3rem; }
+    #toggle-otros-validated::before { content: '🗂️'; font-size: 1.3rem; }
+    #toggle-folios-validated::before { content: '🚚'; font-size: 1.3rem; }
+    
+    /* Otros screen variations */
+    #toggle-todo-otros::before { content: '📋'; font-size: 1.3rem; }
+    #toggle-pending-otros::before { content: '⏳'; font-size: 1.3rem; }
+    #toggle-validated-otros::before { content: '✅'; font-size: 1.3rem; }
+    #toggle-otros-otros::before { content: '🗂️'; font-size: 1.3rem; }
+    #toggle-folios-otros::before { content: '🚚'; font-size: 1.3rem; }
+    
+    /* Folios screen variations */
+    #toggle-todo-folios::before { content: '📋'; font-size: 1.3rem; }
+    #toggle-pending-folios::before { content: '⏳'; font-size: 1.3rem; }
+    #toggle-validated-folios::before { content: '✅'; font-size: 1.3rem; }
+    #toggle-otros-folios::before { content: '🗂️'; font-size: 1.3rem; }
+    #toggle-folios-folios::before { content: '🚚'; font-size: 1.3rem; }
 }
 
-/* Level 4: Two-row layout as last resort (850px-800px) */
+/* Level 4: Maintain single-row navigation (850px-800px) */
 @media (max-width: 850px) {
-    .header {
-        flex-wrap: wrap;
-    }
-    
-    .header-left {
-        width: 100%;
-        margin-bottom: 8px;
-    }
-    
     .header-right {
-        width: 100%;
-        justify-content: space-between;
+        gap: 6px;
     }
     
     .status-toggle-container {
-        flex: 1;
-        justify-content: space-between;
+        gap: 3px;
     }
     
     .status-toggle-btn {
-        flex: 1;
-        justify-content: center;
         padding: 8px 6px;
+        min-width: 40px;
+    }
+    
+    .date-filter-btn {
+        padding: 8px;
+        min-width: auto;
+    }
+    
+    .header-controls-right {
+        gap: 6px;
+    }
+    
+    .btn-close-modern {
+        width: 32px;
+        height: 32px;
+        font-size: 1.3em;
     }
 }
 
 @media (max-width: 768px) {
     .header {
-        flex-direction: column;
-        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .header-left h1 {
+        font-size: 1.05em;
     }
 
     .header-right {
-        width: 100%;
-        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 6px;
     }
 
     .status-toggle-container {
-        flex: 1;
+        flex: 1 1 100%;
+        justify-content: space-between;
     }
 
     .status-toggle-btn {
         flex: 1;
         justify-content: center;
-        font-size: 0.85em;
-        padding: 8px 12px;
+        padding: 8px 4px;
+        min-width: 38px;
     }
+    
+    .toggle-badge {
+        font-size: 0.65rem;
+        padding: 2px 5px;
+    }
+    
+    .header-controls-right {
+        flex: 0 0 auto;
+        margin-left: auto;
+    }
+    
+    .date-filter-btn {
+        padding: 6px 8px;
+    }
+    
+    .btn-close-modern {
+        width: 30px;
+        height: 30px;
+    }
+}
+
+/* Close button styling */
+.btn-close-modern {
+    background: #fee2e2;
+    color: #dc2626;
+    border: none;
+    border-radius: 6px;
+    width: 36px;
+    height: 36px;
+    font-size: 1.5em;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.btn-close-modern:hover {
+    background: #fecaca;
+    transform: scale(1.05);
+}
+
+.btn-close-modern:active {
+    transform: scale(0.95);
 }
 
 /* ==================== ORDERS TABLE STYLES ==================== */
 .orders-table-container {
     width: 100%;
-    height: calc(100vh - 380px);
-    max-height: calc(100vh - 380px);
+    height: calc(100vh - 280px);
+    max-height: calc(100vh - 280px);
     min-height: 400px;
     overflow-x: auto;
     overflow-y: auto;
@@ -1929,6 +2038,9 @@ select option[data-is-current="true"] {
     background: white;
     display: block;
 }
+
+/* Note: Otros, Folios, and Folios Management use flex-based full-height layout
+   defined in their respective sections below. No fixed heights needed here. */
 
 .orders-table {
     width: 100%;
@@ -2721,34 +2833,27 @@ textarea:focus {
     color: var(--warning);
 }
 
-/* ==================== MODERN CLOSE BUTTON ==================== */
-.btn-close-modern {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    width: 36px;
-    height: 36px;
-    font-size: 24px;
-    font-weight: 300;
-    line-height: 1;
-    cursor: pointer;
-    transition: all 0.2s ease;
+/* ==================== OTROS CONTENT FULL HEIGHT ==================== */
+#otros-content {
+    height: 100%;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
-    margin-left: 10px;
+    flex-direction: column;
 }
 
-.btn-close-modern:hover {
-    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-    transform: scale(1.05);
-    box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+#otros-content .card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: visible;
 }
 
-.btn-close-modern:active {
-    transform: scale(0.95);
+#otros-content .orders-table-container {
+    flex: 1;
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+    overflow-x: auto;
 }
 
 /* ==================== VALIDATED CONTENT FULL HEIGHT ==================== */
@@ -2827,6 +2932,39 @@ textarea:focus {
 }
 
 #folios-content > .card {
+    margin: 0;
+    max-width: none;
+}
+
+/* ==================== FOLIOS MANAGEMENT CONTENT FULL HEIGHT ==================== */
+#folios-management-content {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#folios-management-content .card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: visible;
+}
+
+#folios-management-content .orders-table-container {
+    flex: 1;
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+#folios-management-content .header {
+    flex-shrink: 0;
+}
+
+#folios-management-content > .card {
     margin: 0;
     max-width: none;
 }

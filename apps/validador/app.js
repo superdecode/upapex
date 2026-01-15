@@ -38,7 +38,7 @@ let RECONTEO_STATE = { obc: null, scans: [], stats: { ok: 0, dup: 0, missing: 0,
 // Registro de validaciones ya sincronizadas para evitar duplicados (similar a scan.html)
 let SYNCED_VALIDATIONS = new Set();
 
-const DeduplicationManager = {
+const ValidationDeduplicationManager = {
     // Genera una clave única para una validación
     generateValidationKey(code, obc, location) {
         // Validar que los parámetros existan antes de usar métodos de string
@@ -390,36 +390,32 @@ function updateGlobalSummary() {
         totalExpected += total;
     });
 
-    const totalPending = Math.max(0, totalExpected - totalValidated);
     const grandTotal = totalValidated + totalRejected;
 
     // CORRECCIÓN: Log del resultado final
-    console.log(`✅ [VALIDADOR] Resumen: Validadas=${totalValidated}, Pendientes=${totalPending}, Rechazadas=${totalRejected}, Total=${grandTotal}`);
+    console.log(`✅ [VALIDADOR] Resumen: Validadas=${totalValidated}, Rechazadas=${totalRejected}, Total=${grandTotal}`);
 
     // Actualizar UI usando SidebarComponent si está disponible
     if (window.sidebarComponent) {
         window.sidebarComponent.updateSummary({
             validated: totalValidated,
-            pending: totalPending,
             rejected: totalRejected,
             summaryTotal: grandTotal
         });
     } else {
         // Fallback: actualizar elementos DOM directamente
         const validatedEl = document.getElementById('summary-validated');
-        const pendingEl = document.getElementById('summary-pending');
         const rejectedEl = document.getElementById('summary-rejected');
         const totalEl = document.getElementById('summary-total');
 
         if (validatedEl) validatedEl.textContent = totalValidated;
-        if (pendingEl) pendingEl.textContent = totalPending;
         if (rejectedEl) rejectedEl.textContent = totalRejected;
         if (totalEl) totalEl.textContent = grandTotal;
     }
 }
 
 // Helper para agregar a la cola de sync usando Advanced Sync Manager
-function addToPendingSync(log) {
+async function addToPendingSync(log) {
     if (!syncManager) {
         console.warn('⚠️ [VALIDADOR] syncManager no disponible, validación no se sincronizará');
         return;
@@ -440,7 +436,7 @@ function addToPendingSync(log) {
             nota: log.note || ''
         };
 
-        syncManager.addToQueue(record);
+        await syncManager.addToQueue(record);
         console.log('✅ [VALIDADOR] Validación agregada a cola de sincronización:', log.code);
     } catch (error) {
         console.error('❌ [VALIDADOR] Error al agregar a cola de sync:', error);
@@ -518,23 +514,8 @@ async function loadFromStorage() {
             console.log('ℹ️ [VALIDADOR] No hay estado previo guardado');
         }
 
-        console.log('⏳ [VALIDADOR] Cargando BD desde storage...');
-        const bdRes = await window.storage.get('wms_validador_bd');
-        if (bdRes?.value) {
-            const cached = JSON.parse(bdRes.value);
-            BD_CODES = new Set(cached.codes || []);
-            OBC_MAP = new Map((cached.obcMap || []).map(([k, v]) => [k, new Set(v)]));
-            OBC_TOTALS = new Map(cached.totals || []);
-            OBC_INFO = new Map(cached.info || []);
-            LAST_BD_UPDATE = cached.lastUpdate;
-            console.log('✅ [VALIDADOR] BD cargada:', {
-                codes: BD_CODES.size,
-                obcs: OBC_TOTALS.size,
-                lastUpdate: LAST_BD_UPDATE ? new Date(LAST_BD_UPDATE).toLocaleString() : 'N/A'
-            });
-        } else {
-            console.log('ℹ️ [VALIDADOR] No hay BD en caché');
-        }
+        // ❌ DESHABILITADO: No cargar BD desde localStorage (se recarga desde Google Sheets)
+        console.log('ℹ️ [VALIDADOR] BD se cargará desde Google Sheets');
 
         // El historial ahora se carga desde IndexedDB en HistoryIndexedDBManager.init()
     } catch (e) {
@@ -551,17 +532,11 @@ async function saveState() {
 }
 
 async function saveBD() {
-    try {
-        await window.storage.set('wms_validador_bd', JSON.stringify({
-            codes: Array.from(BD_CODES),
-            obcMap: Array.from(OBC_MAP.entries()).map(([k, v]) => [k, Array.from(v)]),
-            totals: Array.from(OBC_TOTALS.entries()),
-            info: Array.from(OBC_INFO.entries()),
-            lastUpdate: LAST_BD_UPDATE
-        }));
-    } catch (e) {
-        console.error('Error guardando BD:', e);
-    }
+    // ❌ DESHABILITADO: La BD de validación es muy grande (>5MB)
+    // No se debe guardar en localStorage ya que causa QuotaExceededError
+    // La BD se recarga desde Google Sheets en cada sesión
+    console.log('ℹ️ [BD] BD no se guarda en localStorage (se recarga desde Google Sheets en cada sesión)');
+    return;
 }
 
 async function saveHistory() {
@@ -665,8 +640,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Cargar sistema de deduplicación
         console.log('⏳ [VALIDADOR] Cargando sistema de deduplicación...');
-        DeduplicationManager.loadSyncedValidations();
-        DeduplicationManager.cleanOldValidations();
+        ValidationDeduplicationManager.loadSyncedValidations();
+        ValidationDeduplicationManager.cleanOldValidations();
         console.log('✅ [VALIDADOR] Sistema de deduplicación cargado');
 
         console.log('⏳ [VALIDADOR] Cargando datos de storage...');
@@ -1075,7 +1050,7 @@ async function handleLogoutAndClearCache() {
         console.log('✅ SessionStorage limpiado');
 
         // 9. Limpiar sistema de deduplicación
-        DeduplicationManager.clearSyncedValidations();
+        ValidationDeduplicationManager.clearSyncedValidations();
         console.log('✅ Sistema de deduplicación limpiado');
 
         // Reiniciar variables
@@ -1635,7 +1610,7 @@ async function processScan(raw, isManual = false) {
 
 async function handleValidationOK(raw, code, obc, location, note = '', isManual = false) {
     // DEDUPLICACIÓN: Verificar si esta validación ya fue sincronizada
-    if (DeduplicationManager.isValidationSynced(code, obc, location)) {
+    if (ValidationDeduplicationManager.isValidationSynced(code, obc, location)) {
         console.warn(`⚠️ [DEDUP] Validación duplicada detectada: ${code}|${obc}|${location}`);
         showNotification('⚠️ Esta validación ya fue registrada anteriormente', 'warning');
         playSound('error');
@@ -1665,7 +1640,7 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
     await HistoryIndexedDBManager.addValidation(concatenated, historyData);
 
     // DEDUPLICACIÓN: Marcar como sincronizada ANTES de agregar a la cola
-    DeduplicationManager.markValidationAsSynced(code, obc, location);
+    ValidationDeduplicationManager.markValidationAsSynced(code, obc, location);
 
     addToPendingSync(log);
     await saveState();
