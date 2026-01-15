@@ -1354,11 +1354,23 @@ function updateFolioSelector() {
 
 /**
  * Configura los event listeners para actualizar el selector de folios
+ * IMPORTANTE: Se usa flag para evitar agregar listeners múltiples veces
  */
+let folioListenersInitialized = false;
+let previousSelectedFolio = '';
+
 function setupFolioSelectorListeners() {
     const conductorSelect = document.getElementById('modal-operador');
     const unidadSelect = document.getElementById('modal-unidad');
     const folioSelect = document.getElementById('modal-folio-carga');
+
+    // Evitar agregar listeners duplicados
+    if (folioListenersInitialized) {
+        // Solo actualizar el valor previo del folio actual
+        previousSelectedFolio = folioSelect ? folioSelect.value : '';
+        console.log('[Folio de Carga] Listeners ya configurados, solo actualizando estado');
+        return;
+    }
 
     if (conductorSelect) {
         conductorSelect.addEventListener('change', updateFolioSelector);
@@ -1370,7 +1382,7 @@ function setupFolioSelectorListeners() {
 
     // NUEVO: Validar existencia de folio al seleccionarlo
     // Guardar folio anterior para detectar cambios reales
-    let previousSelectedFolio = folioSelect ? folioSelect.value : '';
+    previousSelectedFolio = folioSelect ? folioSelect.value : '';
 
     if (folioSelect) {
         folioSelect.addEventListener('change', async function() {
@@ -1411,6 +1423,7 @@ function setupFolioSelectorListeners() {
         });
     }
 
+    folioListenersInitialized = true;
     console.log('[Folio de Carga] Event listeners configurados');
 }
 
@@ -7302,12 +7315,22 @@ function showOrderInfo(orden) {
         }
 
         // Populate folio de carga si existe
+        // NOTA: Mover esta lógica al setTimeout de operador/unidad para que el selector
+        // se actualice DESPUÉS de que conductor y unidad estén poblados
         const folioSelect = document.getElementById('modal-folio-carga');
-        if (folioSelect && savedData.folio) {
-            const folioCarga = savedData.folio.split('-').pop();
-            updateFolioSelector();
-            folioSelect.value = folioCarga;
-        }
+        const savedFolio = savedData.folio;
+
+        // Usar setTimeout para asegurar que operador/unidad ya estén poblados (100ms)
+        setTimeout(() => {
+            if (folioSelect && savedFolio) {
+                const folioCarga = savedFolio.split('-').pop();
+                updateFolioSelector(); // Ahora conductor y unidad ya están establecidos
+                folioSelect.value = folioCarga;
+                // Actualizar el previousSelectedFolio para evitar alertas innecesarias
+                previousSelectedFolio = folioCarga;
+                console.log(`✅ Folio populated: ${folioCarga}`);
+            }
+        }, 150); // 150ms para asegurar que el setTimeout de 100ms de operador/unidad ya terminó
 
         // Set cancellation toggle state if order is cancelled
         setTimeout(() => {

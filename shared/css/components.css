@@ -306,11 +306,110 @@
 .notification.success { border-color: var(--success); }
 .notification.error { border-color: var(--error); }
 .notification.warning { border-color: var(--warning); }
-.notification.info { border-color: var(--info); }
+.notification.info { border-color: #2196F3; }
 
 @keyframes slideIn {
     from { transform: translateX(400px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+}
+
+/* ==================== RECONNECTION SCREEN ==================== */
+.reconnection-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.reconnection-overlay.active {
+    opacity: 1;
+}
+
+.reconnection-modal {
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    text-align: center;
+    animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.reconnection-icon {
+    font-size: 4em;
+    margin-bottom: 20px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.reconnection-title {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 15px;
+}
+
+.reconnection-message {
+    font-size: 1.05em;
+    color: #666;
+    margin-bottom: 30px;
+    line-height: 1.6;
+}
+
+.reconnection-info {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+}
+
+.reconnection-info-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    font-size: 0.95em;
+    color: #555;
+}
+
+.reconnection-info-icon {
+    font-size: 1.5em;
+}
+
+.reconnection-buttons {
+    display: flex;
+    gap: 12px;
+    flex-direction: column;
+}
+
+.reconnection-buttons .btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 1.05em;
 }
 
 .connection-banner {

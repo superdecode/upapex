@@ -56,12 +56,23 @@ async function startBackgroundIndexLoad() {
 }
 
 /**
+ * Normalización RÁPIDA inline para carga de índices
+ * NO usa la función compartida para evitar logs y procesamiento innecesario
+ * @param {string} code - Código a normalizar
+ * @returns {string} - Código en mayúsculas sin caracteres especiales
+ */
+function fastNormalize(code) {
+    if (!code) return '';
+    return String(code).trim().toUpperCase();
+}
+
+/**
  * Carga el índice de OBC (solo columnas ID Caja e ID OBC)
- * Optimizado para reducir memoria en 90%
+ * OPTIMIZADO: Sin normalización compleja durante carga (solo trim + uppercase)
  */
 async function loadOBCIndex() {
     console.log('📥 [Background Index] Cargando índice de OBC...');
-    
+
     if (!gapi?.client?.sheets) {
         throw new Error('Google Sheets API no disponible');
     }
@@ -79,84 +90,85 @@ async function loadOBCIndex() {
             return;
         }
 
-        console.log(`📊 [Background Index] Procesando ${rows.length - 1} registros...`);
+        const totalRows = rows.length - 1;
+        console.log(`📊 [Background Index] Procesando ${totalRows} registros...`);
 
         let processed = 0;
-        
+
         // Procesar filas (saltar header)
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            
+
             // Mapeo de columnas BD: A=OBC, B=Ref, C=Service, D=Track, E=Fecha, F=Remark, G=Recipient, I=Código Caja
-            const obc = row[0]?.trim();           // Columna A
-            const referenceNo = row[1]?.trim();   // Columna B
-            const codigoTrack = row[3]?.trim();   // Columna D
-            const expectedArrival = row[4]?.trim(); // Columna E - FECHA
-            const recipient = row[6]?.trim();     // Columna G
-            const codigoCaja = row[8]?.trim();    // Columna I (índice 8)
-            
+            const obc = row[0];
             if (!obc) continue;
-            
-            // Normalizar códigos
-            const obcNorm = normalizeCodeShared(obc).toUpperCase();
-            
+
+            const referenceNo = row[1];
+            const codigoTrack = row[3];
+            const expectedArrival = row[4];
+            const recipient = row[6];
+            const codigoCaja = row[8];
+
+            // OPTIMIZACIÓN: Normalización simple (solo trim + uppercase, sin logs)
+            const obcNorm = fastNormalize(obc);
+
             // Guardar datos básicos del OBC (incluye fecha)
             if (!BACKGROUND_INDEX.obcData.has(obcNorm)) {
                 BACKGROUND_INDEX.obcData.set(obcNorm, {
-                    obc: obc,
-                    fecha: expectedArrival || 'N/A',
-                    recipient: recipient || 'N/A',
-                    referenceNo: referenceNo || 'N/A',
-                    trackingCode: codigoTrack || 'N/A'
+                    obc: obc?.trim() || obc,
+                    fecha: expectedArrival?.trim() || 'N/A',
+                    recipient: recipient?.trim() || 'N/A',
+                    referenceNo: referenceNo?.trim() || 'N/A',
+                    trackingCode: codigoTrack?.trim() || 'N/A'
                 });
             }
-            
-            // Indexar por código de caja
+
+            // Indexar por código de caja (sin normalización compleja)
             if (codigoCaja) {
-                const cajaNorm = normalizeCodeShared(codigoCaja).toUpperCase();
+                const cajaNorm = fastNormalize(codigoCaja);
                 if (!BACKGROUND_INDEX.obcIndex.has(cajaNorm)) {
                     BACKGROUND_INDEX.obcIndex.set(cajaNorm, []);
                 }
                 BACKGROUND_INDEX.obcIndex.get(cajaNorm).push(obcNorm);
             }
-            
+
             // Indexar por código de track
             if (codigoTrack) {
-                const trackNorm = normalizeCodeShared(codigoTrack).toUpperCase();
+                const trackNorm = fastNormalize(codigoTrack);
                 if (!BACKGROUND_INDEX.trackIndex.has(trackNorm)) {
                     BACKGROUND_INDEX.trackIndex.set(trackNorm, []);
                 }
                 BACKGROUND_INDEX.trackIndex.get(trackNorm).push(obcNorm);
             }
-            
+
             // Indexar por código de referencia
             if (referenceNo) {
-                const refNorm = normalizeCodeShared(referenceNo).toUpperCase();
+                const refNorm = fastNormalize(referenceNo);
                 if (!BACKGROUND_INDEX.refIndex.has(refNorm)) {
                     BACKGROUND_INDEX.refIndex.set(refNorm, []);
                 }
                 BACKGROUND_INDEX.refIndex.get(refNorm).push(obcNorm);
             }
-            
+
             processed++;
-            
-            // Actualizar progreso cada 1000 registros
-            if (processed % 1000 === 0) {
-                BACKGROUND_INDEX.loadProgress = (processed / (rows.length - 1)) * 100;
+
+            // Actualizar progreso cada 10000 registros (menos frecuente para mejor rendimiento)
+            if (processed % 10000 === 0) {
+                BACKGROUND_INDEX.loadProgress = (processed / totalRows) * 100;
                 console.log(`📊 [Background Index] Progreso: ${BACKGROUND_INDEX.loadProgress.toFixed(1)}%`);
             }
         }
-        
+
         BACKGROUND_INDEX.totalRecords = processed;
         BACKGROUND_INDEX.loadProgress = 100;
-        
+
         console.log('✅ [Background Index] Índice de OBC completado:', {
             codigosCaja: BACKGROUND_INDEX.obcIndex.size,
             codigosTrack: BACKGROUND_INDEX.trackIndex.size,
             codigosRef: BACKGROUND_INDEX.refIndex.size,
             totalRegistros: processed
         });
-        
+
     } catch (error) {
         console.error('❌ [Background Index] Error en loadOBCIndex:', error);
         throw error;
@@ -165,10 +177,11 @@ async function loadOBCIndex() {
 
 /**
  * Carga el índice de MNE (rastreo)
+ * OPTIMIZADO: Sin normalización compleja durante carga
  */
 async function loadMNEIndex() {
     console.log('📥 [Background Index] Cargando índice de MNE...');
-    
+
     if (!CONFIG?.SOURCES?.MNE) {
         console.warn('⚠️ [Background Index] URL de MNE no configurada');
         return;
@@ -178,28 +191,29 @@ async function loadMNEIndex() {
         const response = await fetch(CONFIG.SOURCES.MNE);
         const csv = await response.text();
         const lines = csv.split('\n').filter(l => l.trim());
-        
+
         console.log(`📊 [Background Index] Procesando ${lines.length - 1} registros de MNE...`);
-        
+
         for (let i = 1; i < lines.length; i++) {
             const cols = parseCSVLine(lines[i]);
-            
-            const rastreo = cols[0]?.trim();
-            const obc = cols[1]?.trim();
-            
+
+            const rastreo = cols[0];
+            const obc = cols[1];
+
             if (!rastreo || !obc) continue;
-            
-            const rastreoNorm = normalizeCodeShared(rastreo).toUpperCase();
-            const obcNorm = normalizeCodeShared(obc).toUpperCase();
-            
+
+            // OPTIMIZACIÓN: Normalización simple
+            const rastreoNorm = fastNormalize(rastreo);
+            const obcNorm = fastNormalize(obc);
+
             if (!BACKGROUND_INDEX.mneIndex.has(rastreoNorm)) {
                 BACKGROUND_INDEX.mneIndex.set(rastreoNorm, []);
             }
             BACKGROUND_INDEX.mneIndex.get(rastreoNorm).push(obcNorm);
         }
-        
+
         console.log(`✅ [Background Index] Índice de MNE completado: ${BACKGROUND_INDEX.mneIndex.size} registros`);
-        
+
     } catch (error) {
         console.error('❌ [Background Index] Error en loadMNEIndex:', error);
     }
@@ -215,30 +229,51 @@ function searchInBackgroundIndex(query) {
         console.log('⏳ [Background Index] Índice aún no está listo');
         return null;
     }
-    
-    const queryNorm = normalizeCodeShared(query).toUpperCase();
+
+    // Durante BÚSQUEDA sí usamos normalización completa (para códigos escaneados)
+    // pero primero intentamos búsqueda directa con normalización simple
+    const querySimple = fastNormalize(query);
     const results = new Set();
-    
-    // Buscar en índice de cajas
-    if (BACKGROUND_INDEX.obcIndex.has(queryNorm)) {
-        BACKGROUND_INDEX.obcIndex.get(queryNorm).forEach(obc => results.add(obc));
+
+    // Primero buscar con normalización simple (más rápido)
+    let found = false;
+
+    if (BACKGROUND_INDEX.obcIndex.has(querySimple)) {
+        BACKGROUND_INDEX.obcIndex.get(querySimple).forEach(obc => results.add(obc));
+        found = true;
     }
-    
-    // Buscar en índice de track
-    if (BACKGROUND_INDEX.trackIndex.has(queryNorm)) {
-        BACKGROUND_INDEX.trackIndex.get(queryNorm).forEach(obc => results.add(obc));
+    if (BACKGROUND_INDEX.trackIndex.has(querySimple)) {
+        BACKGROUND_INDEX.trackIndex.get(querySimple).forEach(obc => results.add(obc));
+        found = true;
     }
-    
-    // Buscar en índice de referencia
-    if (BACKGROUND_INDEX.refIndex.has(queryNorm)) {
-        BACKGROUND_INDEX.refIndex.get(queryNorm).forEach(obc => results.add(obc));
+    if (BACKGROUND_INDEX.refIndex.has(querySimple)) {
+        BACKGROUND_INDEX.refIndex.get(querySimple).forEach(obc => results.add(obc));
+        found = true;
     }
-    
-    // Buscar en índice de MNE
-    if (BACKGROUND_INDEX.mneIndex.has(queryNorm)) {
-        BACKGROUND_INDEX.mneIndex.get(queryNorm).forEach(obc => results.add(obc));
+    if (BACKGROUND_INDEX.mneIndex.has(querySimple)) {
+        BACKGROUND_INDEX.mneIndex.get(querySimple).forEach(obc => results.add(obc));
+        found = true;
     }
-    
+
+    // Si no encontró, intentar con normalización completa (para códigos de scanner)
+    if (!found && typeof normalizeCode === 'function') {
+        const queryNorm = normalizeCode(query);
+        if (queryNorm !== querySimple) {
+            if (BACKGROUND_INDEX.obcIndex.has(queryNorm)) {
+                BACKGROUND_INDEX.obcIndex.get(queryNorm).forEach(obc => results.add(obc));
+            }
+            if (BACKGROUND_INDEX.trackIndex.has(queryNorm)) {
+                BACKGROUND_INDEX.trackIndex.get(queryNorm).forEach(obc => results.add(obc));
+            }
+            if (BACKGROUND_INDEX.refIndex.has(queryNorm)) {
+                BACKGROUND_INDEX.refIndex.get(queryNorm).forEach(obc => results.add(obc));
+            }
+            if (BACKGROUND_INDEX.mneIndex.has(queryNorm)) {
+                BACKGROUND_INDEX.mneIndex.get(queryNorm).forEach(obc => results.add(obc));
+            }
+        }
+    }
+
     // Convertir OBCs a objetos con datos completos
     const foundWithData = Array.from(results).map(obc => {
         const data = BACKGROUND_INDEX.obcData.get(obc);

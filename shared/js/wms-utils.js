@@ -12,17 +12,22 @@
  * @param {string} rawCode - Código sin procesar
  * @returns {string} - Código normalizado
  */
-function normalizeCode(rawCode) {
+/**
+ * Normaliza un código para ESCANEO - incluye procesamiento completo de patrones
+ * NOTA: Esta función solo debe usarse durante escaneo, NO durante carga de datos
+ * @param {string} rawCode - Código sin procesar
+ * @param {boolean} verbose - Si true, muestra logs (default: false)
+ * @returns {string} - Código normalizado
+ */
+function normalizeCode(rawCode, verbose = false) {
     if (!rawCode) return '';
 
     let code = String(rawCode).trim();
-    
-    console.log(' [WMS-UTILS] Normalizando:', rawCode);
 
     // Remove control characters and scanner prefixes
     code = code.replace(/[\x00-\x1F\x7F]/g, '');
     code = code.replace(/^GS1:|^\]C1|^\]E0|^\]d2/i, '');
-    
+
     // Normalizar caracteres especiales comunes en scanners
     code = code.replace(/ö/gi, 'o');
     code = code.replace(/ï/gi, 'i');
@@ -30,15 +35,15 @@ function normalizeCode(rawCode) {
     code = code.replace(/ñ/g, 'n');
     code = code.replace(/\^/g, '');
     code = code.replace(/¨/g, '"');
-    
+
     // Normalizar separadores alternativos a slash (IMPORTANTE: preservar separador)
     code = code.replace(/\'/g, '/');
     code = code.replace(/\*/g, '/');
     code = code.replace(/&/g, '/');
-    
+
     // Normalizar comillas raras
-    code = code.replace(/[“”«»„‟‚‛‘’¨]/g, '"');
-    
+    code = code.replace(/[""«»„‟‚‛''¨]/g, '"');
+
     // Eliminar caracteres intermedios problemáticos
     code = code.replace(/ñ\[/g, '');
     code = code.replace(/\?/g, '');
@@ -51,22 +56,22 @@ function normalizeCode(rawCode) {
         // Patrón 1: [ID[N [CODIGO[ con separador
         /\[ID\[N\s*\[([\d]+[\/\-][\d]+)/i,
         /\[ID\[.*?\[([\d]+[\/\-][\d]+)/i,
-        
+
         // Patrón 2: "[ID"N"CODIGO" con separador
         /"\[ID"N"([\d]+[\/\-][\d]+)/i,
         /"\[ID".*?"([\d]+[\/\-][\d]+)/i,
-        
+
         // Patrón 3: JSON con "id":"CODIGO"
         /"ID"\s*[N:"]+\s*"([\d]+[\/\-][\d]+)"/i,
         /"ID"\s*:\s*"([\d]+[\/\-][\d]+)"/i,
         /"CODE"\s*:\s*"([^"]+)"/i,
-        
+
         // Patrón 4: ID seguido de código
         /\bID[N:\s]*([\d]+[\/\-][\d]+)/i,
-        
+
         // Patrón 5: Código al inicio con separador
         /^([\d]+[\/\-][\d]+)/,
-        
+
         // Patrón 6: Secuencia numérica con separador (7-9 dígitos + separador + 1-3 dígitos)
         /([\d]{7,9}[\/\-]\d{1,3})/
     ];
@@ -77,7 +82,7 @@ function normalizeCode(rawCode) {
             const extracted = match[1];
             // Validar formato: números + separador + números
             if (/^\d{7,9}[\/\-]\d{1,3}$/.test(extracted)) {
-                console.log(` [WMS-UTILS] Código extraído con separador: ${extracted}`);
+                if (verbose) console.log(` [WMS-UTILS] Código extraído con separador: ${extracted}`);
                 return extracted; // PRESERVAR el separador original
             }
         }
@@ -87,7 +92,7 @@ function normalizeCode(rawCode) {
     const idPattern = /^ID(\d+[-\/]\d+)/i;
     const idMatch = codeUpper.match(idPattern);
     if (idMatch) {
-        console.log(` [WMS-UTILS] Código extraído de patrón ID: ${idMatch[1]}`);
+        if (verbose) console.log(` [WMS-UTILS] Código extraído de patrón ID: ${idMatch[1]}`);
         return idMatch[1]; // PRESERVAR el separador
     }
 
@@ -95,8 +100,19 @@ function normalizeCode(rawCode) {
     // Eliminar caracteres especiales EXCEPTO guiones, slashes y alfanuméricos
     const cleaned = codeUpper.replace(/[^A-Z0-9\-\/]/g, '');
 
-    console.log(` [WMS-UTILS] Código normalizado: ${cleaned}`);
     return cleaned;
+}
+
+/**
+ * Normalización RÁPIDA para carga de datos (sin patrones complejos ni logs)
+ * Optimizada para procesar miles de registros rápidamente
+ * @param {string} rawCode - Código sin procesar
+ * @returns {string} - Código normalizado (solo mayúsculas y limpieza básica)
+ */
+function normalizeCodeFast(rawCode) {
+    if (!rawCode) return '';
+    // Solo trim, mayúsculas y eliminar caracteres no alfanuméricos (excepto - y /)
+    return String(rawCode).trim().toUpperCase().replace(/[^A-Z0-9\-\/]/g, '');
 }
 
 /**
@@ -762,6 +778,7 @@ function validateLocationDailyUsageDB(location, dbRecords = []) {
 // Exponer funciones al ámbito global (window) para compatibilidad
 const WMS_UTILS = {
     normalizeCode,
+    normalizeCodeFast,
     extractBaseCode,
     generateCodeVariations,
     findCodeInInventory,

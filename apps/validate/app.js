@@ -271,22 +271,24 @@ const HistoryIndexedDBManager = {
 
         try {
             // Descargar historial de validaciones desde Google Sheets Val3
-            // Columnas: A(date), B(timestamp), C(user), D(obc), E(raw), F(code), G(reason), H(location), I(note)
+            // Columnas: A(Fecha), B(Hora), C(Usuario), D(OBC), E(Código), F(Ubicación), G(Nota)
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: SPREADSHEET_WRITE,
-                range: 'Val3!A:I'
+                range: 'Val3!A:G'
             });
 
             const rows = response.result.values || [];
             const newHistory = new Map();
 
             // Saltar header (fila 0) y procesar datos
+            // Estructura de columnas Val3:
+            // A(0)=Fecha, B(1)=Hora, C(2)=Usuario, D(3)=OBC, E(4)=Código, F(5)=Ubicación, G(6)=Nota
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i];
-                if (!row || !row[3] || !row[5]) continue; // Requiere obc y code
+                if (!row || !row[3] || !row[4]) continue; // Requiere obc y código (columna E, índice 4)
 
                 const obc = row[3]?.toString().trim().toUpperCase();
-                const code = row[5]?.toString().trim().toUpperCase();
+                const code = row[4]?.toString().trim().toUpperCase(); // Columna E = Código
                 const concatenated = code + obc.toLowerCase();
 
                 if (concatenated) {
@@ -295,11 +297,10 @@ const HistoryIndexedDBManager = {
                         timestamp: row[1]?.toString().trim() || '',
                         user: row[2]?.toString().trim() || '',
                         obc: obc,
-                        raw: row[4]?.toString().trim() || '',
+                        raw: code, // El raw es el mismo código
                         code: code,
-                        reason: row[6]?.toString().trim() || '',
-                        location: row[7]?.toString().trim() || '',
-                        note: row[8]?.toString().trim() || ''
+                        location: row[5]?.toString().trim() || '', // Columna F = Ubicación
+                        note: row[6]?.toString().trim() || '' // Columna G = Nota
                     });
                 }
             }
@@ -753,17 +754,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
 
                     showMainApp();
-                    updateUserFooter();
-
-                    // Actualizar conexión de Google en SidebarComponent
-                    if (window.sidebarComponent) {
-                        window.sidebarComponent.setUserEmail(USER_EMAIL);
-                        window.sidebarComponent.setUserName(CURRENT_USER);
-                        window.sidebarComponent.saveGoogleConnection(
-                            tokenObj.access_token,
-                            (tokenObj.expires_in || 3600)
-                        );
-                    }
+                    updateUIAfterAuth();
 
                     console.log('⏳ [VALIDADOR] Cargando base de datos...');
                     await loadDatabase();
@@ -824,17 +815,7 @@ async function tryRestoreSession() {
                 CURRENT_USER = savedAlias || data.name || 'Usuario';
 
                 showMainApp();
-                updateUserFooter();
-                
-                // Actualizar conexión de Google en SidebarComponent
-                if (window.sidebarComponent) {
-                    window.sidebarComponent.setUserEmail(USER_EMAIL);
-                    window.sidebarComponent.setUserName(CURRENT_USER);
-                    window.sidebarComponent.saveGoogleConnection(
-                        tokenObj.access_token,
-                        (tokenObj.expires_in || 3600)
-                    );
-                }
+                updateUIAfterAuth();
                 
                 console.log('⏳ [VALIDADOR] Cargando base de datos...');
                 await loadDatabase();
@@ -875,14 +856,83 @@ function showLoading(show) {
 }
 
 // ==================== AUTENTICACIÓN ====================
+/**
+ * Actualiza la UI después de cambios en el estado de autenticación
+ */
+function updateUIAfterAuth() {
+    console.log('🔄 [VALIDADOR] Actualizando UI después de cambio de autenticación...');
+    
+    // Actualizar indicador de conexión
+    updateConnectionUI();
+    
+    const hasToken = gapi?.client?.getToken();
+    
+    // Actualizar footer de usuario
+    updateUserFooter();
+    
+    // Actualizar SidebarComponent si existe
+    if (window.sidebarComponent) {
+        if (hasToken) {
+            window.sidebarComponent.setUserEmail(USER_EMAIL);
+            window.sidebarComponent.setUserName(CURRENT_USER);
+            const token = gapi.client.getToken();
+            if (token?.access_token) {
+                window.sidebarComponent.saveGoogleConnection(
+                    token.access_token,
+                    3600
+                );
+            }
+        } else {
+            // Limpiar estado de conexión en sidebar
+            window.sidebarComponent.setUserEmail('');
+            window.sidebarComponent.setUserName('');
+        }
+        // Forzar re-render del sidebar
+        window.sidebarComponent.render();
+    }
+    
+    // Actualizar botón de autenticación si existe
+    const authBtn = document.getElementById('sidebar-auth-btn');
+    if (authBtn) {
+        authBtn.textContent = hasToken ? '🚪 Salir' : '🔗 Conectar';
+    }
+    
+    console.log('✅ [VALIDADOR] UI actualizada:', { hasToken: !!hasToken, user: CURRENT_USER });
+}
+
 function handleLogin() {
     try {
         console.log('🔐 [VALIDADOR] Iniciando proceso de login...');
+        
         if (!window.AuthManager) {
             console.error('❌ [VALIDADOR] AuthManager no está disponible');
             showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
             return;
         }
+        
+        // Verificar si tokenClient está listo
+        if (!AuthManager.tokenClient) {
+            console.warn('⚠️ [VALIDADOR] tokenClient no está listo, esperando...');
+            showNotification('⏳ Inicializando autenticación...', 'info');
+            
+            // Esperar hasta 3 segundos para que tokenClient esté listo
+            let attempts = 0;
+            const maxAttempts = 30;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (AuthManager.tokenClient) {
+                    clearInterval(checkInterval);
+                    console.log('✅ [VALIDADOR] tokenClient listo, procediendo con login');
+                    AuthManager.login();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    console.error('❌ [VALIDADOR] Timeout esperando tokenClient');
+                    showNotification('❌ Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
+                }
+            }, 100);
+            return;
+        }
+        
         AuthManager.login();
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en handleLogin:', error);
@@ -892,6 +942,7 @@ function handleLogin() {
 
 // Hacer disponible globalmente
 window.handleLogin = handleLogin;
+window.updateUIAfterAuth = updateUIAfterAuth;
 
 function showMainApp() {
     document.getElementById('login-screen').classList.add('hidden');
@@ -912,50 +963,191 @@ function showLoginScreen() {
     document.getElementById('login-screen').classList.remove('hidden');
 }
 
-function toggleGoogleConnection() {
+// ==================== BOTÓN 1: SINCRONIZAR/ACTUALIZAR BD ====================
+/**
+ * Fuerza la descarga de datos desde Google Sheets
+ */
+async function handleSyncBD() {
+    try {
+        const hasToken = gapi?.client?.getToken();
+        if (!hasToken) {
+            showNotification('⚠️ Debes conectarte a Google primero', 'warning');
+            return;
+        }
+        
+        console.log('🔄 [VALIDADOR] Forzando sincronización de BD...');
+        showNotification('🔄 Actualizando base de datos...', 'info');
+        
+        await loadDatabase(false); // false = no silent, muestra notificaciones
+        
+        showNotification('✅ Base de datos actualizada correctamente', 'success');
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error al sincronizar BD:', error);
+        showNotification('❌ Error al actualizar base de datos', 'error');
+    }
+}
+
+// ==================== BOTÓN 2: CONECTAR/DESCONECTAR GOOGLE ====================
+/**
+ * Gestiona exclusivamente la conexión con Google (sin cerrar sesión de la app)
+ */
+function handleToggleGoogleAuth() {
     try {
         const hasToken = gapi?.client?.getToken();
         
+        console.log('🔄 [VALIDADOR] handleToggleGoogleAuth - Estado actual:', { hasToken: !!hasToken });
+        
         if (hasToken) {
-            // Ya está conectado - DESCONECTAR (cerrar sesión simple, sin limpiar todo)
-            if (confirm('¿Desconectar de Google?\n\nSe cerrará tu sesión actual.')) {
-                // Revocar token
-                const token = gapi.client.getToken();
-                if (token?.access_token) {
-                    try {
-                        google.accounts.oauth2.revoke(token.access_token);
-                        console.log('✅ Token revocado');
-                    } catch (e) {
-                        console.warn('⚠️ No se pudo revocar token:', e);
-                    }
-                }
-                
-                // Limpiar token
-                gapi.client.setToken('');
-                localStorage.removeItem('gapi_token');
-                localStorage.removeItem('gapi_token_expiry');
-                
-                // Actualizar UI
-                CURRENT_USER = '';
-                USER_EMAIL = '';
-                USER_GOOGLE_NAME = '';
-                updateUIAfterAuth();
-                
-                showNotification('✅ Sesión cerrada', 'success');
+            // DESCONECTAR - Solo revocar token de Google (mantener usuario en la app)
+            if (!confirm('¿Desconectar de Google?\n\nSe revocará el acceso a Google Sheets.\nPodrás reconectar sin perder tu sesión.')) {
+                return;
             }
+            
+            console.log('🔌 [VALIDADOR] Desconectando de Google...');
+            
+            // 1. Revocar token de Google
+            const token = gapi.client.getToken();
+            if (token?.access_token) {
+                try {
+                    google.accounts.oauth2.revoke(token.access_token);
+                    console.log('✅ Token de Google revocado');
+                } catch (e) {
+                    console.warn('⚠️ No se pudo revocar token:', e);
+                }
+            }
+            
+            // 2. Limpiar token de gapi
+            gapi.client.setToken('');
+            
+            // 3. Limpiar localStorage de tokens de Google
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+            
+            // 4. Actualizar UI (mantener usuario y datos locales)
+            updateUIAfterAuth();
+            
+            showNotification('🔌 Desconectado de Google. Reconecta para sincronizar.', 'info');
+            console.log('✅ [VALIDADOR] Desconexión de Google completada');
+            
         } else {
-            // No está conectado - CONECTAR (sin redireccionar, mantener vista actual)
-            console.log('🔗 Iniciando flujo de autenticación...');
-            handleLogin(); // Esto lanzará el flujo de Google Identity Services
+            // CONECTAR - Iniciar flujo de autenticación de Google
+            console.log('🔗 [VALIDADOR] Iniciando conexión con Google...');
+            handleLogin();
         }
     } catch (error) {
-        console.error('❌ [VALIDADOR] Error en toggleGoogleConnection:', error);
+        console.error('❌ [VALIDADOR] Error en handleToggleGoogleAuth:', error);
         showNotification('❌ Error al cambiar conexión', 'error');
     }
 }
 
-// Hacer disponible globalmente
-window.toggleGoogleConnection = toggleGoogleConnection;
+// ==================== BOTÓN 3: SALIR (LOGOUT COMPLETO) ====================
+/**
+ * Cierre de sesión total: revoca token, limpia localStorage, borra cache IndexedDB, redirige a login
+ */
+async function handleFullLogout() {
+    if (!confirm('¿Salir de la aplicación?\n\n⚠️ Se cerrará completamente la sesión y se limpiará toda la caché.')) {
+        return;
+    }
+    
+    try {
+        console.log('🚪 [VALIDADOR] Iniciando logout completo...');
+        showLoading(true);
+        
+        // 1. Revocar token de Google
+        const token = gapi?.client?.getToken();
+        if (token?.access_token) {
+            try {
+                await google.accounts.oauth2.revoke(token.access_token);
+                console.log('✅ Token de Google revocado');
+            } catch (e) {
+                console.warn('⚠️ No se pudo revocar token:', e);
+            }
+        }
+        
+        // 2. Limpiar token de gapi
+        if (gapi?.client) {
+            gapi.client.setToken('');
+        }
+        
+        // 3. Limpiar TODO el localStorage
+        localStorage.removeItem('gapi_token');
+        localStorage.removeItem('gapi_token_expiry');
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_token_expiry');
+        localStorage.removeItem('wms_current_user');
+        localStorage.removeItem('wms_user_email');
+        localStorage.removeItem('wms_google_name');
+        
+        // 4. Detener sincronizaciones automáticas
+        if (window.syncManager && typeof window.syncManager.stopAutoSync === 'function') {
+            window.syncManager.stopAutoSync();
+            console.log('✅ Auto-sync detenido');
+        }
+        
+        if (typeof HistoryIndexedDBManager !== 'undefined' && HistoryIndexedDBManager.intervalId) {
+            clearInterval(HistoryIndexedDBManager.intervalId);
+            HistoryIndexedDBManager.intervalId = null;
+        }
+        
+        if (typeof stopBDAutoRefresh === 'function') {
+            stopBDAutoRefresh();
+        }
+        
+        // 5. Limpiar cache de IndexedDB
+        if (window.processedCacheManager && typeof window.processedCacheManager.clearCache === 'function') {
+            await window.processedCacheManager.clearCache();
+            console.log('✅ Cache de procesados limpiado');
+        }
+        
+        try {
+            indexedDB.deleteDatabase('ValidadorPersistenceDB');
+            console.log('✅ IndexedDB eliminado');
+        } catch(e) {
+            console.warn('⚠️ Error eliminando IndexedDB:', e);
+        }
+        
+        // 6. Limpiar variables globales
+        BD_CODES.clear();
+        OBC_MAP.clear();
+        OBC_TOTALS.clear();
+        OBC_INFO.clear();
+        HISTORY.clear();
+        PREREC_DATA.clear();
+        STATE = { 
+            activeOBC: null, 
+            tabs: {}, 
+            closedTabs: {}, 
+            sessionStats: { total: 0, valid: 0, invalid: 0 }, 
+            currentLocation: '', 
+            pendingLocationValidation: null 
+        };
+        CURRENT_USER = '';
+        USER_EMAIL = '';
+        USER_GOOGLE_NAME = '';
+        
+        console.log('✅ [VALIDADOR] Logout completo - Redirigiendo a login...');
+        
+        // 7. Redirigir a pantalla de login
+        showLoading(false);
+        showLoginScreen();
+        showNotification('👋 Sesión cerrada correctamente', 'success');
+        
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error durante logout:', error);
+        showLoading(false);
+        showNotification('❌ Error al cerrar sesión', 'error');
+    }
+}
+
+// Hacer funciones disponibles globalmente
+window.handleSyncBD = handleSyncBD;
+window.handleToggleGoogleAuth = handleToggleGoogleAuth;
+window.handleFullLogout = handleFullLogout;
+
+// Mantener compatibilidad con código existente
+window.toggleGoogleConnection = handleToggleGoogleAuth;
 
 /**
  * Función global para reconectar después de error de autenticación
@@ -1277,6 +1469,13 @@ function updateConnectionIndicator(syncing = false) {
     }
 }
 
+// Alias para compatibilidad
+function updateConnectionUI(syncing = false) {
+    updateConnectionIndicator(syncing);
+}
+
+window.updateConnectionUI = updateConnectionUI;
+
 // ==================== BASE DE DATOS ====================
 async function loadDatabase(silent = false) {
     if (!gapi?.client?.sheets) {
@@ -1293,7 +1492,8 @@ async function loadDatabase(silent = false) {
     try {
         if (!silent) showLoading(true);
 
-        console.log('🧹 [VALIDADOR] Limpiando cache antes de cargar...');
+        console.groupCollapsed('🔄 [VALIDADOR] Cargando Base de Datos...');
+        console.log('🧹 Limpiando cache...');
         OBC_INFO.clear();
         OBC_TOTALS.clear();
         OBC_MAP.clear();
@@ -1316,63 +1516,80 @@ async function loadDatabase(silent = false) {
         });
 
         if (!bdRes.result.values || bdRes.result.values.length <= 1) {
+            console.groupEnd();
             throw new Error('No hay datos en la hoja BD');
         }
 
         const rows = bdRes.result.values;
-        console.log('📊 [VALIDADOR] Estructura de BD:', rows[0]);
-        console.log('📊 [VALIDADOR] Total de filas en BD:', rows.length - 1);
+        const totalRows = rows.length - 1;
+        console.log(`📊 Total de filas en BD: ${totalRows.toLocaleString()}`);
 
         // Mapa temporal para agrupar por orden
         const orderGroups = new Map();
 
-        // Procesar todas las filas (saltar header en índice 0)
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
+        // OPTIMIZACIÓN: Procesamiento por bloques para evitar congelamiento con 225k+ filas
+        const CHUNK_SIZE = 5000; // Procesar 5000 filas por bloque
+        const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
+        
+        console.log(`⚙️ Procesando en ${totalChunks} bloques de ${CHUNK_SIZE} filas...`);
+
+        // Procesar todas las filas en bloques (saltar header en índice 0)
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            const startIdx = 1 + (chunkIndex * CHUNK_SIZE);
+            const endIdx = Math.min(startIdx + CHUNK_SIZE, rows.length);
             
-            // Extraer datos de las columnas
-            // CORRECCIÓN: Columna G (índice 6) es Recipient, NO tracking
-            const outbound = (row[0] || '').toString().trim().toUpperCase();
-            const referenceNo = (row[1] || '').toString().trim();
-            const shippingService = (row[2] || '').toString().trim();
-            const trackingCode = (row[3] || '').toString().trim();
-            const arrivalTime = (row[4] || '').toString().trim();
-            const remark = (row[5] || '').toString().trim();
-            const recipient = (row[6] || '').toString().trim(); // Columna G = Recipient
-            const boxCode = (row[8] || '').toString().trim().toUpperCase();
+            // Procesar bloque actual
+            for (let i = startIdx; i < endIdx; i++) {
+                const row = rows[i];
+                
+                // Extraer datos de las columnas
+                const outbound = (row[0] || '').toString().trim().toUpperCase();
+                const referenceNo = (row[1] || '').toString().trim();
+                const shippingService = (row[2] || '').toString().trim();
+                const trackingCode = (row[3] || '').toString().trim();
+                const arrivalTime = (row[4] || '').toString().trim();
+                const remark = (row[5] || '').toString().trim();
+                const recipient = (row[6] || '').toString().trim(); // Columna G = Recipient
+                const boxCode = (row[8] || '').toString().trim().toUpperCase();
 
-            // Validar que tengamos al menos orden y código de caja
-            if (!outbound || !boxCode) {
-                continue;
-            }
+                // Validar que tengamos al menos orden y código de caja
+                if (!outbound || !boxCode) {
+                    continue;
+                }
 
-            // Crear clave única: Orden + Código de Caja
-            const concatenated = boxCode + outbound.toLowerCase();
-            BD_CODES.add(concatenated);
+                // Crear clave única: Orden + Código de Caja
+                const concatenated = boxCode + outbound.toLowerCase();
+                BD_CODES.add(concatenated);
 
-            // Agregar a mapa de orden
-            if (!OBC_MAP.has(outbound)) {
-                OBC_MAP.set(outbound, new Set());
-            }
-            OBC_MAP.get(outbound).add(concatenated);
+                // Agregar a mapa de orden
+                if (!OBC_MAP.has(outbound)) {
+                    OBC_MAP.set(outbound, new Set());
+                }
+                OBC_MAP.get(outbound).add(concatenated);
 
-            // Agrupar por orden para contar totales
-            if (!orderGroups.has(outbound)) {
-                orderGroups.set(outbound, {
-                    boxes: new Set(),
-                    firstRow: {
-                        referenceNo,
-                        shippingService,
-                        trackingCode,
-                        arrivalTime,
-                        remark,
-                        recipient
-                    }
-                });
+                // Agrupar por orden para contar totales
+                if (!orderGroups.has(outbound)) {
+                    orderGroups.set(outbound, {
+                        boxes: new Set(),
+                        firstRow: {
+                            referenceNo,
+                            shippingService,
+                            trackingCode,
+                            arrivalTime,
+                            remark,
+                            recipient
+                        }
+                    });
+                }
+                
+                // Agregar código de caja al set (evita duplicados automáticamente)
+                orderGroups.get(outbound).boxes.add(boxCode);
             }
             
-            // Agregar código de caja al set (evita duplicados automáticamente)
-            orderGroups.get(outbound).boxes.add(boxCode);
+            // Permitir que el navegador respire entre bloques
+            if (chunkIndex < totalChunks - 1) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
         }
 
         // Calcular totales y extraer metadata de cada orden
@@ -1388,38 +1605,65 @@ async function loadDatabase(silent = false) {
                 trackingCode: data.firstRow.trackingCode || '-',
                 remark: data.firstRow.remark || ''
             });
-
-            console.log(`📦 [VALIDADOR] Orden: ${outbound}, Total cajas: ${totalBoxes}, Destino: ${data.firstRow.recipient}, Horario: ${data.firstRow.arrivalTime}`);
         }
 
-        console.log(`✅ [VALIDADOR] Procesadas ${orderGroups.size} órdenes con ${BD_CODES.size} códigos únicos`);
+        console.log(`✅ Procesadas ${orderGroups.size.toLocaleString()} órdenes con ${BD_CODES.size.toLocaleString()} códigos únicos`);
+        console.groupEnd();
 
         // Cargar historial desde la hoja de validaciones
+        console.groupCollapsed('📋 [VALIDADOR] Cargando Historial de Validaciones...');
         try {
+            // Leer columnas A-G: Fecha, Hora, Usuario, OBC, Código, Ubicación, Nota
             const histRes = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: SPREADSHEET_WRITE,
-                range: 'Val3!A:I'
+                range: 'Val3!A:G'
             });
             if (histRes.result.values?.length > 1) {
                 HISTORY.clear();
-                for (let i = 1; i < histRes.result.values.length; i++) {
-                    const row = histRes.result.values[i];
-                    const code = (row[5] || '').toUpperCase();
-                    const obc = (row[3] || '').toUpperCase();
-                    if (code && obc) {
-                        const key = code + obc.toLowerCase();
-                        HISTORY.set(key, {
-                            date: row[0],
-                            timestamp: row[1],
-                            user: row[2],
-                            obc: obc
-                        });
+                const histRows = histRes.result.values;
+                const totalHistRows = histRows.length - 1;
+                console.log(`📊 Total de registros en historial: ${totalHistRows.toLocaleString()}`);
+                
+                // OPTIMIZACIÓN: Procesamiento por bloques para historial grande
+                const HIST_CHUNK_SIZE = 5000;
+                const histChunks = Math.ceil(totalHistRows / HIST_CHUNK_SIZE);
+                console.log(`⚙️ Procesando historial en ${histChunks} bloques...`);
+                
+                // Estructura: A(0)=Fecha, B(1)=Hora, C(2)=Usuario, D(3)=OBC, E(4)=Código, F(5)=Ubicación, G(6)=Nota
+                for (let chunkIdx = 0; chunkIdx < histChunks; chunkIdx++) {
+                    const startIdx = 1 + (chunkIdx * HIST_CHUNK_SIZE);
+                    const endIdx = Math.min(startIdx + HIST_CHUNK_SIZE, histRows.length);
+                    
+                    for (let i = startIdx; i < endIdx; i++) {
+                        const row = histRows[i];
+                        const code = (row[4] || '').toUpperCase(); // Columna E = Código
+                        const obc = (row[3] || '').toUpperCase();
+                        if (code && obc) {
+                            const key = code + obc.toLowerCase();
+                            HISTORY.set(key, {
+                                date: row[0],
+                                timestamp: row[1],
+                                user: row[2],
+                                obc: obc,
+                                code: code,
+                                location: row[5] || '', // Columna F = Ubicación
+                                note: row[6] || '' // Columna G = Nota
+                            });
+                        }
+                    }
+                    
+                    // Permitir que el navegador respire entre bloques
+                    if (chunkIdx < histChunks - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
                 }
+                
+                console.log(`✅ Historial cargado: ${HISTORY.size.toLocaleString()} registros únicos`);
             }
         } catch (e) {
-            console.log('No se pudo cargar historial:', e.message);
+            console.warn('⚠️ No se pudo cargar historial:', e.message);
         }
+        console.groupEnd();
 
         LAST_BD_UPDATE = Date.now();
         await saveBD();
@@ -1621,6 +1865,10 @@ function setupValidationListeners() {
 }
 
 function validateLocationInput(location) {
+    if (!location || location.trim() === '') {
+        return; // No validar ubicaciones vacías
+    }
+    
     // Usar el módulo compartido LocationValidatorUI
     LocationValidatorUI.validate(
         location,
@@ -1629,6 +1877,12 @@ function validateLocationInput(location) {
             if (locationInput) {
                 locationInput.value = normalizedLocation;
                 STATE.currentLocation = normalizedLocation;
+                
+                // Actualizar ubicación en el tab activo
+                if (STATE.activeOBC && STATE.tabs[STATE.activeOBC]) {
+                    STATE.tabs[STATE.activeOBC].location = normalizedLocation;
+                    saveState();
+                }
             }
             showNotification(`✅ Ubicación válida: ${normalizedLocation}`, 'success');
         },
@@ -1637,6 +1891,12 @@ function validateLocationInput(location) {
             if (locationInput) {
                 locationInput.value = forcedLocation;
                 STATE.currentLocation = forcedLocation;
+                
+                // Actualizar ubicación en el tab activo
+                if (STATE.activeOBC && STATE.tabs[STATE.activeOBC]) {
+                    STATE.tabs[STATE.activeOBC].location = forcedLocation;
+                    saveState();
+                }
             }
             showNotification(`⚠️ Ubicación insertada forzadamente: ${forcedLocation}`, 'warning');
         }
@@ -1686,6 +1946,125 @@ function showConnectionBanner(status) {
         setTimeout(() => banner.className = 'connection-banner', 3000);
     }
 }
+
+// ==================== CONNECTION MONITOR ====================
+function setupConnectionMonitor() {
+    // Monitorear cambios de conexión
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Verificar estado inicial
+    IS_ONLINE = navigator.onLine;
+    updateConnectionUI();
+    
+    console.log('✅ [VALIDADOR] Monitor de conexión configurado');
+}
+
+function handleOnline() {
+    console.log('🌐 [VALIDADOR] Conexión restaurada');
+    IS_ONLINE = true;
+    
+    // Mostrar banner de conexión restaurada
+    showConnectionBanner('online');
+    
+    // Actualizar UI
+    updateConnectionUI();
+    
+    // Verificar si hay token de Google
+    const hasToken = gapi?.client?.getToken();
+    
+    if (hasToken) {
+        showNotification('✅ Conexión restaurada - Sincronizando datos...', 'success');
+        
+        // Intentar sincronizar datos pendientes
+        setTimeout(() => {
+            try {
+                if (window.syncManager && typeof window.syncManager.sync === 'function') {
+                    window.syncManager.sync(false);
+                }
+            } catch (error) {
+                console.error('Error al sincronizar:', error);
+            }
+        }, 1000);
+    } else {
+        // Mostrar pantalla de reconexión solo si el usuario estaba autenticado
+        if (CURRENT_USER && USER_EMAIL) {
+            showReconnectionScreen();
+        }
+    }
+}
+
+function handleOffline() {
+    console.log('⚠️ [VALIDADOR] Conexión perdida');
+    IS_ONLINE = false;
+    
+    // Mostrar banner de sin conexión
+    showConnectionBanner('offline');
+    
+    // Actualizar UI
+    updateConnectionUI();
+    
+    showNotification('⚠️ Sin conexión - Los datos se guardarán localmente', 'warning');
+}
+
+function showReconnectionScreen() {
+    // Verificar si ya hay una pantalla de reconexión activa
+    if (document.getElementById('reconnection-overlay')) {
+        return;
+    }
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'reconnection-overlay';
+    overlay.className = 'reconnection-overlay';
+    overlay.innerHTML = `
+        <div class="reconnection-modal">
+            <div class="reconnection-icon">🔌</div>
+            <h2 class="reconnection-title">Conexión con Google Perdida</h2>
+            <p class="reconnection-message">
+                Tu sesión de Google se ha desconectado.<br>
+                Reconecta para sincronizar tus validaciones.
+            </p>
+            <div class="reconnection-info">
+                <div class="reconnection-info-item">
+                    <span class="reconnection-info-icon">💾</span>
+                    <span>Tus datos están guardados localmente</span>
+                </div>
+                <div class="reconnection-info-item">
+                    <span class="reconnection-info-icon">🔄</span>
+                    <span>Se sincronizarán al reconectar</span>
+                </div>
+            </div>
+            <div class="reconnection-buttons">
+                <button class="btn btn-secondary" onclick="dismissReconnectionScreen()">Continuar sin sincronizar</button>
+                <button class="btn btn-primary" onclick="reconnectGoogle()">🔐 Reconectar con Google</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    // Animar entrada
+    setTimeout(() => {
+        overlay.classList.add('active');
+    }, 10);
+}
+
+function dismissReconnectionScreen() {
+    const overlay = document.getElementById('reconnection-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        setTimeout(() => overlay.remove(), 300);
+    }
+}
+
+function reconnectGoogle() {
+    dismissReconnectionScreen();
+    handleLogin();
+}
+
+// Hacer funciones disponibles globalmente
+window.dismissReconnectionScreen = dismissReconnectionScreen;
+window.reconnectGoogle = reconnectGoogle;
 
 // ==================== LISTENERS ====================
 function setupListeners() {
@@ -2326,7 +2705,14 @@ function cancelReloadOrder() {
 
 function updateState() {
     if (!STATE.activeOBC) return;
-    STATE.tabs[STATE.activeOBC].location = document.getElementById('location-input').value.toUpperCase().trim();
+    const locationInput = document.getElementById('location-input');
+    if (locationInput) {
+        const location = locationInput.value.toUpperCase().trim();
+        if (STATE.tabs[STATE.activeOBC]) {
+            STATE.tabs[STATE.activeOBC].location = location;
+            STATE.currentLocation = location;
+        }
+    }
     saveState();
 }
 

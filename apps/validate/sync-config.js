@@ -50,21 +50,19 @@ async function initAdvancedSync() {
             
             // Formato de registro para Validador
             // IMPORTANTE: Enviar datos con tipos correctos para Google Sheets
+            // 7 columnas: A=Fecha, B=Hora, C=Usuario, D=OBC, E=Código, F=Ubicación, G=Nota
             formatRecord: (record) => {
                 // Convertir fecha string a objeto Date para que Sheets lo reconozca
                 const dateObj = record.date ? new Date(record.date) : new Date();
                 
                 return [
-                    dateObj,  // Fecha como Date object
-                    record.time || SyncUtils.formatTime(),
-                    record.user || CURRENT_USER || '',  // Incluir usuario activo
-                    record.obc || '',
-                    record.codigo || '',
-                    record.destino || '',
-                    record.horario || '',
-                    record.ubicacion || '',
-                    record.estatus || '',
-                    record.nota || ''
+                    dateObj,  // A: Fecha como Date object
+                    record.time || SyncUtils.formatTime(),  // B: Hora
+                    record.user || CURRENT_USER || '',  // C: Usuario activo
+                    record.obc || '',  // D: OBC
+                    record.codigo || '',  // E: Código
+                    record.ubicacion || '',  // F: Ubicación
+                    record.nota || ''  // G: Nota (ingreso forzado, observaciones, etc.)
                 ];
             },
             
@@ -166,11 +164,8 @@ async function addValidationToQueue(validationData) {
         user: validationData.user || '',
         obc: validationData.obc || '',
         codigo: validationData.codigo || '',
-        destino: validationData.destino || '',
-        horario: validationData.horario || '',
         ubicacion: validationData.ubicacion || '',
-        estatus: validationData.estatus || 'OK',
-        nota: validationData.nota || ''
+        nota: validationData.nota || ''  // Columna G: ingreso forzado, observaciones, etc.
     };
     
     await advancedSyncManager.addToQueue(record);
@@ -190,11 +185,8 @@ async function addValidationsToQueue(validations) {
         user: v.user || '',
         obc: v.obc || '',
         codigo: v.codigo || '',
-        destino: v.destino || '',
-        horario: v.horario || '',
         ubicacion: v.ubicacion || '',
-        estatus: v.estatus || 'OK',
-        nota: v.nota || ''
+        nota: v.nota || ''  // Columna G: ingreso forzado, observaciones, etc.
     }));
     
     await advancedSyncManager.addToQueue(records);

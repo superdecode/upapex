@@ -149,7 +149,7 @@ function updateEditFolioUnidades() {
 
 /**
  * Actualiza el selector de folio y muestra información
- * SSOT: Usa validación contra BD de escritura
+ * Usa validación local primero, SSOT como complemento si está disponible
  */
 async function updateEditFolioNumber() {
     const conductorSelect = document.getElementById('edit-folio-conductor');
@@ -157,73 +157,101 @@ async function updateEditFolioNumber() {
     const folioSelect = document.getElementById('edit-folio-number');
     const infoDiv = document.getElementById('edit-folio-info');
     const infoText = document.getElementById('edit-folio-info-text');
-    
+
     if (!conductorSelect || !unidadSelect || !folioSelect) return;
-    
+
     const conductor = conductorSelect.value;
     const unidad = unidadSelect.value;
-    
+
     if (!conductor || !unidad) {
-        infoDiv.style.display = 'none';
+        folioSelect.innerHTML = '<option value="">Seleccionar Conductor y Unidad primero...</option>';
+        folioSelect.disabled = true;
+        if (infoDiv) infoDiv.style.display = 'none';
         return;
     }
-    
-    // SSOT: Obtener folios disponibles desde BD de escritura
-    console.log('🔍 [SSOT] Consultando folios disponibles desde BD...');
-    infoText.textContent = 'Consultando disponibilidad...';
-    infoDiv.style.display = 'block';
-    
-    let availableFolios;
-    if (typeof getAvailableFoliosFromWriteDB === 'function') {
-        availableFolios = await getAvailableFoliosFromWriteDB(conductor, unidad);
-    } else {
-        console.warn('⚠️ [SSOT] Función SSOT no disponible, usando fallback local');
-        availableFolios = getAvailableFolios(conductor, unidad);
+
+    folioSelect.disabled = false;
+
+    // PRIORIDAD: Usar validación local (getAvailableFolios) que es más rápida y confiable
+    console.log('🔍 [FOLIO EDIT] Obteniendo folios disponibles para:', conductor, unidad);
+    if (infoText) {
+        infoText.textContent = 'Consultando disponibilidad...';
     }
-    
+    if (infoDiv) infoDiv.style.display = 'block';
+
+    let availableFolios;
+    try {
+        // Usar función local que ya existe en app.js
+        if (typeof getAvailableFolios === 'function') {
+            availableFolios = getAvailableFolios(conductor, unidad);
+            console.log('✅ [FOLIO EDIT] Folios obtenidos localmente:', availableFolios);
+        } else {
+            console.warn('⚠️ [FOLIO EDIT] getAvailableFolios no disponible, generando lista básica');
+            // Generar lista básica de 5 folios
+            availableFolios = ['01', '02', '03', '04', '05'].map(f => ({
+                value: f,
+                folio: f,
+                available: true,
+                disabled: false
+            }));
+        }
+    } catch (error) {
+        console.error('❌ [FOLIO EDIT] Error obteniendo folios:', error);
+        // Fallback: generar lista básica
+        availableFolios = ['01', '02', '03', '04', '05'].map(f => ({
+            value: f,
+            folio: f,
+            available: true,
+            disabled: false
+        }));
+    }
+
     const currentFolioNumber = originalFolioData ? originalFolioData.folioNumber : '';
-    
+
     console.log(`[Folio Edit] Actualizando selector para ${conductor}/${unidad}`, availableFolios);
-    
-    // Actualizar opciones con datos de BD
-    folioSelect.innerHTML = '<option value="">Seleccionar Folio...</option>';
+
+    // Actualizar opciones del selector
+    folioSelect.innerHTML = '<option value="">📋 Seleccionar Folio...</option>';
+
+    if (!availableFolios || availableFolios.length === 0) {
+        folioSelect.innerHTML = '<option value="">⚠️ No hay folios disponibles</option>';
+        if (infoText) infoText.textContent = 'Error: No se pudieron cargar los folios';
+        return;
+    }
+
     availableFolios.forEach(folioInfo => {
         const option = document.createElement('option');
-        option.value = folioInfo.folio || folioInfo.value;
-        
+        const folioValue = folioInfo.folio || folioInfo.value;
+        option.value = folioValue;
+
         // Resaltar folio actual con check
-        const isCurrent = (folioInfo.folio || folioInfo.value) === currentFolioNumber;
-        
+        const isCurrent = folioValue === currentFolioNumber;
+
         if (isCurrent) {
-            option.textContent = `✔ ${folioInfo.folio || folioInfo.value} (Actual)`;
+            option.textContent = `✔ ${folioValue} (Actual)`;
             option.setAttribute('data-is-current', 'true');
-        } else if (folioInfo.available) {
-            // Mostrar información de disponibilidad desde BD
-            const statusText = folioInfo.reason === 'No existe en BD' 
-                ? 'Disponible (Nuevo)'
-                : folioInfo.reutilizable 
-                    ? `Reutilizable (${folioInfo.existingOrders?.length || 0} orden${folioInfo.existingOrders?.length > 1 ? 'es' : ''})`
-                    : 'Disponible';
-            option.textContent = `${folioInfo.folio || folioInfo.value} - ${statusText}`;
+        } else if (folioInfo.reutilizable) {
+            option.textContent = `${folioValue} - Tu folio actual`;
+        } else if (folioInfo.disabled === false || folioInfo.available === true) {
+            option.textContent = `${folioValue} - Disponible`;
         } else {
-            // Folio ocupado
+            // Folio ocupado por otro
             const usadoPor = folioInfo.usadoPor || 'Otro conductor/unidad';
-            option.textContent = `${folioInfo.folio || folioInfo.value} - Ocupado (${usadoPor})`;
+            option.textContent = `${folioValue} - Ocupado (${usadoPor})`;
             option.disabled = true;
         }
-        
+
         folioSelect.appendChild(option);
     });
-    
-    // MEJORA 4: Validar cambios y actualizar botón
-    validateFolioChanges();
-    
-    // Mostrar información actualizada desde BD
-    const disponibles = availableFolios.filter(f => f.available).length;
-    const ocupados = availableFolios.filter(f => !f.available).length;
-    infoText.textContent = `Conductor: ${conductor} | Unidad: ${unidad} | Disponibles: ${disponibles}/5 | Ocupados: ${ocupados}/5`;
-    
-    // MEJORA 4: Validar cambios después de actualizar selector
+
+    // Mostrar información de disponibilidad
+    const disponibles = availableFolios.filter(f => !f.disabled && f.available !== false).length;
+    const ocupados = availableFolios.filter(f => f.disabled || f.available === false).length;
+    if (infoText) {
+        infoText.textContent = `Conductor: ${conductor} | Unidad: ${unidad} | Disponibles: ${disponibles} | Ocupados: ${ocupados}`;
+    }
+
+    // Validar cambios y actualizar botón
     validateFolioChanges();
 }
 

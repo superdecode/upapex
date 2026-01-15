@@ -328,20 +328,36 @@ class SidebarComponent {
     handleAvatarAction(action) {
         switch (action) {
             case 'refresh':
-                this.reloadBD();
+                // BOTÓN 1: Sincronizar/Actualizar BD
+                if (typeof window.handleSyncBD === 'function') {
+                    window.handleSyncBD();
+                } else {
+                    this.reloadBD(); // Fallback
+                }
                 break;
                 
             case 'google':
-                this.handleToggleConnection();
+                // BOTÓN 2: Conectar/Desconectar Google
+                if (typeof window.handleToggleGoogleAuth === 'function') {
+                    window.handleToggleGoogleAuth();
+                } else {
+                    this.handleToggleConnection(); // Fallback
+                }
                 break;
                 
             case 'logout':
-                this.handleLogout();
+                // BOTÓN 3: Salir (Logout Completo)
+                if (typeof window.handleFullLogout === 'function') {
+                    window.handleFullLogout();
+                } else {
+                    this.handleLogout(); // Fallback
+                }
                 break;
         }
     }
 
     handleToggleConnection() {
+        // Fallback para compatibilidad - preferir window.handleToggleGoogleAuth
         if (this.avatarState.isGoogleConnected) {
             if (confirm('¿Desconectar de Google? Deberás volver a iniciar sesión.')) {
                 this.clearGoogleConnection();

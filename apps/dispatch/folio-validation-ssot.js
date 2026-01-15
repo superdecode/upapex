@@ -20,22 +20,18 @@ async function validateFolioAgainstWriteDB(folioNumber, conductor, unidad, dateK
 
     // Verificar que Google Sheets API esté disponible
     if (!gapi?.client?.sheets) {
-        console.error('❌ [SSOT] Google Sheets API no disponible');
-        return {
-            available: false,
-            reason: 'API no disponible'
-        };
+        console.warn('⚠️ [SSOT] Google Sheets API no disponible, usando validación local');
+        // Fallback a validación local
+        return fallbackToLocalValidation(folioNumber, conductor, unidad, dateKey);
     }
 
     try {
         // Verificar autenticación
         const token = gapi.client.getToken();
         if (!token) {
-            console.warn('⚠️ [SSOT] Usuario no autenticado, no se puede validar folio');
-            return {
-                available: true, // Permitir por defecto si no hay autenticación
-                reason: 'No autenticado - validación omitida'
-            };
+            console.warn('⚠️ [SSOT] Usuario no autenticado, usando validación local');
+            // Fallback a validación local en vez de permitir por defecto
+            return fallbackToLocalValidation(folioNumber, conductor, unidad, dateKey);
         }
 
         // Construir el folio completo en formato esperado
@@ -131,10 +127,172 @@ async function validateFolioAgainstWriteDB(folioNumber, conductor, unidad, dateK
 
     } catch (error) {
         console.error('❌ [SSOT] Error validando folio:', error);
+
+        // Si es error de autenticación, mostrar banner y usar fallback local
+        if (error?.result?.error?.code === 401 || error?.status === 401) {
+            console.warn('⚠️ [SSOT] Error de autenticación, mostrando banner de reconexión');
+            showAuthErrorBanner();
+            return fallbackToLocalValidation(folioNumber, conductor, unidad, dateKey);
+        }
+
+        // Para otros errores, usar fallback local
+        console.warn('⚠️ [SSOT] Usando validación local como fallback');
+        return fallbackToLocalValidation(folioNumber, conductor, unidad, dateKey);
+    }
+}
+
+/**
+ * Fallback a validación local cuando SSOT no está disponible
+ */
+function fallbackToLocalValidation(folioNumber, conductor, unidad, dateKey) {
+    console.log('🔄 [FALLBACK] Usando validación local para folio:', folioNumber);
+
+    const foliosDelDia = STATE.foliosDeCargas?.get(dateKey) || new Map();
+    const folioInfo = foliosDelDia.get(folioNumber);
+
+    // Si no existe en caché local, está disponible
+    if (!folioInfo) {
         return {
-            available: false,
-            reason: 'Error de validación: ' + error.message
+            available: true,
+            reason: 'Disponible (validación local)'
         };
+    }
+
+    // Si es la misma combinación, puede reutilizarse
+    if (folioInfo.conductor === conductor && folioInfo.unidad === unidad) {
+        return {
+            available: true,
+            reason: 'Reutilizable (misma combinación)',
+            reutilizable: true
+        };
+    }
+
+    // Ocupado por otra combinación
+    return {
+        available: false,
+        reason: `Usado por ${folioInfo.conductor}/${folioInfo.unidad}`,
+        usadoPor: `${folioInfo.conductor}/${folioInfo.unidad}`
+    };
+}
+
+/**
+ * Muestra el banner de error de autenticación
+ */
+function showAuthErrorBanner() {
+    // Evitar múltiples banners
+    if (document.getElementById('auth-error-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'auth-error-banner';
+    banner.className = 'auth-error-banner slide-down';
+    banner.innerHTML = `
+        <div class="auth-error-content">
+            <span class="auth-error-icon">⚠️</span>
+            <span class="auth-error-text">Sesión de Google desconectada. Reconecta para sincronizar con la base de datos.</span>
+            <button class="auth-error-btn" onclick="handleReconnectFromBanner()">🔗 Reconectar</button>
+            <button class="auth-error-close" onclick="closeAuthErrorBanner()">×</button>
+        </div>
+    `;
+
+    // Agregar estilos si no existen
+    if (!document.getElementById('auth-error-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'auth-error-styles';
+        styles.textContent = `
+            .auth-error-banner {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+                color: white;
+                padding: 12px 20px;
+                z-index: 10000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                transform: translateY(-100%);
+                transition: transform 0.3s ease-out;
+            }
+            .auth-error-banner.slide-down {
+                transform: translateY(0);
+            }
+            .auth-error-content {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                max-width: 1200px;
+                margin: 0 auto;
+                flex-wrap: wrap;
+            }
+            .auth-error-icon {
+                font-size: 1.2em;
+            }
+            .auth-error-text {
+                font-weight: 500;
+            }
+            .auth-error-btn {
+                background: white;
+                color: #ee5a24;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: 600;
+                transition: all 0.2s;
+            }
+            .auth-error-btn:hover {
+                background: #f8f8f8;
+                transform: scale(1.05);
+            }
+            .auth-error-close {
+                background: transparent;
+                border: none;
+                color: white;
+                font-size: 1.5em;
+                cursor: pointer;
+                padding: 0 8px;
+                opacity: 0.8;
+            }
+            .auth-error-close:hover {
+                opacity: 1;
+            }
+        `;
+        document.head.appendChild(styles);
+    }
+
+    document.body.prepend(banner);
+
+    // Trigger animation
+    requestAnimationFrame(() => {
+        banner.classList.add('slide-down');
+    });
+}
+
+/**
+ * Cierra el banner de error de autenticación
+ */
+function closeAuthErrorBanner() {
+    const banner = document.getElementById('auth-error-banner');
+    if (banner) {
+        banner.style.transform = 'translateY(-100%)';
+        setTimeout(() => banner.remove(), 300);
+    }
+}
+
+/**
+ * Maneja la reconexión desde el banner
+ */
+async function handleReconnectFromBanner() {
+    console.log('🔗 [AUTH] Iniciando reconexión desde banner...');
+    closeAuthErrorBanner();
+
+    // Llamar al login de Google
+    if (typeof handleLogin === 'function') {
+        handleLogin();
+    } else if (typeof AuthManager !== 'undefined' && AuthManager.login) {
+        AuthManager.login();
+    } else {
+        showNotification('⚠️ Sistema de autenticación no disponible', 'warning');
     }
 }
 
@@ -229,3 +387,7 @@ window.validateFolioAgainstWriteDB = validateFolioAgainstWriteDB;
 window.getAvailableFoliosFromWriteDB = getAvailableFoliosFromWriteDB;
 window.validateFolioBeforeDispatch = validateFolioBeforeDispatch;
 window.clearFoliosCache = clearFoliosCache;
+window.fallbackToLocalValidation = fallbackToLocalValidation;
+window.showAuthErrorBanner = showAuthErrorBanner;
+window.closeAuthErrorBanner = closeAuthErrorBanner;
+window.handleReconnectFromBanner = handleReconnectFromBanner;
