@@ -5,9 +5,21 @@ const SPREADSHEET_WRITE = '1gU5yDb0R4_Mf1fE-lOA7vwYmTUBR0wV7EPGg5zUt2Xo';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
 
 // ==================== ESTADO GLOBAL ====================
+// NOTA: CURRENT_USER se expone en window para que AvatarSystem pueda actualizarlo
 let CURRENT_USER = '';
 let USER_EMAIL = '';
 let USER_GOOGLE_NAME = '';
+
+// Exponer CURRENT_USER globalmente para sincronización con AvatarSystem
+Object.defineProperty(window, 'CURRENT_USER', {
+    get: function() { return CURRENT_USER; },
+    set: function(value) { 
+        CURRENT_USER = value;
+        console.log('🔄 [GLOBAL] CURRENT_USER actualizado:', value);
+    },
+    enumerable: true,
+    configurable: true
+});
 let LAST_BD_UPDATE = null;
 let BD_CODES = new Set();
 let OBC_MAP = new Map();

@@ -176,83 +176,46 @@ class ConcurrencyControl {
                     attempt++;
                     console.log(`🔄 [CONCURRENCY] Intento ${attempt}/${this.maxRetries}`);
 
-                    // PASO 1: Leer última fila ANTES de escribir
-                    const lastRow = await this.getLastRow(spreadsheetId, sheetName);
-                    const targetRow = lastRow + 1;
+                    // CRÍTICO: Usar APPEND en lugar de UPDATE para evitar sobreescritura
+                    // Append siempre agrega al final de la hoja, evitando conflictos de concurrencia
+                    const range = `${sheetName}!A:Z`;
 
-                    console.log(`📍 [CONCURRENCY] Target fila inicial: ${targetRow} (${values.length} registros)`);
+                    console.log(`✍️ [CONCURRENCY] Usando APPEND en: ${range} (${values.length} registros)`);
 
-                    // PASO 2: Escribir en rango específico
-                    const endRow = targetRow + values.length - 1;
-                    // Calcular columna final basado en el número de columnas en values
-                    const numColumns = values[0]?.length || 10;
-                    const endColumn = String.fromCharCode(65 + numColumns - 1); // A=65, B=66, etc.
-                    const range = `${sheetName}!A${targetRow}:${endColumn}${endRow}`;
-
-                    console.log(`✍️ [CONCURRENCY] Escribiendo en rango: ${range}`);
-
-                    const writeResponse = await gapi.client.sheets.spreadsheets.values.update({
+                    const writeResponse = await gapi.client.sheets.spreadsheets.values.append({
                         spreadsheetId: spreadsheetId,
                         range: range,
                         valueInputOption: 'USER_ENTERED',
+                        insertDataOption: 'INSERT_ROWS',  // Insertar nuevas filas
                         resource: { values: values }
                     });
 
-                    // PASO 3: Verificar que la escritura fue exitosa
+                    // Verificar que la escritura fue exitosa
                     if (writeResponse.status !== 200) {
                         throw new Error(`Status ${writeResponse.status} en escritura`);
                     }
 
-                    console.log(`✅ [CONCURRENCY] Escritura completada!`);
+                    // Obtener información del rango donde se escribió
+                    const updatedRange = writeResponse.result.updates?.updatedRange || '';
+                    const updatedRows = writeResponse.result.updates?.updatedRows || values.length;
+
+                    console.log(`✅ [CONCURRENCY] APPEND completado!`);
                     console.log(`   - SpreadsheetId: ${spreadsheetId}`);
                     console.log(`   - Hoja: ${sheetName}`);
-                    console.log(`   - Rango escrito: ${range}`);
-                    console.log(`   - Datos escritos:`, values);
-                    console.log(`📝 [CONCURRENCY] Iniciando verificación post-escritura...`);
+                    console.log(`   - Rango actualizado: ${updatedRange}`);
+                    console.log(`   - Filas agregadas: ${updatedRows}`);
 
-                    // PASO 4: VERIFICACIÓN POST-ESCRITURA
-                    const verifyResponse = await gapi.client.sheets.spreadsheets.values.get({
-                        spreadsheetId: spreadsheetId,
-                        range: range
-                    });
-
-                    const writtenRows = verifyResponse.result.values || [];
-
-                    if (writtenRows.length !== values.length) {
-                        console.error(`❌ [CONCURRENCY] Verificación fallida: esperados ${values.length}, encontrados ${writtenRows.length}`);
-                        throw new Error(`Verificación fallida: esperados ${values.length} registros, encontrados ${writtenRows.length}`);
-                    }
-
-                    // Verificar integridad de datos críticos
-                    let integrityOk = true;
-                    for (let i = 0; i < values.length; i++) {
-                        const original = values[i];
-                        const written = writtenRows[i];
-
-                        // Columnas críticas: D(scan1)[3], I(pallet)[8], F(location)[5]
-                        if (original[3] !== written[3] || 
-                            original[8] !== written[8] || 
-                            original[5] !== written[5]) {
-                            console.error(`❌ [CONCURRENCY] Integridad comprometida en fila ${targetRow + i}`);
-                            integrityOk = false;
-                            break;
-                        }
-                    }
-
-                    if (!integrityOk) {
-                        throw new Error('Integridad de datos comprometida después de escritura');
-                    }
-
-                    console.log(`✅ [CONCURRENCY] Escritura verificada exitosamente:`);
-                    console.log(`   - Registros: ${values.length}`);
-                    console.log(`   - Filas: ${targetRow}-${endRow}`);
+                    // Extraer fila inicial del rango actualizado (ej: "Val3!A5:G5" -> 5)
+                    const rangeMatch = updatedRange.match(/!A(\d+):/);
+                    const startRow = rangeMatch ? parseInt(rangeMatch[1]) : 0;
+                    const endRow = startRow + values.length - 1;
 
                     return {
                         success: true,
-                        startRow: targetRow,
+                        startRow: startRow,
                         endRow: endRow,
-                        updatedRows: values.length,
-                        range: writeResponse.result.updatedRange,
+                        updatedRows: updatedRows,
+                        range: updatedRange,
                         status: 200
                     };
 

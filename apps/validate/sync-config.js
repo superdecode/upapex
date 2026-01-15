@@ -56,10 +56,17 @@ async function initAdvancedSync() {
                 // NO usar Date objects porque Google Sheets puede formatearlos incorrectamente
                 const dateStr = record.date || SyncUtils.formatDate();
                 
+                // CRÍTICO: Obtener el nombre del usuario EN TIEMPO REAL
+                // Prioridad: 1) record.user, 2) window.CURRENT_USER, 3) AvatarSystem, 4) fallback
+                const currentUser = record.user || 
+                                   window.CURRENT_USER || 
+                                   (window.AvatarSystem?.getUserName?.()) || 
+                                   '';
+                
                 return [
                     dateStr,  // A: Fecha como string DD/MM/YYYY
                     record.time || SyncUtils.formatTime(),  // B: Hora
-                    record.user || CURRENT_USER || '',  // C: Usuario activo
+                    currentUser,  // C: Usuario activo (obtenido en tiempo real)
                     record.obc || '',  // D: OBC
                     record.codigo || '',  // E: Código
                     record.ubicacion || '',  // F: Ubicación

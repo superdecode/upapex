@@ -187,8 +187,12 @@ function updateAvatarButtons() {
 
 // ==================== POPUP DE EDICIÓN DE NOMBRE ====================
 function showNameEditPopup() {
+    // CRÍTICO: Remover cualquier popup existente para evitar congelamiento
+    document.querySelectorAll('.popup-overlay').forEach(el => el.remove());
+    
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
+    overlay.id = 'avatar-name-popup';
     overlay.innerHTML = `
         <div class="popup-content" style="max-width: 450px;">
             <div class="popup-header">
@@ -252,8 +256,25 @@ function saveAvatarName() {
         return;
     }
     
+    // CRÍTICO: Actualizar CURRENT_USER globalmente para que se use en envíos
+    if (typeof window.CURRENT_USER !== 'undefined') {
+        window.CURRENT_USER = result.formatted;
+        console.log('✅ [AVATAR] CURRENT_USER actualizado globalmente:', result.formatted);
+    }
+    
+    // También actualizar en localStorage para persistencia
+    const userEmail = AvatarState.userEmail || localStorage.getItem('wms_user_email') || '';
+    if (userEmail) {
+        localStorage.setItem(`wms_alias_${userEmail}`, result.formatted);
+    }
+    
     updateAvatarDisplay();
     document.querySelector('.popup-overlay')?.remove();
+    
+    // Notificar a la app que el usuario cambió
+    if (typeof window.updateUserFooter === 'function') {
+        window.updateUserFooter();
+    }
     
     if (typeof showNotification === 'function') {
         showNotification(`✅ Nombre actualizado: ${result.formatted}`, 'success');
@@ -366,5 +387,7 @@ window.AvatarSystem = {
     onUpdate: onAvatarUpdate,
     createActions: createAvatarActions,
     showNamePopup: showNameEditPopup,
-    updateDisplay: updateAvatarDisplay
+    updateDisplay: updateAvatarDisplay,
+    formatNameToTitle: formatNameToTitle,  // Exponer función de formateo
+    getState: () => AvatarState  // Exponer estado para debugging
 };
