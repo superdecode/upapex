@@ -53,7 +53,7 @@ function normalizeCode(rawCode, verbose = false) {
 
     // PRIORIDAD ALTA: Patrones complejos de escaneo que preservan separadores
     const complexPatterns = [
-        // Patrón 1: [ID[N [CODIGO[ con separador
+        // Patrón 1: [ID[N [CODIGO[ con separador - captura completa
         /\[ID\[N\s*\[([\d]+[\/\-][\d]+)/i,
         /\[ID\[.*?\[([\d]+[\/\-][\d]+)/i,
 
@@ -72,16 +72,16 @@ function normalizeCode(rawCode, verbose = false) {
         // Patrón 5: Código al inicio con separador
         /^([\d]+[\/\-][\d]+)/,
 
-        // Patrón 6: Secuencia numérica con separador (7-9 dígitos + separador + 1-3 dígitos)
-        /([\d]{7,9}[\/\-]\d{1,3})/
+        // Patrón 6: Secuencia numérica con separador (flexible: 6+ dígitos + separador + 1-4 dígitos)
+        /([\d]{6,}[\/\-]\d{1,4})/
     ];
 
     for (const pattern of complexPatterns) {
         const match = codeUpper.match(pattern);
         if (match && match[1]) {
             const extracted = match[1];
-            // Validar formato: números + separador + números
-            if (/^\d{7,9}[\/\-]\d{1,3}$/.test(extracted)) {
+            // Validar formato: números + separador + números (más flexible)
+            if (/^\d{6,}[\/\-]\d{1,4}$/.test(extracted)) {
                 if (verbose) console.log(` [WMS-UTILS] Código extraído con separador: ${extracted}`);
                 return extracted; // PRESERVAR el separador original
             }

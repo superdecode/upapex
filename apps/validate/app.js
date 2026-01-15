@@ -777,8 +777,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         CURRENT_USER = savedAlias;
                         console.log('✅ [VALIDADOR] Alias recuperado:', savedAlias);
                     } else {
-                        CURRENT_USER = userData.user;
-                        console.log('✅ [VALIDADOR] Usando nombre de usuario:', userData.user);
+                        // Aplicar transformación a Title Case
+                        const formatted = window.AvatarSystem?.formatNameToTitle?.(userData.user) || userData.user;
+                        CURRENT_USER = formatted;
+                        console.log('✅ [VALIDADOR] Usando nombre de usuario (Title Case):', formatted);
                     }
 
                     showMainApp();
@@ -840,7 +842,8 @@ async function tryRestoreSession() {
                 USER_GOOGLE_NAME = data.name || 'Usuario';
 
                 const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                CURRENT_USER = savedAlias || data.name || 'Usuario';
+                const nameToUse = savedAlias || data.name || 'Usuario';
+                CURRENT_USER = window.AvatarSystem?.formatNameToTitle?.(nameToUse) || nameToUse;
 
                 showMainApp();
                 updateUIAfterAuth();
@@ -1388,7 +1391,7 @@ async function getUserProfile() {
         // Verificar si hay alias guardado para este email
         const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
         if (savedAlias) {
-            CURRENT_USER = savedAlias;
+            CURRENT_USER = window.AvatarSystem?.formatNameToTitle?.(savedAlias) || savedAlias;
             showNotification(`✅ Bienvenido, ${CURRENT_USER}`, 'success');
             updateUserFooter();
         } else {
@@ -1459,8 +1462,10 @@ function saveUserAlias(alias, isGoogleName = false) {
         return;
     }
 
-    CURRENT_USER = finalAlias;
-    localStorage.setItem(`wms_alias_${USER_EMAIL}`, finalAlias);
+    // Aplicar Title Case al alias antes de guardarlo
+    const formattedAlias = window.AvatarSystem?.formatNameToTitle?.(finalAlias) || finalAlias;
+    CURRENT_USER = formattedAlias;
+    localStorage.setItem(`wms_alias_${USER_EMAIL}`, formattedAlias);
 
     document.querySelectorAll('.alias-popup-overlay').forEach(e => e.remove());
     showNotification(`✅ ${isGoogleName ? 'Nombre' : 'Alias'} guardado: ${finalAlias}`, 'success');
@@ -1937,15 +1942,28 @@ function setupValidationListeners() {
     console.log('✅ [VALIDADOR] Location input listeners configurados');
 }
 
+// Flag para prevenir validaciones duplicadas
+let isValidatingLocation = false;
+
 function validateLocationInput(location) {
     if (!location || location.trim() === '') {
         return; // No validar ubicaciones vacías
     }
     
+    // Prevenir validaciones duplicadas
+    if (isValidatingLocation) {
+        console.log('⚠️ [VALIDADOR] Validación de ubicación ya en progreso, ignorando');
+        return;
+    }
+    
+    isValidatingLocation = true;
+    
     // Usar el módulo compartido LocationValidatorUI
     LocationValidatorUI.validate(
         location,
         (normalizedLocation) => {
+            isValidatingLocation = false; // Resetear flag
+            
             const locationInput = document.getElementById('location-input');
             if (locationInput) {
                 locationInput.value = normalizedLocation;
@@ -1966,6 +1984,8 @@ function validateLocationInput(location) {
             }
         },
         (forcedLocation) => {
+            isValidatingLocation = false; // Resetear flag
+            
             console.log('🔧 [VALIDADOR] Ubicación forzada:', forcedLocation);
             
             const locationInput = document.getElementById('location-input');
@@ -1991,6 +2011,11 @@ function validateLocationInput(location) {
             }, 100);
             
             console.log('✅ [VALIDADOR] Callback de ubicación forzada completado');
+        },
+        () => {
+            // Callback onClose: resetear flag cuando se cierra sin acción
+            isValidatingLocation = false;
+            console.log('ℹ️ [VALIDADOR] Popup de ubicación cerrado sin acción');
         }
     );
 }
@@ -2397,17 +2422,23 @@ async function syncRejectionToSheets(rejection) {
     }
 
     try {
-        // Convertir fecha a objeto Date para que Sheets la reconozca correctamente
-        const dateObj = rejection.date ? new Date(rejection.date) : new Date();
+        // Asegurar que la fecha esté en formato correcto
+        // rejection.date viene como string "DD/M/YYYY" de toLocaleDateString('es-MX')
+        const dateStr = rejection.date || new Date().toLocaleDateString('es-MX');
+        
+        // Convertir códigos técnicos a lenguaje natural
+        const reasonText = rejection.reason === 'NO_EXISTE_EN_BD' 
+            ? 'No encontrado en Base de Datos' 
+            : rejection.reason || '';
         
         const row = [
-            dateObj,  // Fecha como Date object
+            dateStr,  // Fecha como string en formato DD/MM/YYYY
             rejection.timestamp || '',
             rejection.user || CURRENT_USER || '',  // Asegurar que se incluya el usuario
             rejection.obc || '',
             rejection.raw || '',
             rejection.code || '',
-            rejection.reason || ''
+            reasonText  // Mensaje en lenguaje natural
         ];
 
         await gapi.client.sheets.spreadsheets.values.append({

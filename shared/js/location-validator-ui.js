@@ -12,15 +12,17 @@ const LocationValidatorUI = {
     currentPopup: null,
     onSuccessCallback: null,
     onForceCallback: null,
+    onCloseCallback: null,
     originalLocation: '',
 
     /**
      * Valida una ubicación y muestra popup si es inválida
      * @param {string} location - Ubicación a validar
-     * @param {Function} onSuccess - Callback(normalizedLocation) cuando es válida
-     * @param {Function} onForce - Callback(forcedLocation) cuando se fuerza inserción
+     * @param {Function} onSuccess - Callback cuando la validación es exitosa
+     * @param {Function} onForce - Callback cuando se fuerza la inserción
+     * @param {Function} onClose - Callback cuando se cierra el popup sin acción
      */
-    validate(location, onSuccess, onForce) {
+    validate(location, onSuccess, onForce, onClose) {
         // Validar usando wms-utils.js
         const validation = validateLocation(location);
         
@@ -33,16 +35,17 @@ const LocationValidatorUI = {
         }
 
         // Ubicación inválida, mostrar popup
-        this.showPopup(location, validation, onSuccess, onForce);
+        this.showPopup(location, validation, onSuccess, onForce, onClose);
     },
 
     /**
      * Muestra el popup de validación
      */
-    showPopup(location, validation, onSuccess, onForce) {
+    showPopup(location, validation, onSuccess, onForce, onClose) {
         this.originalLocation = location;
         this.onSuccessCallback = onSuccess;
         this.onForceCallback = onForce;
+        this.onCloseCallback = onClose;
 
         // Cerrar popup anterior si existe
         if (this.currentPopup) {
@@ -79,7 +82,6 @@ const LocationValidatorUI = {
                             <strong>💡 Reglas:</strong>
                             <ul style="margin: 8px 0 0 20px; font-size: 0.9em;">
                                 <li>Comillas simples (') se convierten automáticamente a guiones (-)</li>
-                                <li>Zona (primer número): puede ser 1-999, sin cero a la izquierda</li>
                                 <li>Ejemplo: A1-1-1-1 → A1-01-01-01</li>
                             </ul>
                         </div>
@@ -138,6 +140,11 @@ const LocationValidatorUI = {
         if (this.escHandler) {
             document.removeEventListener('keydown', this.escHandler);
             this.escHandler = null;
+        }
+        // Llamar callback de cierre si existe
+        if (this.onCloseCallback) {
+            this.onCloseCallback();
+            this.onCloseCallback = null;
         }
     }
 };
