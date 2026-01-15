@@ -1675,18 +1675,57 @@ async function handleRejection(reason, raw, code, obc) {
     };
 
     STATE.tabs[obc].rejections.push(log);
-    // Los rechazos no se sincronizan, solo se guardan localmente
-    // addToPendingSync(log);
+    
+    // Sincronizar rechazo a Google Sheets en hoja Validaciones_RECHAZADAS
+    try {
+        await syncRejectionToSheets(log);
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error sincronizando rechazo:', error);
+        // No bloqueamos la operación si falla el sync
+    }
 
     await saveState();
-
-    showPopup('error', code, reason);
-    playSound('error');
-    flashInput('error');
     renderValidation();
     updateGlobalSummary();
+    playSound('error');
+    flashInput('error');
+    showPopup('error', { code: raw, reason });
+}
 
-    if (syncManager) syncManager.sync(false);
+/**
+ * Sincroniza un rechazo a la hoja Validaciones_RECHAZADAS en Google Sheets
+ */
+async function syncRejectionToSheets(rejection) {
+    if (!gapi?.client?.sheets) {
+        console.warn('⚠️ [VALIDADOR] Google Sheets API no disponible para sincronizar rechazo');
+        return;
+    }
+
+    try {
+        const row = [
+            rejection.date || '',
+            rejection.timestamp || '',
+            rejection.user || '',
+            rejection.obc || '',
+            rejection.raw || '',
+            rejection.code || '',
+            rejection.reason || ''
+        ];
+
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_WRITE,
+            range: 'Validaciones_RECHAZADAS!A:G',
+            valueInputOption: 'RAW',
+            resource: {
+                values: [row]
+            }
+        });
+
+        console.log(`✅ [VALIDADOR] Rechazo sincronizado a Validaciones_RECHAZADAS: ${rejection.code}`);
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error escribiendo rechazo en Google Sheets:', error);
+        throw error;
+    }
 }
 
 // ==================== EXTRACCIÓN Y NORMALIZACIÓN DE CÓDIGOS ====================

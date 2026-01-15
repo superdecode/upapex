@@ -1409,9 +1409,13 @@ async function loadExistingFolioData(folioCheck) {
         const firstOrder = folioCheck.orders[0];
         
         if (firstOrder) {
+            // Extraer el número de folio (ej: "03" de "DSP-20260115-03")
+            const folioNum = folioCheck.folio.split('-').pop();
+            
             // Auto-completar conductor y unidad
             const conductorSelect = document.getElementById('modal-operador');
             const unidadSelect = document.getElementById('modal-unidad');
+            const folioSelect = document.getElementById('modal-folio-carga');
             
             if (conductorSelect && firstOrder.operador) {
                 conductorSelect.value = firstOrder.operador;
@@ -1424,13 +1428,18 @@ async function loadExistingFolioData(folioCheck) {
             // Actualizar el selector de folios con la nueva combinación
             updateFolioSelector();
             
+            // IMPORTANTE: Restaurar el folio seleccionado después de actualizar el selector
+            if (folioSelect) {
+                folioSelect.value = folioNum;
+            }
+            
             // Mostrar notificación de éxito
             showNotification(
                 `✅ Folio ${folioCheck.folio} cargado: ${firstOrder.operador}/${firstOrder.unidad} con ${folioCheck.orders.length} orden(es)`,
                 'success'
             );
             
-            console.log(`✅ [FOLIO] Datos cargados exitosamente`);
+            console.log(`✅ [FOLIO] Datos cargados exitosamente - Folio ${folioNum} seleccionado`);
         }
     } catch (error) {
         console.error('❌ [FOLIO] Error al cargar datos del folio:', error);
