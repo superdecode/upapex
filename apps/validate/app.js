@@ -515,8 +515,15 @@ async function loadFromStorage() {
             console.log('ℹ️ [VALIDADOR] No hay estado previo guardado');
         }
 
-        // ❌ DESHABILITADO: No cargar BD desde localStorage (se recarga desde Google Sheets)
-        console.log('ℹ️ [VALIDADOR] BD se cargará desde Google Sheets');
+        // Intentar cargar OBC_TOTALS desde localStorage como respaldo
+        const totalsRes = await window.storage.get('wms_validador_totals');
+        if (totalsRes?.value) {
+            const totalsData = JSON.parse(totalsRes.value);
+            for (const [obc, total] of Object.entries(totalsData)) {
+                OBC_TOTALS.set(obc, total);
+            }
+            console.log(`✅ [VALIDADOR] ${OBC_TOTALS.size} totales de órdenes cargados desde cache`);
+        }
 
         // El historial ahora se carga desde IndexedDB en HistoryIndexedDBManager.init()
     } catch (e) {
@@ -1524,7 +1531,9 @@ window.updateConnectionUI = updateConnectionUI;
 // ==================== BASE DE DATOS ====================
 async function loadDatabase(silent = false) {
     if (!gapi?.client?.sheets) {
-        showNotification('⚠️ Google Sheets API no disponible', 'warning');
+        if (!silent) {
+            console.warn('⚠️ [VALIDADOR] Google Sheets API no disponible aún');
+        }
         return;
     }
 
@@ -1653,6 +1662,15 @@ async function loadDatabase(silent = false) {
         }
 
         console.log(`✅ Procesadas ${orderGroups.size.toLocaleString()} órdenes con ${BD_CODES.size.toLocaleString()} códigos únicos`);
+        
+        // Guardar OBC_TOTALS en localStorage para persistencia
+        const totalsData = {};
+        for (const [obc, total] of OBC_TOTALS.entries()) {
+            totalsData[obc] = total;
+        }
+        await window.storage.set('wms_validador_totals', JSON.stringify(totalsData));
+        console.log('✅ Totales guardados en localStorage');
+        
         console.groupEnd();
 
         // Cargar historial desde la hoja de validaciones
@@ -1948,6 +1966,8 @@ function validateLocationInput(location) {
             }
         },
         (forcedLocation) => {
+            console.log('🔧 [VALIDADOR] Ubicación forzada:', forcedLocation);
+            
             const locationInput = document.getElementById('location-input');
             if (locationInput) {
                 locationInput.value = forcedLocation;
@@ -1959,13 +1979,18 @@ function validateLocationInput(location) {
                     saveState();
                 }
             }
+            
             showNotification(`⚠️ Ubicación insertada forzadamente: ${forcedLocation}`, 'warning');
             
             // Mover focus al scanner después de inserción forzada
-            const scanner = document.getElementById('scanner');
-            if (scanner) {
-                scanner.focus();
-            }
+            setTimeout(() => {
+                const scanner = document.getElementById('scanner');
+                if (scanner) {
+                    scanner.focus();
+                }
+            }, 100);
+            
+            console.log('✅ [VALIDADOR] Callback de ubicación forzada completado');
         }
     );
 }
@@ -2791,7 +2816,9 @@ function updateState() {
 function showPopup(type, code, data) {
     if (type === 'error') {
         document.getElementById('err-code').textContent = code;
-        document.getElementById('err-reason').textContent = data;
+        // Traducir mensaje de error a español
+        const errorMessage = data === 'NO_EXISTE_EN_BD' ? 'No encontrado en Base de Datos' : data;
+        document.getElementById('err-reason').textContent = errorMessage;
         document.getElementById('popup-error').style.display = 'flex';
     } else if (type === 'history') {
         document.getElementById('hist-code').textContent = code;
