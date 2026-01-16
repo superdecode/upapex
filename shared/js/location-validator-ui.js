@@ -57,6 +57,7 @@ const LocationValidatorUI = {
         overlay.className = 'location-validation-overlay';
         overlay.innerHTML = `
             <div class="location-validation-popup">
+                <button class="location-popup-close-x" onclick="LocationValidatorUI.closePopup()" title="Cerrar (mantener ubicación actual)">×</button>
                 <div class="location-validation-header">
                     <span style="font-size: 2em;">⚠️</span>
                     <h3>Formato de Ubicación Inválido</h3>

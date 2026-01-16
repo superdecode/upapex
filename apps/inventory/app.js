@@ -2779,20 +2779,24 @@ async function loadPalletForAdjustment(palletCode, location) {
 }
 
 // ==================== CONEXIÓN/DESCONEXIÓN GOOGLE ====================
-function toggleGoogleConnection() {
+async function toggleGoogleConnection() {
     const token = gapi?.client?.getToken();
     const connectBtn = document.getElementById('btn-google-connect');
     const connectText = document.getElementById('google-connect-text');
 
     if (token) {
-        // Desconectar
-        if (confirm('¿Desconectar de Google?\n\nLos datos no sincronizados se guardarán localmente.')) {
-            google.accounts.oauth2.revoke(token.access_token);
+        // Desconectar - Solo revocar en memoria, NO borrar tokens de localStorage
+        if (confirm('¿Desconectar de Google?\n\nLos datos no sincronizados se guardarán localmente.\nPodrás reconectar sin perder tu sesión.')) {
+            try {
+                google.accounts.oauth2.revoke(token.access_token);
+            } catch (e) {
+                console.warn('⚠️ No se pudo revocar token:', e);
+            }
             gapi.client.setToken('');
 
-            // Limpiar token guardado
-            localStorage.removeItem('gapi_token');
-            localStorage.removeItem('gapi_token_expiry');
+            // IMPORTANTE: NO borrar tokens de localStorage aquí
+            // Solo se borran en logout completo
+            // Esto permite reconectar sin pedir credenciales de nuevo
 
             if (syncManager) {
                 syncManager.stopAutoSync();
@@ -2806,10 +2810,59 @@ function toggleGoogleConnection() {
             if (connectText) connectText.textContent = 'Desconectado';
 
             updateConnectionStatus(false);
-            showNotification('🔗 Desconectado de Google', 'info');
+            showNotification('🔌 Desconectado de Google. Reconecta para sincronizar.', 'info');
         }
     } else {
-        // Reconectar
+        // CONECTAR - Primero intentar restaurar token desde localStorage
+        console.log('🔗 [INVENTORY] Iniciando conexión con Google...');
+
+        // Intentar restaurar token guardado primero (reconexión rápida)
+        const savedToken = localStorage.getItem('gapi_token');
+        const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+
+        if (savedToken && tokenExpiry) {
+            const expiryTime = parseInt(tokenExpiry, 10);
+            const now = Date.now();
+
+            // Si el token aún es válido, restaurarlo directamente
+            if (expiryTime > now + (60 * 1000)) { // Margen de 1 minuto
+                console.log('🔄 [INVENTORY] Restaurando token desde localStorage...');
+                try {
+                    const tokenObj = JSON.parse(savedToken);
+                    gapi.client.setToken(tokenObj);
+
+                    // Verificar que el token funcione
+                    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                        headers: { Authorization: `Bearer ${tokenObj.access_token}` }
+                    });
+
+                    if (response.ok) {
+                        console.log('✅ [INVENTORY] Token restaurado exitosamente');
+
+                        if (syncManager) {
+                            syncManager.startAutoSync();
+                            await syncManager.sync();
+                        }
+
+                        if (sidebarComponent) {
+                            sidebarComponent.saveGoogleConnection(tokenObj.access_token, 3600);
+                        }
+
+                        if (connectBtn) connectBtn.classList.remove('disconnected');
+                        if (connectText) connectText.textContent = 'Conectado';
+
+                        updateConnectionStatus(true);
+                        showNotification('✅ Reconectado a Google', 'success');
+                        playSound('success');
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [INVENTORY] Token guardado inválido, solicitando nuevo...');
+                }
+            }
+        }
+
+        // Si no hay token válido, solicitar nuevo
         tokenClient.callback = async (resp) => {
             if (resp.error !== undefined) {
                 console.error('Auth error:', resp);

@@ -1,16 +1,20 @@
 /**
  * ADVANCED-SYNC-MANAGER.JS
  * Sistema de sincronización avanzado compartido para todo el WMS
- * Integra funcionalidades de scan.html: concurrencia, persistencia, deduplicación
  *
- * @version 3.0.0
- * @description Módulo unificado con:
+ * @version 4.0.0
+ * @description Módulo GENÉRICO con:
  * - Control de concurrencia (Read-Verify-Write)
  * - Persistencia offline-first (IndexedDB)
- * - Deduplicación inteligente
- * - Cache de datos procesados
  * - Heartbeat y auto-sync
  * - Manejo robusto de errores
+ *
+ * IMPORTANTE: La lógica de deduplicación es ESPECÍFICA de cada app.
+ * Este módulo provee hooks para que cada app defina sus propios criterios:
+ * - config.shouldIncludeRecord(record) - Filtro personalizado antes de sync
+ * - config.generateRecordKey(record) - Clave única para deduplicación interna
+ * - config.onBeforeSync(records) - Hook antes de sincronizar
+ * - config.onAfterSync(records) - Hook después de sincronizar
  */
 
 // ==================== CONCURRENCY CONTROL MODULE ====================
@@ -70,11 +74,23 @@ class ConcurrencyControl {
     
     /**
      * Maneja errores de autenticación (401/400)
+     * CORREGIDO: Intenta reconexión automática antes de mostrar banner
      */
     handleAuthError(error) {
         console.error('🔐 [AUTH-ERROR] Error de autenticación detectado:', error.status);
-        
-        // Mostrar banner de error con botón de reconexión
+
+        // Intentar reconexión automática primero
+        if (typeof handleReconnectWithDataReload === 'function') {
+            console.log('🔄 [AUTH-ERROR] Intentando reconexión automática...');
+            try {
+                handleReconnectWithDataReload();
+                return; // El callback de reconexión manejará el resto
+            } catch (e) {
+                console.error('❌ [AUTH-ERROR] Falló reconexión automática:', e);
+            }
+        }
+
+        // Fallback: Mostrar banner de error con botón de reconexión
         if (typeof showAuthErrorBanner === 'function') {
             showAuthErrorBanner();
         } else {
@@ -696,7 +712,7 @@ class DeduplicationManager {
 // ==================== ADVANCED SYNC MANAGER ====================
 /**
  * GESTOR DE SINCRONIZACIÓN AVANZADO
- * Integra todos los módulos para sincronización robusta y confiable
+ * Módulo GENÉRICO - la lógica específica de cada app se define en config
  */
 class AdvancedSyncManager {
     constructor(config = {}) {
@@ -712,6 +728,14 @@ class AdvancedSyncManager {
             onSyncStart: config.onSyncStart || null,
             onSyncEnd: config.onSyncEnd || null,
             onStatusChange: config.onStatusChange || null,
+            // HOOKS CONFIGURABLES PARA DEDUPLICACIÓN ESPECÍFICA DE CADA APP
+            // Si no se proveen, se usa comportamiento por defecto (sin filtrado)
+            shouldIncludeRecord: config.shouldIncludeRecord || null, // (record) => boolean
+            generateRecordKey: config.generateRecordKey || null,     // (record) => string
+            onBeforeSync: config.onBeforeSync || null,               // (records) => records
+            onAfterSync: config.onAfterSync || null,                 // (records) => void
+            // Flag para habilitar/deshabilitar deduplicación legacy por pallet
+            useLegacyPalletDedup: config.useLegacyPalletDedup !== false, // true por defecto para compatibilidad
             ...config
         };
 
@@ -849,40 +873,31 @@ class AdvancedSyncManager {
 
     /**
      * Deduplicación interna del batch
-     * Elimina registros duplicados DENTRO del mismo lote antes de enviar
+     * USA EL HOOK config.generateRecordKey SI ESTÁ DEFINIDO
+     * Si no, usa el _id del registro como clave única (comportamiento más seguro)
      */
     _deduplicateBatch(records) {
         const seen = new Set();
         const deduplicated = [];
 
         for (const record of records) {
-            // Generar clave única para el registro
             let key;
 
-            // CRÍTICO: Si el registro ya tiene un ID único (asignado al crear), USARLO.
-            // Esto permite múltiples escaneos del mismo producto (mismo SKU, misma orden)
-            // siempre que sean eventos distintos (IDs distintos).
-            if (record._id) {
+            // PRIORIDAD 1: Usar hook personalizado de la app si está definido
+            if (this.config.generateRecordKey) {
+                key = this.config.generateRecordKey(record);
+            }
+            // PRIORIDAD 2: Usar _id único si existe (más seguro - cada registro es único)
+            else if (record._id) {
                 key = record._id;
-            } 
-            // Fallback para registros sin ID (lógica legacy)
-            else if (record.pallet && record.location) {
-                // Pallets son únicos por ubicación
-                key = `${(record.pallet || '').toString().trim()}|${(record.location || '').toString().trim()}`;
-            } else if (record.codigo || record.code) {
-                // Validaciones: Incluir timestamp para diferenciar escaneos
-                const code = record.codigo || record.code || '';
-                const obc = record.obc || record.orden || '';
-                const location = record.ubicacion || record.location || '';
-                const time = record.time || record.hora || '';
-                // Agregar time y un random si no hay _id para ser menos agresivo
-                key = `${code}|${obc}|${location}|${time}`;
-            } else {
+            }
+            // FALLBACK: Serializar el registro completo (último recurso)
+            else {
                 key = JSON.stringify(record);
             }
 
             if (seen.has(key)) {
-                console.warn('⚠️ [DEDUP-INTERNAL] Duplicado técnico detectado y eliminado:', key);
+                console.warn('⚠️ [DEDUP-INTERNAL] Duplicado técnico detectado:', key);
                 continue;
             }
 
@@ -1074,23 +1089,47 @@ class AdvancedSyncManager {
         }
 
         try {
-            // Filtrar registros ya sincronizados
-            const recordsToSync = [];
+            // ====== FILTRADO DE REGISTROS ======
+            // PASO 1: Extraer registros actuales
+            let recordsToSync = [];
             const palletLocationPairs = new Set();
-            
+
             for (const record of this.pendingSync) {
                 const actualRecord = record.record || record;
-                const palletKey = this.deduplicationManager.generatePalletKey(
-                    actualRecord.pallet, 
-                    actualRecord.location
-                );
-                
-                if (!this.deduplicationManager.syncedPallets.has(palletKey)) {
-                    recordsToSync.push(actualRecord);
-                    palletLocationPairs.add(palletKey);
-                } else {
-                    console.warn(`⚠️ [DEDUP-SYNC] Registro omitido (pallet ya sincronizado): ${palletKey}`);
+
+                // HOOK: Si la app define shouldIncludeRecord, usarlo
+                if (this.config.shouldIncludeRecord) {
+                    if (this.config.shouldIncludeRecord(actualRecord)) {
+                        recordsToSync.push(actualRecord);
+                    } else {
+                        console.log(`⏭️ [SYNC] Registro filtrado por shouldIncludeRecord`);
+                    }
+                    continue;
                 }
+
+                // COMPORTAMIENTO POR DEFECTO: Incluir todos los registros con _id
+                // Solo usar deduplicación legacy por pallet si está habilitada Y el registro tiene pallet
+                if (this.config.useLegacyPalletDedup && actualRecord.pallet) {
+                    const palletKey = this.deduplicationManager.generatePalletKey(
+                        actualRecord.pallet,
+                        actualRecord.location
+                    );
+
+                    if (!this.deduplicationManager.syncedPallets.has(palletKey)) {
+                        recordsToSync.push(actualRecord);
+                        palletLocationPairs.add(palletKey);
+                    } else {
+                        console.warn(`⚠️ [DEDUP-SYNC] Pallet ya sincronizado: ${palletKey}`);
+                    }
+                } else {
+                    // Sin pallet o dedup legacy deshabilitada: incluir siempre
+                    recordsToSync.push(actualRecord);
+                }
+            }
+
+            // HOOK: onBeforeSync permite a la app modificar los registros antes de sync
+            if (this.config.onBeforeSync) {
+                recordsToSync = this.config.onBeforeSync(recordsToSync) || recordsToSync;
             }
 
             // NUEVO: Deduplicación INTERNA del batch
@@ -1233,38 +1272,34 @@ class AdvancedSyncManager {
                 synced = deduplicatedRecords.length;
             }
 
-            // Marcar como sincronizados
+            // Marcar como sincronizados en IndexedDB
             await this.persistenceManager.markAsSynced(deduplicatedRecords);
 
-            for (const palletKey of palletLocationPairs) {
-                this.deduplicationManager.syncedPallets.add(palletKey);
+            // Marcar pallets como sincronizados (solo si useLegacyPalletDedup está activo)
+            if (this.config.useLegacyPalletDedup) {
+                for (const palletKey of palletLocationPairs) {
+                    this.deduplicationManager.syncedPallets.add(palletKey);
+                }
+                this.deduplicationManager.saveSyncedPallets();
             }
-            this.deduplicationManager.saveSyncedPallets();
 
-            // NUEVO: Actualizar processedCacheManager con registros sincronizados
-            if (window.processedCacheManager && typeof window.processedCacheManager.addSyncedRecords === 'function') {
+            // HOOK: onAfterSync permite a la app ejecutar lógica post-sincronización
+            // Esto reemplaza la lógica hardcodeada de ValidationDeduplicationManager
+            if (this.config.onAfterSync) {
                 try {
-                    await window.processedCacheManager.addSyncedRecords(deduplicatedRecords);
-                    console.log('✅ [SYNC] Processed cache actualizado con', deduplicatedRecords.length, 'registros');
+                    await this.config.onAfterSync(deduplicatedRecords);
+                    console.log('✅ [SYNC] Hook onAfterSync ejecutado');
                 } catch (error) {
-                    console.error('❌ [SYNC] Error actualizando processed cache:', error);
+                    console.error('❌ [SYNC] Error en hook onAfterSync:', error);
                 }
             }
 
-            // CRÍTICO: Marcar validaciones como sincronizadas DESPUÉS de escritura exitosa
-            if (window.ValidationDeduplicationManager && typeof window.ValidationDeduplicationManager.markValidationAsSynced === 'function') {
+            // Actualizar processedCacheManager si existe (compatibilidad)
+            if (window.processedCacheManager && typeof window.processedCacheManager.addSyncedRecords === 'function') {
                 try {
-                    deduplicatedRecords.forEach(record => {
-                        const code = record.codigo || record.code;
-                        const obc = record.obc || record.orden;
-                        const location = record.ubicacion || record.location;
-                        if (code && obc && location) {
-                            window.ValidationDeduplicationManager.markValidationAsSynced(code, obc, location);
-                        }
-                    });
-                    console.log('✅ [SYNC] Validaciones marcadas como sincronizadas:', deduplicatedRecords.length);
+                    await window.processedCacheManager.addSyncedRecords(deduplicatedRecords);
                 } catch (error) {
-                    console.error('❌ [SYNC] Error marcando validaciones como sincronizadas:', error);
+                    console.error('❌ [SYNC] Error actualizando processed cache:', error);
                 }
             }
 

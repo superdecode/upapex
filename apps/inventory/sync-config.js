@@ -47,7 +47,27 @@ async function initAdvancedSync() {
             storageKey: 'inventory_pending_sync',
             dedupStorageKey: 'inventory_synced_pallets',
             dbName: 'InventoryPersistenceDB',
-            
+
+            // ====== CONFIGURACIÓN ESPECÍFICA DE INVENTORY ======
+
+            // MANTENER deduplicación legacy por pallet (Inventory SÍ usa pallets)
+            useLegacyPalletDedup: true,
+
+            // HOOK: Genera clave única para deduplicación INTERNA del batch
+            // Para Inventory: usar pallet+location como clave única
+            generateRecordKey: (record) => {
+                // Si tiene pallet, usar pallet+location
+                if (record.pallet && record.location) {
+                    return `${record.pallet}|${record.location}`;
+                }
+                // Si tiene _id único, usarlo
+                if (record._id) {
+                    return record._id;
+                }
+                // Fallback
+                return JSON.stringify(record);
+            },
+
             // Formato de registro para Inventory
             formatRecord: (record) => {
                 return [

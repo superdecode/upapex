@@ -1,6 +1,9 @@
 /**
  * SYNC-CONFIG.JS - Validador App
  * Configuración del sistema de sincronización avanzado para Validador
+ *
+ * IMPORTANTE: Este archivo define la lógica de deduplicación ESPECÍFICA para Validador.
+ * El módulo advanced-sync-manager.js es genérico y usa los hooks definidos aquí.
  */
 
 // Verificar que las dependencias estén cargadas
@@ -33,7 +36,7 @@ async function initAdvancedSync() {
     }
     try {
         console.log('🚀 [VALIDADOR] Inicializando Advanced Sync Manager...');
-        
+
         // Configuración del Advanced Sync Manager
         const syncConfig = {
             spreadsheetId: SPREADSHEET_WRITE || '',
@@ -47,7 +50,52 @@ async function initAdvancedSync() {
             storageKey: 'validador_pending_sync',
             dedupStorageKey: 'validador_synced_records',
             dbName: 'ValidadorPersistenceDB',
-            
+
+            // ====== CONFIGURACIÓN ESPECÍFICA DE VALIDADOR ======
+
+            // DESACTIVAR deduplicación legacy por pallet (Validador NO usa pallets)
+            useLegacyPalletDedup: false,
+
+            // HOOK: Determina si un registro debe incluirse en la sincronización
+            // Para Validador: SIEMPRE incluir todos los registros (cada escaneo es único)
+            shouldIncludeRecord: () => {
+                // Validador incluye TODOS los registros - cada _id es único
+                // No filtrar por código/ubicación porque queremos múltiples escaneos
+                return true;
+            },
+
+            // HOOK: Genera clave única para deduplicación INTERNA del batch
+            // Para Validador: usar _id único (evita duplicados técnicos del mismo evento)
+            generateRecordKey: (record) => {
+                // PRIORIDAD 1: Usar _id único generado al crear el registro
+                if (record._id) {
+                    return record._id;
+                }
+                // FALLBACK: Generar clave única basada en timestamp + código
+                // Esto permite múltiples escaneos del mismo código
+                const timestamp = record._timestamp || Date.now();
+                const code = record.codigo || record.code || '';
+                const obc = record.obc || '';
+                return `VAL_${code}_${obc}_${timestamp}_${Math.random().toString(36).substr(2, 5)}`;
+            },
+
+            // HOOK: Se ejecuta DESPUÉS de sincronización exitosa
+            // Para Validador: marcar validaciones en ValidationDeduplicationManager
+            onAfterSync: async (syncedRecords) => {
+                if (window.ValidationDeduplicationManager &&
+                    typeof window.ValidationDeduplicationManager.markValidationAsSynced === 'function') {
+                    syncedRecords.forEach(record => {
+                        const code = record.codigo || record.code;
+                        const obc = record.obc || record.orden;
+                        const location = record.ubicacion || record.location;
+                        if (code && obc) {
+                            window.ValidationDeduplicationManager.markValidationAsSynced(code, obc, location || '');
+                        }
+                    });
+                    console.log(`✅ [VALIDADOR] ${syncedRecords.length} validaciones marcadas como sincronizadas`);
+                }
+            },
+
             // Formato de registro para Validador
             // IMPORTANTE: Enviar datos como strings para evitar problemas de formato
             // 7 columnas: A=Fecha, B=Hora, C=Usuario, D=OBC, E=Código, F=Ubicación, G=Nota
@@ -55,14 +103,14 @@ async function initAdvancedSync() {
                 // CRÍTICO: Usar string de fecha en formato DD/MM/YYYY
                 // NO usar Date objects porque Google Sheets puede formatearlos incorrectamente
                 const dateStr = record.date || SyncUtils.formatDate();
-                
+
                 // CRÍTICO: Obtener el nombre del usuario EN TIEMPO REAL
                 // Prioridad: 1) record.user, 2) window.CURRENT_USER, 3) AvatarSystem, 4) fallback
-                const currentUser = record.user || 
-                                   window.CURRENT_USER || 
-                                   (window.AvatarSystem?.getUserName?.()) || 
+                const currentUser = record.user ||
+                                   window.CURRENT_USER ||
+                                   (window.AvatarSystem?.getUserName?.()) ||
                                    '';
-                
+
                 return [
                     dateStr,  // A: Fecha como string DD/MM/YYYY
                     record.time || SyncUtils.formatTime(),  // B: Hora
@@ -73,8 +121,8 @@ async function initAdvancedSync() {
                     record.nota || ''  // G: Nota (ingreso forzado, observaciones, etc.)
                 ];
             },
-            
-            // Callbacks
+
+            // Callbacks de UI
             onSyncStart: () => {
                 console.log('🔄 [VALIDADOR] Sincronización iniciada');
                 // Actualizar indicador de sync si existe
@@ -84,7 +132,7 @@ async function initAdvancedSync() {
                     syncStatus.textContent = '🔄 Sincronizando...';
                 }
             },
-            
+
             onSyncEnd: () => {
                 console.log('✅ [VALIDADOR] Sincronización finalizada');
                 // Actualizar indicador de sync
@@ -100,7 +148,7 @@ async function initAdvancedSync() {
                     }
                 }
             },
-            
+
             onStatusChange: (stats) => {
                 console.log('📊 [VALIDADOR] Estado actualizado:', stats);
                 // Actualizar badge de pendientes

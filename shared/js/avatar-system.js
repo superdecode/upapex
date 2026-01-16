@@ -269,13 +269,18 @@ function saveAvatarName() {
     }
     
     updateAvatarDisplay();
-    document.querySelector('.popup-overlay')?.remove();
-    
+
+    // Cerrar el modal - buscar por ID específico o clase genérica
+    const popup = document.getElementById('avatar-name-popup') || document.querySelector('.popup-overlay');
+    if (popup) {
+        popup.remove();
+    }
+
     // Notificar a la app que el usuario cambió
     if (typeof window.updateUserFooter === 'function') {
         window.updateUserFooter();
     }
-    
+
     if (typeof showNotification === 'function') {
         showNotification(`✅ Nombre actualizado: ${result.formatted}`, 'success');
     }

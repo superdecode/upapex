@@ -2740,33 +2740,107 @@ function updateBdInfo() {
     }
 }
 
-function toggleConnection() {
+async function toggleConnection() {
     if (gapi?.client?.getToken()) {
         // Ya está conectado, preguntar si desea desconectar
-        if (confirm('¿Desconectar de Google? Deberás volver a iniciar sesión.')) {
-            handleLogout();
+        if (confirm('¿Desconectar de Google?\n\nLos datos no sincronizados se guardarán localmente.\nPodrás reconectar sin perder tu sesión.')) {
+            // Solo desconectar de Google, NO borrar tokens de localStorage
+            try {
+                const token = gapi.client.getToken();
+                if (token?.access_token) {
+                    google.accounts.oauth2.revoke(token.access_token);
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudo revocar token:', e);
+            }
+            gapi.client.setToken('');
+
+            // IMPORTANTE: NO borrar localStorage tokens aquí
+            // Solo se borran en logout completo (handleLogout)
+
+            // Actualizar estado en sidebar
+            if (window.sidebarComponent) {
+                window.sidebarComponent.avatarState.isGoogleConnected = false;
+                window.sidebarComponent.saveAvatarData();
+                window.sidebarComponent.updateAvatarButtons();
+            }
+
+            showNotification('🔌 Desconectado de Google. Reconecta para sincronizar.', 'info');
         }
     } else {
-        // MEJORA: Reconectar sin salir a login
-        handleGoogleReconnect();
+        // MEJORA: Reconectar sin salir a login - primero intentar desde localStorage
+        await handleGoogleReconnect();
     }
 }
 
 /**
  * MEJORA: Reconexión de Google sin redirección
+ * Primero intenta restaurar token desde localStorage
  */
 async function handleGoogleReconnect() {
+    console.log('🔗 [DISPATCH] Iniciando conexión con Google...');
+
+    // Intentar restaurar token guardado primero (reconexión rápida)
+    const savedToken = localStorage.getItem('gapi_token');
+    const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+
+    if (savedToken && tokenExpiry) {
+        const expiryTime = parseInt(tokenExpiry, 10);
+        const now = Date.now();
+
+        // Si el token aún es válido, restaurarlo directamente
+        if (expiryTime > now + (60 * 1000)) { // Margen de 1 minuto
+            console.log('🔄 [DISPATCH] Restaurando token desde localStorage...');
+            showReconnectOverlay(true);
+
+            try {
+                const tokenObj = JSON.parse(savedToken);
+                gapi.client.setToken(tokenObj);
+
+                // Verificar que el token funcione
+                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: { Authorization: `Bearer ${tokenObj.access_token}` }
+                });
+
+                if (response.ok) {
+                    console.log('✅ [DISPATCH] Token restaurado exitosamente');
+
+                    // Actualizar estado
+                    if (window.sidebarComponent) {
+                        window.sidebarComponent.avatarState.isGoogleConnected = true;
+                        window.sidebarComponent.saveAvatarData();
+                        window.sidebarComponent.updateAvatarButtons();
+                    }
+
+                    showReconnectOverlay(false);
+                    showNotification('✅ Reconectado a Google', 'success');
+
+                    // Recargar datos si es necesario
+                    if (STATE.obcData.size === 0) {
+                        await loadAllData();
+                    }
+                    return;
+                }
+            } catch (e) {
+                console.warn('⚠️ [DISPATCH] Token guardado inválido, solicitando nuevo...');
+            }
+
+            showReconnectOverlay(false);
+        }
+    }
+
+    // Si no hay token válido en localStorage, solicitar nuevo
     if (!tokenClient) {
         showContextualError('auth_error', 'tokenClient no inicializado');
         return;
     }
-    
+
     // Mostrar overlay de bloqueo
     showReconnectOverlay(true);
-    
+
     try {
-        console.log('🔄 Iniciando reconexión de Google...');
-        
+        console.log('🔄 [DISPATCH] Solicitando nuevo token de Google...');
+
         // Realizar reconexión sin redirección
         tokenClient.callback = async (resp) => {
             if (resp.error !== undefined) {
@@ -2775,27 +2849,36 @@ async function handleGoogleReconnect() {
                 showReconnectOverlay(false);
                 return;
             }
-            
-            console.log('✅ Reconexión exitosa');
-            
+
+            console.log('✅ [DISPATCH] Reconexión exitosa');
+
+            // Guardar token para futura reconexión rápida
+            const tokenObj = gapi.client.getToken();
+            if (tokenObj) {
+                localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
+                const expiresIn = resp.expires_in || 3600;
+                const expiryTime = Date.now() + (expiresIn * 1000);
+                localStorage.setItem('gapi_token_expiry', expiryTime.toString());
+            }
+
             // Actualizar estado
             if (window.sidebarComponent) {
                 window.sidebarComponent.avatarState.isGoogleConnected = true;
                 window.sidebarComponent.saveAvatarData();
                 window.sidebarComponent.updateAvatarButtons();
             }
-            
+
             showReconnectOverlay(false);
             showNotification('✅ Cuenta de Google reconectada', 'success');
-            
+
             // Recargar datos si es necesario
             if (STATE.obcData.size === 0) {
                 await loadAllData();
             }
         };
-        
+
         tokenClient.requestAccessToken({ prompt: '' });
-        
+
     } catch (error) {
         console.error('Error en reconexión:', error);
         showContextualError('auth_error', error.message);

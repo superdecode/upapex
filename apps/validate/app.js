@@ -1077,16 +1077,14 @@ async function handleToggleGoogleAuth() {
                 }
             }
             
-            // 2. Limpiar token de gapi
+            // 2. Limpiar token de gapi (solo en memoria, NO localStorage)
             gapi.client.setToken('');
-            
-            // 3. Limpiar localStorage de tokens de Google
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            localStorage.removeItem('gapi_token');
-            localStorage.removeItem('gapi_token_expiry');
-            
-            // 4. Actualizar UI (mantener usuario y datos locales)
+
+            // IMPORTANTE: NO borrar tokens de localStorage aquí
+            // Solo se borran en logout completo (handleFullLogout)
+            // Esto permite reconectar sin pedir credenciales de nuevo
+
+            // 3. Actualizar UI (mantener usuario y datos locales)
             updateUIAfterAuth();
             
             showNotification(' Desconectado de Google. Reconecta para sincronizar.', 'info');
@@ -1094,14 +1092,52 @@ async function handleToggleGoogleAuth() {
             console.log('✅ [VALIDADOR] Desconexión de Google completada');
             
         } else {
-            // CONECTAR - Reinicializar tokenClient si es necesario y luego iniciar login
+            // CONECTAR - Primero intentar restaurar token desde localStorage
             console.log('🔗 [VALIDADOR] Iniciando conexión con Google...');
-            
-            // Si tokenClient no está disponible, reinicializarlo
+
+            // Intentar restaurar token guardado primero (reconexión rápida)
+            const savedToken = localStorage.getItem('google_access_token');
+            const tokenExpiry = localStorage.getItem('google_token_expiry');
+
+            if (savedToken && tokenExpiry) {
+                const expiryTime = parseInt(tokenExpiry, 10);
+                const now = Date.now();
+
+                // Si el token aún es válido, restaurarlo directamente
+                if (expiryTime > now + (60 * 1000)) { // Margen de 1 minuto
+                    console.log('🔄 [VALIDADOR] Restaurando token desde localStorage...');
+                    try {
+                        gapi.client.setToken({ access_token: savedToken });
+
+                        // Verificar que el token funcione
+                        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                            headers: { Authorization: `Bearer ${savedToken}` }
+                        });
+
+                        if (response.ok) {
+                            console.log('✅ [VALIDADOR] Token restaurado exitosamente');
+                            updateUIAfterAuth();
+                            showNotification('✅ Reconectado a Google', 'success');
+
+                            // Recargar BD si es necesario
+                            if (BD_CODES.size === 0) {
+                                BD_LOADING = false;
+                                await loadDatabaseWithRetry();
+                                startBDAutoRefresh();
+                            }
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ [VALIDADOR] Token guardado inválido, solicitando nuevo...');
+                    }
+                }
+            }
+
+            // Si no hay token válido, solicitar nuevo
             if (!AuthManager.tokenClient) {
                 console.log('🔄 [VALIDADOR] Reinicializando tokenClient...');
                 showNotification('🔄 Inicializando autenticación...', 'info');
-                
+
                 // Reinicializar Google Identity Services
                 AuthManager.waitForGIS().then(async () => {
                     console.log('✅ [VALIDADOR] tokenClient reinicializado');
@@ -1229,50 +1265,97 @@ window.toggleGoogleConnection = handleToggleGoogleAuth;
 
 /**
  * Función global para reconectar después de error de autenticación
+ * CORREGIDO: Reconexión radical con reintentos automáticos
  */
 function handleReconnect() {
     console.log('🔄 [VALIDADOR] Iniciando reconexión...');
-    
+
     // Cerrar banner de error
     const banner = document.getElementById('auth-error-banner');
     if (banner) banner.remove();
-    
+
+    // CRÍTICO: Resetear BD_LOADING para permitir nueva carga
+    BD_LOADING = false;
+
     // Limpiar token actual
     if (gapi?.client) {
         gapi.client.setToken('');
     }
-    
+
+    // Limpiar tokens guardados para forzar nueva autenticación
+    localStorage.removeItem('google_access_token');
+    localStorage.removeItem('google_token_expiry');
+
     // Iniciar flujo de login con recarga de datos
     handleReconnectWithDataReload();
 }
 
 /**
  * CRÍTICO: Reconexión con recarga automática de BD
- * Similar a dispatch - asegura que las BD se recarguen después de reconectar
+ * CORREGIDO: Sistema robusto con reintentos y backoff exponencial
  */
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
+
 async function handleReconnectWithDataReload() {
     console.log('🔄 [VALIDADOR] Iniciando reconexión con recarga de BD...');
-    
+
+    // CRÍTICO: Resetear BD_LOADING para permitir nueva carga
+    BD_LOADING = false;
+
     if (!AuthManager.tokenClient) {
         console.error('❌ [VALIDADOR] tokenClient no disponible');
         showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
-        return;
+
+        // Intentar reinicializar AuthManager
+        if (typeof AuthManager !== 'undefined' && typeof AuthManager.init === 'function') {
+            console.log('🔄 [VALIDADOR] Intentando reinicializar AuthManager...');
+            try {
+                await AuthManager.init();
+                if (AuthManager.tokenClient) {
+                    console.log('✅ [VALIDADOR] AuthManager reinicializado');
+                } else {
+                    return;
+                }
+            } catch (e) {
+                console.error('❌ [VALIDADOR] No se pudo reinicializar AuthManager:', e);
+                return;
+            }
+        } else {
+            return;
+        }
     }
-    
+
     try {
         showLoading(true);
-        
+
         // Configurar callback para manejar la respuesta de autenticación
         AuthManager.tokenClient.callback = async (resp) => {
             if (resp.error) {
                 console.error('❌ [VALIDADOR] Error en reconexión:', resp);
-                showNotification('❌ Error al reconectar con Google', 'error');
-                showLoading(false);
+                reconnectAttempts++;
+
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    const delay = Math.pow(2, reconnectAttempts) * 1000; // Backoff exponencial
+                    console.log(`🔄 [VALIDADOR] Reintentando reconexión en ${delay}ms (intento ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                    showNotification(`⏳ Reintentando conexión... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
+
+                    setTimeout(() => {
+                        // Forzar prompt en reintentos
+                        AuthManager.tokenClient.requestAccessToken({ prompt: 'consent' });
+                    }, delay);
+                } else {
+                    showNotification('❌ No se pudo reconectar. Recarga la página.', 'error');
+                    showLoading(false);
+                    reconnectAttempts = 0;
+                }
                 return;
             }
-            
+
+            // Reset contador de intentos en éxito
+            reconnectAttempts = 0;
             console.log('✅ [VALIDADOR] Reconexión exitosa');
-            
+
             // Guardar token con las claves correctas
             const tokenObj = gapi?.client?.getToken();
             if (tokenObj && tokenObj.access_token) {
@@ -1282,37 +1365,93 @@ async function handleReconnectWithDataReload() {
                 localStorage.setItem('google_token_expiry', expiryTime.toString());
                 console.log('✅ [VALIDADOR] Token guardado en localStorage');
             }
-            
+
             // Actualizar UI
             updateUIAfterAuth();
-            
-            // CRÍTICO: Recargar BD si está vacía o no cargada
-            console.log('🔍 [VALIDADOR] Verificando estado de BD...');
-            console.log('  - BD_CODES.size:', BD_CODES.size);
-            console.log('  - OBC_TOTALS.size:', OBC_TOTALS.size);
-            
-            if (BD_CODES.size === 0 || OBC_TOTALS.size === 0) {
-                console.log('⏳ [VALIDADOR] BD vacía, recargando...');
-                await loadDatabase();
-                
+
+            // CRÍTICO: SIEMPRE recargar BD después de reconexión
+            // No importa si BD_CODES tiene datos - pueden estar obsoletos
+            console.log('🔍 [VALIDADOR] Forzando recarga de BD después de reconexión...');
+            console.log('  - BD_CODES.size (antes):', BD_CODES.size);
+            console.log('  - OBC_TOTALS.size (antes):', OBC_TOTALS.size);
+
+            // CRÍTICO: Resetear BD_LOADING antes de cargar
+            BD_LOADING = false;
+
+            try {
+                // Forzar recarga completa de BD
+                await loadDatabaseWithRetry();
+
                 // Iniciar auto-refresh de BD
                 startBDAutoRefresh();
-            } else {
-                console.log('✅ [VALIDADOR] BD ya cargada, no es necesario recargar');
+
+                console.log('✅ [VALIDADOR] BD recargada exitosamente');
+                console.log('  - BD_CODES.size (después):', BD_CODES.size);
+                console.log('  - OBC_TOTALS.size (después):', OBC_TOTALS.size);
+
+                showLoading(false);
+                showNotification('✅ Reconectado y BD actualizada', 'success');
+            } catch (dbError) {
+                console.error('❌ [VALIDADOR] Error recargando BD:', dbError);
+                showLoading(false);
+                showNotification('⚠️ Reconectado pero error al cargar BD. Intenta recargar BD manualmente.', 'warning');
             }
-            
-            showLoading(false);
-            showNotification('✅ Reconectado exitosamente', 'success');
         };
-        
-        // Solicitar acceso (sin prompt si el token es válido)
-        AuthManager.tokenClient.requestAccessToken({ prompt: '' });
-        
+
+        // Solicitar acceso - usar prompt consent si es primer intento después de error
+        const promptType = reconnectAttempts > 0 ? 'consent' : '';
+        AuthManager.tokenClient.requestAccessToken({ prompt: promptType });
+
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en reconexión:', error);
         showNotification('❌ Error al reconectar', 'error');
         showLoading(false);
     }
+}
+
+/**
+ * Carga la BD con reintentos automáticos
+ * NUEVO: Sistema robusto para garantizar carga de BD
+ */
+async function loadDatabaseWithRetry(maxRetries = 3) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`📊 [VALIDADOR] Intento ${attempt}/${maxRetries} de carga de BD...`);
+
+            // CRÍTICO: Asegurar que BD_LOADING esté en false
+            BD_LOADING = false;
+
+            await loadDatabase(false); // false = mostrar mensajes
+
+            // Verificar que la BD se cargó correctamente
+            if (BD_CODES.size > 0 && OBC_TOTALS.size > 0) {
+                console.log(`✅ [VALIDADOR] BD cargada en intento ${attempt}`);
+                return true;
+            }
+
+            // Si llegamos aquí, la BD se cargó pero está vacía
+            console.warn(`⚠️ [VALIDADOR] BD vacía después de carga (intento ${attempt})`);
+            lastError = new Error('BD cargada pero vacía');
+
+        } catch (error) {
+            console.error(`❌ [VALIDADOR] Error en intento ${attempt}:`, error);
+            lastError = error;
+
+            // Resetear flag para siguiente intento
+            BD_LOADING = false;
+        }
+
+        // Esperar antes de reintentar (backoff exponencial)
+        if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`⏳ [VALIDADOR] Esperando ${delay}ms antes de reintentar...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
+    throw lastError || new Error('No se pudo cargar la BD después de múltiples intentos');
 }
 
 window.handleReconnect = handleReconnect;
@@ -3129,8 +3268,17 @@ function renderResumen() {
         const info = OBC_INFO.get(obc) || {};
         const prerec = PREREC_DATA.get(obc);
 
+        // Obtener fecha de última validación
+        let fechaValidacion = '-';
+        if (tab.validations && tab.validations.length > 0) {
+            // Obtener la fecha más reciente
+            const lastValidation = tab.validations[tab.validations.length - 1];
+            fechaValidacion = lastValidation.date || '-';
+        }
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
+            <td>${fechaValidacion}</td>
             <td><strong>${obc}</strong>${prerec ? '<span class="prerec-indicator">PRE</span>' : ''}</td>
             <td>${total}</td>
             <td>${validated}</td>
@@ -3180,8 +3328,10 @@ function populateFaltantesOrders() {
 function renderFaltantes() {
     const selectedOBC = document.getElementById('faltantes-order-select').value;
     const grid = document.getElementById('faltantes-grid');
+    const summaryEl = document.getElementById('faltantes-summary');
 
     if (!selectedOBC) {
+        if (summaryEl) summaryEl.innerHTML = '';
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">Selecciona una orden</div>';
         return;
     }
@@ -3191,25 +3341,48 @@ function renderFaltantes() {
     const obcCodes = OBC_MAP.get(selectedOBC);
 
     if (!obcCodes || obcCodes.size === 0) {
+        if (summaryEl) summaryEl.innerHTML = '';
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">No hay datos para esta orden</div>';
         return;
     }
 
-    const validated = new Set(tab.validations.map(v => v.code));
+    const validated = new Set(tab?.validations?.map(v => v.code) || []);
     const codesArray = Array.from(obcCodes).map(concat => {
         const obcLower = selectedOBC.toLowerCase();
         return concat.endsWith(obcLower) ? concat.slice(0, -obcLower.length) : concat;
     });
 
     const pendingCodes = codesArray.filter(code => !validated.has(code));
+    const totalCodes = codesArray.length;
+    const validatedCount = validated.size;
+    const pendingCount = pendingCodes.length;
 
-    if (pendingCodes.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--success);">✅ ¡Todos los códigos validados!</div>';
+    // Renderizar resumen
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <div class="faltantes-summary-item total">
+                <div class="faltantes-summary-number" style="color: #2196f3;">${totalCodes}</div>
+                <div class="faltantes-summary-label">Total en BD</div>
+            </div>
+            <div class="faltantes-summary-item validados">
+                <div class="faltantes-summary-number" style="color: var(--success);">${validatedCount}</div>
+                <div class="faltantes-summary-label">Validados</div>
+            </div>
+            <div class="faltantes-summary-item faltantes">
+                <div class="faltantes-summary-number" style="color: var(--error);">${pendingCount}</div>
+                <div class="faltantes-summary-label">Faltantes</div>
+            </div>
+        `;
+    }
+
+    // Solo mostrar faltantes (no validados)
+    if (pendingCount === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--success); font-size: 1.2em;">✅ ¡Todos los códigos validados!</div>';
         return;
     }
 
     grid.innerHTML = pendingCodes.map(code => `
-        <div class="faltante-item faltante-pending" data-code="${code}">${code}</div>
+        <div class="faltante-item faltante-pending" data-code="${code}">❌ ${code}</div>
     `).join('');
 }
 

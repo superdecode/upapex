@@ -129,6 +129,7 @@
                                 </div>
                                 <button class="btn-manual" onclick="openManualInput()">✏️ Manual</button>
                                 <button class="btn-reconteo" onclick="openReconteo()">🔄 Reconteo</button>
+                                <button class="btn-faltantes" onclick="showFaltantes()">🔍 Faltantes</button>
                             </div>
                         </div>
 
@@ -168,6 +169,7 @@
                         <table class="resumen-table">
                             <thead>
                                 <tr>
+                                    <th>Fecha Val.</th>
                                     <th>Orden</th>
                                     <th>Total</th>
                                     <th>Validadas</th>
@@ -199,8 +201,8 @@
                         </select>
                         <input type="text" id="search-faltantes" class="search-bar" placeholder="🔍 Buscar código..." oninput="filterFaltantes()">
                     </div>
-                    <p style="margin-bottom: 15px;"><span style="color: var(--success);">✅ Validados</span> | <span style="color: var(--error);">❌ Faltantes</span></p>
-                    <div class="faltantes-grid" id="faltantes-grid"></div>
+                    <div class="faltantes-summary" id="faltantes-summary"></div>
+                    <div class="faltantes-grid-responsive" id="faltantes-grid"></div>
                 </div>
             </div>
         </div>
