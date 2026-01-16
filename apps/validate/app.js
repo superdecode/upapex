@@ -10,6 +10,16 @@ let CURRENT_USER = '';
 let USER_EMAIL = '';
 let USER_GOOGLE_NAME = '';
 
+// ==================== CONNECTION REHYDRATION SYSTEM ====================
+let CONNECTION_STATE = {
+    isAuthenticated: false,
+    isDatabaseConnected: false,
+    isRehydrating: false,
+    lastConnectionAttempt: null,
+    retryCount: 0,
+    maxRetries: 3
+};
+
 // Exponer CURRENT_USER globalmente para sincronización con AvatarSystem
 Object.defineProperty(window, 'CURRENT_USER', {
     get: function() { return CURRENT_USER; },
@@ -22,6 +32,7 @@ Object.defineProperty(window, 'CURRENT_USER', {
 });
 let LAST_BD_UPDATE = null;
 let BD_LOADING = false; // Bandera para rastrear si la BD está cargando
+let BD_DATA_READY = false; // Indica si hay datos disponibles (cache o servidor)
 let BD_CODES = new Set();
 let OBC_MAP = new Map();
 let OBC_TOTALS = new Map();
@@ -148,6 +159,249 @@ const ValidationDeduplicationManager = {
 
 // Exponer globalmente para que AdvancedSyncManager pueda acceder
 window.ValidationDeduplicationManager = ValidationDeduplicationManager;
+
+// ==================== CONNECTION REHYDRATION MANAGER ====================
+const ConnectionRehydrationManager = {
+    /**
+     * Intenta rehidratar la conexión automáticamente al cargar la página
+     */
+    async rehydrateConnection() {
+        if (CONNECTION_STATE.isRehydrating) {
+            console.log('⏳ [REHYDRATION] Ya hay una rehidratación en progreso...');
+            return false;
+        }
+
+        CONNECTION_STATE.isRehydrating = true;
+        CONNECTION_STATE.lastConnectionAttempt = Date.now();
+        
+        console.log('🔄 [REHYDRATION] Iniciando rehidratación de conexión...');
+        
+        try {
+            // Paso 1: Verificar y restaurar token de autenticación
+            const authRestored = await this.restoreAuthentication();
+            if (!authRestored) {
+                console.warn('⚠️ [REHYDRATION] No se pudo restaurar autenticación');
+                CONNECTION_STATE.isRehydrating = false;
+                return false;
+            }
+            
+            CONNECTION_STATE.isAuthenticated = true;
+            console.log('✅ [REHYDRATION] Autenticación restaurada');
+            
+            // Paso 2: Cargar datos desde cache primero (UI instantánea)
+            const cacheLoaded = await this.loadFromCache();
+            if (cacheLoaded) {
+                console.log('✅ [REHYDRATION] Datos cargados desde cache');
+                BD_DATA_READY = true;
+                showNotification('📦 Datos cargados desde cache', 'info');
+            }
+            
+            // Paso 3: Reconectar base de datos en segundo plano
+            this.reconnectDatabaseInBackground();
+            
+            CONNECTION_STATE.isRehydrating = false;
+            return true;
+            
+        } catch (error) {
+            console.error('❌ [REHYDRATION] Error en rehidratación:', error);
+            CONNECTION_STATE.isRehydrating = false;
+            return false;
+        }
+    },
+    
+    /**
+     * Restaura la autenticación desde token guardado
+     */
+    async restoreAuthentication() {
+        const savedToken = localStorage.getItem('google_access_token');
+        const tokenExpiry = localStorage.getItem('google_token_expiry');
+        
+        if (!savedToken || !tokenExpiry) {
+            return false;
+        }
+        
+        const expiryTime = parseInt(tokenExpiry, 10);
+        const now = Date.now();
+        
+        // Verificar si el token aún es válido (con margen de 5 min)
+        if (expiryTime > now + (5 * 60 * 1000)) {
+            try {
+                // Validar token con Google
+                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: { Authorization: `Bearer ${savedToken}` }
+                });
+                
+                if (response.ok) {
+                    gapi.client.setToken({ access_token: savedToken });
+                    const data = await response.json();
+                    USER_EMAIL = data.email || '';
+                    USER_GOOGLE_NAME = data.name || 'Usuario';
+                    
+                    const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                    const nameToUse = savedAlias || data.name || 'Usuario';
+                    CURRENT_USER = window.AvatarSystem?.formatNameToTitle?.(nameToUse) || nameToUse;
+                    
+                    return true;
+                } else {
+                    throw new Error('Token inválido');
+                }
+            } catch (e) {
+                console.log('⚠️ [REHYDRATION] Token inválido o expirado');
+                localStorage.removeItem('google_access_token');
+                localStorage.removeItem('google_token_expiry');
+                return false;
+            }
+        } else {
+            console.log('⚠️ [REHYDRATION] Token expirado');
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+            return false;
+        }
+    },
+    
+    /**
+     * Carga datos desde cache local (localStorage/IndexedDB)
+     */
+    async loadFromCache() {
+        try {
+            // Cargar OBC_TOTALS desde localStorage
+            const totalsRes = await window.storage.get('wms_validador_totals');
+            if (totalsRes?.value) {
+                const totalsData = JSON.parse(totalsRes.value);
+                OBC_TOTALS.clear();
+                for (const [obc, total] of Object.entries(totalsData)) {
+                    OBC_TOTALS.set(obc, total);
+                }
+                console.log(`📦 [CACHE] Cargados ${OBC_TOTALS.size} totales de órdenes`);
+            }
+            
+            // Cargar BD desde localStorage
+            const bdRes = await window.storage.get('wms_validador_bd');
+            if (bdRes?.value) {
+                const bdData = JSON.parse(bdRes.value);
+                
+                // Restaurar BD_CODES
+                if (bdData.codes && Array.isArray(bdData.codes)) {
+                    BD_CODES = new Set(bdData.codes);
+                }
+                
+                // Restaurar OBC_MAP
+                if (bdData.obcMap && Array.isArray(bdData.obcMap)) {
+                    OBC_MAP = new Map(bdData.obcMap.map(([k, v]) => [k, new Set(v)]));
+                }
+                
+                // Restaurar OBC_INFO
+                if (bdData.obcInfo && Array.isArray(bdData.obcInfo)) {
+                    OBC_INFO = new Map(bdData.obcInfo);
+                }
+                
+                console.log(`📦 [CACHE] Cargados ${BD_CODES.size} códigos de BD`);
+                
+                if (BD_CODES.size > 0) {
+                    updateBdInfo('Cache');
+                    return true;
+                }
+            }
+            
+            return false;
+        } catch (error) {
+            console.error('❌ [CACHE] Error cargando desde cache:', error);
+            return false;
+        }
+    },
+    
+    /**
+     * Reconecta la base de datos en segundo plano
+     */
+    async reconnectDatabaseInBackground() {
+        console.log('🔄 [REHYDRATION] Reconectando base de datos en segundo plano...');
+        
+        try {
+            await loadDatabase(true); // true = silent mode
+            CONNECTION_STATE.isDatabaseConnected = true;
+            CONNECTION_STATE.retryCount = 0;
+            console.log('✅ [REHYDRATION] Base de datos reconectada exitosamente');
+            showNotification('✅ Base de datos actualizada', 'success');
+        } catch (error) {
+            console.error('❌ [REHYDRATION] Error reconectando base de datos:', error);
+            CONNECTION_STATE.isDatabaseConnected = false;
+            
+            // Intentar retry con backoff exponencial
+            if (CONNECTION_STATE.retryCount < CONNECTION_STATE.maxRetries) {
+                CONNECTION_STATE.retryCount++;
+                const retryDelay = Math.min(1000 * Math.pow(2, CONNECTION_STATE.retryCount), 30000);
+                console.log(`🔄 [REHYDRATION] Reintentando en ${retryDelay/1000}s (intento ${CONNECTION_STATE.retryCount}/${CONNECTION_STATE.maxRetries})`);
+                
+                setTimeout(() => {
+                    this.reconnectDatabaseInBackground();
+                }, retryDelay);
+            } else {
+                console.error('❌ [REHYDRATION] Máximo de reintentos alcanzado');
+                showNotification('⚠️ No se pudo conectar a la base de datos. Haz clic en "Reconectar"', 'warning');
+                createAuthErrorBanner();
+            }
+        }
+    },
+    
+    /**
+     * Verifica el estado de salud de la conexión
+     */
+    async checkConnectionHealth() {
+        try {
+            const token = gapi?.client?.getToken();
+            if (!token) {
+                return { healthy: false, reason: 'No token' };
+            }
+            
+            // Verificar que el token funcione
+            const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${token.access_token}` }
+            });
+            
+            if (!response.ok) {
+                return { healthy: false, reason: 'Token inválido' };
+            }
+            
+            // Verificar que tengamos datos
+            if (BD_CODES.size === 0) {
+                return { healthy: false, reason: 'Sin datos de BD' };
+            }
+            
+            return { healthy: true };
+        } catch (error) {
+            return { healthy: false, reason: error.message };
+        }
+    },
+    
+    /**
+     * Intenta reconectar manualmente
+     */
+    async manualReconnect() {
+        console.log('🔄 [REHYDRATION] Reconexión manual iniciada...');
+        showNotification('🔄 Reconectando...', 'info');
+        
+        // Remover banner de error si existe
+        const banner = document.getElementById('auth-error-banner');
+        if (banner) banner.remove();
+        
+        CONNECTION_STATE.retryCount = 0;
+        
+        // Intentar rehidratar
+        const success = await this.rehydrateConnection();
+        
+        if (success) {
+            showNotification('✅ Reconexión exitosa', 'success');
+        } else {
+            showNotification('❌ Reconexión fallida. Inicia sesión nuevamente.', 'error');
+            // Mostrar pantalla de login
+            setTimeout(() => {
+                handleFullLogout();
+            }, 2000);
+        }
+    }
+};
+
+window.ConnectionRehydrationManager = ConnectionRehydrationManager;
 
 // ==================== INDEXEDDB CACHE SYSTEM ====================
 // Sistema avanzado de cache con IndexedDB para sincronización y validación de duplicados
@@ -614,7 +868,6 @@ function initSidebarComponent() {
             buttons: [
                 { label: 'Nueva Orden', icon: '➕', onClick: 'addOBC()', class: 'sidebar-btn-primary' },
                 { label: 'Resumen', icon: '📋', onClick: 'showResumen()', class: 'sidebar-btn-secondary' },
-                { label: 'Faltantes', icon: '🔍', onClick: 'showFaltantes()', class: 'sidebar-btn-secondary' },
                 { label: 'Prerecepción', icon: '📋', onClick: 'showPrerecepcion()', class: 'sidebar-btn-secondary' },
                 { label: 'Consulta', icon: '🔎', onClick: 'showConsulta()', class: 'sidebar-btn-secondary' }
             ]
@@ -644,6 +897,15 @@ function updateBdInfo() {
 
 // Función reloadBD para el botón del sidebar
 async function reloadBD() {
+    // Verificar salud de conexión primero
+    const health = await ConnectionRehydrationManager.checkConnectionHealth();
+    if (!health.healthy) {
+        console.warn('⚠️ [RELOAD-BD] Conexión no saludable:', health.reason);
+        showNotification('⚠️ Verificando conexión...', 'warning');
+        await ConnectionRehydrationManager.manualReconnect();
+        return;
+    }
+    
     await loadDatabase();
 }
 
@@ -691,6 +953,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         renderValidation();
         console.log('✅ [VALIDADOR] Renderización inicial completada');
+        
+        // NUEVO: Intentar rehidratación automática si hay token guardado
+        console.log('⏳ [VALIDADOR] Verificando rehidratación automática...');
+        const hasToken = localStorage.getItem('google_access_token');
+        if (hasToken) {
+            console.log('🔄 [VALIDADOR] Token encontrado, intentando rehidratación...');
+            const rehydrated = await ConnectionRehydrationManager.rehydrateConnection();
+            if (rehydrated) {
+                showMainApp();
+                updateUIAfterAuth();
+                startBDAutoRefresh();
+                console.log('✅ [VALIDADOR] Rehidratación exitosa');
+                return; // Salir para evitar inicializar auth de nuevo
+            }
+        }
     } catch (error) {
         console.error('❌ [VALIDADOR] Error durante inicialización:', error);
         showNotification('❌ Error al inicializar la aplicación', 'error');
@@ -836,62 +1113,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ==================== TOKEN PERSISTENCE ====================
 async function tryRestoreSession() {
-    // CRÍTICO: Usar las MISMAS claves que AuthManager
-    const savedToken = localStorage.getItem('google_access_token');
-    const tokenExpiry = localStorage.getItem('google_token_expiry');
-
-    if (!savedToken || !tokenExpiry) {
-        return false;
+    // NUEVO: Usar ConnectionRehydrationManager para restauración inteligente
+    console.log('🔄 [VALIDADOR] Intentando restaurar sesión...');
+    
+    const rehydrated = await ConnectionRehydrationManager.rehydrateConnection();
+    
+    if (rehydrated) {
+        showMainApp();
+        updateUIAfterAuth();
+        startBDAutoRefresh();
+        showNotification(`✅ Sesión restaurada: ${CURRENT_USER}`, 'success');
+        return true;
     }
-
-    const expiryTime = parseInt(tokenExpiry, 10);
-    const now = Date.now();
-
-    // Verificar si el token aún es válido (con margen de 5 min)
-    if (expiryTime > now + (5 * 60 * 1000)) {
-        try {
-            // savedToken es el access_token directamente, no un objeto JSON
-            gapi.client.setToken({ access_token: savedToken });
-
-            // Verificar que el token funcione
-            const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                headers: { Authorization: `Bearer ${savedToken}` }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                USER_EMAIL = data.email || '';
-                USER_GOOGLE_NAME = data.name || 'Usuario';
-
-                const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                const nameToUse = savedAlias || data.name || 'Usuario';
-                CURRENT_USER = window.AvatarSystem?.formatNameToTitle?.(nameToUse) || nameToUse;
-
-                showMainApp();
-                updateUIAfterAuth();
-                
-                console.log('⏳ [VALIDADOR] Cargando base de datos...');
-                await loadDatabase();
-                startBDAutoRefresh();
-
-                console.log('✅ [VALIDADOR] Sesión de Google restaurada');
-                showNotification(`✅ Sesión restaurada: ${CURRENT_USER}`, 'success');
-                return true;
-            } else {
-                throw new Error('Token inválido');
-            }
-        } catch (e) {
-            console.log('⚠️ Token inválido o expirado, requiere nuevo login');
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            return false;
-        }
-    } else {
-        console.log('⚠️ Token expirado, requiere nuevo login');
-        localStorage.removeItem('google_access_token');
-        localStorage.removeItem('google_token_expiry');
-        return false;
-    }
+    
+    return false;
 }
 
 function initAudio() {
@@ -1779,6 +2014,45 @@ function updateConnectionUI(syncing = false) {
 
 window.updateConnectionUI = updateConnectionUI;
 
+// ==================== PROGRESSIVE LOADING SYSTEM ====================
+let PROGRESSIVE_LOAD_STATE = {
+    isLoading: false,
+    totalRows: 0,
+    loadedRows: 0,
+    loadedOrders: 0,
+    phase: 'idle' // idle, loading, complete
+};
+
+/**
+ * Actualiza el preloader con el progreso de carga
+ */
+function updateLoadingProgress(phase, progress = 0, message = '') {
+    const overlay = document.getElementById('loading-overlay');
+    const textEl = overlay?.querySelector('.preloader-text');
+    const subtextEl = overlay?.querySelector('.preloader-subtext');
+    
+    if (!overlay) return;
+    
+    if (phase === 'complete') {
+        overlay.style.display = 'none';
+        return;
+    }
+    
+    overlay.style.display = 'flex';
+    
+    if (textEl) {
+        textEl.textContent = message || '🎯 Cargando Validador...';
+    }
+    
+    if (subtextEl) {
+        if (progress > 0) {
+            subtextEl.textContent = `Progreso: ${Math.round(progress)}%`;
+        } else {
+            subtextEl.textContent = 'Preparando datos...';
+        }
+    }
+}
+
 // ==================== BASE DE DATOS ====================
 async function loadDatabase(silent = false) {
     if (!gapi?.client?.sheets) {
@@ -1803,9 +2077,15 @@ async function loadDatabase(silent = false) {
         return;
     }
     
+    PROGRESSIVE_LOAD_STATE.isLoading = true;
+    PROGRESSIVE_LOAD_STATE.phase = 'loading';
+    
     try {
         BD_LOADING = true;
-        if (!silent) showLoading(true);
+        if (!silent) {
+            showLoading(true);
+            updateLoadingProgress('loading', 0, '🎯 Cargando Base de Datos...');
+        }
 
         console.groupCollapsed('🔄 [VALIDADOR] Cargando Base de Datos...');
         console.log('🧹 Limpiando cache...');
@@ -1847,11 +2127,19 @@ async function loadDatabase(silent = false) {
         const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
         
         console.log(`⚙️ Procesando en ${totalChunks} bloques de ${CHUNK_SIZE} filas...`);
+        
+        PROGRESSIVE_LOAD_STATE.totalRows = totalRows;
 
         // Procesar todas las filas en bloques (saltar header en índice 0)
         for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
             const startIdx = 1 + (chunkIndex * CHUNK_SIZE);
             const endIdx = Math.min(startIdx + CHUNK_SIZE, rows.length);
+            
+            // Actualizar progreso
+            if (!silent) {
+                const progress = ((chunkIndex + 1) / totalChunks) * 100;
+                updateLoadingProgress('loading', progress, `🎯 Procesando datos (${chunkIndex + 1}/${totalChunks})`);
+            }
             
             // Procesar bloque actual
             for (let i = startIdx; i < endIdx; i++) {
@@ -1994,8 +2282,14 @@ async function loadDatabase(silent = false) {
         updateBdInfo();
         
         BD_LOADING = false; // Resetear bandera de carga
+        BD_DATA_READY = true; // Marcar datos como listos
+        PROGRESSIVE_LOAD_STATE.isLoading = false;
+        PROGRESSIVE_LOAD_STATE.phase = 'complete';
+        PROGRESSIVE_LOAD_STATE.loadedRows = totalRows;
+        PROGRESSIVE_LOAD_STATE.loadedOrders = orderGroups.size;
         
         if (!silent) {
+            updateLoadingProgress('complete');
             showLoading(false);
             showNotification(`✅ ${BD_CODES.size} códigos cargados de ${orderGroups.size} órdenes`, 'success');
         } else {
@@ -2003,6 +2297,8 @@ async function loadDatabase(silent = false) {
         }
     } catch (error) {
         BD_LOADING = false; // Resetear bandera incluso en error
+        PROGRESSIVE_LOAD_STATE.isLoading = false;
+        PROGRESSIVE_LOAD_STATE.phase = 'idle';
         console.error('❌ [VALIDADOR] Error loading database:', error);
         
         // Detectar errores de autenticación (401/400)
@@ -2062,7 +2358,7 @@ function createAuthErrorBanner() {
             </div>
         </div>
         <div style="display: flex; gap: 10px;">
-            <button onclick="handleReconnect()" style="
+            <button onclick="window.handleReconnect()" style="
                 background: white;
                 color: #e74c3c;
                 border: none;
@@ -2107,6 +2403,11 @@ function createAuthErrorBanner() {
 
 window.createAuthErrorBanner = createAuthErrorBanner;
 window.showAuthErrorBanner = createAuthErrorBanner;
+
+// Función para reconectar manualmente desde el banner
+window.handleReconnect = async function() {
+    await ConnectionRehydrationManager.manualReconnect();
+};
 
 // ==================== AUTO-REFRESH SYSTEM ====================
 let BD_AUTO_REFRESH_INTERVAL = null;
@@ -3332,7 +3633,7 @@ function renderFaltantes() {
 
     if (!selectedOBC) {
         if (summaryEl) summaryEl.innerHTML = '';
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">Selecciona una orden</div>';
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">Selecciona una orden para ver los códigos faltantes</div>';
         return;
     }
 
@@ -3340,50 +3641,46 @@ function renderFaltantes() {
     const tab = allOrders[selectedOBC];
     const obcCodes = OBC_MAP.get(selectedOBC);
 
-    if (!obcCodes || obcCodes.size === 0) {
+    if (!tab || !obcCodes) {
         if (summaryEl) summaryEl.innerHTML = '';
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">No hay datos para esta orden</div>';
         return;
     }
 
-    const validated = new Set(tab?.validations?.map(v => v.code) || []);
-    const codesArray = Array.from(obcCodes).map(concat => {
-        const obcLower = selectedOBC.toLowerCase();
-        return concat.endsWith(obcLower) ? concat.slice(0, -obcLower.length) : concat;
-    });
+    const validatedCodes = new Set(tab.validations.map(v => v.code));
+    const totalCodes = obcCodes.size;
+    const validatedCount = validatedCodes.size;
+    const pendingCount = totalCodes - validatedCount;
 
-    const pendingCodes = codesArray.filter(code => !validated.has(code));
-    const totalCodes = codesArray.length;
-    const validatedCount = validated.size;
-    const pendingCount = pendingCodes.length;
+    const pending = [];
+    for (const concatenated of obcCodes) {
+        const code = concatenated.replace(selectedOBC.toLowerCase(), '');
+        if (!validatedCodes.has(code)) {
+            pending.push(code);
+        }
+    }
 
-    // Renderizar resumen
+    // NUEVO: Renderizar resumen como badges compactos
     if (summaryEl) {
         summaryEl.innerHTML = `
             <div class="faltantes-summary-item total">
-                <div class="faltantes-summary-number" style="color: #2196f3;">${totalCodes}</div>
-                <div class="faltantes-summary-label">Total en BD</div>
+                <div class="faltantes-summary-number">${totalCodes}</div>
+                <div class="faltantes-summary-label">Total BD</div>
             </div>
             <div class="faltantes-summary-item validados">
-                <div class="faltantes-summary-number" style="color: var(--success);">${validatedCount}</div>
+                <div class="faltantes-summary-number">${validatedCount}</div>
                 <div class="faltantes-summary-label">Validados</div>
             </div>
             <div class="faltantes-summary-item faltantes">
-                <div class="faltantes-summary-number" style="color: var(--error);">${pendingCount}</div>
+                <div class="faltantes-summary-number">${pendingCount}</div>
                 <div class="faltantes-summary-label">Faltantes</div>
             </div>
         `;
     }
 
-    // Solo mostrar faltantes (no validados)
-    if (pendingCount === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--success); font-size: 1.2em;">✅ ¡Todos los códigos validados!</div>';
-        return;
-    }
-
-    grid.innerHTML = pendingCodes.map(code => `
-        <div class="faltante-item faltante-pending" data-code="${code}">❌ ${code}</div>
-    `).join('');
+    grid.innerHTML = pending.map(code => `
+        <div class="faltante-item faltante-pending" data-code="${code}">${code}</div>
+    `).join('') || '<div style="grid-column: 1/-1; text-align: center; color: var(--success); padding: 40px; font-size: 1.2em;">✅ Todos los códigos validados</div>';
 }
 
 function filterFaltantes() {

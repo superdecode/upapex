@@ -196,12 +196,16 @@
                 </div>
                 <div class="card">
                     <div class="faltantes-controls">
-                        <select id="faltantes-order-select" onchange="renderFaltantes()">
-                            <option value="">Seleccionar orden...</option>
-                        </select>
-                        <input type="text" id="search-faltantes" class="search-bar" placeholder="🔍 Buscar código..." oninput="filterFaltantes()">
+                        <div class="faltantes-controls-left">
+                            <select id="faltantes-order-select" onchange="renderFaltantes()">
+                                <option value="">Seleccionar orden...</option>
+                            </select>
+                            <input type="text" id="search-faltantes" class="search-bar" placeholder="🔍 Buscar código..." oninput="filterFaltantes()" style="max-width: 300px;">
+                        </div>
+                        <div class="faltantes-controls-right">
+                            <div class="faltantes-summary" id="faltantes-summary"></div>
+                        </div>
                     </div>
-                    <div class="faltantes-summary" id="faltantes-summary"></div>
                     <div class="faltantes-grid-responsive" id="faltantes-grid"></div>
                 </div>
             </div>
