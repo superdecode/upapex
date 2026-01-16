@@ -21,6 +21,7 @@ Object.defineProperty(window, 'CURRENT_USER', {
     configurable: true
 });
 let LAST_BD_UPDATE = null;
+let BD_LOADING = false; // Bandera para rastrear si la BD está cargando
 let BD_CODES = new Set();
 let OBC_MAP = new Map();
 let OBC_TOTALS = new Map();
@@ -144,6 +145,9 @@ const ValidationDeduplicationManager = {
         console.log('🧹 [DEDUP] Cache de validaciones sincronizadas limpiado completamente');
     }
 };
+
+// Exponer globalmente para que AdvancedSyncManager pueda acceder
+window.ValidationDeduplicationManager = ValidationDeduplicationManager;
 
 // ==================== INDEXEDDB CACHE SYSTEM ====================
 // Sistema avanzado de cache con IndexedDB para sincronización y validación de duplicados
@@ -436,7 +440,11 @@ async function addToPendingSync(log) {
 
     try {
         // Formatear el registro para el Advanced Sync Manager
+        // CRÍTICO: Generar ID único aquí para evitar deduplicación agresiva de escaneos múltiples
+        const uniqueId = `val_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         const record = {
+            _id: uniqueId, // ID único para bypass de deduplicación por contenido
             date: log.date,
             time: log.timestamp,
             user: log.user,
@@ -450,7 +458,7 @@ async function addToPendingSync(log) {
         };
 
         await syncManager.addToQueue(record);
-        console.log('✅ [VALIDADOR] Validación agregada a cola de sincronización:', log.code);
+        console.log('✅ [VALIDADOR] Validación agregada a cola de sincronización:', log.code, `(ID: ${uniqueId})`);
     } catch (error) {
         console.error('❌ [VALIDADOR] Error al agregar a cola de sync:', error);
     }
@@ -770,14 +778,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 async (userData) => {
                     console.log('✅ [VALIDADOR] Autenticación exitosa:', { email: userData.email, user: userData.user });
 
-                    // Guardar token para persistencia
+                    // CRÍTICO: Guardar token con las MISMAS claves que AuthManager
+                    // Usar google_access_token (no gapi_token) para consistencia
                     const tokenObj = gapi?.client?.getToken();
-                    if (tokenObj) {
-                        localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
+                    if (tokenObj && tokenObj.access_token) {
+                        localStorage.setItem('google_access_token', tokenObj.access_token);
                         const expiresIn = tokenObj.expires_in || 3600;
                         const expiryTime = Date.now() + (expiresIn * 1000);
-                        localStorage.setItem('gapi_token_expiry', expiryTime.toString());
-                        console.log('✅ [VALIDADOR] Token guardado en localStorage');
+                        localStorage.setItem('google_token_expiry', expiryTime.toString());
+                        console.log('✅ [VALIDADOR] Token guardado en localStorage (google_access_token)');
                     }
 
                     USER_EMAIL = userData.email;
@@ -827,8 +836,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ==================== TOKEN PERSISTENCE ====================
 async function tryRestoreSession() {
-    const savedToken = localStorage.getItem('gapi_token');
-    const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+    // CRÍTICO: Usar las MISMAS claves que AuthManager
+    const savedToken = localStorage.getItem('google_access_token');
+    const tokenExpiry = localStorage.getItem('google_token_expiry');
 
     if (!savedToken || !tokenExpiry) {
         return false;
@@ -840,12 +850,12 @@ async function tryRestoreSession() {
     // Verificar si el token aún es válido (con margen de 5 min)
     if (expiryTime > now + (5 * 60 * 1000)) {
         try {
-            const tokenObj = JSON.parse(savedToken);
-            gapi.client.setToken(tokenObj);
+            // savedToken es el access_token directamente, no un objeto JSON
+            gapi.client.setToken({ access_token: savedToken });
 
             // Verificar que el token funcione
             const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                headers: { Authorization: `Bearer ${tokenObj.access_token}` }
+                headers: { Authorization: `Bearer ${savedToken}` }
             });
 
             if (response.ok) {
@@ -872,14 +882,14 @@ async function tryRestoreSession() {
             }
         } catch (e) {
             console.log('⚠️ Token inválido o expirado, requiere nuevo login');
-            localStorage.removeItem('gapi_token');
-            localStorage.removeItem('gapi_token_expiry');
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
             return false;
         }
     } else {
         console.log('⚠️ Token expirado, requiere nuevo login');
-        localStorage.removeItem('gapi_token');
-        localStorage.removeItem('gapi_token_expiry');
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_token_expiry');
         return false;
     }
 }
@@ -930,6 +940,11 @@ function updateUIAfterAuth() {
             window.sidebarComponent.clearGoogleConnection();
         }
         // Actualizar botones del avatar
+        window.sidebarComponent.updateAvatarButtons();
+    }
+    
+    // CRÍTICO: Actualizar icono de conexión en avatar system
+    if (window.sidebarComponent && window.sidebarComponent.updateAvatarButtons) {
         window.sidebarComponent.updateAvatarButtons();
     }
     
@@ -1037,7 +1052,7 @@ async function handleSyncBD() {
 /**
  * Gestiona exclusivamente la conexión con Google (sin cerrar sesión de la app)
  */
-function handleToggleGoogleAuth() {
+async function handleToggleGoogleAuth() {
     try {
         const hasToken = gapi?.client?.getToken();
         
@@ -1066,15 +1081,16 @@ function handleToggleGoogleAuth() {
             gapi.client.setToken('');
             
             // 3. Limpiar localStorage de tokens de Google
-            localStorage.removeItem('gapi_token');
-            localStorage.removeItem('gapi_token_expiry');
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('google_token_expiry');
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
             
             // 4. Actualizar UI (mantener usuario y datos locales)
             updateUIAfterAuth();
             
-            showNotification('🔌 Desconectado de Google. Reconecta para sincronizar.', 'info');
+            showNotification(' Desconectado de Google. Reconecta para sincronizar.', 'info');
+            console.log(' [VALIDADOR] Desconexión de Google completada');
             console.log('✅ [VALIDADOR] Desconexión de Google completada');
             
         } else {
@@ -1087,15 +1103,15 @@ function handleToggleGoogleAuth() {
                 showNotification('🔄 Inicializando autenticación...', 'info');
                 
                 // Reinicializar Google Identity Services
-                AuthManager.waitForGIS().then(() => {
+                AuthManager.waitForGIS().then(async () => {
                     console.log('✅ [VALIDADOR] tokenClient reinicializado');
-                    handleLogin();
+                    await handleReconnectWithDataReload();
                 }).catch((error) => {
                     console.error('❌ [VALIDADOR] Error reinicializando tokenClient:', error);
                     showNotification('❌ Error al inicializar autenticación. Recarga la página.', 'error');
                 });
             } else {
-                handleLogin();
+                await handleReconnectWithDataReload();
             }
         }
     } catch (error) {
@@ -1226,11 +1242,81 @@ function handleReconnect() {
         gapi.client.setToken('');
     }
     
-    // Iniciar flujo de login
-    handleLogin();
+    // Iniciar flujo de login con recarga de datos
+    handleReconnectWithDataReload();
+}
+
+/**
+ * CRÍTICO: Reconexión con recarga automática de BD
+ * Similar a dispatch - asegura que las BD se recarguen después de reconectar
+ */
+async function handleReconnectWithDataReload() {
+    console.log('🔄 [VALIDADOR] Iniciando reconexión con recarga de BD...');
+    
+    if (!AuthManager.tokenClient) {
+        console.error('❌ [VALIDADOR] tokenClient no disponible');
+        showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        
+        // Configurar callback para manejar la respuesta de autenticación
+        AuthManager.tokenClient.callback = async (resp) => {
+            if (resp.error) {
+                console.error('❌ [VALIDADOR] Error en reconexión:', resp);
+                showNotification('❌ Error al reconectar con Google', 'error');
+                showLoading(false);
+                return;
+            }
+            
+            console.log('✅ [VALIDADOR] Reconexión exitosa');
+            
+            // Guardar token con las claves correctas
+            const tokenObj = gapi?.client?.getToken();
+            if (tokenObj && tokenObj.access_token) {
+                localStorage.setItem('google_access_token', tokenObj.access_token);
+                const expiresIn = tokenObj.expires_in || 3600;
+                const expiryTime = Date.now() + (expiresIn * 1000);
+                localStorage.setItem('google_token_expiry', expiryTime.toString());
+                console.log('✅ [VALIDADOR] Token guardado en localStorage');
+            }
+            
+            // Actualizar UI
+            updateUIAfterAuth();
+            
+            // CRÍTICO: Recargar BD si está vacía o no cargada
+            console.log('🔍 [VALIDADOR] Verificando estado de BD...');
+            console.log('  - BD_CODES.size:', BD_CODES.size);
+            console.log('  - OBC_TOTALS.size:', OBC_TOTALS.size);
+            
+            if (BD_CODES.size === 0 || OBC_TOTALS.size === 0) {
+                console.log('⏳ [VALIDADOR] BD vacía, recargando...');
+                await loadDatabase();
+                
+                // Iniciar auto-refresh de BD
+                startBDAutoRefresh();
+            } else {
+                console.log('✅ [VALIDADOR] BD ya cargada, no es necesario recargar');
+            }
+            
+            showLoading(false);
+            showNotification('✅ Reconectado exitosamente', 'success');
+        };
+        
+        // Solicitar acceso (sin prompt si el token es válido)
+        AuthManager.tokenClient.requestAccessToken({ prompt: '' });
+        
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error en reconexión:', error);
+        showNotification('❌ Error al reconectar', 'error');
+        showLoading(false);
+    }
 }
 
 window.handleReconnect = handleReconnect;
+window.handleReconnectWithDataReload = handleReconnectWithDataReload;
 
 async function handleLogoutAndClearCache() {
     const confirmLogout = confirm('¿Salir de la aplicación?\n\n⚠️ Se cerrará la sesión de Google y se limpiará toda la caché del navegador.');
@@ -1251,14 +1337,23 @@ async function handleLogoutAndClearCache() {
             gapi.client.setToken('');
         }
 
-        // 2. Limpiar tokens guardados
+        // 2. Limpiar tokens guardados (ambas versiones por compatibilidad)
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_token_expiry');
         localStorage.removeItem('gapi_token');
         localStorage.removeItem('gapi_token_expiry');
 
-        // 3. Detener sincronización
-        if (window.syncManager && typeof window.syncManager.stopAutoSync === 'function') {
-            window.syncManager.stopAutoSync();
-            console.log('✅ Sincronización automática detenida');
+        // 3. Detener sincronización y CERRAR CONEXIONES DB
+        if (window.syncManager) {
+            if (typeof window.syncManager.stopAutoSync === 'function') {
+                window.syncManager.stopAutoSync();
+            }
+            // CRÍTICO: Cerrar conexión a IndexedDB antes de intentar borrarla
+            // Si no se cierra, el deleteDatabase se bloqueará indefinidamente
+            if (window.syncManager.persistenceManager && typeof window.syncManager.persistenceManager.close === 'function') {
+                window.syncManager.persistenceManager.close();
+            }
+            console.log('✅ Sincronización detenida y conexiones cerradas');
         }
 
         // 4. Detener sincronización automática del historial
@@ -1560,7 +1655,17 @@ async function loadDatabase(silent = false) {
         return;
     }
     
+    // Evitar cargas concurrentes
+    if (BD_LOADING) {
+        console.log('⏳ [VALIDADOR] BD ya está cargando, esperando...');
+        if (!silent) {
+            showNotification('⏳ Base de datos cargando...', 'info');
+        }
+        return;
+    }
+    
     try {
+        BD_LOADING = true;
         if (!silent) showLoading(true);
 
         console.groupCollapsed('🔄 [VALIDADOR] Cargando Base de Datos...');
@@ -1749,6 +1854,8 @@ async function loadDatabase(silent = false) {
         await saveBD();
         updateBdInfo();
         
+        BD_LOADING = false; // Resetear bandera de carga
+        
         if (!silent) {
             showLoading(false);
             showNotification(`✅ ${BD_CODES.size} códigos cargados de ${orderGroups.size} órdenes`, 'success');
@@ -1756,6 +1863,7 @@ async function loadDatabase(silent = false) {
             console.log(`🔄 [VALIDADOR] BD actualizada silenciosamente: ${BD_CODES.size} códigos`);
         }
     } catch (error) {
+        BD_LOADING = false; // Resetear bandera incluso en error
         console.error('❌ [VALIDADOR] Error loading database:', error);
         
         // Detectar errores de autenticación (401/400)
@@ -2342,25 +2450,29 @@ async function processScan(raw, isManual = false) {
 
 async function handleValidationOK(raw, code, obc, location, note = '', isManual = false) {
     // DEDUPLICACIÓN: Verificar si esta validación ya fue sincronizada
+    // MODIFICADO: Permitir múltiples escaneos del mismo código (para contar unidades)
+    // La deduplicación técnica de eventos se maneja en AdvancedSyncManager con IDs únicos.
     if (ValidationDeduplicationManager.isValidationSynced(code, obc, location)) {
-        console.warn(`⚠️ [DEDUP] Validación duplicada detectada: ${code}|${obc}|${location}`);
-        showNotification('⚠️ Esta validación ya fue registrada anteriormente', 'warning');
-        playSound('error');
-        flashInput('error');
-        return;
+        console.log(`ℹ️ [DEDUP] Código ${code} ya visto anteriormente en esta ubicación (permitiendo re-escaneo)`);
+        // NO BLOQUEAR: Permitir que pase para soportar múltiples unidades
+        // showNotification('⚠️ Esta validación ya fue registrada anteriormente', 'warning');
+        // playSound('error');
+        // return; 
     }
 
-    const now = new Date();
+    const timestamp = new Date().toLocaleTimeString();
+    const date = new Date().toLocaleDateString('es-MX'); // Formato DD/MM/YYYY
+    
+    // Crear objeto de log
     const log = {
-        id: Date.now() + Math.random(),
-        date: now.toLocaleDateString('es-MX'),
-        timestamp: now.toLocaleTimeString('es-MX'),
+        date: date,
+        timestamp: timestamp,
         user: CURRENT_USER,
-        obc,
-        raw,
-        code,
-        location,
-        note: isManual ? `MANUAL: ${note}` : note
+        obc: obc,
+        code: code,
+        location: location,
+        note: isManual ? `MANUAL: ${note}` : note,
+        raw: raw
     };
 
     STATE.tabs[obc].validations.push(log);
@@ -2371,8 +2483,9 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
     // Guardar en IndexedDB para cache persistente
     await HistoryIndexedDBManager.addValidation(concatenated, historyData);
 
-    // DEDUPLICACIÓN: Marcar como sincronizada ANTES de agregar a la cola
-    ValidationDeduplicationManager.markValidationAsSynced(code, obc, location);
+    // CRÍTICO: NO marcar como sincronizada aquí - se marcará DESPUÉS de la escritura exitosa
+    // La deduplicación técnica se maneja en AdvancedSyncManager con IDs únicos (_id)
+    // ValidationDeduplicationManager.markValidationAsSynced(code, obc, location); // REMOVIDO
 
     addToPendingSync(log);
     await saveState();
@@ -2758,9 +2871,14 @@ async function addOBC() {
         return;
     }
 
-    // Verificar si la base de datos está cargada
+    // Verificar si la base de datos está cargada o cargando
+    if (BD_LOADING) {
+        showNotification('⏳ Base de datos cargando, espera un momento...', 'info');
+        return;
+    }
+    
     if (BD_CODES.size === 0 || OBC_TOTALS.size === 0) {
-        showNotification('⚠️ Base de datos no cargada. Conecta y recarga la BD primero', 'warning');
+        showNotification('⚠️ Base de datos no cargada. Haz click en 🔄 para cargar la BD', 'warning');
         return;
     }
 

@@ -477,6 +477,17 @@ class PersistenceManager {
             }
         });
     }
+
+    /**
+     * Cierra la conexión a la base de datos
+     */
+    close() {
+        if (this.db) {
+            this.db.close();
+            this.db = null;
+            console.log('🔒 [PERSISTENCE] Conexión a IndexedDB cerrada');
+        }
+    }
 }
 
 // ==================== DEDUPLICATION MANAGER ====================
@@ -493,7 +504,26 @@ class DeduplicationManager {
     }
 
     generateRecordKey(record) {
-        return `${record.pallet}|${record.scan1}|${record.location}`;
+        // CRÍTICO: Si tiene ID único, usarlo como clave primaria
+        if (record._id) return record._id;
+
+        // Soporte para registros de Pallets
+        if (record.pallet && record.location) {
+            return `${record.pallet}|${record.scan1 || 'NOSCAN'}|${record.location}`;
+        }
+        
+        // Soporte para registros de Validación
+        if (record.codigo || record.code) {
+            const code = record.codigo || record.code || '';
+            const obc = record.obc || record.orden || '';
+            const location = record.ubicacion || record.location || '';
+            const time = record.time || record.hora || '';
+            // Incluir tiempo para diferenciar escaneos del mismo producto
+            return `VAL|${code}|${obc}|${location}|${time}`;
+        }
+
+        // Fallback
+        return JSON.stringify(record);
     }
 
     generatePalletKey(palletId, location) {
@@ -827,26 +857,32 @@ class AdvancedSyncManager {
 
         for (const record of records) {
             // Generar clave única para el registro
-            // Para pallets: pallet + location
-            // Para validaciones: codigo + obc + ubicacion
             let key;
 
-            if (record.pallet && record.location) {
-                // Es un registro de pallets (scan.html)
+            // CRÍTICO: Si el registro ya tiene un ID único (asignado al crear), USARLO.
+            // Esto permite múltiples escaneos del mismo producto (mismo SKU, misma orden)
+            // siempre que sean eventos distintos (IDs distintos).
+            if (record._id) {
+                key = record._id;
+            } 
+            // Fallback para registros sin ID (lógica legacy)
+            else if (record.pallet && record.location) {
+                // Pallets son únicos por ubicación
                 key = `${(record.pallet || '').toString().trim()}|${(record.location || '').toString().trim()}`;
             } else if (record.codigo || record.code) {
-                // Es un registro de validación (validador)
+                // Validaciones: Incluir timestamp para diferenciar escaneos
                 const code = record.codigo || record.code || '';
                 const obc = record.obc || record.orden || '';
                 const location = record.ubicacion || record.location || '';
-                key = `${code.toString().trim()}|${obc.toString().trim()}|${location.toString().trim()}`;
+                const time = record.time || record.hora || '';
+                // Agregar time y un random si no hay _id para ser menos agresivo
+                key = `${code}|${obc}|${location}|${time}`;
             } else {
-                // Fallback: usar todos los campos
                 key = JSON.stringify(record);
             }
 
             if (seen.has(key)) {
-                console.warn('⚠️ [DEDUP-INTERNAL] Duplicado detectado y eliminado:', key);
+                console.warn('⚠️ [DEDUP-INTERNAL] Duplicado técnico detectado y eliminado:', key);
                 continue;
             }
 
@@ -1127,6 +1163,21 @@ class AdvancedSyncManager {
                                     console.error('❌ [SYNC] Error actualizando processed cache (modo lento):', error);
                                 }
                             }
+
+                            // CRÍTICO: Marcar validación como sincronizada DESPUÉS de escritura exitosa
+                            if (window.ValidationDeduplicationManager && typeof window.ValidationDeduplicationManager.markValidationAsSynced === 'function') {
+                                try {
+                                    const record = deduplicatedRecords[i];
+                                    const code = record.codigo || record.code;
+                                    const obc = record.obc || record.orden;
+                                    const location = record.ubicacion || record.location;
+                                    if (code && obc && location) {
+                                        window.ValidationDeduplicationManager.markValidationAsSynced(code, obc, location);
+                                    }
+                                } catch (error) {
+                                    console.error('❌ [SYNC] Error marcando validación como sincronizada (modo lento):', error);
+                                }
+                            }
                         } else {
                             failed.push(deduplicatedRecords[i]);
                         }
@@ -1197,6 +1248,23 @@ class AdvancedSyncManager {
                     console.log('✅ [SYNC] Processed cache actualizado con', deduplicatedRecords.length, 'registros');
                 } catch (error) {
                     console.error('❌ [SYNC] Error actualizando processed cache:', error);
+                }
+            }
+
+            // CRÍTICO: Marcar validaciones como sincronizadas DESPUÉS de escritura exitosa
+            if (window.ValidationDeduplicationManager && typeof window.ValidationDeduplicationManager.markValidationAsSynced === 'function') {
+                try {
+                    deduplicatedRecords.forEach(record => {
+                        const code = record.codigo || record.code;
+                        const obc = record.obc || record.orden;
+                        const location = record.ubicacion || record.location;
+                        if (code && obc && location) {
+                            window.ValidationDeduplicationManager.markValidationAsSynced(code, obc, location);
+                        }
+                    });
+                    console.log('✅ [SYNC] Validaciones marcadas como sincronizadas:', deduplicatedRecords.length);
+                } catch (error) {
+                    console.error('❌ [SYNC] Error marcando validaciones como sincronizadas:', error);
                 }
             }
 
