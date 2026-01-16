@@ -2750,7 +2750,7 @@ function setupListeners() {
         // Variables para detectar entrada de escáner vs manual
         let lastInputTime = 0;
         let inputBuffer = '';
-        const SCANNER_THRESHOLD = 50; // ms - escáneres escriben muy rápido
+        const SCANNER_THRESHOLD = 500; // ms - aumentado para códigos largos que tardan en transmitirse
         
         // Bloquear entrada manual - solo permitir escáner o paste
         scanner.addEventListener('keydown', (e) => {
@@ -3641,20 +3641,39 @@ function renderFaltantes() {
     const tab = allOrders[selectedOBC];
     const obcCodes = OBC_MAP.get(selectedOBC);
 
-    if (!tab || !obcCodes) {
+    if (!obcCodes) {
         if (summaryEl) summaryEl.innerHTML = '';
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">No hay datos para esta orden</div>';
         return;
     }
 
-    const validatedCodes = new Set(tab.validations.map(v => v.code));
+    // CORRECCIÓN: Combinar validaciones de tab.validations Y del HISTORY global
+    // Esto asegura que las validaciones sincronizadas del servidor también se consideren
+    const validatedCodes = new Set();
+
+    // 1. Agregar códigos de tab.validations (sesión local)
+    if (tab && tab.validations) {
+        tab.validations.forEach(v => {
+            if (v.code) validatedCodes.add(v.code.toUpperCase());
+        });
+    }
+
+    // 2. Agregar códigos del HISTORY global (sincronizados del servidor)
+    for (const [key, data] of HISTORY.entries()) {
+        if (data.obc && data.obc.toUpperCase() === selectedOBC.toUpperCase()) {
+            // El código está en la clave: key = código + obc.toLowerCase()
+            const code = key.replace(selectedOBC.toLowerCase(), '').toUpperCase();
+            if (code) validatedCodes.add(code);
+        }
+    }
+
     const totalCodes = obcCodes.size;
     const validatedCount = validatedCodes.size;
     const pendingCount = totalCodes - validatedCount;
 
     const pending = [];
     for (const concatenated of obcCodes) {
-        const code = concatenated.replace(selectedOBC.toLowerCase(), '');
+        const code = concatenated.replace(selectedOBC.toLowerCase(), '').toUpperCase();
         if (!validatedCodes.has(code)) {
             pending.push(code);
         }

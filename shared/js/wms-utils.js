@@ -28,31 +28,49 @@ function normalizeCode(rawCode, verbose = false) {
     code = code.replace(/[\x00-\x1F\x7F]/g, '');
     code = code.replace(/^GS1:|^\]C1|^\]E0|^\]d2/i, '');
 
+    // PRIORIDAD MÁXIMA: Detectar JSON válido primero (antes de normalizar caracteres)
+    // Ejemplo: {"ID":"49570640/2","REFERENCE_ID":"49570640/2",...}
+    const jsonMatch = code.match(/"ID"\s*:\s*"(\d+[\/\-]\d+)"/i);
+    if (jsonMatch && jsonMatch[1]) {
+        if (verbose) console.log(` [WMS-UTILS] Código extraído de JSON: ${jsonMatch[1]}`);
+        return jsonMatch[1];
+    }
+
     // Normalizar caracteres especiales comunes en scanners
     code = code.replace(/ö/gi, 'o');
     code = code.replace(/ï/gi, 'i');
-    code = code.replace(/Ñ/g, 'n');
-    code = code.replace(/ñ/g, 'n');
+    code = code.replace(/Ñ/g, ':');  // Ñ suele ser : en estos formatos
+    code = code.replace(/ñ/g, ':');
     code = code.replace(/\^/g, '');
     code = code.replace(/¨/g, '"');
+    code = code.replace(/\[/g, '"'); // [ suele representar " en escáneres
+    code = code.replace(/\]/g, '"');
 
-    // Normalizar separadores alternativos a slash (IMPORTANTE: preservar separador)
+    // Normalizar separadores alternativos
     code = code.replace(/\'/g, '/');
-    code = code.replace(/\*/g, '/');
+    code = code.replace(/\*/g, '');  // Asteriscos son terminadores, no separadores
     code = code.replace(/&/g, '/');
 
     // Normalizar comillas raras
     code = code.replace(/[""«»„‟‚‛''¨]/g, '"');
 
     // Eliminar caracteres intermedios problemáticos
-    code = code.replace(/ñ\[/g, '');
-    code = code.replace(/\?/g, '');
+    code = code.replace(/\?/g, '_');  // ? suele ser _ en estos formatos
 
-    // Convertir a mayúsculas
+    // Convertir a mayúsculas para búsqueda de patrones
     const codeUpper = code.toUpperCase();
 
-    // PRIORIDAD ALTA: Patrones complejos de escaneo que preservan separadores
+    // PRIORIDAD ALTA: Patrones específicos para formatos de escáner con caracteres especiales
+    // Estos patrones buscan el ID/REFERENCE_ID en formatos como:
+    // ^¨id¨Ñ¨50323850-9¨ → después de normalizar: "ID":"50323850-9"
+    // ¨[ID[ñ [50336999-4[ → después de normalizar: "ID": "50336999-4"
     const complexPatterns = [
+        // Patrón JSON normalizado: "ID":"CODIGO" o "ID" : "CODIGO"
+        /"ID"\s*:\s*"?(\d+[\/\-]\d+)"?/i,
+
+        // Patrón REFERENCE_ID (alternativo)
+        /"REFERENCE_ID"\s*:\s*"?(\d+[\/\-]\d+)"?/i,
+
         // Patrón 1: [ID[N [CODIGO[ con separador - captura completa
         /\[ID\[N\s*\[([\d]+[\/\-][\d]+)/i,
         /\[ID\[.*?\[([\d]+[\/\-][\d]+)/i,
@@ -63,23 +81,24 @@ function normalizeCode(rawCode, verbose = false) {
 
         // Patrón 3: JSON con "id":"CODIGO"
         /"ID"\s*[N:"]+\s*"([\d]+[\/\-][\d]+)"/i,
-        /"ID"\s*:\s*"([\d]+[\/\-][\d]+)"/i,
         /"CODE"\s*:\s*"([^"]+)"/i,
 
-        // Patrón 4: ID seguido de código
-        /\bID[N:\s]*([\d]+[\/\-][\d]+)/i,
+        // Patrón 4: ID seguido de código (después de normalización)
+        /\bID\s*:\s*"?(\d+[\/\-]\d+)/i,
+        /\bID"?"?(\d+[\/\-]\d+)/i,
 
         // Patrón 5: Código al inicio con separador
-        /^([\d]+[\/\-][\d]+)/,
+        /^"?(\d+[\/\-]\d+)"?/,
 
-        // Patrón 6: Secuencia numérica con separador (flexible: 6+ dígitos + separador + 1-4 dígitos)
-        /([\d]{6,}[\/\-]\d{1,4})/
+        // Patrón 6: Secuencia numérica con separador en cualquier parte del string
+        // (6+ dígitos + separador + 1-4 dígitos)
+        /(\d{6,}[\/\-]\d{1,4})/
     ];
 
     for (const pattern of complexPatterns) {
         const match = codeUpper.match(pattern);
         if (match && match[1]) {
-            const extracted = match[1];
+            const extracted = match[1].replace(/"/g, ''); // Limpiar comillas residuales
             // Validar formato: números + separador + números (más flexible)
             if (/^\d{6,}[\/\-]\d{1,4}$/.test(extracted)) {
                 if (verbose) console.log(` [WMS-UTILS] Código extraído con separador: ${extracted}`);
