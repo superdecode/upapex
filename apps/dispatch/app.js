@@ -2165,17 +2165,25 @@ async function loadReferenceDataInBackground() {
     // Usar setTimeout para no bloquear el hilo principal
     setTimeout(async () => {
         try {
+            // Generar timestamp para cache-busting
+            const cacheBuster = Date.now();
+
             // VALIDACION
             try {
                 let validacionCsv;
                 if (dispatchSyncManager) {
-                    validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION);
+                    // Forzar recarga sin usar caché
+                    validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION, true);
                 } else {
-                    const response = await fetch(CONFIG.SOURCES.VALIDACION);
+                    // Agregar cache-busting a la URL
+                    const url = CONFIG.SOURCES.VALIDACION.includes('?')
+                        ? `${CONFIG.SOURCES.VALIDACION}&_t=${cacheBuster}`
+                        : `${CONFIG.SOURCES.VALIDACION}?_t=${cacheBuster}`;
+                    const response = await fetch(url, { cache: 'no-store' });
                     validacionCsv = await response.text();
                 }
                 if (validacionCsv) parseValidacionData(validacionCsv);
-                console.log('✅ [BACKGROUND] VALIDACION cargada');
+                console.log('✅ [BACKGROUND] VALIDACION cargada (sin caché)');
             } catch (e) {
                 console.warn('⚠️ [BACKGROUND] Error cargando VALIDACION:', e);
             }
@@ -2184,13 +2192,18 @@ async function loadReferenceDataInBackground() {
             try {
                 let mneCsv;
                 if (dispatchSyncManager) {
-                    mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE);
+                    // Forzar recarga sin usar caché
+                    mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE, true);
                 } else {
-                    const response = await fetch(CONFIG.SOURCES.MNE);
+                    // Agregar cache-busting a la URL
+                    const url = CONFIG.SOURCES.MNE.includes('?')
+                        ? `${CONFIG.SOURCES.MNE}&_t=${cacheBuster}`
+                        : `${CONFIG.SOURCES.MNE}?_t=${cacheBuster}`;
+                    const response = await fetch(url, { cache: 'no-store' });
                     mneCsv = await response.text();
                 }
                 if (mneCsv) parseMNEData(mneCsv);
-                console.log('✅ [BACKGROUND] MNE cargada');
+                console.log('✅ [BACKGROUND] MNE cargada (sin caché)');
             } catch (e) {
                 console.warn('⚠️ [BACKGROUND] Error cargando MNE:', e);
             }
@@ -2199,20 +2212,25 @@ async function loadReferenceDataInBackground() {
             try {
                 let trsCsv;
                 if (dispatchSyncManager) {
-                    trsCsv = await dispatchSyncManager.getReferenceData('trs', CONFIG.SOURCES.TRS);
+                    // Forzar recarga sin usar caché
+                    trsCsv = await dispatchSyncManager.getReferenceData('trs', CONFIG.SOURCES.TRS, true);
                 } else {
-                    const response = await fetch(CONFIG.SOURCES.TRS);
+                    // Agregar cache-busting a la URL
+                    const url = CONFIG.SOURCES.TRS.includes('?')
+                        ? `${CONFIG.SOURCES.TRS}&_t=${cacheBuster}`
+                        : `${CONFIG.SOURCES.TRS}?_t=${cacheBuster}`;
+                    const response = await fetch(url, { cache: 'no-store' });
                     trsCsv = await response.text();
                 }
                 if (trsCsv) parseTRSData(trsCsv);
-                console.log('✅ [BACKGROUND] TRS cargada');
+                console.log('✅ [BACKGROUND] TRS cargada (sin caché)');
             } catch (e) {
                 console.warn('⚠️ [BACKGROUND] Error cargando TRS:', e);
             }
 
             LOAD_STATE.referenceLoaded = true;
             LOAD_STATE.backgroundLoading = false;
-            console.log('✅ [BACKGROUND] Todas las BDs de referencia cargadas');
+            console.log('✅ [BACKGROUND] Todas las BDs de referencia cargadas (sin caché)');
 
         } catch (error) {
             console.error('❌ [BACKGROUND] Error en carga de referencia:', error);
@@ -2691,42 +2709,65 @@ async function reloadData() {
         showNotification('⚠️ No estás autenticado', 'warning');
         return;
     }
-    
+
     console.log('🔄 [RELOAD] Iniciando recarga completa de datos...');
-    
+
     showPreloader('Recargando datos...', 'Descargando información actualizada');
-    
+
     try {
-        // OPTIMIZACIÓN: Invalidar caché del sync manager
+        // OPTIMIZACIÓN: Invalidar TODOS los cachés del sync manager
         if (dispatchSyncManager) {
             console.log('🗑️ [RELOAD] Invalidando caché del sync manager...');
             dispatchSyncManager.cache.operational.data = null;
             dispatchSyncManager.cache.operational.timestamp = 0;
             dispatchSyncManager.cache.operational.version = 0;
-            
-            dispatchSyncManager.cache.reference.data = null;
-            dispatchSyncManager.cache.reference.timestamp = 0;
+
+            // Invalidar todas las bases de datos de referencia
+            console.log('🗑️ [RELOAD] Invalidando cachés de referencia (VALIDACION, MNE, TRS, LISTAS)...');
+            dispatchSyncManager.cache.reference.validacion = { data: null, lastUpdate: null };
+            dispatchSyncManager.cache.reference.mne = { data: null, lastUpdate: null };
+            dispatchSyncManager.cache.reference.trs = { data: null, lastUpdate: null };
+            dispatchSyncManager.cache.reference.listas = { data: null, lastUpdate: null };
         }
-        
+
         // OPTIMIZACIÓN: Limpiar rangos de carga para forzar recarga
         if (typeof clearLoadedRanges === 'function') {
             console.log('🗑️ [RELOAD] Limpiando rangos de carga...');
             clearLoadedRanges();
         }
-        
+
+        // OPTIMIZACIÓN: Resetear flags de carga
+        console.log('🗑️ [RELOAD] Reseteando flags de carga...');
+        LOAD_STATE.criticalLoaded = false;
+        LOAD_STATE.referenceLoaded = false;
+        LOAD_STATE.backgroundLoading = false;
+
         // OPTIMIZACIÓN: Forzar recarga completa
         console.log('📥 [RELOAD] Ejecutando loadAllData...');
         await loadAllData();
-        
+
+        // OPTIMIZACIÓN: Forzar recarga de bases de datos de referencia con cache-busting
+        console.log('🔄 [RELOAD] Forzando recarga de bases de datos de referencia...');
+        await loadReferenceDataInBackground();
+
         // OPTIMIZACIÓN: Forzar sincronización transaccional
         console.log('🔄 [RELOAD] Forzando sincronización transaccional...');
         await syncTransactionalData();
-        
+
+        // IMPORTANTE: Actualizar contador de registros después de la recarga
+        console.log('📊 [RELOAD] Actualizando contador de registros...');
+        updateBdInfo();
+        updateSummary();
+        updateTabBadges();
+
         hidePreloader();
-        showNotification('✅ Datos actualizados correctamente', 'success');
-        
-        console.log('✅ [RELOAD] Recarga completa finalizada');
-        
+
+        // Mostrar notificación con la cantidad de registros cargados
+        const totalRegistros = STATE.obcData.size;
+        showNotification(`✅ Datos actualizados: ${totalRegistros} registros cargados`, 'success');
+
+        console.log(`✅ [RELOAD] Recarga completa finalizada - ${totalRegistros} registros`);
+
     } catch (error) {
         console.error('❌ [RELOAD] Error en recarga de datos:', error);
         hidePreloader();
@@ -8568,7 +8609,7 @@ async function executeConfirmDispatch() {
             return;
         }
     }
-    
+
     const operador = document.getElementById('modal-operador')?.value || '';
     const unidad = document.getElementById('modal-unidad')?.value || '';
     const folioCarga = document.getElementById('modal-folio-carga')?.value || '';
@@ -8598,11 +8639,36 @@ async function executeConfirmDispatch() {
     const timestamp = new Date();
     const { fecha, hora } = formatDateTimeForDB(timestamp);
 
+    // ==================== PROTECCIÓN DE FILTRO DE FECHA ====================
+    // IMPORTANTE: Preservar filtro de fecha activo incluso si la caja es de otra fecha
+    // El folio SIEMPRE debe generarse con la fecha del filtro activo, NO con la fecha de la caja
+    const currentFilterDate = STATE.dateFilter.active ? STATE.dateFilter.startDate : null;
+    console.log(`🔒 [VALIDACIÓN] Filtro de fecha protegido: ${currentFilterDate}`);
+    console.log(`📦 [VALIDACIÓN] Orden ${STATE.currentOrder} - Fecha caja: ${orderData.expectedArrival || 'N/A'}`);
+
+    if (currentFilterDate) {
+        console.log(`✅ [VALIDACIÓN] El folio se generará con fecha del filtro: ${currentFilterDate}`);
+    } else {
+        console.log(`⚠️ [VALIDACIÓN] No hay filtro activo - usando fecha actual para folio`);
+    }
+
     // Marcar el folio de carga como utilizado
     markFolioAsUsed(operador, unidad, folioCarga);
 
     // Generar folio con el folio de carga seleccionado
+    // NOTA: generateFolio() usa getCurrentDateKey() que respeta el filtro activo
     const folio = generateFolio(folioCarga);
+
+    // Verificar que el folio generado corresponde al filtro activo
+    if (currentFilterDate) {
+        const expectedDateStr = currentFilterDate.replace(/-/g, '');
+        if (!folio.includes(expectedDateStr)) {
+            console.error(`❌ [ERROR CRÍTICO] Folio generado ${folio} NO corresponde al filtro ${currentFilterDate}`);
+            showNotification('❌ Error: El folio no corresponde a la fecha del filtro activo', 'error');
+            return;
+        }
+        console.log(`✅ [VALIDACIÓN] Folio ${folio} generado correctamente con fecha del filtro`);
+    }
 
     // Estructura para Google Sheets: Folio, Fecha, Hora, Usuario, Orden, Destino, Horario, Código, Código 2, Estatus, Tarea, Estatus2, Cant Inicial, Cant Despacho, Incidencias, Operador, Unidad, Observaciones
     const dispatchRecord = {
@@ -9820,11 +9886,11 @@ function showFoliosManagement() {
         }
     }
 
-    // Renderizar la tabla de folios
-    renderFoliosTable();
-
-    // Update badges to show current counts
+    // IMPORTANTE: Actualizar badges ANTES de renderizar la tabla para evitar valores en cero
     updateTabBadges();
+
+    // Renderizar la tabla de folios (esto también actualizará los contadores específicos de folios)
+    renderFoliosTable();
 
     // CHANGE 1: Update global navigation
     updateGlobalNavigation();
@@ -12433,13 +12499,18 @@ function exportSelectedOrders(table) {
     let headers = [];
 
     if (table === 'orders') {
-        headers = ['N° Orden', 'Destino', 'Horario', 'Código', 'Track', 'Cant. Cajas', 'Estatus'];
+        headers = ['N° Orden', 'Destino', 'Horario', 'Código', 'Track', 'Cant. Cajas', 'Cantidad a Despachar', 'Estatus'];
         selectedOrders.forEach(orden => {
             const data = STATE.obcData.get(orden);
             if (data) {
                 const { validated } = isOrderValidated(orden);
                 const validatedData = validated ? STATE.localValidated.find(v => v.orden === orden) : null;
                 const estatus = validatedData ? (validatedData.estatus || 'Validada') : 'Pendiente';
+
+                // Obtener cantidad a despachar
+                const cantidadADespachar = validatedData
+                    ? (validatedData.cantDespacho || validatedData.cantidadDespachar || data.totalCajas || 0)
+                    : (data.totalCajas || 0);
 
                 csvData.push([
                     orden,
@@ -12448,22 +12519,26 @@ function exportSelectedOrders(table) {
                     data.referenceNo || 'N/A',
                     data.trackingCode || 'N/A',
                     data.totalCajas || 0,
+                    cantidadADespachar,
                     estatus
                 ]);
             }
         });
     } else if (table === 'validated') {
-        headers = ['N° Orden', 'Fecha Validación', 'Destino', 'Horario', 'Cant. Cajas', 'Estatus', 'Conductor', 'Unidad', 'Folio'];
+        headers = ['N° Orden', 'Fecha Validación', 'Destino', 'Horario', 'Cant. Cajas', 'Cantidad a Despachar', 'Estatus', 'Conductor', 'Unidad', 'Folio'];
         selectedOrders.forEach(orden => {
             const record = STATE.localValidated.find(v => v.orden === orden);
             if (record) {
                 const orderData = STATE.obcData.get(orden) || {};
+                // Obtener cantidad a despachar desde cantDespacho (Columna N)
+                const cantidadADespachar = record.cantDespacho || record.cantidadDespachar || orderData.totalCajas || 0;
                 csvData.push([
                     orden,
                     record.timestamp ? formatValidationDateTime(record.timestamp) : `${record.fecha || ''} ${record.hora || ''}`,
                     record.destino || orderData.recipient || 'N/A',
                     record.horario || orderData.expectedArrival || 'N/A',
                     orderData.totalCajas || record.totalCajas || 0,
+                    cantidadADespachar,
                     record.estatus || 'Validada',
                     record.operador || 'N/A',
                     record.unidad || 'N/A',
@@ -12472,17 +12547,21 @@ function exportSelectedOrders(table) {
             }
         });
     } else if (table === 'otros') {
-        headers = ['N° Orden', 'Fecha Marcado', 'Destino', 'Horario', 'Cant. Cajas', 'Estatus', 'Usuario'];
+        headers = ['N° Orden', 'Fecha Marcado', 'Destino', 'Horario', 'Cant. Cajas', 'Cantidad a Despachar', 'Estatus', 'Usuario'];
         selectedOrders.forEach(orden => {
             const record = STATE.localValidated.find(v => v.orden === orden && (v.estatus === 'Cancelada' || v.estatus === 'No Procesable'));
             if (record) {
                 const orderData = STATE.obcData.get(orden) || {};
+                // Obtener cantidad a despachar (para órdenes canceladas/no procesables, puede ser 0 o la cantidad registrada)
+                const cantidadADespachar = record.cantDespacho || record.cantidadDespachar || 0;
+
                 csvData.push([
                     orden,
                     record.fecha || 'N/A',
                     record.destino || 'N/A',
                     record.horario || 'N/A',
                     orderData.totalCajas || 0,
+                    cantidadADespachar,
                     record.estatus || 'N/A',
                     record.usuario || 'N/A'
                 ]);

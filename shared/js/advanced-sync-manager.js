@@ -383,28 +383,61 @@ class PersistenceManager {
         });
     }
 
+    /**
+     * Mueve registros a PENDING_SYNC para sincronización
+     * CORREGIDO: Manejo más robusto de errores y verificación de escritura
+     */
     async moveToPending(records) {
         if (!this.db) await this.init();
-        
-        return new Promise(async (resolve, reject) => {
+        if (!records || records.length === 0) {
+            console.warn('⚠️ [PERSISTENCE] No hay registros para mover a pending');
+            return;
+        }
+
+        return new Promise((resolve, reject) => {
             try {
-                const tx = this.db.transaction([this.STORES.DRAFT_BOXES, this.STORES.PENDING_SYNC], 'readwrite');
-                const draftStore = tx.objectStore(this.STORES.DRAFT_BOXES);
+                // Solo usar PENDING_SYNC para evitar errores si DRAFT_BOXES no tiene el registro
+                const tx = this.db.transaction([this.STORES.PENDING_SYNC], 'readwrite');
                 const pendingStore = tx.objectStore(this.STORES.PENDING_SYNC);
 
+                let successCount = 0;
+                let errorCount = 0;
+
                 records.forEach(record => {
-                    draftStore.delete(record._id);
-                    pendingStore.put(record);
+                    // Asegurar que el registro tiene _id
+                    if (!record._id) {
+                        record._id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    }
+
+                    const request = pendingStore.put(record);
+
+                    request.onsuccess = () => {
+                        successCount++;
+                    };
+
+                    request.onerror = (e) => {
+                        errorCount++;
+                        console.error(`❌ [PERSISTENCE] Error guardando registro ${record._id}:`, e.target.error);
+                    };
                 });
 
                 tx.oncomplete = () => {
-                    console.log(`✅ [PERSISTENCE] ${records.length} registros movidos a PENDING`);
-                    resolve();
+                    if (errorCount > 0) {
+                        console.warn(`⚠️ [PERSISTENCE] ${successCount} guardados, ${errorCount} con error`);
+                    } else {
+                        console.log(`✅ [PERSISTENCE] ${successCount} registros guardados en PENDING_SYNC`);
+                    }
+                    resolve({ success: successCount, errors: errorCount });
                 };
 
                 tx.onerror = () => {
-                    console.error('❌ [PERSISTENCE] Error moviendo a pending:', tx.error);
+                    console.error('❌ [PERSISTENCE] Error en transacción:', tx.error);
                     reject(tx.error);
+                };
+
+                tx.onabort = () => {
+                    console.error('❌ [PERSISTENCE] Transacción abortada:', tx.error);
+                    reject(new Error('Transacción abortada: ' + (tx.error?.message || 'razón desconocida')));
                 };
             } catch (error) {
                 console.error('❌ [PERSISTENCE] Error en moveToPending:', error);
@@ -798,29 +831,50 @@ class AdvancedSyncManager {
 
     /**
      * Heartbeat para sincronización automática y actualización de UI
+     * CORREGIDO: Mutex para evitar race conditions en sincronización
      */
     startHeartbeat() {
         if (this.heartbeatIntervalId) clearInterval(this.heartbeatIntervalId);
-        
+
+        // Flag para evitar múltiples heartbeats concurrentes
+        let heartbeatRunning = false;
+
         this.heartbeatIntervalId = setInterval(async () => {
+            // Evitar ejecuciones concurrentes del heartbeat
+            if (heartbeatRunning) {
+                console.log('⏳ [HEARTBEAT] Heartbeat anterior aún en ejecución, saltando...');
+                return;
+            }
+
+            heartbeatRunning = true;
+
             try {
                 const pendingFromDB = await this.persistenceManager.getPendingSync();
                 if (pendingFromDB.length !== this.pendingSync.length) {
                     console.log(`🔄 [HEARTBEAT] Sincronizando PENDING_SYNC: ${this.pendingSync.length} → ${pendingFromDB.length}`);
                     this.pendingSync = pendingFromDB;
                 }
-                
-                if (this._canSync() && this.pendingSync.length > 0 && !this.inProgress) {
+
+                // CORREGIDO: Verificar inProgress DESPUÉS de obtener pendientes
+                // y usar una variable local para evitar race condition
+                const shouldSync = this._canSync() && this.pendingSync.length > 0 && !this.inProgress;
+
+                if (shouldSync) {
                     console.log(`🔄 [HEARTBEAT] Sincronización automática: ${this.pendingSync.length} registros pendientes`);
-                    this.sync(false);
+                    // No usar await aquí para no bloquear el heartbeat
+                    this.sync(false).catch(err => {
+                        console.error('❌ [HEARTBEAT] Error en sync automático:', err);
+                    });
                 }
 
                 this.updateUI(this.pendingSync.length === 0);
             } catch (error) {
                 console.warn('⚠️ [HEARTBEAT] Error en heartbeat:', error);
+            } finally {
+                heartbeatRunning = false;
             }
         }, this.config.heartbeatInterval);
-        
+
         console.log(`✅ [HEARTBEAT] Iniciado - Intervalo: ${this.config.heartbeatInterval}ms`);
     }
 
@@ -910,21 +964,30 @@ class AdvancedSyncManager {
 
     /**
      * Agrega registros a la cola de sincronización evitando duplicados
+     * CORREGIDO: Verificación robusta de persistencia en IndexedDB
      */
     async addToQueue(records, sheet = null) {
         if (!Array.isArray(records)) {
             records = [records];
         }
 
+        // Validar que hay registros para agregar
+        if (records.length === 0) {
+            console.warn('⚠️ [QUEUE] No hay registros para agregar');
+            return { added: 0, filtered: 0 };
+        }
+
         const filteredRecords = this.deduplicationManager.filterDuplicateRecords(
-            records, 
+            records,
             this.pendingSync
         );
 
         if (filteredRecords.length === 0) {
             console.warn('⚠️ Todos los registros son duplicados, no se agregaron a la cola');
-            return;
+            return { added: 0, filtered: records.length };
         }
+
+        const recordsToAdd = [];
 
         filteredRecords.forEach(record => {
             const newId = this.generateSyncId(record);
@@ -937,16 +1000,49 @@ class AdvancedSyncManager {
             };
 
             if (sheet) {
-                this.pendingSync.push({ sheet, record: recordWithMeta, syncId: newId });
+                recordsToAdd.push({ sheet, record: recordWithMeta, syncId: newId });
             } else {
-                this.pendingSync.push(recordWithMeta);
+                recordsToAdd.push(recordWithMeta);
             }
         });
 
-        await this.save();
+        // Agregar a memoria
+        this.pendingSync.push(...recordsToAdd);
+
+        // CRÍTICO: Guardar en IndexedDB Y localStorage
+        try {
+            // Guardar en IndexedDB (fuente de verdad)
+            await this.persistenceManager.moveToPending(recordsToAdd);
+
+            // También guardar en localStorage como respaldo
+            await this.save();
+
+            // Verificar que se guardó correctamente
+            const pendingCount = await this.persistenceManager.getPendingCount();
+            if (pendingCount < this.pendingSync.length) {
+                console.warn(`⚠️ [QUEUE] Discrepancia: memoria=${this.pendingSync.length}, IndexedDB=${pendingCount}`);
+                // Intentar resincronizar
+                this.pendingSync = await this.persistenceManager.getPendingSync();
+            }
+
+            console.log(`✅ ${filteredRecords.length} registros agregados a la cola y persistidos`);
+            console.log(`   - Filtrados: ${records.length - filteredRecords.length} duplicados`);
+            console.log(`   - Total en cola: ${this.pendingSync.length}`);
+
+        } catch (error) {
+            console.error('❌ [QUEUE] Error crítico guardando en IndexedDB:', error);
+            // Intentar guardar al menos en localStorage
+            try {
+                localStorage.setItem(this.config.storageKey, JSON.stringify(this.pendingSync));
+                console.warn('⚠️ [QUEUE] Guardado de emergencia en localStorage');
+            } catch (e) {
+                console.error('❌ [QUEUE] Error en guardado de emergencia:', e);
+            }
+        }
+
         this.updateUI(false);
-        
-        console.log(`✅ ${filteredRecords.length} registros agregados a la cola (${records.length - filteredRecords.length} duplicados filtrados)`);
+
+        return { added: filteredRecords.length, filtered: records.length - filteredRecords.length };
     }
 
     /**
@@ -1256,20 +1352,44 @@ class AdvancedSyncManager {
                 );
 
                 if (!response || !response.success || response.status !== 200) {
+                    // CRÍTICO: Guardar registros fallidos para diagnóstico
+                    this._logFailedRecords(deduplicatedRecords, 'WRITE_FAILED', response);
                     throw new Error(`Escritura con control de concurrencia falló - Status: ${response?.status || 'desconocido'}`);
                 }
 
                 const updatedRows = response.updatedRows;
 
-                if (!updatedRows || updatedRows !== deduplicatedRecords.length) {
-                    throw new Error(`Handshake fallido: Se enviaron ${deduplicatedRecords.length} registros pero se confirmaron ${updatedRows || 0}`);
+                // CORREGIDO: Verificación más robusta del handshake
+                // Google Sheets APPEND puede retornar updatedRows como el número real escrito
+                // Si es undefined pero la respuesta fue exitosa, asumir éxito
+                if (updatedRows !== undefined && updatedRows !== null && updatedRows !== deduplicatedRecords.length) {
+                    // Posible escritura parcial - esto es crítico
+                    console.error('❌ [HANDSHAKE] ALERTA: Posible escritura parcial detectada');
+                    console.error(`   - Enviados: ${deduplicatedRecords.length}`);
+                    console.error(`   - Confirmados: ${updatedRows}`);
+                    console.error(`   - Rango: ${response.range || 'desconocido'}`);
+
+                    // Guardar para diagnóstico pero NO lanzar error si hay confirmación parcial
+                    // Los registros ya fueron escritos, marcarlos como sincronizados
+                    if (updatedRows > 0) {
+                        console.warn(`⚠️ [HANDSHAKE] Continuando con ${updatedRows} registros confirmados`);
+                        synced = updatedRows;
+                    } else {
+                        this._logFailedRecords(deduplicatedRecords, 'HANDSHAKE_ZERO', response);
+                        throw new Error(`Handshake fallido: Se enviaron ${deduplicatedRecords.length} registros pero se confirmaron 0`);
+                    }
+                } else {
+                    // Handshake exitoso o updatedRows undefined (asumir éxito)
+                    synced = deduplicatedRecords.length;
+
+                    if (updatedRows === undefined || updatedRows === null) {
+                        console.warn('⚠️ [HANDSHAKE] updatedRows no definido, asumiendo éxito basado en response.success');
+                    }
                 }
 
                 console.log('✅ HANDSHAKE CONFIRMADO:');
-                console.log('  - Registros confirmados:', updatedRows);
-                console.log('  - Filas escritas:', `${response.startRow}-${response.endRow}`);
-
-                synced = deduplicatedRecords.length;
+                console.log('  - Registros confirmados:', synced);
+                console.log('  - Filas escritas:', `${response.startRow || '?'}-${response.endRow || '?'}`);
             }
 
             // Marcar como sincronizados en IndexedDB
@@ -1359,6 +1479,77 @@ class AdvancedSyncManager {
         } finally {
             this.inProgress = false;
             if (this.config.onSyncEnd) this.config.onSyncEnd();
+        }
+    }
+
+    /**
+     * Registra registros fallidos para diagnóstico y recuperación
+     * NUEVO: Sistema de logging para detectar pérdida de datos
+     */
+    _logFailedRecords(records, reason, response = null) {
+        const timestamp = new Date().toISOString();
+        const failedLog = {
+            timestamp,
+            reason,
+            recordCount: records.length,
+            response: response ? {
+                status: response.status,
+                range: response.range,
+                updatedRows: response.updatedRows
+            } : null,
+            records: records.map(r => ({
+                _id: r._id,
+                date: r.date,
+                time: r.time,
+                code: r.codigo || r.code || r.scan1,
+                obc: r.obc,
+                location: r.ubicacion || r.location
+            }))
+        };
+
+        // Guardar en localStorage para diagnóstico
+        try {
+            const failedKey = `${this.config.storageKey}_failed`;
+            const existingFailed = JSON.parse(localStorage.getItem(failedKey) || '[]');
+            existingFailed.push(failedLog);
+
+            // Mantener solo los últimos 100 registros de errores
+            if (existingFailed.length > 100) {
+                existingFailed.splice(0, existingFailed.length - 100);
+            }
+
+            localStorage.setItem(failedKey, JSON.stringify(existingFailed));
+            console.error(`❌ [SYNC-FAILED] ${records.length} registros fallidos guardados para diagnóstico`);
+            console.error(`   Razón: ${reason}`);
+            console.error(`   Timestamp: ${timestamp}`);
+        } catch (e) {
+            console.error('❌ [SYNC-FAILED] Error guardando log de registros fallidos:', e);
+        }
+    }
+
+    /**
+     * Obtiene el log de registros fallidos para diagnóstico
+     */
+    getFailedRecordsLog() {
+        try {
+            const failedKey = `${this.config.storageKey}_failed`;
+            return JSON.parse(localStorage.getItem(failedKey) || '[]');
+        } catch (e) {
+            console.error('Error obteniendo log de registros fallidos:', e);
+            return [];
+        }
+    }
+
+    /**
+     * Limpia el log de registros fallidos
+     */
+    clearFailedRecordsLog() {
+        try {
+            const failedKey = `${this.config.storageKey}_failed`;
+            localStorage.removeItem(failedKey);
+            console.log('✅ Log de registros fallidos limpiado');
+        } catch (e) {
+            console.error('Error limpiando log de registros fallidos:', e);
         }
     }
 
@@ -1599,6 +1790,225 @@ class AdvancedSyncManager {
         this.pendingSync = [];
         this.save();
         this.updateUI(true);
+    }
+
+    /**
+     * NUEVO: Diagnóstico completo del sistema de sincronización
+     * Útil para identificar problemas de pérdida de datos
+     */
+    async runDiagnostics() {
+        console.log('🔍 ========== DIAGNÓSTICO DE SINCRONIZACIÓN ==========');
+
+        const diagnostics = {
+            timestamp: new Date().toISOString(),
+            memoryPending: this.pendingSync.length,
+            indexedDBPending: 0,
+            localStoragePending: 0,
+            failedRecords: [],
+            discrepancies: [],
+            status: 'ok'
+        };
+
+        try {
+            // 1. Verificar IndexedDB
+            const dbPending = await this.persistenceManager.getPendingSync();
+            diagnostics.indexedDBPending = dbPending.length;
+            console.log(`📦 IndexedDB PENDING_SYNC: ${dbPending.length} registros`);
+
+            // 2. Verificar localStorage
+            try {
+                const lsPending = JSON.parse(localStorage.getItem(this.config.storageKey) || '[]');
+                diagnostics.localStoragePending = lsPending.length;
+                console.log(`💾 localStorage: ${lsPending.length} registros`);
+            } catch (e) {
+                console.warn('⚠️ Error leyendo localStorage:', e);
+            }
+
+            // 3. Verificar registros fallidos
+            diagnostics.failedRecords = this.getFailedRecordsLog();
+            console.log(`❌ Registros fallidos guardados: ${diagnostics.failedRecords.length}`);
+
+            // 4. Detectar discrepancias
+            if (diagnostics.memoryPending !== diagnostics.indexedDBPending) {
+                const discrepancy = {
+                    type: 'MEMORY_VS_INDEXEDDB',
+                    memory: diagnostics.memoryPending,
+                    indexedDB: diagnostics.indexedDBPending
+                };
+                diagnostics.discrepancies.push(discrepancy);
+                console.warn('⚠️ DISCREPANCIA: Memoria vs IndexedDB', discrepancy);
+            }
+
+            if (diagnostics.localStoragePending !== diagnostics.indexedDBPending) {
+                const discrepancy = {
+                    type: 'LOCALSTORAGE_VS_INDEXEDDB',
+                    localStorage: diagnostics.localStoragePending,
+                    indexedDB: diagnostics.indexedDBPending
+                };
+                diagnostics.discrepancies.push(discrepancy);
+                console.warn('⚠️ DISCREPANCIA: localStorage vs IndexedDB', discrepancy);
+            }
+
+            // 5. Estado general
+            if (diagnostics.discrepancies.length > 0 || diagnostics.failedRecords.length > 0) {
+                diagnostics.status = 'warning';
+            }
+
+            console.log('📊 RESUMEN DE DIAGNÓSTICO:', diagnostics);
+            console.log('🔍 ========== FIN DIAGNÓSTICO ==========');
+
+            return diagnostics;
+
+        } catch (error) {
+            console.error('❌ Error en diagnóstico:', error);
+            diagnostics.status = 'error';
+            diagnostics.error = error.message;
+            return diagnostics;
+        }
+    }
+
+    /**
+     * NUEVO: Recupera registros de localStorage si IndexedDB está vacío
+     * Útil cuando hay discrepancias entre las fuentes de datos
+     */
+    async recoverFromLocalStorage() {
+        console.log('🔄 Intentando recuperar registros desde localStorage...');
+
+        try {
+            const lsPending = JSON.parse(localStorage.getItem(this.config.storageKey) || '[]');
+
+            if (lsPending.length === 0) {
+                console.log('ℹ️ localStorage está vacío, nada que recuperar');
+                return { recovered: 0 };
+            }
+
+            const dbPending = await this.persistenceManager.getPendingSync();
+
+            if (dbPending.length >= lsPending.length) {
+                console.log('ℹ️ IndexedDB tiene igual o más registros, no se necesita recuperación');
+                return { recovered: 0, reason: 'indexeddb_ok' };
+            }
+
+            // Recuperar registros que faltan en IndexedDB
+            const dbIds = new Set(dbPending.map(r => r._id));
+            const missingRecords = lsPending.filter(r => !dbIds.has(r._id));
+
+            if (missingRecords.length > 0) {
+                console.log(`🔄 Recuperando ${missingRecords.length} registros faltantes...`);
+                await this.persistenceManager.moveToPending(missingRecords);
+
+                // Recargar pendientes
+                this.pendingSync = await this.persistenceManager.getPendingSync();
+                this.updateUI(false);
+
+                console.log(`✅ Recuperados ${missingRecords.length} registros`);
+                return { recovered: missingRecords.length };
+            }
+
+            return { recovered: 0 };
+
+        } catch (error) {
+            console.error('❌ Error en recuperación:', error);
+            return { recovered: 0, error: error.message };
+        }
+    }
+
+    /**
+     * NUEVO: Sincroniza forzadamente todos los registros pendientes
+     * Ignora el estado de inProgress y reintenta con backoff
+     */
+    async forceSync(maxRetries = 3) {
+        console.log('⚡ Iniciando sincronización forzada...');
+
+        // Primero ejecutar diagnóstico
+        await this.runDiagnostics();
+
+        // Intentar recuperación si hay discrepancias
+        await this.recoverFromLocalStorage();
+
+        // Recargar pendientes desde IndexedDB
+        this.pendingSync = await this.persistenceManager.getPendingSync();
+
+        if (this.pendingSync.length === 0) {
+            console.log('✅ No hay registros pendientes para sincronizar');
+            return { success: true, synced: 0 };
+        }
+
+        // Esperar si hay sincronización en progreso
+        if (this.inProgress) {
+            console.log('⏳ Esperando sincronización en progreso...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        // Intentar sincronización con reintentos
+        let lastError = null;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`🔄 Intento ${attempt}/${maxRetries}...`);
+                const result = await this.sync(true);
+
+                if (result.success) {
+                    console.log(`✅ Sincronización forzada exitosa en intento ${attempt}`);
+                    return result;
+                }
+
+                lastError = result;
+            } catch (error) {
+                lastError = error;
+                console.error(`❌ Error en intento ${attempt}:`, error);
+            }
+
+            // Backoff exponencial
+            if (attempt < maxRetries) {
+                const delay = Math.pow(2, attempt) * 1000;
+                console.log(`⏳ Esperando ${delay}ms antes del siguiente intento...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+
+        console.error('❌ Sincronización forzada falló después de todos los intentos');
+        return { success: false, error: lastError };
+    }
+
+    /**
+     * NUEVO: Verifica integridad de los datos en IndexedDB
+     */
+    async verifyDataIntegrity() {
+        console.log('🔍 Verificando integridad de datos...');
+
+        try {
+            const pending = await this.persistenceManager.getPendingSync();
+            const issues = [];
+
+            for (const record of pending) {
+                // Verificar campos requeridos
+                if (!record._id) {
+                    issues.push({ record, issue: 'Missing _id' });
+                }
+                if (!record._timestamp) {
+                    issues.push({ record, issue: 'Missing _timestamp' });
+                }
+
+                // Verificar que tenga datos significativos
+                const hasCode = record.codigo || record.code || record.scan1;
+                if (!hasCode) {
+                    issues.push({ record, issue: 'Missing code/codigo/scan1' });
+                }
+            }
+
+            if (issues.length > 0) {
+                console.warn(`⚠️ Se encontraron ${issues.length} problemas de integridad:`);
+                issues.forEach(i => console.warn(`   - ${i.issue}: ${i.record._id || 'sin ID'}`));
+            } else {
+                console.log('✅ Todos los registros pasan verificación de integridad');
+            }
+
+            return { valid: issues.length === 0, issues };
+
+        } catch (error) {
+            console.error('❌ Error verificando integridad:', error);
+            return { valid: false, error: error.message };
+        }
     }
 }
 

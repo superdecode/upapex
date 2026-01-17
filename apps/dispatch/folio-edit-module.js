@@ -155,8 +155,6 @@ async function updateEditFolioNumber() {
     const conductorSelect = document.getElementById('edit-folio-conductor');
     const unidadSelect = document.getElementById('edit-folio-unidad');
     const folioSelect = document.getElementById('edit-folio-number');
-    const infoDiv = document.getElementById('edit-folio-info');
-    const infoText = document.getElementById('edit-folio-info-text');
 
     if (!conductorSelect || !unidadSelect || !folioSelect) return;
 
@@ -166,7 +164,6 @@ async function updateEditFolioNumber() {
     if (!conductor || !unidad) {
         folioSelect.innerHTML = '<option value="">Seleccionar Conductor y Unidad primero...</option>';
         folioSelect.disabled = true;
-        if (infoDiv) infoDiv.style.display = 'none';
         return;
     }
 
@@ -174,10 +171,6 @@ async function updateEditFolioNumber() {
 
     // PRIORIDAD: Usar validación local (getAvailableFolios) que es más rápida y confiable
     console.log('🔍 [FOLIO EDIT] Obteniendo folios disponibles para:', conductor, unidad);
-    if (infoText) {
-        infoText.textContent = 'Consultando disponibilidad...';
-    }
-    if (infoDiv) infoDiv.style.display = 'block';
 
     let availableFolios;
     try {
@@ -207,17 +200,21 @@ async function updateEditFolioNumber() {
     }
 
     const currentFolioNumber = originalFolioData ? originalFolioData.folioNumber : '';
+    const currentFolioCompleto = originalFolioData ? originalFolioData.folio : '';
 
     console.log(`[Folio Edit] Actualizando selector para ${conductor}/${unidad}`, availableFolios);
+    console.log(`[Folio Edit] Folio actual: ${currentFolioCompleto} (Número: ${currentFolioNumber})`);
 
     // Actualizar opciones del selector
     folioSelect.innerHTML = '<option value="">📋 Seleccionar Folio...</option>';
 
     if (!availableFolios || availableFolios.length === 0) {
         folioSelect.innerHTML = '<option value="">⚠️ No hay folios disponibles</option>';
-        if (infoText) infoText.textContent = 'Error: No se pudieron cargar los folios';
         return;
     }
+
+    let disponibles = 0;
+    let ocupados = 0;
 
     availableFolios.forEach(folioInfo => {
         const option = document.createElement('option');
@@ -225,31 +222,32 @@ async function updateEditFolioNumber() {
         option.value = folioValue;
 
         // Resaltar folio actual con check
-        const isCurrent = folioValue === currentFolioNumber;
+        const isCurrent = folioValue === currentFolioNumber &&
+                          conductor === originalFolioData?.conductor &&
+                          unidad === originalFolioData?.unidad;
 
         if (isCurrent) {
-            option.textContent = `✔ ${folioValue} (Actual)`;
+            option.textContent = `✔ ${folioValue} (Folio Actual)`;
             option.setAttribute('data-is-current', 'true');
+            disponibles++;
         } else if (folioInfo.reutilizable) {
-            option.textContent = `${folioValue} - Tu folio actual`;
+            option.textContent = `${folioValue} - Puedes reutilizar este folio`;
+            disponibles++;
         } else if (folioInfo.disabled === false || folioInfo.available === true) {
             option.textContent = `${folioValue} - Disponible`;
+            disponibles++;
         } else {
             // Folio ocupado por otro
             const usadoPor = folioInfo.usadoPor || 'Otro conductor/unidad';
             option.textContent = `${folioValue} - Ocupado (${usadoPor})`;
             option.disabled = true;
+            ocupados++;
         }
 
         folioSelect.appendChild(option);
     });
 
-    // Mostrar información de disponibilidad
-    const disponibles = availableFolios.filter(f => !f.disabled && f.available !== false).length;
-    const ocupados = availableFolios.filter(f => f.disabled || f.available === false).length;
-    if (infoText) {
-        infoText.textContent = `Conductor: ${conductor} | Unidad: ${unidad} | Disponibles: ${disponibles} | Ocupados: ${ocupados}`;
-    }
+    console.log(`✅ [FOLIO EDIT] Disponibles: ${disponibles} | Ocupados: ${ocupados} | Total: ${availableFolios.length}`);
 
     // Validar cambios y actualizar botón
     validateFolioChanges();
@@ -262,13 +260,12 @@ function closeEditFolioModal() {
     document.getElementById('edit-folio-modal').classList.remove('show');
     currentEditingFolio = null;
     originalFolioData = null;
-    
+
     // Limpiar formulario
     document.getElementById('edit-folio-conductor').value = '';
     document.getElementById('edit-folio-unidad').value = '';
     document.getElementById('edit-folio-number').value = '';
-    document.getElementById('edit-folio-info').style.display = 'none';
-    
+
     // Rehabilitar botón
     const saveBtn = document.getElementById('btn-save-folio-edit');
     if (saveBtn) {
@@ -339,40 +336,68 @@ async function executeEditFolio() {
  */
 async function performSimpleUpdate(ordenes, newFolio, conductor, unidad) {
     console.log('✅ ESCENARIO A: Update simple sin conflictos');
-    
+    console.log(`   - Folio antiguo: ${currentEditingFolio}`);
+    console.log(`   - Folio nuevo: ${newFolio}`);
+    console.log(`   - Órdenes a transferir: ${ordenes.length}`);
+
     try {
+        // IMPORTANTE: NO actualizar fecha/hora/usuario/timestamp al cambiar folio
+        // Solo actualizar folio, conductor y unidad - preservar historial original
+        // NO crear nuevos registros ni eliminar existentes - actualizar en sitio
+
+        // Generar nota de cambio de folio para columna Incidencias (Columna O)
         const now = new Date();
-        const { fecha, hora } = formatDateTimeForDB(now);
-        
-        // Actualizar cada orden
+        const fechaCambio = now.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const horaCambio = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const usuarioCambio = CURRENT_USER || 'Usuario';
+        const notaCambioFolio = `Cambio de Folio: ${fechaCambio} - ${horaCambio} - ${usuarioCambio}`;
+
+        console.log(`📝 [CAMBIO FOLIO] Nota de incidencia: ${notaCambioFolio}`);
+
+        // Actualizar cada orden en STATE.localValidated IN-PLACE (sin cambiar ubicación)
         for (const orden of ordenes) {
             const index = STATE.localValidated.findIndex(r => r.orden === orden.orden);
             if (index !== -1) {
+                const currentRecord = STATE.localValidated[index];
+
+                // Preservar incidencias existentes y agregar nueva nota
+                const incidenciasActuales = currentRecord.incidencias || '';
+                const nuevasIncidencias = incidenciasActuales
+                    ? `${incidenciasActuales} | ${notaCambioFolio}`
+                    : notaCambioFolio;
+
+                // Actualizar SOLO los campos de folio/conductor/unidad/incidencias
+                // PRESERVAR todos los demás campos (fecha, hora, usuario, timestamp, etc.)
                 STATE.localValidated[index] = {
-                    ...STATE.localValidated[index],
+                    ...currentRecord,
                     folio: newFolio,
                     operador: conductor,
                     conductor: conductor,
                     unidad: unidad,
-                    fecha: fecha,
-                    hora: hora,
-                    usuario: CURRENT_USER || USER_GOOGLE_NAME || 'Usuario',
-                    timestamp: now.toISOString()
+                    incidencias: nuevasIncidencias
+                    // NO actualizar: fecha, hora, usuario, timestamp, orden, destino, etc.
                 };
+
+                console.log(`   ✓ Orden ${orden.orden} actualizada IN-PLACE a folio ${newFolio}`);
+                console.log(`   📝 Incidencia agregada: "${notaCambioFolio}"`);
             }
         }
-        
+
         // Actualizar folios de carga
         const oldFolioNum = currentEditingFolio.split('-').pop();
         const newFolioNum = newFolio.split('-').pop();
-        
+
+        console.log(`   - Liberando folio antiguo: ${oldFolioNum}`);
         releaseFolio(oldFolioNum);
+
+        console.log(`   - Marcando folio nuevo como usado: ${newFolioNum}`);
         markFolioAsUsed(conductor, unidad, newFolioNum);
-        
-        // Guardar estado
+
+        // Guardar estado local
         saveLocalState();
-        
-        // Sincronizar con BD
+
+        // Sincronizar con BD de escritura
+        console.log('   - Sincronizando con BD de escritura...');
         if (dispatchSyncManager) {
             for (const orden of ordenes) {
                 const record = STATE.localValidated.find(r => r.orden === orden.orden);
@@ -381,15 +406,19 @@ async function performSimpleUpdate(ordenes, newFolio, conductor, unidad) {
                 }
             }
         }
-        
-        // Actualizar UI
+
+        console.log('   ✅ Sincronización completada');
+
+        // IMPORTANTE: Actualizar UI completa
+        console.log('   - Actualizando interfaz...');
         renderFoliosTable();
         renderValidatedTable();
         updateTabBadges();
-        
-        showNotification(`✅ Folio actualizado: ${ordenes.length} orden${ordenes.length > 1 ? 'es' : ''} transferida${ordenes.length > 1 ? 's' : ''}`, 'success');
+        updateSummary();
+
+        showNotification(`✅ Folio actualizado: ${ordenes.length} orden${ordenes.length > 1 ? 'es' : ''} transferida${ordenes.length > 1 ? 's' : ''} a ${newFolio}`, 'success');
         closeEditFolioModal();
-        
+
     } catch (error) {
         console.error('❌ Error en update simple:', error);
         showNotification('❌ Error al actualizar folio: ' + error.message, 'error');
@@ -443,41 +472,63 @@ async function confirmMergeFolio() {
         showNotification('❌ Error: No hay datos de merge pendientes', 'error');
         return;
     }
-    
+
     console.log('✅ Usuario confirmó merge de folios');
-    
+
     const { ordenesOrigen, folioDestino, conductor, unidad } = pendingMergeData;
-    
+
     try {
+        // IMPORTANTE: NO actualizar fecha/hora/usuario/timestamp al cambiar folio
+        // Solo actualizar folio, conductor y unidad - preservar historial original
+        // NO crear nuevos registros ni eliminar existentes - actualizar en sitio
+
+        // Generar nota de cambio de folio para columna Incidencias (Columna O)
         const now = new Date();
-        const { fecha, hora } = formatDateTimeForDB(now);
-        
-        // Transferir órdenes al folio destino
+        const fechaCambio = now.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const horaCambio = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const usuarioCambio = CURRENT_USER || 'Usuario';
+        const notaCambioFolio = `Cambio de Folio (Merge): ${fechaCambio} - ${horaCambio} - ${usuarioCambio}`;
+
+        console.log(`📝 [MERGE FOLIO] Nota de incidencia: ${notaCambioFolio}`);
+
+        // Transferir órdenes al folio destino IN-PLACE (sin cambiar ubicación)
         for (const orden of ordenesOrigen) {
             const index = STATE.localValidated.findIndex(r => r.orden === orden.orden);
             if (index !== -1) {
+                const currentRecord = STATE.localValidated[index];
+
+                // Preservar incidencias existentes y agregar nueva nota
+                const incidenciasActuales = currentRecord.incidencias || '';
+                const nuevasIncidencias = incidenciasActuales
+                    ? `${incidenciasActuales} | ${notaCambioFolio}`
+                    : notaCambioFolio;
+
+                // Actualizar SOLO los campos de folio/conductor/unidad/incidencias
+                // PRESERVAR todos los demás campos (fecha, hora, usuario, timestamp, etc.)
                 STATE.localValidated[index] = {
-                    ...STATE.localValidated[index],
+                    ...currentRecord,
                     folio: folioDestino,
                     operador: conductor,
                     conductor: conductor,
                     unidad: unidad,
-                    fecha: fecha,
-                    hora: hora,
-                    usuario: CURRENT_USER || USER_GOOGLE_NAME || 'Usuario',
-                    timestamp: now.toISOString()
+                    incidencias: nuevasIncidencias
+                    // NO actualizar: fecha, hora, usuario, timestamp, orden, destino, etc.
                 };
+
+                console.log(`   ✓ Orden ${orden.orden} transferida IN-PLACE a folio ${folioDestino}`);
+                console.log(`   📝 Incidencia agregada: "${notaCambioFolio}"`);
             }
         }
-        
+
         // Liberar folio origen
         const oldFolioNum = currentEditingFolio.split('-').pop();
         releaseFolio(oldFolioNum);
-        
-        // Guardar estado
+
+        // Guardar estado local
         saveLocalState();
-        
-        // Sincronizar con BD
+
+        // Sincronizar con BD de escritura
+        console.log('   - Sincronizando con BD de escritura...');
         if (dispatchSyncManager) {
             for (const orden of ordenesOrigen) {
                 const record = STATE.localValidated.find(r => r.orden === orden.orden);
@@ -486,15 +537,19 @@ async function confirmMergeFolio() {
                 }
             }
         }
-        
-        // Actualizar UI
+
+        console.log('   ✅ Sincronización completada');
+
+        // IMPORTANTE: Actualizar UI completa
+        console.log('   - Actualizando interfaz...');
         renderFoliosTable();
         renderValidatedTable();
         updateTabBadges();
-        
+        updateSummary();
+
         showNotification(`✅ Merge completado: ${ordenesOrigen.length} orden${ordenesOrigen.length > 1 ? 'es' : ''} transferida${ordenesOrigen.length > 1 ? 's' : ''} a ${folioDestino}`, 'success');
         closeMergeFolioModal();
-        
+
     } catch (error) {
         console.error('❌ Error en merge de folios:', error);
         showNotification('❌ Error al combinar folios: ' + error.message, 'error');

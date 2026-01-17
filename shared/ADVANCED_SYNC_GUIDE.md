@@ -595,3 +595,17 @@ await syncManager.sync();
 - Sincronización básica con Google Sheets
 - Cola de pendientes
 - localStorage
+
+6. Nuevas Funciones de Diagnóstico y Recuperación:
+runDiagnostics() - Análisis completo del sistema
+recoverFromLocalStorage() - Recupera registros perdidos
+forceSync() - Sincronización forzada con reintentos
+verifyDataIntegrity() - Verifica integridad de datos
+getFailedRecordsLog() - Obtiene log de errores
+clearFailedRecordsLog() - Limpia log de errores
+Uso para Diagnóstico:
+
+// En consola del navegador:
+await advancedSyncManager.runDiagnostics();
+await advancedSyncManager.forceSync();
+advancedSyncManager.getFailedRecordsLog();
