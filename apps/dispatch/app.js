@@ -480,7 +480,7 @@ async function lazyLoadDataByDate(startDate, endDate) {
         return;
     }
 
-    const TOTAL_STEPS = 4;
+    const TOTAL_STEPS = 5; // Incrementado para incluir carga de referencias
     
     try {
         console.log('\n========================================');
@@ -518,9 +518,9 @@ async function lazyLoadDataByDate(startDate, endDate) {
         }
         
         // ==================== STEP 2: Fetch Validated Records from SPREADSHEET_WRITE ====================
-        showLoadingOverlay(true, 1, TOTAL_STEPS, '📝 Paso 2/4: Cargando registros de despacho (BD Escritura)...');
-        console.log('👉 PASO 2/4: Cargando registros validados desde SPREADSHEET_WRITE...');
-        
+        showLoadingOverlay(true, 1, TOTAL_STEPS, '📝 Paso 2/5: Cargando registros de despacho (BD Escritura)...');
+        console.log('👉 PASO 2/5: Cargando registros validados desde SPREADSHEET_WRITE...');
+
         let validatedRecords = [];
         try {
             validatedRecords = await fetchValidatedRecordsFromWriteDB();
@@ -529,20 +529,75 @@ async function lazyLoadDataByDate(startDate, endDate) {
             console.warn('Error loading validated records:', error);
             console.log('⚠️ Continuando sin registros validados...');
         }
-        
-        // ==================== STEP 3: Cross-reference OBC with Validated ====================
-        showLoadingOverlay(true, 2, TOTAL_STEPS, '🔄 Paso 3/4: Cruzando órdenes con registros validados...');
-        console.log('👉 PASO 3/4: Cruzando órdenes OBC con registros validados...');
-        
+
+        // ==================== STEP 3: Load VALIDACION and MNE in parallel (Critical Reference Data) ====================
+        showLoadingOverlay(true, 2, TOTAL_STEPS, '📊 Paso 3/5: Cargando datos de Validación de Surtido y MNE en paralelo...');
+        console.log('👉 PASO 3/5: Cargando VALIDACION y MNE en paralelo (datos críticos)...');
+
+        const cacheBuster = Date.now();
+
+        // Cargar VALIDACION y MNE en paralelo usando Promise.all
+        await Promise.all([
+            // VALIDACION
+            (async () => {
+                try {
+                    let validacionCsv;
+                    if (dispatchSyncManager) {
+                        validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION, true);
+                    } else {
+                        const url = CONFIG.SOURCES.VALIDACION.includes('?')
+                            ? `${CONFIG.SOURCES.VALIDACION}&_t=${cacheBuster}`
+                            : `${CONFIG.SOURCES.VALIDACION}?_t=${cacheBuster}`;
+                        const response = await fetch(url, { cache: 'no-store' });
+                        validacionCsv = await response.text();
+                    }
+                    if (validacionCsv) parseValidacionData(validacionCsv);
+                    console.log('✅ VALIDACION cargada en paralelo');
+                    return { success: true, type: 'VALIDACION' };
+                } catch (e) {
+                    console.warn('⚠️ Error cargando VALIDACION:', e);
+                    return { success: false, type: 'VALIDACION', error: e };
+                }
+            })(),
+
+            // MNE
+            (async () => {
+                try {
+                    let mneCsv;
+                    if (dispatchSyncManager) {
+                        mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE, true);
+                    } else {
+                        const url = CONFIG.SOURCES.MNE.includes('?')
+                            ? `${CONFIG.SOURCES.MNE}&_t=${cacheBuster}`
+                            : `${CONFIG.SOURCES.MNE}?_t=${cacheBuster}`;
+                        const response = await fetch(url, { cache: 'no-store' });
+                        mneCsv = await response.text();
+                    }
+                    if (mneCsv) parseMNEData(mneCsv);
+                    console.log('✅ MNE cargada en paralelo');
+                    return { success: true, type: 'MNE' };
+                } catch (e) {
+                    console.warn('⚠️ Error cargando MNE:', e);
+                    return { success: false, type: 'MNE', error: e };
+                }
+            })()
+        ]);
+
+        console.log('✅ PASO 3 COMPLETO: Datos de referencia críticos cargados en paralelo');
+
+        // ==================== STEP 4: Cross-reference OBC with Validated ====================
+        showLoadingOverlay(true, 3, TOTAL_STEPS, '🔄 Paso 4/5: Cruzando órdenes con registros validados...');
+        console.log('👉 PASO 4/5: Cruzando órdenes OBC con registros validados...');
+
         const { pendingOrders, validatedOrders, validatedOBCSet } = crossReferenceOrders(allOBCOrders, validatedRecords);
-        
-        console.log(`✅ PASO 3 COMPLETO:`);
+
+        console.log(`✅ PASO 4 COMPLETO:`);
         console.log(`   - Órdenes pendientes: ${pendingOrders.length}`);
         console.log(`   - Órdenes validadas: ${validatedOrders.length}`);
-        
-        // ==================== STEP 4: Update STATE and Render ====================
-        showLoadingOverlay(true, 3, TOTAL_STEPS, '✅ Paso 4/4: Preparando visualización...');
-        console.log('👉 PASO 4/4: Actualizando estado y preparando render...');
+
+        // ==================== STEP 5: Update STATE and Render ====================
+        showLoadingOverlay(true, 4, TOTAL_STEPS, '✅ Paso 5/5: Preparando visualización...');
+        console.log('👉 PASO 5/5: Actualizando estado y preparando render...');
         
         // Clear and populate STATE
         STATE.obcData.clear();
@@ -568,11 +623,11 @@ async function lazyLoadDataByDate(startDate, endDate) {
         
         // Rebuild folios from validated records
         rebuildFoliosFromRecords(validatedOrders);
-        
-        console.log(`✅ PASO 4 COMPLETO: Estado actualizado`);
-        
+
+        console.log(`✅ PASO 5 COMPLETO: Estado actualizado`);
+
         // ==================== COMPLETE ====================
-        showLoadingOverlay(true, 4, TOTAL_STEPS, '✅ Carga completada!');
+        showLoadingOverlay(true, 5, TOTAL_STEPS, '✅ Carga completada!');
         await new Promise(resolve => setTimeout(resolve, 300)); // Brief pause to show completion
         showLoadingOverlay(false);
         
@@ -2151,7 +2206,8 @@ async function loadCriticalData() {
 
 /**
  * CARGA EN SEGUNDO PLANO
- * Carga BDs de referencia sin bloquear la UI
+ * Carga BDs de referencia secundarias sin bloquear la UI
+ * NOTA: VALIDACION y MNE ahora se cargan en paralelo durante lazyLoadDataByDate()
  */
 async function loadReferenceDataInBackground() {
     if (LOAD_STATE.referenceLoaded || LOAD_STATE.backgroundLoading) {
@@ -2160,7 +2216,7 @@ async function loadReferenceDataInBackground() {
     }
 
     LOAD_STATE.backgroundLoading = true;
-    console.log('📦 [BACKGROUND] Iniciando carga de BDs de referencia en segundo plano...');
+    console.log('📦 [BACKGROUND] Iniciando carga de BDs de referencia secundarias en segundo plano...');
 
     // Usar setTimeout para no bloquear el hilo principal
     setTimeout(async () => {
@@ -2168,47 +2224,10 @@ async function loadReferenceDataInBackground() {
             // Generar timestamp para cache-busting
             const cacheBuster = Date.now();
 
-            // VALIDACION
-            try {
-                let validacionCsv;
-                if (dispatchSyncManager) {
-                    // Forzar recarga sin usar caché
-                    validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION, true);
-                } else {
-                    // Agregar cache-busting a la URL
-                    const url = CONFIG.SOURCES.VALIDACION.includes('?')
-                        ? `${CONFIG.SOURCES.VALIDACION}&_t=${cacheBuster}`
-                        : `${CONFIG.SOURCES.VALIDACION}?_t=${cacheBuster}`;
-                    const response = await fetch(url, { cache: 'no-store' });
-                    validacionCsv = await response.text();
-                }
-                if (validacionCsv) parseValidacionData(validacionCsv);
-                console.log('✅ [BACKGROUND] VALIDACION cargada (sin caché)');
-            } catch (e) {
-                console.warn('⚠️ [BACKGROUND] Error cargando VALIDACION:', e);
-            }
+            // NOTA: VALIDACION y MNE se cargan ahora en paralelo durante lazyLoadDataByDate()
+            // para evitar que aparezcan vacíos inicialmente
 
-            // MNE
-            try {
-                let mneCsv;
-                if (dispatchSyncManager) {
-                    // Forzar recarga sin usar caché
-                    mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE, true);
-                } else {
-                    // Agregar cache-busting a la URL
-                    const url = CONFIG.SOURCES.MNE.includes('?')
-                        ? `${CONFIG.SOURCES.MNE}&_t=${cacheBuster}`
-                        : `${CONFIG.SOURCES.MNE}?_t=${cacheBuster}`;
-                    const response = await fetch(url, { cache: 'no-store' });
-                    mneCsv = await response.text();
-                }
-                if (mneCsv) parseMNEData(mneCsv);
-                console.log('✅ [BACKGROUND] MNE cargada (sin caché)');
-            } catch (e) {
-                console.warn('⚠️ [BACKGROUND] Error cargando MNE:', e);
-            }
-
-            // TRS
+            // TRS (Rastreo) - carga en background ya que es menos crítico
             try {
                 let trsCsv;
                 if (dispatchSyncManager) {
@@ -2230,7 +2249,7 @@ async function loadReferenceDataInBackground() {
 
             LOAD_STATE.referenceLoaded = true;
             LOAD_STATE.backgroundLoading = false;
-            console.log('✅ [BACKGROUND] Todas las BDs de referencia cargadas (sin caché)');
+            console.log('✅ [BACKGROUND] BDs de referencia secundarias cargadas (sin caché)');
 
         } catch (error) {
             console.error('❌ [BACKGROUND] Error en carga de referencia:', error);
