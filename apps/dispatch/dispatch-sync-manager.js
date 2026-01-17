@@ -181,7 +181,7 @@ class DispatchSyncManager {
             // PASO 2: Validar versión (Verify)
             if (currentVersion !== expectedVersion) {
                 console.warn('⚠️ [LOCK] Conflicto de versión detectado');
-                
+
                 // Notificar conflicto
                 if (this.config.onConflict) {
                     this.config.onConflict({
@@ -192,10 +192,10 @@ class DispatchSyncManager {
                         remoteData: currentData
                     });
                 }
-                
-                return { 
-                    success: false, 
-                    conflict: true, 
+
+                return {
+                    success: false,
+                    conflict: true,
                     message: 'Registro modificado por otro usuario',
                     remoteData: currentData
                 };
@@ -205,7 +205,7 @@ class DispatchSyncManager {
             record._version = Date.now();
             record._lastModifiedBy = this.getClientId();
 
-            const values = this.config.formatRecord 
+            const values = this.config.formatRecord
                 ? [this.config.formatRecord(record)]
                 : [this.defaultFormat(record)];
 
@@ -224,6 +224,84 @@ class DispatchSyncManager {
             throw new Error(`Status ${response.status}`);
         } catch (error) {
             console.error('❌ [LOCK] Error en actualización:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Busca y actualiza un registro existente por número de orden
+     * @param {Object} record - Registro con los datos actualizados
+     * @returns {Promise<Object>} - Resultado de la operación
+     */
+    async updateExistingRecord(record) {
+        if (!this.isOnline || !gapi?.client?.getToken()) {
+            console.log('📴 [UPDATE] Sin conexión - Guardando cambios localmente');
+            return { success: false, offline: true, message: 'Sin conexión' };
+        }
+
+        const ordenToFind = record.orden;
+        if (!ordenToFind) {
+            console.error('❌ [UPDATE] No se puede actualizar: falta número de orden');
+            return { success: false, error: 'Número de orden requerido' };
+        }
+
+        try {
+            console.log(`🔍 [UPDATE] Buscando registro existente para orden: ${ordenToFind}`);
+
+            // PASO 1: Leer toda la hoja para encontrar la fila de la orden
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: this.config.spreadsheetId,
+                range: `${this.config.sheetName}!A:R`
+            });
+
+            const rows = response.result.values || [];
+
+            // Buscar la fila que contiene esta orden (columna E, índice 4)
+            let rowIndex = -1;
+            for (let i = 0; i < rows.length; i++) {
+                if (rows[i][4] === ordenToFind) {  // Columna E (índice 4) = Orden
+                    rowIndex = i + 1;  // +1 porque Sheets usa índice base 1
+                    break;
+                }
+            }
+
+            if (rowIndex === -1) {
+                console.warn(`⚠️ [UPDATE] No se encontró registro existente para orden ${ordenToFind}`);
+                console.log('📝 [UPDATE] Creando nuevo registro con pushImmediate...');
+                return await this.pushImmediate(record);
+            }
+
+            console.log(`✅ [UPDATE] Registro encontrado en fila ${rowIndex}`);
+
+            // PASO 2: Actualizar la fila existente (sin crear nueva)
+            const values = this.config.formatRecord
+                ? [this.config.formatRecord(record)]
+                : [this.defaultFormat(record)];
+
+            console.log(`📝 [UPDATE] Actualizando fila ${rowIndex} IN-PLACE...`);
+
+            const updateResponse = await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: this.config.spreadsheetId,
+                range: `${this.config.sheetName}!A${rowIndex}:R${rowIndex}`,
+                valueInputOption: 'RAW',
+                resource: { values }
+            });
+
+            if (updateResponse.status === 200) {
+                console.log(`✅ [UPDATE] Registro actualizado exitosamente en fila ${rowIndex}`);
+                console.log(`   - Orden: ${ordenToFind}`);
+                console.log(`   - Folio: ${record.folio}`);
+                console.log(`   - Incidencias: ${record.incidencias || 'Sin incidencias'}`);
+
+                // Actualizar versión del caché
+                this.cache.operational.version++;
+
+                return { success: true, rowIndex, updated: true };
+            }
+
+            throw new Error(`Status ${updateResponse.status}`);
+        } catch (error) {
+            console.error('❌ [UPDATE] Error actualizando registro:', error);
             return { success: false, error: error.message };
         }
     }

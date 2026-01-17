@@ -396,13 +396,30 @@ async function performSimpleUpdate(ordenes, newFolio, conductor, unidad) {
         // Guardar estado local
         saveLocalState();
 
-        // Sincronizar con BD de escritura
-        console.log('   - Sincronizando con BD de escritura...');
-        if (dispatchSyncManager) {
+        // Sincronizar con BD de escritura - ACTUALIZAR registros existentes
+        console.log('   - Sincronizando con BD de escritura (actualización IN-PLACE)...');
+        if (dispatchSyncManager && typeof dispatchSyncManager.updateExistingRecord === 'function') {
             for (const orden of ordenes) {
                 const record = STATE.localValidated.find(r => r.orden === orden.orden);
                 if (record) {
-                    await dispatchSyncManager.pushImmediate(record);
+                    console.log(`   📝 Actualizando registro existente para orden ${orden.orden}...`);
+                    const result = await dispatchSyncManager.updateExistingRecord(record);
+                    if (result.success) {
+                        console.log(`   ✅ Orden ${orden.orden} actualizada en BD (fila ${result.rowIndex || 'N/A'})`);
+                    } else {
+                        console.warn(`   ⚠️ Error actualizando orden ${orden.orden}:`, result.error || result.message);
+                    }
+                }
+            }
+        } else {
+            console.warn('   ⚠️ updateExistingRecord no disponible - usando pushImmediate (creará nuevas filas)');
+            // Fallback a pushImmediate (creará nuevas filas)
+            if (dispatchSyncManager) {
+                for (const orden of ordenes) {
+                    const record = STATE.localValidated.find(r => r.orden === orden.orden);
+                    if (record) {
+                        await dispatchSyncManager.pushImmediate(record);
+                    }
                 }
             }
         }
@@ -527,13 +544,30 @@ async function confirmMergeFolio() {
         // Guardar estado local
         saveLocalState();
 
-        // Sincronizar con BD de escritura
-        console.log('   - Sincronizando con BD de escritura...');
-        if (dispatchSyncManager) {
+        // Sincronizar con BD de escritura - ACTUALIZAR registros existentes
+        console.log('   - Sincronizando con BD de escritura (actualización IN-PLACE)...');
+        if (dispatchSyncManager && typeof dispatchSyncManager.updateExistingRecord === 'function') {
             for (const orden of ordenesOrigen) {
                 const record = STATE.localValidated.find(r => r.orden === orden.orden);
                 if (record) {
-                    await dispatchSyncManager.pushImmediate(record);
+                    console.log(`   📝 Actualizando registro existente para orden ${orden.orden}...`);
+                    const result = await dispatchSyncManager.updateExistingRecord(record);
+                    if (result.success) {
+                        console.log(`   ✅ Orden ${orden.orden} actualizada en BD (fila ${result.rowIndex || 'N/A'})`);
+                    } else {
+                        console.warn(`   ⚠️ Error actualizando orden ${orden.orden}:`, result.error || result.message);
+                    }
+                }
+            }
+        } else {
+            console.warn('   ⚠️ updateExistingRecord no disponible - usando pushImmediate (creará nuevas filas)');
+            // Fallback a pushImmediate (creará nuevas filas)
+            if (dispatchSyncManager) {
+                for (const orden of ordenesOrigen) {
+                    const record = STATE.localValidated.find(r => r.orden === orden.orden);
+                    if (record) {
+                        await dispatchSyncManager.pushImmediate(record);
+                    }
                 }
             }
         }

@@ -9886,11 +9886,14 @@ function showFoliosManagement() {
         }
     }
 
-    // IMPORTANTE: Actualizar badges ANTES de renderizar la tabla para evitar valores en cero
-    updateTabBadges();
-
-    // Renderizar la tabla de folios (esto también actualizará los contadores específicos de folios)
+    // Renderizar la tabla de folios primero
     renderFoliosTable();
+
+    // IMPORTANTE: Actualizar badges DESPUÉS de renderizar para tener contadores correctos
+    // Usar setTimeout para asegurar que el DOM se actualizó
+    setTimeout(() => {
+        updateTabBadges();
+    }, 0);
 
     // CHANGE 1: Update global navigation
     updateGlobalNavigation();
@@ -9924,7 +9927,8 @@ function getAllFolios() {
                 unidad: record.unidad,
                 ordenes: [],
                 totalCajas: 0,
-                horarios: []
+                horarios: [],
+                destinos: new Set() // Set para almacenar destinos únicos
             });
         }
 
@@ -9936,9 +9940,18 @@ function getAllFolios() {
         if (record.horario) {
             folioData.horarios.push(record.horario);
         }
+
+        // Agregar destino si existe
+        if (record.destino) {
+            folioData.destinos.add(record.destino);
+        }
     });
 
-    return Array.from(foliosMap.values());
+    // Convertir destinos de Set a string consolidado
+    return Array.from(foliosMap.values()).map(folio => ({
+        ...folio,
+        destinos: Array.from(folio.destinos).join(', ') // Convertir Set a string separado por comas
+    }));
 }
 
 /**
@@ -10027,27 +10040,31 @@ function renderFoliosTable() {
                 valA = a.fecha;
                 valB = b.fecha;
                 break;
-            case 2: // Cant. Cajas
+            case 2: // Destino
+                valA = a.destinos || '';
+                valB = b.destinos || '';
+                break;
+            case 3: // Cant. Cajas
                 valA = a.totalCajas;
                 valB = b.totalCajas;
                 break;
-            case 3: // Cant. Órdenes
+            case 4: // Cant. Órdenes
                 valA = a.ordenes.length;
                 valB = b.ordenes.length;
                 break;
-            case 4: // Horario Inicial
+            case 5: // Horario Inicial
                 valA = a.horarios.length > 0 ? Math.min(...a.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
                 valB = b.horarios.length > 0 ? Math.min(...b.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
                 break;
-            case 5: // Horario Final
+            case 6: // Horario Final
                 valA = a.horarios.length > 0 ? Math.max(...a.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
                 valB = b.horarios.length > 0 ? Math.max(...b.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
                 break;
-            case 6: // Conductor
+            case 7: // Conductor
                 valA = a.conductor || '';
                 valB = b.conductor || '';
                 break;
-            case 7: // Unidad
+            case 8: // Unidad
                 valA = a.unidad || '';
                 valB = b.unidad || '';
                 break;
@@ -10069,7 +10086,7 @@ function renderFoliosTable() {
     if (folios.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="9" class="table-empty-state">
+                <td colspan="10" class="table-empty-state">
                     <div class="table-empty-icon">📋</div>
                     <div class="table-empty-text">No hay folios de carga</div>
                     <div class="table-empty-subtext">Los folios generados aparecerán aquí</div>
@@ -10089,11 +10106,15 @@ function renderFoliosTable() {
 
         // FIX: Formatear fecha correctamente sin offset
         const fechaDisplay = formatDateForDisplay(folio.fecha);
-        
+
+        // Formatear destinos: si hay múltiples, mostrarlos de forma legible
+        const destinosDisplay = folio.destinos || '<span class="empty-cell">N/A</span>';
+
         return `
             <tr class="folio-row-clickable" data-folio="${folio.folio}" style="cursor: pointer; transition: background-color 0.2s;" onmouseenter="this.style.backgroundColor='#fff5ed'" onmouseleave="this.style.backgroundColor=''">
                 <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
                 <td>${fechaDisplay}</td>
+                <td>${destinosDisplay}</td>
                 <td style="text-align: center;">${folio.totalCajas}</td>
                 <td style="text-align: center;">${folio.ordenes.length}</td>
                 <td>${horarioInicial}</td>
@@ -10665,10 +10686,19 @@ function renderFoliosManagementTable() {
         switch(foliosMgmtSortColumn) {
             case 0: valA = a.folio; valB = b.folio; break;
             case 1: valA = a.fecha; valB = b.fecha; break;
-            case 2: valA = a.totalCajas; valB = b.totalCajas; break;
-            case 3: valA = a.ordenes.length; valB = b.ordenes.length; break;
-            case 6: valA = a.conductor || ''; valB = b.conductor || ''; break;
-            case 7: valA = a.unidad || ''; valB = b.unidad || ''; break;
+            case 2: valA = a.destinos || ''; valB = b.destinos || ''; break;
+            case 3: valA = a.totalCajas; valB = b.totalCajas; break;
+            case 4: valA = a.ordenes.length; valB = b.ordenes.length; break;
+            case 5:
+                valA = a.horarios.length > 0 ? Math.min(...a.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                valB = b.horarios.length > 0 ? Math.min(...b.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                break;
+            case 6:
+                valA = a.horarios.length > 0 ? Math.max(...a.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                valB = b.horarios.length > 0 ? Math.max(...b.horarios.map(h => new Date(`2000-01-01 ${h}`).getTime())) : 0;
+                break;
+            case 7: valA = a.conductor || ''; valB = b.conductor || ''; break;
+            case 8: valA = a.unidad || ''; valB = b.unidad || ''; break;
             default: valA = a.fecha; valB = b.fecha;
         }
 
@@ -10685,7 +10715,7 @@ function renderFoliosManagementTable() {
     if (folios.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="9" class="table-empty-state">
+                <td colspan="10" class="table-empty-state">
                     <div class="table-empty-icon">📋</div>
                     <div class="table-empty-text">No hay folios de carga</div>
                     <div class="table-empty-subtext">Los folios generados aparecerán aquí</div>
@@ -10705,10 +10735,14 @@ function renderFoliosManagementTable() {
 
         const fechaDisplay = formatDateForDisplay(folio.fecha);
 
+        // Formatear destinos: si hay múltiples, mostrarlos de forma legible
+        const destinosDisplay = folio.destinos || '<span class="empty-cell">N/A</span>';
+
         return `
             <tr class="folio-row-clickable" data-folio="${folio.folio}" style="cursor: pointer; transition: background-color 0.2s;" onmouseenter="this.style.backgroundColor='#fff5ed'" onmouseleave="this.style.backgroundColor=''">
                 <td><span class="order-code">${makeCopyable(folio.folio)}</span></td>
                 <td>${fechaDisplay}</td>
+                <td>${destinosDisplay}</td>
                 <td style="text-align: center;">${folio.totalCajas}</td>
                 <td style="text-align: center;">${folio.ordenes.length}</td>
                 <td>${horarioInicial}</td>
