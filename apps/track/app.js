@@ -10,7 +10,9 @@ const CONFIG = {
         INVENTARIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXzUcwU_ZzJtCQKF6IEXr8Mj-OXvrzkw361v2rVVbb2goPaRMLPm6EbfrhXzeJJfWnvox4PhdGyoxZ/pub?output=csv',
         MNE: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzXpt4q7KYo8QMnrO92LGcXQbx14lBCQ0wxHGHm2Lz4v5RCJCpQHmS0NhUTHUCCG2Hc1bkvTYhdpz/pub?gid=883314398&single=true&output=csv',
         TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv',
-        CANCELADO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGSl9NnEjrP_3P4iRDSCaE776r2vjzwKthMyavQ4C5DOnmzDuY90YjZjfkLPGouxhyca140srhKaFO/pub?output=csv'
+        CANCELADO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGSl9NnEjrP_3P4iRDSCaE776r2vjzwKthMyavQ4C5DOnmzDuY90YjZjfkLPGouxhyca140srhKaFO/pub?output=csv',
+        EMBARQUES: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTmbzg922y1KMVnV0JqBijR43Ma8e5X_AO2KVzjHBnRtGBx-0aXLZ8UUlKCO_XHOpV1qfggQyNjtqde/pub?gid=0&single=true&output=csv',
+        REPARACIONES: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSe-hbpLGtctz-xY2Tk-9j5p6sbxtCC8dE-84UF7Gc0x4P5uSgygqmPHunD0ZLYVV6RCyvBsHI18OL7/pub?gid=131145537&single=true&output=csv'
     },
     CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
     MAX_RESULTS: 20
@@ -25,6 +27,8 @@ let DATA_CACHE = {
     mne: [],
     trs: [],
     cancelado: [],
+    embarques: [],
+    reparaciones: [],
     lastUpdate: null
 };
 
@@ -37,7 +41,9 @@ let SECTION_MODES = {
     inventario: 'exact',
     mne: 'exact',
     trs: 'exact',
-    cancelado: 'exact'
+    cancelado: 'exact',
+    embarques: 'exact',
+    reparaciones: 'exact'
 };
 
 // ==================== INITIALIZATION ====================
@@ -99,7 +105,9 @@ async function loadAllData() {
                     INVENTARIO: 'inventario',
                     MNE: 'mne',
                     TRS: 'trs',
-                    CANCELADO: 'cancelado'
+                    CANCELADO: 'cancelado',
+                    EMBARQUES: 'embarques',
+                    REPARACIONES: 'reparaciones'
                 }[key];
                 DATA_CACHE[mappedKey] = data;
             }
@@ -410,7 +418,9 @@ function searchAllSources(query) {
             inventario: [],
             mne: [],
             trs: [],
-            cancelado: []
+            cancelado: [],
+            embarques: [],
+            reparaciones: []
         },
         partial: {
             bdStock: [],
@@ -419,7 +429,9 @@ function searchAllSources(query) {
             inventario: [],
             mne: [],
             trs: [],
-            cancelado: []
+            cancelado: [],
+            embarques: [],
+            reparaciones: []
         },
         query,
         baseCode: extractBaseCode(query),
@@ -455,6 +467,12 @@ function searchAllSources(query) {
 
     // Search CANCELADO
     searchCANCELADO(DATA_CACHE.cancelado, results, 'cancelado');
+
+    // Search EMBARQUES - Búsqueda con triangulación
+    searchEMBARQUES(DATA_CACHE.embarques, results, 'embarques');
+
+    // Search REPARACIONES - Búsqueda booleana
+    searchREPARACIONES(DATA_CACHE.reparaciones, results, 'reparaciones');
 
     return results;
 }
@@ -661,6 +679,248 @@ function searchCANCELADO(data, results, sourceName) {
     });
 }
 
+/**
+ * BÚSQUEDA EN EMBARQUES - Con Lógica de Triangulación
+ * Columnas BD Embarques (índices):
+ * 0-A: Folio, 1-B: Fecha, 2-C: Hora, 3-D: Usuario, 4-E: Orden (OBC)
+ * 5-F: Destino, 6-G: Horario, 7-H: Código, 8-I: Código 2
+ * 9-J: Estatus, 10-K: Cambio Etiqueta, 11-L: Estatus 2
+ * 12-M: Cant Inicial, 13-N: Cant Despacho, 14-O: Incidencias
+ * 15-P: Operador, 16-Q: Unidad, 17-R: Observaciones
+ *
+ * Lógica de Búsqueda:
+ * 1. Si query es OBC: buscar directamente en columna Orden (índice 4)
+ * 2. Si query es código de caja:
+ *    a) Buscar por BaseCode en columnas Código (7) y Código 2 (8) - FUZZY
+ *    b) Si no encuentra, hacer triangulación:
+ *       - Buscar OBCs asociadas en BD_OBC
+ *       - Buscar esas OBCs en columna Orden de Embarques
+ */
+function searchEMBARQUES(data, results, sourceName) {
+    const query = results.query;
+    const baseCode = results.baseCode;
+    const directMatches = [];
+    const triangulatedMatches = [];
+
+    // PASO 1: Detectar si es búsqueda por OBC (típicamente empieza con "OBC")
+    const isOBCQuery = query.toUpperCase().startsWith('OBC');
+
+    if (isOBCQuery) {
+        // Búsqueda directa por número de orden en columna Orden (índice 4)
+        data.forEach(row => {
+            if (!row._values || row._values.length < 5) return;
+
+            const ordenValue = row._values[4]?.toString().toUpperCase() || '';
+            if (ordenValue === query || ordenValue.includes(query)) {
+                const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100, _searchMethod: 'OBC_directa' };
+                directMatches.push(enrichedRow);
+            }
+        });
+
+        // Agregar resultados directos
+        results.exact[sourceName].push(...directMatches);
+    } else {
+        // PASO 2: Búsqueda por código de caja usando BaseCode en Código (7) y Código 2 (8)
+        // IMPORTANTE: Búsqueda FUZZY porque no hay códigos completos de caja en Embarques
+        data.forEach(row => {
+            if (!row._values || row._values.length < 9) return;
+
+            const codigo = row._values[7]?.toString() || '';
+            const codigo2 = row._values[8]?.toString() || '';
+
+            // Buscar por BaseCode en ambos códigos
+            if (codigo && baseCode) {
+                const normalizedCodigo = normalizeCode(codigo);
+                const codigoBaseCode = extractBaseCode(codigo);
+
+                if (normalizedCodigo === baseCode || codigoBaseCode === baseCode ||
+                    normalizedCodigo.includes(baseCode) || codigo.toUpperCase().includes(baseCode)) {
+                    const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100, _searchMethod: 'BaseCode_codigo' };
+                    directMatches.push(enrichedRow);
+                    return; // Ya encontró match, no seguir buscando en esta fila
+                }
+            }
+
+            if (codigo2 && baseCode) {
+                const normalizedCodigo2 = normalizeCode(codigo2);
+                const codigo2BaseCode = extractBaseCode(codigo2);
+
+                if (normalizedCodigo2 === baseCode || codigo2BaseCode === baseCode ||
+                    normalizedCodigo2.includes(baseCode) || codigo2.toUpperCase().includes(baseCode)) {
+                    const enrichedRow = { ...row, _matchType: 'exact', _similarity: 100, _searchMethod: 'BaseCode_codigo2' };
+                    directMatches.push(enrichedRow);
+                }
+            }
+        });
+
+        // PASO 3: Si no se encontró nada con BaseCode, hacer TRIANGULACIÓN
+        if (directMatches.length === 0) {
+            // 3.1 Buscar en OBC_BD todas las órdenes asociadas a esta caja
+            const associatedOBCs = new Set();
+            DATA_CACHE.obcBd.forEach(row => {
+                const codigoField = row['Custom box barcode_自定义箱条码'] || '';
+                if (codigoField) {
+                    const normalizedField = normalizeCode(codigoField);
+                    const fieldBaseCode = extractBaseCode(codigoField);
+
+                    if (normalizedField === query || fieldBaseCode === baseCode ||
+                        normalizedField.includes(query) || normalizedField.includes(baseCode)) {
+                        const obcValue = row['Outbound_出库单号'] || '';
+                        if (obcValue) {
+                            associatedOBCs.add(obcValue.toUpperCase());
+                        }
+                    }
+                }
+            });
+
+            // 3.2 Buscar esas OBCs en la base de Embarques
+            if (associatedOBCs.size > 0) {
+                data.forEach(row => {
+                    if (!row._values || row._values.length < 5) return;
+
+                    const ordenValue = row._values[4]?.toString().toUpperCase() || '';
+                    if (associatedOBCs.has(ordenValue)) {
+                        const enrichedRow = {
+                            ...row,
+                            _matchType: 'exact',
+                            _similarity: 90,
+                            _searchMethod: 'Triangulación_OBC',
+                            _triangulatedOBCs: Array.from(associatedOBCs)
+                        };
+                        triangulatedMatches.push(enrichedRow);
+                    }
+                });
+            }
+        }
+
+        // Agregar resultados (primero directos, luego triangulados)
+        results.exact[sourceName].push(...directMatches);
+        results.exact[sourceName].push(...triangulatedMatches);
+    }
+
+    console.log(`🚚 [EMBARQUES] Búsqueda completada:`, {
+        query,
+        baseCode,
+        isOBCQuery,
+        directMatches: directMatches.length,
+        triangulatedMatches: triangulatedMatches.length,
+        total: directMatches.length + triangulatedMatches.length
+    });
+}
+
+/**
+ * BÚSQUEDA EN REPARACIONES - Búsqueda Booleana (Existe/No Existe)
+ * Columnas BD Reparaciones (índices):
+ * 0-A: FECHA REGISTRO, 1-B: OBC, 2-C: CODIGO (ID_Caja)
+ * 3-D: UBICACION, 4-E: FECHA ENVIO, 5-F: HORARIO
+ * 6-G: REPARADO, 7-H: ENTREGADO
+ * 8-I: OBSERVACIONES (SURTIDO), 9-J: OBSERVACIONES (RECIBO)
+ *
+ * Lógica de Búsqueda:
+ * - Búsqueda FUZZY por BaseCode en columna CODIGO (índice 2)
+ * - Si encuentra match exacto, retornar ese registro
+ * - Si no, buscar por coincidencia abierta con BaseCode
+ */
+function searchREPARACIONES(data, results, sourceName) {
+    const query = results.query;
+    const baseCode = results.baseCode;
+    const searchIndices = [2]; // CODIGO (índice 2)
+    const exactMatches = [];
+    const fuzzyMatches = [];
+
+    data.forEach(row => {
+        if (!row._values || row._values.length < 3) return;
+
+        // Saltar encabezados
+        const firstVal = row._values[0]?.toString() || '';
+        if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+
+        let matchType = null; // 'exact' o 'fuzzy'
+        let matchMethod = '';
+        let similarity = 0;
+
+        for (const idx of searchIndices) {
+            const cellValue = row._values[idx] || '';
+            if (!cellValue) continue;
+
+            const cellUpper = cellValue.toString().toUpperCase();
+            const queryUpper = query.toUpperCase();
+
+            // ========== MATCH EXACTO (100%) ==========
+            if (cellUpper === queryUpper) {
+                matchType = 'exact';
+                matchMethod = 'Exacto';
+                similarity = 100;
+                break;
+            }
+
+            // ========== MATCHES FUZZY (< 100%) ==========
+            // Solo buscar fuzzy si no hubo match exacto
+
+            // MATCH POR INCLUSIÓN (95%)
+            if (!matchType && cellUpper.includes(queryUpper)) {
+                matchType = 'fuzzy';
+                matchMethod = 'Inclusión';
+                similarity = 95;
+                break;
+            }
+
+            // MATCH POR BASECODE (90% o 85%)
+            if (!matchType && baseCode) {
+                const normalizedCell = normalizeCode(cellValue);
+                const cellBaseCode = extractBaseCode(cellValue);
+
+                if (normalizedCell === baseCode || cellBaseCode === baseCode) {
+                    matchType = 'fuzzy';
+                    matchMethod = 'BaseCode_exacto';
+                    similarity = 90;
+                    break;
+                }
+
+                if (normalizedCell.includes(baseCode) || cellUpper.includes(baseCode)) {
+                    matchType = 'fuzzy';
+                    matchMethod = 'BaseCode_fuzzy';
+                    similarity = 85;
+                    break;
+                }
+            }
+        }
+
+        // Separar en exact o partial según el tipo de match
+        if (matchType === 'exact') {
+            const enrichedRow = {
+                ...row,
+                _matchType: 'exact',
+                _similarity: similarity,
+                _searchMethod: matchMethod
+            };
+            exactMatches.push(enrichedRow);
+        } else if (matchType === 'fuzzy') {
+            const enrichedRow = {
+                ...row,
+                _matchType: 'fuzzy',
+                _similarity: similarity,
+                _searchMethod: matchMethod
+            };
+            fuzzyMatches.push(enrichedRow);
+        }
+    });
+
+    // Agregar matches exactos a results.exact
+    results.exact[sourceName].push(...exactMatches);
+
+    // Agregar matches fuzzy a results.partial
+    results.partial[sourceName].push(...fuzzyMatches);
+
+    console.log(`🪚 [REPARACIONES] Búsqueda completada:`, {
+        query,
+        baseCode,
+        exactMatches: exactMatches.length,
+        fuzzyMatches: fuzzyMatches.length,
+        total: exactMatches.length + fuzzyMatches.length
+    });
+}
+
 function searchInSourceWithSimilarity(data, results, sourceName, fields) {
     const query = results.query;
     const variations = results.variations;
@@ -797,6 +1057,8 @@ function displaySummary(results) {
     const inventarioInfo = getInfo(results.exact.inventario, results.partial.inventario);
     const trsInfo = getInfo(results.exact.trs, results.partial.trs);
     const canceladoInfo = getInfo(results.exact.cancelado, results.partial.cancelado);
+    const embarquesInfo = getInfo(results.exact.embarques, results.partial.embarques);
+    const reparacionesInfo = getInfo(results.exact.reparaciones, results.partial.reparaciones);
 
     const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
     const totalPartial = Object.values(results.partial).reduce((sum, arr) => sum + arr.length, 0);
@@ -808,7 +1070,9 @@ function displaySummary(results) {
         inventario: results.partial.inventario.length,
         mne: results.partial.mne.length,
         trs: results.partial.trs.length,
-        cancelado: results.partial.cancelado.length
+        cancelado: results.partial.cancelado.length,
+        embarques: results.partial.embarques.length,
+        reparaciones: results.partial.reparaciones.length
     };
 
     const flexIndicator = (source) => {
@@ -944,6 +1208,28 @@ function displaySummary(results) {
                 <div class="summary-label">🏷️ Otros ${flexIndicator('cancelado')}</div>
                 <div class="summary-value">${canceladoInfo ? 'OTROS' : 'SIN REGISTRO'}</div>
             </div>
+
+            <div class="summary-item ${embarquesInfo ? 'primary' : 'gray'}" onclick="jumpToSection('embarques')">
+                ${results.exact.embarques.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('embarques')">${results.exact.embarques.length}</span>` : ''}
+                <div class="summary-label">🚚 Embarques ${flexIndicator('embarques')}</div>
+                <div class="summary-value">${embarquesInfo ? (embarquesInfo._values?.[9] || 'PROCESADO') : 'SIN DESPACHO'}</div>
+                ${embarquesInfo && embarquesInfo._values ? `
+                    <div style="font-size: 0.75em; color: #666; margin-top: 4px;">
+                        📦 ${embarquesInfo._values[13] || 0}/${embarquesInfo._values[12] || 0} despachadas
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="summary-item ${reparacionesInfo ? 'warning' : 'success'}" onclick="jumpToSection('reparaciones')">
+                <div class="summary-label">🪚 Reparaciones ${flexIndicator('reparaciones')}</div>
+                <div class="summary-value">${reparacionesInfo ? 'SÍ' : 'NO'}</div>
+                ${reparacionesInfo && reparacionesInfo._values ? `
+                    <div style="font-size: 0.75em; color: #666; margin-top: 4px;">
+                        ${reparacionesInfo._values[6] === 'SI' ? '✅ Reparado' : '⏳ En proceso'}
+                        ${reparacionesInfo._values[7] === 'SI' ? ' • ✅ Entregado' : ''}
+                    </div>
+                ` : ''}
+            </div>
         </div>
     `;
 }
@@ -1001,6 +1287,8 @@ function displaySections(results) {
         { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
         { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
         { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' },
+        { key: 'embarques', title: '🚚 Embarques - Despacho de Mercancía', color: 'primary' },
+        { key: 'reparaciones', title: '🪚 Reparaciones - Cajas en Reparación', color: 'warning' },
         { key: 'cancelado', title: '🏷️ Otros', color: 'error' }
     ];
 
@@ -1221,6 +1509,28 @@ function getRelevantFields(sourceKey) {
             { key: 3, label: 'Ubicación', type: 'text' },
             { key: 4, label: 'Responsable', type: 'text' },
             { key: 5, label: 'Nota', type: 'text' }
+        ],
+        embarques: [
+            { key: 0, label: 'Folio', type: 'code' },
+            { key: 1, label: 'Fecha', type: 'date' },
+            { key: 4, label: 'Orden', type: 'code' },
+            { key: 5, label: 'Destino', type: 'text' },
+            { key: 7, label: 'Código', type: 'code' },
+            { key: 8, label: 'Código 2', type: 'code' },
+            { key: 9, label: 'Estatus', type: 'status' },
+            { key: 12, label: 'Cant Inicial', type: 'number' },
+            { key: 13, label: 'Cant Despacho', type: 'number' },
+            { key: 15, label: 'Operador', type: 'text' },
+            { key: 16, label: 'Unidad', type: 'text' }
+        ],
+        reparaciones: [
+            { key: 0, label: 'Fecha Registro', type: 'date' },
+            { key: 1, label: 'OBC', type: 'code' },
+            { key: 2, label: 'Código', type: 'code' },
+            { key: 6, label: 'Reparado', type: 'status' },
+            { key: 7, label: 'Entregado', type: 'status' },
+            { key: 8, label: 'Observaciones 1', type: 'text' },
+            { key: 9, label: 'Observaciones 2', type: 'text' }
         ]
     };
 
@@ -1325,6 +1635,8 @@ function getSourceName(key) {
         inventario: 'Inventario Escaneo',
         mne: 'Rastreo MNE',
         trs: 'TRS Etiquetado',
+        embarques: 'Embarques',
+        reparaciones: 'Reparaciones',
         cancelado: 'Otros'
     };
     return names[key] || key;

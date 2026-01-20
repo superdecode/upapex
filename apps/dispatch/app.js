@@ -8701,12 +8701,12 @@ async function executeConfirmDispatch() {
         horario: normalizeDeliveryDate(orderData.expectedArrival) || '', // G: Horario (Fecha de Envío normalizada ISO 8601)
         codigo: orderData.trackingCode || '',   // H: Código
         codigo2: orderData.referenceNo || '',   // I: Código 2
-        estatus: 'Procesado',                   // J: Estatus
+        estatus: (cantidadDespacharNum < totalCajas) ? 'Parcial' : 'Procesado',  // J: Estatus (Parcial si cantDespacho < cantInicial)
         tarea: 'Despacho',                      // K: Tarea
         estatus2: 'Completado',                 // L: Estatus2
         cantInicial: totalCajas,                // M: Cant Inicial (from OBC, read-only)
         cantDespacho: cantidadDespacharNum,     // N: Cant Despacho (manual input)
-        incidencias: '',                        // O: Incidencias (NO generar automáticamente)
+        incidencias: (cantidadDespacharNum < totalCajas) ? `Parcial: ${cantidadDespacharNum}/${totalCajas}` : '',  // O: Incidencias (auto-generar cuando es parcial)
         operador: operador,                     // P: Operador (conductor)
         conductor: operador,                    // Alias para operador
         unidad: unidad,                         // Q: Unidad
