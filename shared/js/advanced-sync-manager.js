@@ -238,6 +238,14 @@ class ConcurrencyControl {
                 } catch (error) {
                     console.error(`❌ [CONCURRENCY] Error en intento ${attempt}:`, error);
 
+                    // Detectar errores de autenticación/permisos (401, 403, 400)
+                    // "The caller does not have permission" típicamente es 403
+                    if (error.status === 401 || error.status === 403 || error.status === 400) {
+                        console.error('🔐 [CONCURRENCY] Error de autenticación/permisos detectado');
+                        this.handleAuthError(error);
+                        throw error; // No reintentar, requiere reautenticación
+                    }
+
                     // Manejo seguro de error.message
                     const errorMessage = String(error?.message || error?.result?.error?.message || '');
                     const isRecoverable = errorMessage && (errorMessage.includes('Verificación fallida') ||
@@ -1323,6 +1331,38 @@ class AdvancedSyncManager {
                         }
                     } catch (err) {
                         console.error(`❌ [SLOW-SYNC] Error en registro ${i + 1}:`, err);
+
+                        // Detectar errores de permisos en modo lento
+                        const errStatus = err?.status;
+                        const errMessage = String(err?.message || err?.result?.error?.message || '');
+
+                        if (errStatus === 401 || errStatus === 403 || errStatus === 400 ||
+                            errMessage.includes('permission') ||
+                            errMessage.includes('caller does not have')) {
+
+                            console.error('🔐 [SLOW-SYNC] Error de permisos detectado. Abortando modo lento.');
+
+                            // Guardar registros no procesados como pendientes
+                            for (let j = i; j < deduplicatedRecords.length; j++) {
+                                failed.push(deduplicatedRecords[j]);
+                            }
+
+                            // Intentar reconexión automática
+                            if (typeof handleReconnectWithDataReload === 'function') {
+                                console.log('🔄 [SLOW-SYNC] Intentando reconexión automática...');
+                                setTimeout(() => {
+                                    try {
+                                        handleReconnectWithDataReload();
+                                    } catch (reconErr) {
+                                        console.error('❌ [SLOW-SYNC] Error en reconexión:', reconErr);
+                                    }
+                                }, 500);
+                            }
+
+                            // Abortar el loop
+                            break;
+                        }
+
                         failed.push(deduplicatedRecords[i]);
                     }
                 }
@@ -1441,8 +1481,62 @@ class AdvancedSyncManager {
         } catch (e) {
             console.error('❌ Error de sincronización:', e);
 
+            // Manejo especial para errores de autenticación/permisos (PRIORIDAD MÁS ALTA)
+            const errorStatus = e?.status;
+            const errorMessage = String(e?.message || e?.result?.error?.message || '');
+            const errorDetails = e?.result?.error?.status || '';
+
+            // Detectar errores de permisos: 401, 403, 400
+            // "The caller does not have permission" es típicamente 403
+            if (errorStatus === 401 || errorStatus === 403 || errorStatus === 400 ||
+                errorMessage.includes('permission') ||
+                errorMessage.includes('caller does not have') ||
+                errorMessage.includes('PERMISSION_DENIED') ||
+                errorDetails === 'PERMISSION_DENIED') {
+
+                console.error('🔐 [SYNC-ERROR] Error de autenticación/permisos detectado');
+                console.error('   - Status:', errorStatus);
+                console.error('   - Message:', errorMessage);
+                console.error('   - Details:', errorDetails);
+                console.warn('⚠️ [SYNC-ERROR] Los datos permanecen en PENDING_SYNC. Se requiere reautenticación.');
+
+                this.updateUI(false);
+
+                const pendingCount = this.pendingSync.length;
+
+                // Intentar reconexión automática
+                if (typeof handleReconnectWithDataReload === 'function') {
+                    console.log('🔄 [SYNC-ERROR] Intentando reconexión automática...');
+                    if (showMessages && typeof showNotification === 'function') {
+                        showNotification(
+                            `🔐 Error de permisos. Reconectando... (${pendingCount} registros en cola)`,
+                            'warning'
+                        );
+                    }
+                    setTimeout(() => {
+                        try {
+                            handleReconnectWithDataReload();
+                        } catch (reconErr) {
+                            console.error('❌ [SYNC-ERROR] Error en reconexión:', reconErr);
+                        }
+                    }, 500);
+                } else if (showMessages && typeof showNotification === 'function') {
+                    showNotification(
+                        `🔐 Error de permisos. Por favor, reconecta manualmente. (${pendingCount} registros pendientes)`,
+                        'error'
+                    );
+                }
+
+                return {
+                    success: false,
+                    reason: 'permission_denied',
+                    queued: true,
+                    pendingCount: pendingCount,
+                    requiresAuth: true
+                };
+            }
+
             // Manejo especial para errores de concurrencia
-            const errorMessage = String(e?.message || '');
             if (errorMessage && (
                 errorMessage.includes('Conflicto de concurrencia') ||
                 errorMessage.includes('Ya hay una operación de escritura en progreso') ||
@@ -1470,6 +1564,7 @@ class AdvancedSyncManager {
                 };
             }
 
+            // Otros errores
             this.updateUI(false);
             if (showMessages && typeof showNotification === 'function') {
                 const errorMsg = e.result?.error?.message || e.message || 'Error desconocido';

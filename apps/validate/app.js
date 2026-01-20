@@ -3729,9 +3729,9 @@ function handleConsultaScan(event) {
     }
 }
 
-function executeConsulta() {
+async function executeConsulta() {
     const rawInput = document.getElementById('consulta-scanner').value.trim();
-    
+
     if (!rawInput) {
         showNotification('⚠️ Ingresa un código o número de orden', 'warning');
         return;
@@ -3749,9 +3749,26 @@ function executeConsulta() {
         return;
     }
 
+    // ========== SINCRONIZACIÓN FORZADA DEL HISTORIAL ==========
+    // CRÍTICO: Forzar fetch del historial de validaciones ANTES de mostrar resultados
+    // Esto asegura que veamos el progreso real de las órdenes
+    console.log('🔄 [CONSULTA] Sincronizando historial desde servidor...');
+    showNotification('🔄 Sincronizando datos más recientes...', 'info');
+
+    try {
+        // Sincronizar historial desde Google Sheets
+        if (HistoryCache && typeof HistoryCache.syncFromServer === 'function') {
+            await HistoryCache.syncFromServer(false); // false = sin notificación adicional
+            console.log('✅ [CONSULTA] Historial sincronizado exitosamente');
+        }
+    } catch (error) {
+        console.error('❌ [CONSULTA] Error sincronizando historial:', error);
+        showNotification('⚠️ No se pudo sincronizar los datos más recientes. Mostrando cache local.', 'warning');
+    }
+
     const resultDiv = document.getElementById('consulta-result');
     const matches = [];
-    
+
     // Detectar si es un número de orden (OBC) o un código de caja
     const inputUpper = rawInput.toUpperCase();
     const isOrderNumber = OBC_MAP.has(inputUpper) || OBC_TOTALS.has(inputUpper);
@@ -3847,9 +3864,17 @@ function executeConsulta() {
                 `).join('')}
             </div>
         `;
-        
+
         showNotification(`📦 Mostrando ${allBoxes.length} cajas de la orden ${obc}`, 'info');
         playSound('ok');
+
+        // ========== LIMPIEZA AUTOMÁTICA DEL SEARCHBOX ==========
+        // Limpiar el campo de búsqueda y mantener el foco para el siguiente escaneo
+        const scannerInput = document.getElementById('consulta-scanner');
+        if (scannerInput) {
+            scannerInput.value = '';
+            setTimeout(() => scannerInput.focus(), 100); // Refocus después de render
+        }
         return;
     }
     
@@ -3887,6 +3912,14 @@ function executeConsulta() {
             </div>
         `;
         playSound('error');
+
+        // ========== LIMPIEZA AUTOMÁTICA DEL SEARCHBOX ==========
+        // Limpiar el campo de búsqueda y mantener el foco para el siguiente escaneo
+        const scannerInput = document.getElementById('consulta-scanner');
+        if (scannerInput) {
+            scannerInput.value = '';
+            setTimeout(() => scannerInput.focus(), 100); // Refocus después de render
+        }
         return;
     }
 
@@ -3979,8 +4012,16 @@ function executeConsulta() {
             </div>
         `;
     }).join('') + '</div>';
-    
+
     playSound('ok');
+
+    // ========== LIMPIEZA AUTOMÁTICA DEL SEARCHBOX ==========
+    // Limpiar el campo de búsqueda y mantener el foco para el siguiente escaneo
+    const scannerInput = document.getElementById('consulta-scanner');
+    if (scannerInput) {
+        scannerInput.value = '';
+        setTimeout(() => scannerInput.focus(), 100); // Refocus después de render
+    }
 }
 
 // Prerecepcion
