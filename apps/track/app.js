@@ -480,7 +480,8 @@ function searchAllSources(query) {
 function searchTRS(data, results, sourceName) {
     const query = results.query;
     const baseCode = results.baseCode;
-    const searchIndices = [6, 13, 14];
+    const searchIndices = [6, 13, 14]; // Índices para códigos de caja
+    const trsNumberIndex = 0; // Índice para número de TRS
 
     const exactMatches = [];
     const baseCodeMatches = [];
@@ -492,25 +493,36 @@ function searchTRS(data, results, sourceName) {
 
         let matchType = null;
 
-        for (const idx of searchIndices) {
-            const cellValue = row._values[idx] || '';
-            if (!cellValue) continue;
+        // ========== BÚSQUEDA POR NÚMERO DE TRS (Índice 0) ==========
+        const trsNumber = row._values[trsNumberIndex]?.toString().toUpperCase() || '';
+        const queryUpper = query.toUpperCase();
 
-            const cellUpper = cellValue.toString().toUpperCase();
-            const queryUpper = query.toUpperCase();
+        if (trsNumber === queryUpper || trsNumber.includes(queryUpper)) {
+            matchType = 'exact';
+        }
 
-            if (cellUpper === queryUpper || cellUpper.includes(queryUpper)) {
-                matchType = 'exact';
-                break;
-            }
+        // ========== BÚSQUEDA POR CÓDIGOS DE CAJA (Índices 6, 13, 14) ==========
+        if (!matchType) {
+            for (const idx of searchIndices) {
+                const cellValue = row._values[idx] || '';
+                if (!cellValue) continue;
 
-            const normalizedCell = normalizeCode(cellValue);
-            if (normalizedCell === query || normalizedCell.includes(query)) {
-                matchType = 'exact';
-                break;
+                const cellUpper = cellValue.toString().toUpperCase();
+
+                if (cellUpper === queryUpper || cellUpper.includes(queryUpper)) {
+                    matchType = 'exact';
+                    break;
+                }
+
+                const normalizedCell = normalizeCode(cellValue);
+                if (normalizedCell === query || normalizedCell.includes(query)) {
+                    matchType = 'exact';
+                    break;
+                }
             }
         }
 
+        // ========== BÚSQUEDA FUZZY POR BASECODE ==========
         if (!matchType && baseCode && baseCode !== query) {
             for (const idx of searchIndices) {
                 const cellValue = row._values[idx] || '';
@@ -1203,10 +1215,15 @@ function displaySummary(results) {
                 <div class="summary-value">${makeCopyable(trsOrden)}</div>
             </div>
 
-            <div class="summary-item ${canceladoInfo ? 'error' : 'success'}" onclick="jumpToSection('cancelado')">
-                ${results.exact.cancelado.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('cancelado')">${results.exact.cancelado.length}</span>` : ''}
-                <div class="summary-label">🏷️ Otros ${flexIndicator('cancelado')}</div>
-                <div class="summary-value">${canceladoInfo ? 'OTROS' : 'SIN REGISTRO'}</div>
+            <div class="summary-item ${reparacionesInfo ? 'warning' : 'success'}" onclick="jumpToSection('reparaciones')">
+                <div class="summary-label">🪚 Reparaciones ${flexIndicator('reparaciones')}</div>
+                <div class="summary-value">${reparacionesInfo ? 'SÍ' : 'NO'}</div>
+                ${reparacionesInfo && reparacionesInfo._values ? `
+                    <div style="font-size: 0.75em; color: #666; margin-top: 4px;">
+                        ${reparacionesInfo._values[6] === 'SI' ? '✅ Reparado' : '⏳ En proceso'}
+                        ${reparacionesInfo._values[7] === 'SI' ? ' • ✅ Entregado' : ''}
+                    </div>
+                ` : ''}
             </div>
 
             <div class="summary-item ${embarquesInfo ? 'primary' : 'gray'}" onclick="jumpToSection('embarques')">
@@ -1220,15 +1237,10 @@ function displaySummary(results) {
                 ` : ''}
             </div>
 
-            <div class="summary-item ${reparacionesInfo ? 'warning' : 'success'}" onclick="jumpToSection('reparaciones')">
-                <div class="summary-label">🪚 Reparaciones ${flexIndicator('reparaciones')}</div>
-                <div class="summary-value">${reparacionesInfo ? 'SÍ' : 'NO'}</div>
-                ${reparacionesInfo && reparacionesInfo._values ? `
-                    <div style="font-size: 0.75em; color: #666; margin-top: 4px;">
-                        ${reparacionesInfo._values[6] === 'SI' ? '✅ Reparado' : '⏳ En proceso'}
-                        ${reparacionesInfo._values[7] === 'SI' ? ' • ✅ Entregado' : ''}
-                    </div>
-                ` : ''}
+            <div class="summary-item ${canceladoInfo ? 'error' : 'success'}" onclick="jumpToSection('cancelado')">
+                ${results.exact.cancelado.length > 1 ? `<span class="count-indicator" onclick="event.stopPropagation(); jumpToSection('cancelado')">${results.exact.cancelado.length}</span>` : ''}
+                <div class="summary-label">🏷️ Otros ${flexIndicator('cancelado')}</div>
+                <div class="summary-value">${canceladoInfo ? 'OTROS' : 'SIN REGISTRO'}</div>
             </div>
         </div>
     `;
@@ -1287,8 +1299,8 @@ function displaySections(results) {
         { key: 'inventario', title: '📊 Inventario Escaneo - Movimientos', color: 'info' },
         { key: 'mne', title: '🔍 Rastreo MNE - Mercancía No Encontrada', color: 'error' },
         { key: 'trs', title: '🔧 TRS Etiquetado - Órdenes de Trabajo', color: 'warning' },
-        { key: 'embarques', title: '🚚 Embarques - Despacho de Mercancía', color: 'primary' },
         { key: 'reparaciones', title: '🪚 Reparaciones - Cajas en Reparación', color: 'warning' },
+        { key: 'embarques', title: '🚚 Embarques - Despacho de Mercancía', color: 'primary' },
         { key: 'cancelado', title: '🏷️ Otros', color: 'error' }
     ];
 

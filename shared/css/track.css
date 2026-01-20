@@ -288,7 +288,7 @@ input:checked + .toggle-slider:before {
 .summary-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 5px;
+    gap: 10px;
 }
 
 @media (min-width: 1201px) {
@@ -333,30 +333,30 @@ input:checked + .toggle-slider:before {
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
-.summary-item.primary { border-left: 2px solid var(--primary); }
-.summary-item.success { border-left: 2px solid var(--success); }
-.summary-item.warning { border-left: 2px solid var(--warning); }
-.summary-item.error { border-left: 2px solid var(--error); }
-.summary-item.info { border-left: 2px solid var(--info); }
-.summary-item.gray { border-left: 2px solid var(--gray); }
+.summary-item.primary { border-left: 3px solid var(--primary); }
+.summary-item.success { border-left: 3px solid var(--success); }
+.summary-item.warning { border-left: 3px solid var(--warning); }
+.summary-item.error { border-left: 3px solid var(--error); }
+.summary-item.info { border-left: 3px solid var(--info); }
+.summary-item.gray { border-left: 3px solid var(--gray); }
 
 .summary-label {
-    font-size: 0.68em;
+    font-size: 0.75em;
     color: #666;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .summary-value {
-    font-size: 0.85em;
+    font-size: 0.95em;
     font-weight: 700;
     word-break: break-word;
-    line-height: 1.2;
+    line-height: 1.3;
 }
 
 /* ==================== COPYABLE ==================== */
