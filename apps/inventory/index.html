@@ -227,8 +227,16 @@
                     </div>
 
                     <div class="scan-section">
-                        <input type="text" class="scan-input" id="unified-scan-input"
-                               placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
+                        <div class="scan-row">
+                            <div class="scan-input-group" style="flex: 2;">
+                                <input type="text" class="scan-input" id="unified-scan-input"
+                                       placeholder="🔍 Escanea o ingresa código..." autocomplete="off">
+                            </div>
+                            <div class="scan-input-group code2-inline" id="unified-code2-inline" style="flex: 1; display: none;">
+                                <input type="text" class="scan-input" id="unified-code2-input"
+                                       placeholder="Código 2..." autocomplete="off" style="background: #fff5ed;">
+                            </div>
+                        </div>
 
                         <div class="result-box" id="unified-result-box">
                             <div class="result-compact">

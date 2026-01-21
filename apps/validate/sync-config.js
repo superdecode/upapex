@@ -197,24 +197,35 @@ async function initAdvancedSync() {
 // Función auxiliar para agregar validación a la cola
 async function addValidationToQueue(validationData) {
     if (!advancedSyncManager) {
-        console.error('❌ Advanced Sync Manager no inicializado');
+        console.error('❌ [VALIDADOR] Advanced Sync Manager no inicializado');
+        if (typeof showNotification === 'function') {
+            showNotification('❌ Sistema de sincronización no disponible', 'error');
+        }
         return false;
     }
-    
+
+    // Verificar que los datos sean válidos
+    if (!validationData || !validationData.codigo) {
+        console.error('❌ [VALIDADOR] Datos de validación inválidos:', validationData);
+        return false;
+    }
+
     // Verificar duplicados antes de agregar
     if (processedCacheManager) {
         const isDuplicate = processedCacheManager.findProcessedBox(
             validationData.codigo,
             advancedSyncManager.pendingSync
         );
-        
+
         if (isDuplicate) {
             console.warn('⚠️ [VALIDADOR] Código duplicado detectado:', isDuplicate);
             return { duplicate: true, info: isDuplicate };
         }
     }
-    
+
+    // CRÍTICO: Generar _id único para cada validación
     const record = {
+        _id: `VAL_${validationData.obc}_${validationData.codigo}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
         date: SyncUtils.formatDate(),
         time: SyncUtils.formatTime(),
         user: validationData.user || '',
@@ -223,19 +234,40 @@ async function addValidationToQueue(validationData) {
         ubicacion: validationData.ubicacion || '',
         nota: validationData.nota || ''  // Columna G: ingreso forzado, observaciones, etc.
     };
-    
-    await advancedSyncManager.addToQueue(record);
-    return { duplicate: false };
+
+    try {
+        await advancedSyncManager.addToQueue(record);
+        console.log(`✅ [VALIDADOR] Validación agregada a cola: ${record.codigo}`);
+        return { duplicate: false };
+
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error al agregar validación a cola:', error);
+        if (typeof showNotification === 'function') {
+            showNotification(`❌ Error al guardar validación: ${error.message}`, 'error');
+        }
+        return false;
+    }
 }
 
 // Función auxiliar para agregar múltiples validaciones
 async function addValidationsToQueue(validations) {
     if (!advancedSyncManager) {
-        console.error('❌ Advanced Sync Manager no inicializado');
+        console.error('❌ [VALIDADOR] Advanced Sync Manager no inicializado');
+        if (typeof showNotification === 'function') {
+            showNotification('❌ Sistema de sincronización no disponible', 'error');
+        }
         return false;
     }
-    
-    const records = validations.map(v => ({
+
+    // Validar que hay validaciones para agregar
+    if (!Array.isArray(validations) || validations.length === 0) {
+        console.warn('⚠️ [VALIDADOR] No hay validaciones para agregar');
+        return false;
+    }
+
+    // CRÍTICO: Generar _id único para cada validación
+    const records = validations.map((v, index) => ({
+        _id: `VAL_${v.obc}_${v.codigo}_${index}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
         date: SyncUtils.formatDate(),
         time: SyncUtils.formatTime(),
         user: v.user || '',
@@ -244,19 +276,59 @@ async function addValidationsToQueue(validations) {
         ubicacion: v.ubicacion || '',
         nota: v.nota || ''  // Columna G: ingreso forzado, observaciones, etc.
     }));
-    
-    await advancedSyncManager.addToQueue(records);
-    return true;
+
+    try {
+        await advancedSyncManager.addToQueue(records);
+        console.log(`✅ [VALIDADOR] ${records.length} validaciones agregadas a cola con IDs únicos`);
+        return true;
+
+    } catch (error) {
+        console.error('❌ [VALIDADOR] Error al agregar validaciones a cola:', error);
+        if (typeof showNotification === 'function') {
+            showNotification(`❌ Error al guardar validaciones: ${error.message}`, 'error');
+        }
+        return false;
+    }
 }
 
 // Función auxiliar para sincronizar manualmente
 async function syncValidadorData(showMessages = true) {
     if (!advancedSyncManager) {
-        console.error('❌ Advanced Sync Manager no inicializado');
-        return { success: false };
+        console.error('❌ [VALIDADOR-SYNC] Advanced Sync Manager no inicializado');
+        if (showMessages && typeof showNotification === 'function') {
+            showNotification('❌ Sistema de sincronización no disponible', 'error');
+        }
+        return { success: false, reason: 'sync_manager_not_initialized' };
     }
-    
-    return await advancedSyncManager.sync(showMessages);
+
+    try {
+        console.log('🔄 [VALIDADOR-SYNC] Iniciando sincronización...');
+        const result = await advancedSyncManager.sync(showMessages);
+
+        console.log('📊 [VALIDADOR-SYNC] Resultado de sincronización:', result);
+
+        // Validar que el resultado tenga la estructura esperada
+        if (!result || typeof result !== 'object') {
+            console.error('❌ [VALIDADOR-SYNC] Resultado inválido de sincronización');
+            return { success: false, reason: 'invalid_result' };
+        }
+
+        return result;
+
+    } catch (error) {
+        console.error('❌ [VALIDADOR-SYNC] Error crítico en sincronización:', error);
+        console.error('Detalles del error:', {
+            message: error.message,
+            stack: error.stack,
+            type: error.constructor.name
+        });
+
+        if (showMessages && typeof showNotification === 'function') {
+            showNotification(`❌ Error en sincronización: ${error.message || 'Error desconocido'}`, 'error');
+        }
+
+        return { success: false, reason: 'sync_error', error: error.message };
+    }
 }
 
 // Función auxiliar para obtener estadísticas

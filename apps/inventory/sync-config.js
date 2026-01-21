@@ -143,14 +143,14 @@ async function addRecordToQueue(recordData) {
         console.error('❌ Advanced Sync Manager no inicializado');
         return false;
     }
-    
+
     // Verificar duplicados antes de agregar
     if (processedCacheManager) {
         const isDuplicate = processedCacheManager.findProcessedBox(
             recordData.scan1 || recordData.code,
             advancedSyncManager.pendingSync
         );
-        
+
         if (isDuplicate) {
             console.warn('⚠️ [INVENTORY] Código duplicado detectado:', isDuplicate);
             if (typeof showNotification === 'function') {
@@ -159,8 +159,10 @@ async function addRecordToQueue(recordData) {
             return false;
         }
     }
-    
+
+    // CRÍTICO: Generar _id único para este registro
     const record = {
+        _id: `INV_${recordData.pallet || 'SINGLE'}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`, // ID único
         date: SyncUtils.formatDate(),
         time: SyncUtils.formatTime(),
         user: recordData.user || '',
@@ -172,7 +174,9 @@ async function addRecordToQueue(recordData) {
         pallet: recordData.pallet || '',
         originLocation: recordData.originLocation || ''
     };
-    
+
+    console.log(`📦 [INVENTORY] Agregando registro individual con ID único: ${record._id}`);
+
     await advancedSyncManager.addToQueue(record);
     return true;
 }
@@ -183,8 +187,10 @@ async function addPalletToQueue(boxes, palletId, location) {
         console.error('❌ Advanced Sync Manager no inicializado');
         return false;
     }
-    
-    const records = boxes.map(box => ({
+
+    // CRÍTICO: Generar _id único para cada registro para evitar sobrescritura
+    const records = boxes.map((box, index) => ({
+        _id: `INV_${palletId}_${index}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // ID único
         date: SyncUtils.formatDate(),
         time: SyncUtils.formatTime(),
         user: box.user || '',
@@ -196,7 +202,9 @@ async function addPalletToQueue(boxes, palletId, location) {
         pallet: palletId || '',
         originLocation: box.originLocation || ''
     }));
-    
+
+    console.log(`📦 [INVENTORY] Agregando ${records.length} registros a cola con IDs únicos`);
+
     await advancedSyncManager.addToQueue(records);
     return true;
 }
@@ -204,11 +212,41 @@ async function addPalletToQueue(boxes, palletId, location) {
 // Función auxiliar para sincronizar manualmente
 async function syncInventoryData(showMessages = true) {
     if (!advancedSyncManager) {
-        console.error('❌ Advanced Sync Manager no inicializado');
-        return { success: false };
+        console.error('❌ [INVENTORY-SYNC] Advanced Sync Manager no inicializado');
+        if (showMessages && typeof showNotification === 'function') {
+            showNotification('❌ Sistema de sincronización no disponible', 'error');
+        }
+        return { success: false, reason: 'sync_manager_not_initialized' };
     }
-    
-    return await advancedSyncManager.sync(showMessages);
+
+    try {
+        console.log('🔄 [INVENTORY-SYNC] Iniciando sincronización...');
+        const result = await advancedSyncManager.sync(showMessages);
+
+        console.log('📊 [INVENTORY-SYNC] Resultado de sincronización:', result);
+
+        // Validar que el resultado tenga la estructura esperada
+        if (!result || typeof result !== 'object') {
+            console.error('❌ [INVENTORY-SYNC] Resultado inválido de sincronización');
+            return { success: false, reason: 'invalid_result' };
+        }
+
+        return result;
+
+    } catch (error) {
+        console.error('❌ [INVENTORY-SYNC] Error crítico en sincronización:', error);
+        console.error('Detalles del error:', {
+            message: error.message,
+            stack: error.stack,
+            type: error.constructor.name
+        });
+
+        if (showMessages && typeof showNotification === 'function') {
+            showNotification(`❌ Error en sincronización: ${error.message || 'Error desconocido'}`, 'error');
+        }
+
+        return { success: false, reason: 'sync_error', error: error.message };
+    }
 }
 
 // Función auxiliar para obtener estadísticas

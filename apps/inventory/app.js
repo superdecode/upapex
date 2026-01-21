@@ -315,6 +315,7 @@ const GlobalTabs = {
 const UnifiedModule = {
     items: [],
     canceladosMode: false,
+    pendingCode1: null, // Para almacenar el primer código cuando no se encuentra
 
     init() {
         this.setupEventListeners();
@@ -322,12 +323,24 @@ const UnifiedModule = {
 
     setupEventListeners() {
         const scanInput = document.getElementById('unified-scan-input');
+        const code2Input = document.getElementById('unified-code2-input');
+
         if (scanInput) {
             scanInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && scanInput.value.trim()) {
                     e.preventDefault();
                     this.processScan(scanInput.value.trim());
                     scanInput.value = '';
+                }
+            });
+        }
+
+        if (code2Input) {
+            code2Input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && code2Input.value.trim()) {
+                    e.preventDefault();
+                    this.processSecondCode(code2Input.value.trim());
+                    code2Input.value = '';
                 }
             });
         }
@@ -338,11 +351,19 @@ const UnifiedModule = {
         const code = result.code;
         const item = result.item;
 
-        // If no item found, require second code
+        // If no item found, show inline code2 input
         if (!item) {
-            this.showSecondCodePrompt(rawCode, code);
+            this.pendingCode1 = { raw: rawCode, code: code };
+            this.showCode2Inline(true);
+            this.showResult('error', code, 'NO ENCONTRADO', 'Código no encontrado en WMS. Ingresa Código 2.');
+            playSound('error');
+            setTimeout(() => document.getElementById('unified-code2-input')?.focus(), 100);
             return;
         }
+
+        // Hide code2 input if visible
+        this.hideCode2Inline();
+        this.pendingCode1 = null;
 
         // Check duplicates
         const dupIndex = this.items.findIndex(i => i.code === code);
@@ -386,79 +407,36 @@ const UnifiedModule = {
         playSound(status === 'ok' ? 'success' : status === 'blocked' ? 'warning' : 'error');
     },
 
-    showSecondCodePrompt(rawCode1, code1) {
-        const overlay = document.createElement('div');
-        overlay.className = 'popup-overlay show';
-        overlay.id = 'unified-second-code-modal';
-        overlay.innerHTML = `
-            <div class="popup-content" style="max-width: 450px;">
-                <div class="popup-header">
-                    <span>⚠️ Código No Encontrado</span>
-                    <button class="popup-close" onclick="this.closest('.popup-overlay').remove(); document.getElementById('unified-scan-input')?.focus();">×</button>
-                </div>
-                <div style="padding: 20px;">
-                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid var(--warning);">
-                        <strong>Código 1 no encontrado en WMS</strong><br>
-                        <code style="font-size: 1.1em; font-weight: 600;">${code1}</code>
-                    </div>
-                    <p style="margin-bottom: 15px; color: #666;">
-                        Se requiere un <strong>Segundo Código</strong> para continuar:
-                    </p>
-                    <input type="text" id="unified-code2-input" class="scan-input" 
-                           placeholder="🔍 Escanea Código 2..." 
-                           autocomplete="off"
-                           style="width: 100%; margin-bottom: 15px;">
-                    <div class="popup-buttons">
-                        <button class="btn btn-primary btn-full" id="unified-validate-btn" disabled onclick="UnifiedModule.processSecondCode('${rawCode1}', '${code1}')">
-                            ✅ Validar con Código 2
-                        </button>
-                        <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove(); document.getElementById('unified-scan-input')?.focus();">
-                            Cancelar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-
-        setTimeout(() => {
-            const input = document.getElementById('unified-code2-input');
-            const validateBtn = document.getElementById('unified-validate-btn');
-            
-            if (input) {
-                input.focus();
-                input.addEventListener('input', () => {
-                    if (validateBtn) {
-                        validateBtn.disabled = !input.value.trim();
-                    }
-                });
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' && input.value.trim()) {
-                        e.preventDefault();
-                        this.processSecondCode(rawCode1, code1);
-                    }
-                });
-            }
-        }, 100);
-
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                overlay.remove();
-                document.getElementById('unified-scan-input')?.focus();
-            }
-        });
+    showCode2Inline(show) {
+        const code2Inline = document.getElementById('unified-code2-inline');
+        if (code2Inline) {
+            code2Inline.style.display = show ? 'block' : 'none';
+        }
     },
 
-    processSecondCode(rawCode1, code1) {
-        const input = document.getElementById('unified-code2-input');
-        const rawCode2 = input?.value.trim() || '';
-        
-        if (!rawCode2) {
+    hideCode2Inline() {
+        this.showCode2Inline(false);
+        const code2Input = document.getElementById('unified-code2-input');
+        if (code2Input) {
+            code2Input.value = '';
+        }
+    },
+
+    processSecondCode(rawCode2) {
+        if (!this.pendingCode1) {
+            console.warn('⚠️ [UNIFIED] No hay código pendiente para procesar');
+            return;
+        }
+
+        if (!rawCode2 || !rawCode2.trim()) {
             showNotification('⚠️ Ingresa el Código 2', 'warning');
             return;
         }
 
-        document.getElementById('unified-second-code-modal')?.remove();
+        const rawCode1 = this.pendingCode1.raw;
+        const code1 = this.pendingCode1.code;
+
+        this.hideCode2Inline();
 
         const result = findCodeInInventory(rawCode2, STATE.inventory);
         const code2 = result.code;
@@ -501,17 +479,19 @@ const UnifiedModule = {
         updateGlobalSummaryFromTabs();
 
         playSound(status === 'ok' ? 'success' : status === 'blocked' ? 'warning' : 'error');
-        
+
+        this.pendingCode1 = null;
         setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
     },
 
-    showResult(type, code, title) {
+    showResult(type, code, title, details = '') {
         const box = document.getElementById('unified-result-box');
-        const icons = { ok: '✅', blocked: '⚠️', nowms: '❌' };
+        const icons = { ok: '✅', blocked: '⚠️', nowms: '❌', error: '❌' };
 
         box.className = `result-box show ${type === 'ok' ? 'success' : type === 'blocked' ? 'warning' : 'error'}`;
         document.getElementById('unified-result-icon').textContent = icons[type] || '📦';
         document.getElementById('unified-result-title').textContent = `${title}: ${code}`;
+        document.getElementById('unified-result-details').textContent = details || '';
     },
 
     updateUI() {
@@ -625,6 +605,8 @@ const UnifiedModule = {
             return;
         }
 
+        console.log(`📤 [UNIFIED] Iniciando envío de ${this.items.length} registros unificados`);
+
         showLoading(true);
         try {
             const dateStr = getCurrentDate();
@@ -651,26 +633,85 @@ const UnifiedModule = {
                 };
             });
 
+            console.log(`📦 [UNIFIED] Preparados ${records.length} registros para sincronización`);
+
             STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-            if (syncManager) {
-                await addPalletToQueue(records, records[0]?.pallet, records[0]?.location);
-                if (checkOnlineStatus() && gapi?.client?.getToken()) {
-                    await syncInventoryData(true);
-                }
+            // CRÍTICO: Verificar que syncManager está disponible
+            if (!syncManager) {
+                console.error('❌ [UNIFIED] syncManager no está inicializado');
+                showNotification('❌ Error: Sistema de sincronización no disponible', 'error');
+                return;
             }
 
+            // CRÍTICO: Intentar agregar a la cola con manejo de errores
+            try {
+                const queueResult = await addPalletToQueue(records, records[0]?.pallet, records[0]?.location);
+
+                if (queueResult === false) {
+                    throw new Error('addPalletToQueue retornó false - Error al agregar a cola');
+                }
+
+                console.log(`✅ [UNIFIED] ${records.length} registros agregados a cola de sincronización`);
+                showNotification(`💾 ${records.length} registros en cola`, 'info');
+
+            } catch (queueError) {
+                console.error('❌ [UNIFIED] Error CRÍTICO al agregar registros a cola:', queueError);
+                showNotification(`❌ Error al guardar datos: ${queueError.message || 'Error desconocido'}`, 'error');
+
+                // NO borrar los items si falló el guardado
+                showLoading(false);
+                return;
+            }
+
+            // CRÍTICO: Intentar sincronizar si estamos online
+            if (checkOnlineStatus() && gapi?.client?.getToken()) {
+                try {
+                    console.log('🔄 [UNIFIED] Iniciando sincronización inmediata...');
+                    const syncResult = await syncInventoryData(true);
+
+                    if (syncResult && syncResult.success) {
+                        console.log('✅ [UNIFIED] Sincronización completada exitosamente');
+                    } else {
+                        console.warn('⚠️ [UNIFIED] Sincronización pendiente - Los datos están en cola');
+                        showNotification('⚠️ Datos en cola - Se sincronizarán automáticamente', 'warning');
+                    }
+
+                } catch (syncError) {
+                    console.error('❌ [UNIFIED] Error en sincronización inmediata:', syncError);
+                    console.warn('⚠️ [UNIFIED] Los datos permanecen en cola para sincronización posterior');
+                    showNotification('⚠️ Datos en cola - Se sincronizarán cuando haya conexión', 'warning');
+                }
+            } else {
+                console.warn('⚠️ [UNIFIED] Sin conexión o sin token - Datos guardados en cola');
+                showNotification('💾 Datos guardados en cola (sin conexión)', 'info');
+            }
+
+            // SOLO borrar los items DESPUÉS de guardar exitosamente en la cola
             const count = this.items.length;
+            console.log(`🧹 [UNIFIED] Limpiando ${count} items tras guardado exitoso`);
+
             this.items = [];
             this.updateUI();
             GlobalTabs.saveToStorage();
             updateGlobalSummaryFromTabs();
 
-            showNotification(`✅ ${count} registros enviados${modeText}`, 'success');
+            showNotification(`✅ ${count} registros procesados${modeText}`, 'success');
             playSound('success');
+
         } catch (error) {
-            console.error('Error sending unified:', error);
-            showNotification('❌ Error al enviar', 'error');
+            console.error('❌ [UNIFIED] Error crítico al enviar:', error);
+            console.error('Detalles del error:', {
+                message: error.message,
+                stack: error.stack,
+                type: error.constructor.name
+            });
+
+            showNotification(`❌ Error al procesar: ${error.message || 'Error desconocido'}`, 'error');
+
+            // NO borrar los items si hubo error
+            console.warn('⚠️ [UNIFIED] Items NO borrados debido a error - Los datos se preservan');
+
         } finally {
             showLoading(false);
         }
@@ -1129,10 +1170,30 @@ function parseCSVLine(line) {
 
 async function loadInventory() {
     showLoading(true);
+
+    // Actualizar texto del preloader
+    const preloaderSubtext = document.querySelector('.preloader-subtext');
+    if (preloaderSubtext) {
+        preloaderSubtext.textContent = 'Descargando base de datos desde Google Sheets...';
+    }
+
     try {
+        console.log('🔄 [INVENTORY] Iniciando carga de inventario...');
+
         const response = await fetch(CONFIG.INVENTORY_CSV_URL);
+
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+        }
+
         const csvText = await response.text();
+
+        if (!csvText || csvText.trim().length === 0) {
+            throw new Error('El archivo CSV está vacío');
+        }
+
         const lines = csvText.split('\n');
+        console.log(`📊 [INVENTORY] Total de líneas en CSV: ${lines.length}`);
 
         STATE.inventory.clear();
 
@@ -1144,6 +1205,7 @@ async function loadInventory() {
         // Col 11: sku
         // Col 12: Product name/产品名称
 
+        let processedCount = 0;
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue; // Saltar líneas vacías
 
@@ -1179,17 +1241,117 @@ async function loadInventory() {
                         isAvailable: parseInt(row[9]) > 0
                     });
                 }
+                processedCount++;
             }
         }
 
         STATE.inventoryLastUpdate = getTimestamp();
         updateBdInfo();
+
+        console.log(`✅ [INVENTORY] Inventario cargado exitosamente: ${STATE.inventory.size} códigos únicos de ${processedCount} registros procesados`);
         showNotification('✅ Inventario cargado: ' + STATE.inventory.size + ' códigos', 'success');
+
     } catch (error) {
-        console.error('Error loading inventory:', error);
-        showNotification('❌ Error al cargar inventario', 'error');
+        console.error('❌ [INVENTORY] Error al cargar inventario:', error);
+        console.error('Detalles del error:', {
+            message: error.message,
+            stack: error.stack,
+            type: error.constructor.name
+        });
+
+        // Mostrar alerta clara al usuario
+        showNotification(`❌ Error al cargar base de datos: ${error.message}`, 'error');
+
+        // Crear banner de error si no existe
+        createInventoryErrorBanner(error.message);
+
     } finally {
         showLoading(false);
+
+        // Limpiar texto del preloader
+        if (preloaderSubtext) {
+            preloaderSubtext.textContent = 'Descargando base de datos desde Google Sheets';
+        }
+    }
+}
+
+/**
+ * Crea un banner de error para la carga de inventario
+ */
+function createInventoryErrorBanner(errorMessage) {
+    // Evitar duplicados
+    const existing = document.getElementById('inventory-error-banner');
+    if (existing) {
+        existing.remove();
+    }
+
+    const banner = document.createElement('div');
+    banner.id = 'inventory-error-banner';
+    banner.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(135deg, #e74c3c, #c0392b);
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 10000;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        animation: slideDown 0.3s ease-out;
+    `;
+
+    banner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
+            <span style="font-size: 24px;">⚠️</span>
+            <div>
+                <div style="font-weight: 700; font-size: 1.1em;">Error al cargar la base de datos</div>
+                <div style="font-size: 0.9em; opacity: 0.9;">${errorMessage || 'Error desconocido'}</div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="refreshInventory()" style="
+                background: white;
+                color: #e74c3c;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: 700;
+                cursor: pointer;
+                font-size: 1em;
+                transition: transform 0.2s;
+            ">
+                🔄 Reintentar
+            </button>
+            <button onclick="document.getElementById('inventory-error-banner').remove()" style="
+                background: rgba(255,255,255,0.2);
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1em;
+            ">
+                ✕
+            </button>
+        </div>
+    `;
+
+    document.body.prepend(banner);
+
+    // Agregar animación si no existe
+    if (!document.getElementById('inventory-error-animation')) {
+        const style = document.createElement('style');
+        style.id = 'inventory-error-animation';
+        style.textContent = `
+            @keyframes slideDown {
+                from { transform: translateY(-100%); }
+                to { transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
     }
 }
 
@@ -1611,7 +1773,7 @@ function showCountValidationModal(category, actualCount, finalLocation, originLo
     overlay.className = 'popup-overlay show';
     overlay.id = 'count-validation-modal';
     overlay.innerHTML = `
-        <div class="popup-content count-validation-popup">
+        <div class="popup-content count-validation-popup" style="max-width: 500px; width: 90%;">
             <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
             <div class="popup-header-centered">
                 <span class="popup-header-icon">📦</span>
@@ -1693,6 +1855,14 @@ async function validateAndSendPallet(category, actualCount, finalLocation, origi
 async function executeSendPallet(category, finalLocation, originLocation) {
     const pallet = STATE.pallets[category];
 
+    // VALIDACIÓN: Verificar que hay cajas para enviar
+    if (!pallet.boxes || pallet.boxes.length === 0) {
+        showNotification('⚠️ No hay cajas para enviar en esta tarima', 'warning');
+        return;
+    }
+
+    console.log(`📤 [INVENTORY] Iniciando envío de tarima ${category}: ${pallet.boxes.length} cajas`);
+
     showLoading(true);
     try {
         const statusMap = { ok: 'OK', blocked: 'BLOQUEADO', nowms: 'NO WMS' };
@@ -1712,29 +1882,85 @@ async function executeSendPallet(category, finalLocation, originLocation) {
             originLocation: originLocation
         }));
 
+        console.log(`📦 [INVENTORY] Preparados ${records.length} registros para sincronización`);
+
         STATE.history = [...records, ...STATE.history].slice(0, 1000);
 
-        if (syncManager) {
-            await addPalletToQueue(records, records[0]?.pallet, records[0]?.location);
-            showNotification(`💾 ${records.length} registros agregados a cola`, 'info');
-
-            if (checkOnlineStatus() && gapi?.client?.getToken()) {
-                await syncInventoryData(true);
-            }
+        // CRÍTICO: Verificar que syncManager está disponible
+        if (!syncManager) {
+            console.error('❌ [INVENTORY] syncManager no está inicializado');
+            showNotification('❌ Error: Sistema de sincronización no disponible', 'error');
+            return;
         }
 
+        // CRÍTICO: Intentar agregar a la cola con manejo de errores
+        try {
+            const queueResult = await addPalletToQueue(records, records[0]?.pallet, records[0]?.location);
+
+            if (queueResult === false) {
+                throw new Error('addPalletToQueue retornó false - Error al agregar a cola');
+            }
+
+            console.log(`✅ [INVENTORY] ${records.length} registros agregados a cola de sincronización`);
+            showNotification(`💾 ${records.length} registros en cola de sincronización`, 'info');
+
+        } catch (queueError) {
+            console.error('❌ [INVENTORY] Error CRÍTICO al agregar registros a cola:', queueError);
+            showNotification(`❌ Error al guardar datos: ${queueError.message || 'Error desconocido'}`, 'error');
+
+            // NO borrar los pallets si falló el guardado
+            showLoading(false);
+            return;
+        }
+
+        // CRÍTICO: Intentar sincronizar si estamos online
+        if (checkOnlineStatus() && gapi?.client?.getToken()) {
+            try {
+                console.log('🔄 [INVENTORY] Iniciando sincronización inmediata...');
+                const syncResult = await syncInventoryData(true);
+
+                if (syncResult && syncResult.success) {
+                    console.log('✅ [INVENTORY] Sincronización completada exitosamente');
+                } else {
+                    console.warn('⚠️ [INVENTORY] Sincronización pendiente - Los datos están en cola');
+                    showNotification('⚠️ Datos guardados en cola - Se sincronizarán automáticamente', 'warning');
+                }
+
+            } catch (syncError) {
+                console.error('❌ [INVENTORY] Error en sincronización inmediata:', syncError);
+                console.warn('⚠️ [INVENTORY] Los datos permanecen en cola para sincronización posterior');
+                showNotification('⚠️ Datos guardados en cola - Se sincronizarán cuando haya conexión', 'warning');
+            }
+        } else {
+            console.warn('⚠️ [INVENTORY] Sin conexión o sin token - Datos guardados en cola');
+            showNotification('💾 Datos guardados en cola (sin conexión)', 'info');
+        }
+
+        // SOLO borrar los pallets DESPUÉS de guardar exitosamente en la cola
+        console.log(`🧹 [INVENTORY] Limpiando tarima ${category} tras guardado exitoso`);
         STATE.pallets[category] = { boxes: [], id: generatePalletId(category.toUpperCase().slice(0, 3)) };
         document.getElementById(`location-${category}`).value = '';
+
         saveToStorage();
         updateUI();
         GlobalTabs.saveToStorage();
         updateGlobalSummaryFromTabs();
         playSound('success');
-        showNotification(`✅ Tarima ${statusMap[category]} enviada correctamente`, 'success');
+        showNotification(`✅ Tarima ${statusMap[category]} procesada correctamente`, 'success');
 
     } catch (error) {
-        console.error('Error sending pallet:', error);
-        showNotification('❌ Error al procesar envío', 'error');
+        console.error('❌ [INVENTORY] Error crítico al procesar envío:', error);
+        console.error('Detalles del error:', {
+            message: error.message,
+            stack: error.stack,
+            type: error.constructor.name
+        });
+
+        showNotification(`❌ Error al procesar envío: ${error.message || 'Error desconocido'}`, 'error');
+
+        // NO borrar los pallets si hubo error
+        console.warn('⚠️ [INVENTORY] Tarima NO borrada debido a error - Los datos se preservan');
+
     } finally {
         showLoading(false);
     }
@@ -1962,7 +2188,7 @@ function showAliasPopup() {
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
     overlay.innerHTML = `
-        <div class="popup-content" style="max-width: 400px;">
+        <div class="popup-content" style="max-width: 450px; width: 90%;">
             <div class="popup-header">
                 <span>👤 Personalizar Nombre</span>
                 <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
@@ -2046,7 +2272,7 @@ function showMoveBoxPopup(fromCategory, index) {
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
     overlay.innerHTML = `
-        <div class="popup-content" style="max-width: 350px;">
+        <div class="popup-content" style="max-width: 400px; width: 90%;">
             <div class="popup-header">
                 <span>↔️ Mover Caja</span>
                 <button class="popup-close" onclick="this.closest('.popup-overlay').remove()">×</button>
@@ -2618,7 +2844,7 @@ function showPalletSelectorModal(palletGroups, location) {
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay show';
     overlay.innerHTML = `
-        <div class="popup-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+        <div class="popup-content" style="max-width: 750px; width: 90%; max-height: 85vh; overflow-y: auto;">
             <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
             <div class="popup-header-centered">
                 <span class="popup-header-icon">🔧</span>
