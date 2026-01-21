@@ -54,15 +54,15 @@ async function initAdvancedSync() {
             useLegacyPalletDedup: true,
 
             // HOOK: Genera clave única para deduplicación INTERNA del batch
-            // Para Inventory: usar pallet+location como clave única
+            // CRÍTICO: Cada registro debe tener su propia clave única
             generateRecordKey: (record) => {
-                // Si tiene pallet, usar pallet+location
-                if (record.pallet && record.location) {
-                    return `${record.pallet}|${record.location}`;
-                }
-                // Si tiene _id único, usarlo
+                // PRIORIDAD 1: Si tiene _id único, usarlo (cada registro es único)
                 if (record._id) {
                     return record._id;
+                }
+                // PRIORIDAD 2: Si tiene pallet, incluir scan1 para hacer único cada registro
+                if (record.pallet && record.location) {
+                    return `${record.pallet}|${record.scan1 || record.code}|${record.location}`;
                 }
                 // Fallback
                 return JSON.stringify(record);

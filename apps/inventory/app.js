@@ -26,7 +26,6 @@ const STATE = {
 };
 
 // Variables globales
-let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 let syncManager = null;
@@ -365,8 +364,8 @@ const UnifiedModule = {
         this.hideCode2Inline();
         this.pendingCode1 = null;
 
-        // Check duplicates
-        const dupIndex = this.items.findIndex(i => i.code === code);
+        // Check duplicates - verificar en code Y code2
+        const dupIndex = this.items.findIndex(i => i.code === code || i.code2 === code);
         if (dupIndex !== -1) {
             if (!confirm(`Código ${code} ya registrado. ¿Agregar duplicado?`)) {
                 return;
@@ -442,28 +441,57 @@ const UnifiedModule = {
         const code2 = result.code;
         const item = result.item;
 
+        // Check duplicates - verificar si code2 ya existe en code O code2 de algún registro
+        const dupIndex = this.items.findIndex(i => i.code === code2 || i.code2 === code2);
+        if (dupIndex !== -1) {
+            if (!confirm(`Código ${code2} ya registrado. ¿Agregar duplicado?`)) {
+                this.pendingCode1 = null;
+                setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
+                return;
+            }
+        }
+
+        // También verificar si code1 y code2 son el mismo
+        if (code1 === code2) {
+            showNotification('⚠️ Código 1 y Código 2 son iguales', 'warning');
+            this.pendingCode1 = null;
+            setTimeout(() => document.getElementById('unified-scan-input')?.focus(), 100);
+            return;
+        }
+
         let status = 'nowms';
         let statusText = 'NO WMS';
+        let finalCode = code1;      // Por defecto, código 1 en scan1
+        let finalCode2 = code2;     // Código 2 en scan2
+        let finalRaw = rawCode1;    // Raw del código 1
 
+        // ESCENARIO 1: Código 2 SÍ está en WMS - HACER SWAP
         if (item) {
+            // SWAP: code2 pasa a scan1, code1 pasa a scan2
+            finalCode = code2;      // Código 2 (que SÍ está en WMS) va a scan1
+            finalCode2 = code1;     // Código 1 (que NO estaba) va a scan2
+            finalRaw = rawCode2;    // Raw del código 2
+
             if (item.isBlocked) {
                 status = 'blocked';
                 statusText = 'BLOQUEADO';
             } else if (item.isAvailable) {
                 status = 'ok';
-                statusText = 'OK (Código 2)';
+                statusText = 'OK';
             } else {
                 status = 'blocked';
                 statusText = 'SIN STOCK';
             }
-        } else {
-            statusText = 'NO WMS (Ambos códigos)';
         }
+        // ESCENARIO 2: Código 2 NO está en WMS - NO SWAP, ambos NO WMS
+        // finalCode = code1 (ya está por defecto)
+        // finalCode2 = code2
+        // status = 'nowms', statusText = 'NO WMS'
 
         const newItem = {
-            raw: rawCode1,
-            code: code1,
-            code2: code2,
+            raw: finalRaw,
+            code: finalCode,
+            code2: finalCode2,
             status: status,
             statusText: statusText,
             sku: item?.sku || '-',
@@ -474,7 +502,7 @@ const UnifiedModule = {
 
         this.items.push(newItem);
         this.updateUI();
-        this.showResult(status, code1, statusText);
+        this.showResult(status, finalCode, statusText);
         GlobalTabs.saveToStorage();
         updateGlobalSummaryFromTabs();
 
@@ -509,19 +537,26 @@ const UnifiedModule = {
             return;
         }
 
-        list.innerHTML = this.items.map((item, i) => `
-            <div class="unified-item ${item.status}">
-                <div class="unified-item-info">
-                    <div class="unified-item-code">${item.code}</div>
-                    <div class="unified-item-meta">
-                        <span>${item.timestamp}</span>
-                        <span>${item.location}</span>
+        list.innerHTML = this.items.map((item, i) => {
+            const hasCode2 = item.code2 && item.code2.trim();
+            const codeDisplay = hasCode2
+                ? `<div class="unified-item-code">${item.code} / ${item.code2}</div>`
+                : `<div class="unified-item-code">${item.code}</div>`;
+
+            return `
+                <div class="unified-item ${item.status}">
+                    <div class="unified-item-info">
+                        ${codeDisplay}
+                        <div class="unified-item-meta">
+                            <span>${item.timestamp}</span>
+                            <span>${item.location}</span>
+                        </div>
                     </div>
+                    <span class="unified-item-status ${item.status}">${item.statusText}</span>
+                    <button class="unified-item-delete" onclick="UnifiedModule.deleteItem(${i})">×</button>
                 </div>
-                <span class="unified-item-status ${item.status}">${item.statusText}</span>
-                <button class="unified-item-delete" onclick="UnifiedModule.deleteItem(${i})">×</button>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     },
 
     deleteItem(index) {
@@ -575,10 +610,15 @@ const UnifiedModule = {
             return;
         }
 
+        if (this.items.length === 0) {
+            showNotification('⚠️ No hay registros para enviar', 'warning');
+            return;
+        }
+
         const validation = validateAndNormalizeLocation(destLocation);
-        
+
         let finalLocation = destLocation;
-        
+
         if (!validation.valid) {
             const forceInsert = confirm(`⚠️ Ubicación con formato inválido: ${destLocation}\n\n${validation.message || 'Formato incorrecto'}\n\n¿Deseas insertar de todas formas?`);
             if (!forceInsert) {
@@ -599,11 +639,97 @@ const UnifiedModule = {
         }
 
         const isCancelados = this.isCancelados();
-        const modeText = isCancelados ? ' como CANCELADOS' : '';
+        const modeText = isCancelados ? ' CANCELADOS' : '';
 
-        if (!confirm(`¿Enviar ${this.items.length} registros a ${finalLocation}${modeText}?`)) {
+        // Mostrar modal de validación de cantidad
+        this.showCountValidationModal(this.items.length, finalLocation, originLocation, isCancelados, modeText);
+    },
+
+    showCountValidationModal(actualCount, finalLocation, originLocation, isCancelados, modeText) {
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay show';
+        overlay.id = 'unified-count-validation-modal';
+        overlay.innerHTML = `
+            <div class="popup-content count-validation-popup" style="max-width: 500px; width: 90%;">
+                <button class="popup-close-corner" onclick="this.closest('.popup-overlay').remove()">×</button>
+                <div class="popup-header-centered">
+                    <span class="popup-header-icon">📦</span>
+                    <h2>Validación de Cantidad</h2>
+                </div>
+                <div class="validation-info">
+                    <p>Registros${modeText}: <strong>${actualCount}</strong></p>
+                    <p>Destino: <strong>${finalLocation}</strong></p>
+                </div>
+                <div class="validation-input-group">
+                    <label>¿Cuántos registros hay realmente?</label>
+                    <input type="number" id="unified-count-input" class="count-input"
+                           placeholder="Ingresa cantidad" min="1" autocomplete="off">
+                    <div class="count-blur-display" id="unified-count-blur-display">
+                        <span class="blur-number">???</span>
+                        <span class="blur-label">registros en sistema</span>
+                    </div>
+                </div>
+                <div class="popup-buttons">
+                    <button class="btn btn-primary btn-full" onclick="UnifiedModule.validateAndExecuteSend('${finalLocation}', '${originLocation}', ${actualCount}, ${isCancelados})">
+                        ✅ Validar y Enviar
+                    </button>
+                    <button class="btn btn-secondary btn-full" onclick="this.closest('.popup-overlay').remove()">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+            const input = document.getElementById('unified-count-input');
+            if (input) {
+                input.focus();
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.validateAndExecuteSend(finalLocation, originLocation, actualCount, isCancelados);
+                    }
+                });
+            }
+        }, 100);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+    },
+
+    validateAndExecuteSend(finalLocation, originLocation, actualCount, isCancelados) {
+        const input = document.getElementById('unified-count-input');
+        const enteredCount = parseInt(input?.value) || 0;
+
+        if (enteredCount <= 0) {
+            showNotification('⚠️ Ingresa una cantidad válida', 'warning');
+            input?.focus();
             return;
         }
+
+        // Cerrar modal de validación
+        document.getElementById('unified-count-validation-modal')?.remove();
+
+        // Verificar si coincide
+        if (enteredCount !== actualCount) {
+            const diff = actualCount - enteredCount;
+            const message = diff > 0
+                ? `⚠️ Diferencia detectada: Faltan ${diff} registros según el sistema`
+                : `⚠️ Diferencia detectada: Hay ${Math.abs(diff)} registros de más según el sistema`;
+
+            if (!confirm(`${message}\n\nEn sistema: ${actualCount}\nIngresados: ${enteredCount}\n\n¿Enviar de todos modos?`)) {
+                showNotification('❌ Envío cancelado - Verificar conteo', 'warning');
+                return;
+            }
+        }
+
+        // Proceder con el envío
+        this.executeSendAll(finalLocation, originLocation, isCancelados);
+    },
+
+    async executeSendAll(finalLocation, originLocation, isCancelados) {
 
         console.log(`📤 [UNIFIED] Iniciando envío de ${this.items.length} registros unificados`);
 
@@ -653,7 +779,6 @@ const UnifiedModule = {
                 }
 
                 console.log(`✅ [UNIFIED] ${records.length} registros agregados a cola de sincronización`);
-                showNotification(`💾 ${records.length} registros en cola`, 'info');
 
             } catch (queueError) {
                 console.error('❌ [UNIFIED] Error CRÍTICO al agregar registros a cola:', queueError);
@@ -665,39 +790,44 @@ const UnifiedModule = {
             }
 
             // CRÍTICO: Intentar sincronizar si estamos online
+            let syncSuccess = false;
             if (checkOnlineStatus() && gapi?.client?.getToken()) {
                 try {
                     console.log('🔄 [UNIFIED] Iniciando sincronización inmediata...');
-                    const syncResult = await syncInventoryData(true);
+                    const syncResult = await syncInventoryData(false); // false = no mostrar notificaciones intermedias
 
                     if (syncResult && syncResult.success) {
                         console.log('✅ [UNIFIED] Sincronización completada exitosamente');
+                        syncSuccess = true;
                     } else {
                         console.warn('⚠️ [UNIFIED] Sincronización pendiente - Los datos están en cola');
-                        showNotification('⚠️ Datos en cola - Se sincronizarán automáticamente', 'warning');
                     }
 
                 } catch (syncError) {
                     console.error('❌ [UNIFIED] Error en sincronización inmediata:', syncError);
                     console.warn('⚠️ [UNIFIED] Los datos permanecen en cola para sincronización posterior');
-                    showNotification('⚠️ Datos en cola - Se sincronizarán cuando haya conexión', 'warning');
                 }
             } else {
                 console.warn('⚠️ [UNIFIED] Sin conexión o sin token - Datos guardados en cola');
-                showNotification('💾 Datos guardados en cola (sin conexión)', 'info');
             }
 
             // SOLO borrar los items DESPUÉS de guardar exitosamente en la cola
             const count = this.items.length;
+            const modeText = isCancelados ? ' CANCELADOS' : '';
             console.log(`🧹 [UNIFIED] Limpiando ${count} items tras guardado exitoso`);
 
             this.items = [];
             this.updateUI();
             GlobalTabs.saveToStorage();
             updateGlobalSummaryFromTabs();
-
-            showNotification(`✅ ${count} registros procesados${modeText}`, 'success');
             playSound('success');
+
+            // Mostrar UNA ÚNICA notificación consolidada
+            if (syncSuccess) {
+                showNotification(`✅ ${count} registros${modeText} enviados y sincronizados`, 'success');
+            } else {
+                showNotification(`💾 ${count} registros${modeText} guardados en cola de sincronización`, 'info');
+            }
 
         } catch (error) {
             console.error('❌ [UNIFIED] Error crítico al enviar:', error);
@@ -904,124 +1034,65 @@ function gapiLoaded() {
 }
 
 function gisLoaded() {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.CLIENT_ID,
-        scope: CONFIG.SCOPES,
-        callback: '',
-    });
     gisInited = true;
     maybeEnableButtons();
 }
 
-function maybeEnableButtons() {
+async function maybeEnableButtons() {
     if (gapiInited && gisInited) {
         console.log('Google APIs initialized');
-        // Intentar restaurar sesión guardada
-        tryRestoreSession();
-    }
-}
 
-// Restaurar sesión de Google si existe
-function tryRestoreSession() {
-    const savedToken = localStorage.getItem('gapi_token');
-    const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+        // Verificar que AuthManager esté disponible
+        if (typeof AuthManager === 'undefined') {
+            console.error('❌ AuthManager no está disponible');
+            showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
+            return;
+        }
 
-    if (savedToken && tokenExpiry) {
-        const expiryTime = parseInt(tokenExpiry, 10);
-        const now = Date.now();
+        try {
+            // Configurar callbacks de AuthManager (sin re-inicializar gapi)
+            AuthManager.gapiInited = true;
+            AuthManager.onAuthSuccess = async (authData) => {
+                console.log('✅ [INVENTORY] AuthManager login exitoso:', authData.email);
+                STATE.userEmail = authData.email;
+                STATE.userName = authData.name;
+                STATE.userAlias = authData.user;
 
-        // Verificar si el token todavía es válido (con 5 minutos de margen)
-        if (expiryTime > now + (5 * 60 * 1000)) {
-            try {
-                const tokenObj = JSON.parse(savedToken);
-                gapi.client.setToken(tokenObj);
+                await loadInventory();
+                await initAdvancedSync();
+                syncManager = window.syncManager;
 
-                // Verificar que el token funciona
-                gapi.client.request({
-                    path: 'https://www.googleapis.com/oauth2/v2/userinfo',
-                }).then(async () => {
-                    // Token válido, continuar con la sesión
-                    await getUserProfile();
-                    await loadInventory();
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
 
-                    // Inicializar Advanced Sync Manager
-                    await initAdvancedSync();
-                    syncManager = window.syncManager; // Referencia al advanced sync manager
+                initializeSidebar();
+                GlobalTabs.updateVisibility();
+                updateConnectionStatus();
+            };
 
-                    document.getElementById('login-screen').classList.add('hidden');
-                    document.getElementById('main-app').classList.remove('hidden');
+            AuthManager.onAuthError = (error) => {
+                console.error('❌ [INVENTORY] AuthManager error:', error);
+                showNotification('❌ Error de autenticación', 'error');
+            };
 
-                    // Inicializar sidebar después de mostrar el main-app
-                    initializeSidebar();
+            // Esperar a que GIS esté listo e inicializar tokenClient
+            await AuthManager.waitForGIS();
 
-                    GlobalTabs.updateVisibility();
-                    updateConnectionStatus();
+            // Verificar sesión guardada
+            const restored = AuthManager.checkSavedSession();
 
-                    console.log('Sesión de Google restaurada exitosamente');
-                }).catch(err => {
-                    // Token inválido, limpiar
-                    console.log('Token guardado inválido, requiere nuevo login');
-                    localStorage.removeItem('gapi_token');
-                    localStorage.removeItem('gapi_token_expiry');
-                });
-            } catch (e) {
-                console.error('Error al restaurar token:', e);
-                localStorage.removeItem('gapi_token');
-                localStorage.removeItem('gapi_token_expiry');
-            }
-        } else {
-            // Token expirado
-            console.log('Token expirado, requiere nuevo login');
-            localStorage.removeItem('gapi_token');
-            localStorage.removeItem('gapi_token_expiry');
+            console.log('✅ [INVENTORY] AuthManager inicializado' + (restored ? ' (sesión restaurada)' : ''));
+        } catch (error) {
+            console.error('❌ Error inicializando AuthManager:', error);
+            showNotification('❌ Error al inicializar autenticación', 'error');
         }
     }
 }
 
 // ==================== AUTENTICACIÓN ====================
 function handleLogin() {
-    tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-            console.error('Auth error:', resp);
-            showNotification('❌ Error de autenticación', 'error');
-            return;
-        }
-
-        gapi.client.setToken(resp);
-
-        // Guardar token en localStorage para persistencia
-        const tokenObj = gapi.client.getToken();
-        if (tokenObj) {
-            localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
-            // Guardar tiempo de expiración (generalmente 1 hora)
-            const expiresIn = resp.expires_in || 3600; // segundos
-            const expiryTime = Date.now() + (expiresIn * 1000);
-            localStorage.setItem('gapi_token_expiry', expiryTime.toString());
-            console.log('Token de Google guardado en localStorage');
-        }
-
-        await getUserProfile();
-        await loadInventory();
-
-        // Inicializar Advanced Sync Manager
-        await initAdvancedSync();
-        syncManager = window.syncManager; // Referencia al advanced sync manager
-
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('main-app').classList.remove('hidden');
-
-        // Inicializar sidebar después de mostrar el main-app
-        initializeSidebar();
-
-        GlobalTabs.updateVisibility();
-        updateConnectionStatus();
-    };
-
-    if (gapi.client.getToken() === null) {
-        tokenClient.requestAccessToken({prompt: 'consent'});
-    } else {
-        tokenClient.requestAccessToken({prompt: ''});
-    }
+    // Usar AuthManager compartido para el login
+    AuthManager.login();
 }
 
 async function getUserProfile() {
@@ -1113,16 +1184,8 @@ function handleLogout() {
         }
     }
 
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token);
-        gapi.client.setToken('');
-    }
-
-    // Limpiar token guardado en localStorage
-    localStorage.removeItem('gapi_token');
-    localStorage.removeItem('gapi_token_expiry');
-    console.log('Sesión de Google limpiada');
+    // Usar AuthManager compartido para el logout
+    AuthManager.logout();
 
     if (syncManager) {
         syncManager.stopAutoSync();
@@ -1902,7 +1965,6 @@ async function executeSendPallet(category, finalLocation, originLocation) {
             }
 
             console.log(`✅ [INVENTORY] ${records.length} registros agregados a cola de sincronización`);
-            showNotification(`💾 ${records.length} registros en cola de sincronización`, 'info');
 
         } catch (queueError) {
             console.error('❌ [INVENTORY] Error CRÍTICO al agregar registros a cola:', queueError);
@@ -1914,26 +1976,25 @@ async function executeSendPallet(category, finalLocation, originLocation) {
         }
 
         // CRÍTICO: Intentar sincronizar si estamos online
+        let syncSuccess = false;
         if (checkOnlineStatus() && gapi?.client?.getToken()) {
             try {
                 console.log('🔄 [INVENTORY] Iniciando sincronización inmediata...');
-                const syncResult = await syncInventoryData(true);
+                const syncResult = await syncInventoryData(false); // false = no mostrar notificaciones intermedias
 
                 if (syncResult && syncResult.success) {
                     console.log('✅ [INVENTORY] Sincronización completada exitosamente');
+                    syncSuccess = true;
                 } else {
                     console.warn('⚠️ [INVENTORY] Sincronización pendiente - Los datos están en cola');
-                    showNotification('⚠️ Datos guardados en cola - Se sincronizarán automáticamente', 'warning');
                 }
 
             } catch (syncError) {
                 console.error('❌ [INVENTORY] Error en sincronización inmediata:', syncError);
                 console.warn('⚠️ [INVENTORY] Los datos permanecen en cola para sincronización posterior');
-                showNotification('⚠️ Datos guardados en cola - Se sincronizarán cuando haya conexión', 'warning');
             }
         } else {
             console.warn('⚠️ [INVENTORY] Sin conexión o sin token - Datos guardados en cola');
-            showNotification('💾 Datos guardados en cola (sin conexión)', 'info');
         }
 
         // SOLO borrar los pallets DESPUÉS de guardar exitosamente en la cola
@@ -1946,7 +2007,13 @@ async function executeSendPallet(category, finalLocation, originLocation) {
         GlobalTabs.saveToStorage();
         updateGlobalSummaryFromTabs();
         playSound('success');
-        showNotification(`✅ Tarima ${statusMap[category]} procesada correctamente`, 'success');
+
+        // Mostrar UNA ÚNICA notificación consolidada
+        if (syncSuccess) {
+            showNotification(`✅ Tarima ${statusMap[category]} enviada: ${records.length} cajas sincronizadas`, 'success');
+        } else {
+            showNotification(`💾 Tarima ${statusMap[category]} guardada: ${records.length} cajas en cola de sincronización`, 'info');
+        }
 
     } catch (error) {
         console.error('❌ [INVENTORY] Error crítico al procesar envío:', error);
@@ -3039,12 +3106,12 @@ async function toggleGoogleConnection() {
             showNotification('🔌 Desconectado de Google. Reconecta para sincronizar.', 'info');
         }
     } else {
-        // CONECTAR - Primero intentar restaurar token desde localStorage
+        // CONECTAR - Usar AuthManager para renovar token
         console.log('🔗 [INVENTORY] Iniciando conexión con Google...');
 
-        // Intentar restaurar token guardado primero (reconexión rápida)
-        const savedToken = localStorage.getItem('gapi_token');
-        const tokenExpiry = localStorage.getItem('gapi_token_expiry');
+        // Verificar si hay token guardado válido en AuthManager
+        const savedToken = localStorage.getItem('google_access_token');
+        const tokenExpiry = localStorage.getItem('google_token_expiry');
 
         if (savedToken && tokenExpiry) {
             const expiryTime = parseInt(tokenExpiry, 10);
@@ -3052,14 +3119,13 @@ async function toggleGoogleConnection() {
 
             // Si el token aún es válido, restaurarlo directamente
             if (expiryTime > now + (60 * 1000)) { // Margen de 1 minuto
-                console.log('🔄 [INVENTORY] Restaurando token desde localStorage...');
+                console.log('🔄 [INVENTORY] Restaurando token desde AuthManager...');
                 try {
-                    const tokenObj = JSON.parse(savedToken);
-                    gapi.client.setToken(tokenObj);
+                    gapi.client.setToken({ access_token: savedToken });
 
                     // Verificar que el token funcione
                     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                        headers: { Authorization: `Bearer ${tokenObj.access_token}` }
+                        headers: { Authorization: `Bearer ${savedToken}` }
                     });
 
                     if (response.ok) {
@@ -3071,7 +3137,8 @@ async function toggleGoogleConnection() {
                         }
 
                         if (sidebarComponent) {
-                            sidebarComponent.saveGoogleConnection(tokenObj.access_token, 3600);
+                            const ttl = Math.floor((expiryTime - now) / 1000);
+                            sidebarComponent.saveGoogleConnection(savedToken, ttl);
                         }
 
                         if (connectBtn) connectBtn.classList.remove('disconnected');
@@ -3088,43 +3155,49 @@ async function toggleGoogleConnection() {
             }
         }
 
-        // Si no hay token válido, solicitar nuevo
-        tokenClient.callback = async (resp) => {
-            if (resp.error !== undefined) {
-                console.error('Auth error:', resp);
-                showNotification('❌ Error al reconectar', 'error');
-                return;
-            }
+        // Si no hay token válido, usar AuthManager para renovar
+        console.log('🔄 [INVENTORY] Solicitando renovación de token...');
 
-            gapi.client.setToken(resp);
+        try {
+            // Intentar renovación silenciosa primero
+            await new Promise((resolve, reject) => {
+                AuthManager.tokenClient.callback = async (resp) => {
+                    if (resp.error) {
+                        console.error('❌ Error renovando token:', resp);
+                        reject(resp.error);
+                        return;
+                    }
 
-            // Guardar token
-            const tokenObj = gapi.client.getToken();
-            if (tokenObj) {
-                localStorage.setItem('gapi_token', JSON.stringify(tokenObj));
-                const expiresIn = resp.expires_in || 3600;
-                const expiryTime = Date.now() + (expiresIn * 1000);
-                localStorage.setItem('gapi_token_expiry', expiryTime.toString());
-            }
+                    const token = gapi.client.getToken();
+                    if (token) {
+                        if (syncManager) {
+                            syncManager.startAutoSync();
+                            await syncManager.sync();
+                        }
 
-            if (syncManager) {
-                syncManager.startAutoSync();
-                await syncManager.sync();
-            }
+                        if (sidebarComponent) {
+                            sidebarComponent.saveGoogleConnection(token.access_token, 3600);
+                        }
 
-            if (sidebarComponent) {
-                sidebarComponent.saveGoogleConnection(tokenObj.access_token, resp.expires_in || 3600);
-            }
+                        if (connectBtn) connectBtn.classList.remove('disconnected');
+                        if (connectText) connectText.textContent = 'Conectado';
 
-            if (connectBtn) connectBtn.classList.remove('disconnected');
-            if (connectText) connectText.textContent = 'Conectado';
+                        updateConnectionStatus(true);
+                        showNotification('✅ Reconectado a Google', 'success');
+                        playSound('success');
 
-            updateConnectionStatus(true);
-            showNotification('✅ Reconectado a Google', 'success');
-            playSound('success');
-        };
+                        resolve();
+                    } else {
+                        reject('No se obtuvo token');
+                    }
+                };
 
-        tokenClient.requestAccessToken({prompt: ''});
+                AuthManager.tokenClient.requestAccessToken({ prompt: '' });
+            });
+        } catch (error) {
+            console.error('❌ [INVENTORY] Error al reconectar:', error);
+            showNotification('❌ Error al reconectar. Intenta cerrar sesión y volver a entrar.', 'error');
+        }
     }
 }
 

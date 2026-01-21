@@ -1072,28 +1072,51 @@ class AdvancedSyncManager {
         // Verificar si el token ha expirado
         const expiryTime = parseInt(localStorage.getItem('google_token_expiry') || '0');
         const now = Date.now();
-        
+
         if (expiryTime > 0 && now >= expiryTime) {
             console.log('⚠️ Token expirado, solicitando renovación...');
-            
+
             // Intentar renovar con AuthManager si está disponible
             if (typeof AuthManager !== 'undefined' && AuthManager.renewToken) {
-                await new Promise((resolve, reject) => {
-                    const timeout = setTimeout(() => reject(new Error('Timeout renovando token')), 10000);
-                    AuthManager.renewToken();
-                    // Esperar un momento para que se renueve
-                    setTimeout(() => {
-                        clearTimeout(timeout);
-                        const newToken = gapi.client.getToken();
-                        if (newToken && newToken.access_token) {
-                            resolve();
-                        } else {
-                            reject(new Error('No se pudo renovar el token'));
-                        }
-                    }, 2000);
-                });
+                try {
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => reject(new Error('Timeout renovando token')), 15000);
+
+                        // Configurar callback temporal para detectar renovación
+                        const originalCallback = AuthManager.tokenClient?.callback;
+
+                        AuthManager.tokenClient.callback = async (resp) => {
+                            clearTimeout(timeout);
+
+                            if (resp.error) {
+                                // Restaurar callback original
+                                if (originalCallback) AuthManager.tokenClient.callback = originalCallback;
+                                reject(new Error(`Error renovando token: ${resp.error}`));
+                                return;
+                            }
+
+                            const newToken = gapi.client.getToken();
+                            if (newToken && newToken.access_token) {
+                                console.log('✅ Token renovado exitosamente');
+                                // Restaurar callback original
+                                if (originalCallback) AuthManager.tokenClient.callback = originalCallback;
+                                resolve();
+                            } else {
+                                // Restaurar callback original
+                                if (originalCallback) AuthManager.tokenClient.callback = originalCallback;
+                                reject(new Error('No se obtuvo token tras renovación'));
+                            }
+                        };
+
+                        // Solicitar renovación
+                        AuthManager.renewToken();
+                    });
+                } catch (error) {
+                    console.error('❌ Error renovando token:', error);
+                    throw new Error('Token expirado. Por favor, reconecta usando el botón de Google en el sidebar.');
+                }
             } else {
-                throw new Error('Token expirado. Por favor, vuelve a iniciar sesión.');
+                throw new Error('Token expirado. Por favor, reconecta usando el botón de Google en el sidebar.');
             }
         }
 
