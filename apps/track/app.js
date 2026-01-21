@@ -1047,8 +1047,297 @@ function displayResults(results, query) {
     document.getElementById('empty-state').style.display = 'none';
     document.getElementById('results-container').classList.add('show');
 
+    // Verificar si es una búsqueda de OBC única
+    // Una OBC es única si todas las coincidencias en obcBd son de la misma orden
+    const isExactMode = GLOBAL_SEARCH_MODE === 'exact';
+    const getInfo = (exactArr, partialArr) => {
+        if (isExactMode) {
+            return exactArr[0] || null;
+        }
+        return exactArr[0] || partialArr[0] || null;
+    };
+    const obcInfo = getInfo(results.exact.obcBd, results.partial.obcBd);
+
+    // Verificar si todas las coincidencias son de la misma OBC
+    let isSingleOBC = false;
+    if (obcInfo && results.exact.obcBd.length > 0) {
+        const firstOBC = results.exact.obcBd[0]['Outbound_出库单号'];
+        isSingleOBC = firstOBC && results.exact.obcBd.every(row => row['Outbound_出库单号'] === firstOBC);
+    }
+
     displaySummary(results);
-    displaySections(results);
+
+    // Si es una OBC única, ocultar las secciones detalladas
+    if (isSingleOBC) {
+        document.getElementById('sections-container').style.display = 'none';
+    } else {
+        document.getElementById('sections-container').style.display = 'block';
+        displaySections(results);
+    }
+}
+
+/**
+ * Mostrar tarjeta simplificada para OBC con colores corporativos naranjas
+ */
+function displaySimplifiedOBCCard(card, obcInfo, results) {
+    const obcCode = obcInfo['Outbound_出库单号'];
+    const obcOrden = obcInfo['Outbound_出库单号'] || obcInfo['Reference order No._参考单号'] || '-';
+    const destino = obcInfo['Recipient_收件人'] || '-';
+    const arrivalTime = obcInfo['Expected Arrival Time _ 期望到仓时间'] || '-';
+
+    // Calcular estadísticas de validación
+    let obcBoxCount = 0;
+    let obcValidatedCount = 0;
+    let obcValidationPercent = 0;
+
+    if (obcCode) {
+        obcBoxCount = DATA_CACHE.obcBd.filter(r => r['Outbound_出库单号'] === obcCode).length;
+        obcValidatedCount = DATA_CACHE.validacion.filter(r =>
+            normalizeCode(r['Orden'] || '').includes(obcCode)
+        ).length;
+
+        if (obcBoxCount > 0) {
+            obcValidationPercent = Math.min(100, Math.round((obcValidatedCount / obcBoxCount) * 100));
+        }
+    }
+
+    const isFullyValidated = obcValidationPercent >= 100;
+
+    // Determinar color del porcentaje
+    let percentColor = '#FF6B35'; // Naranja corporativo (bajo)
+    if (obcValidationPercent >= 100) {
+        percentColor = '#4CAF50'; // Verde (completado)
+    } else if (obcValidationPercent >= 50) {
+        percentColor = '#FF9800'; // Naranja medio
+    }
+
+    card.innerHTML = `
+        <style>
+            .obc-simple-card {
+                background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
+                border-radius: 16px;
+                padding: 28px;
+                color: white;
+                box-shadow: 0 8px 24px rgba(255, 107, 53, 0.3);
+                margin-bottom: 24px;
+            }
+
+            .obc-card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                padding-bottom: 16px;
+                border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+            }
+
+            .obc-card-title {
+                font-size: 1.8em;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .obc-card-badge {
+                background: rgba(255, 255, 255, 0.25);
+                padding: 6px 14px;
+                border-radius: 20px;
+                font-size: 0.5em;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .obc-card-body {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+
+            .obc-info-item {
+                background: rgba(255, 255, 255, 0.15);
+                padding: 16px;
+                border-radius: 12px;
+                backdrop-filter: blur(10px);
+            }
+
+            .obc-info-label {
+                font-size: 0.85em;
+                opacity: 0.9;
+                margin-bottom: 6px;
+                font-weight: 500;
+            }
+
+            .obc-info-value {
+                font-size: 1.3em;
+                font-weight: 700;
+                word-break: break-word;
+            }
+
+            .obc-validation-section {
+                background: rgba(255, 255, 255, 0.2);
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+            }
+
+            .obc-validation-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 12px;
+            }
+
+            .obc-validation-title {
+                font-size: 1.1em;
+                font-weight: 600;
+            }
+
+            .obc-validation-percentage {
+                font-size: 2em;
+                font-weight: 800;
+                color: ${percentColor};
+                text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }
+
+            .obc-progress-bar {
+                width: 100%;
+                height: 12px;
+                background: rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                overflow: hidden;
+                margin-top: 8px;
+            }
+
+            .obc-progress-fill {
+                height: 100%;
+                background: ${percentColor};
+                transition: width 0.5s ease;
+                border-radius: 6px;
+            }
+
+            .obc-validation-stats {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 12px;
+                font-size: 0.95em;
+            }
+
+            .obc-card-actions {
+                display: flex;
+                gap: 12px;
+            }
+
+            .obc-btn {
+                flex: 1;
+                padding: 16px 24px;
+                border: none;
+                border-radius: 12px;
+                font-size: 1.1em;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+
+            .obc-btn-validate {
+                background: white;
+                color: #FF6B35;
+                box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+            }
+
+            .obc-btn-validate:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(255, 255, 255, 0.4);
+            }
+
+            .obc-btn-export {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                border: 2px solid white;
+            }
+
+            .obc-btn-export:hover {
+                background: rgba(255, 255, 255, 0.3);
+                transform: translateY(-2px);
+            }
+
+            @media (max-width: 768px) {
+                .obc-card-body {
+                    grid-template-columns: 1fr;
+                }
+
+                .obc-card-actions {
+                    flex-direction: column;
+                }
+            }
+        </style>
+
+        <div class="obc-simple-card">
+            <div class="obc-card-header">
+                <div class="obc-card-title">
+                    📦 ${makeCopyable(obcOrden)}
+                    <span class="obc-card-badge">${isFullyValidated ? '✅ Completa' : '⏳ En Progreso'}</span>
+                </div>
+            </div>
+
+            <div class="obc-card-body">
+                <div class="obc-info-item">
+                    <div class="obc-info-label">👤 Destino / Cliente</div>
+                    <div class="obc-info-value">${destino}</div>
+                </div>
+
+                <div class="obc-info-item">
+                    <div class="obc-info-label">📅 Fecha de Llegada Esperada</div>
+                    <div class="obc-info-value">${arrivalTime}</div>
+                </div>
+
+                <div class="obc-info-item">
+                    <div class="obc-info-label">📦 Total de Cajas</div>
+                    <div class="obc-info-value">${obcBoxCount}</div>
+                </div>
+
+                <div class="obc-info-item">
+                    <div class="obc-info-label">✅ Cajas Validadas</div>
+                    <div class="obc-info-value">${obcValidatedCount} / ${obcBoxCount}</div>
+                </div>
+            </div>
+
+            <div class="obc-validation-section">
+                <div class="obc-validation-header">
+                    <div class="obc-validation-title">📊 Progreso de Validación</div>
+                    <div class="obc-validation-percentage">${obcValidationPercent}%</div>
+                </div>
+                <div class="obc-progress-bar">
+                    <div class="obc-progress-fill" style="width: ${obcValidationPercent}%"></div>
+                </div>
+                <div class="obc-validation-stats">
+                    <span>${isFullyValidated ? '✅ Validación Completa' : `⏳ Faltan ${obcBoxCount - obcValidatedCount} cajas`}</span>
+                    <span>${obcValidatedCount} validadas</span>
+                </div>
+            </div>
+
+            <div class="obc-card-actions">
+                ${!isFullyValidated ? `
+                    <button class="obc-btn obc-btn-validate" onclick="goToValidate('${obcOrden}')">
+                        🎯 Ir a Validar
+                    </button>
+                ` : `
+                    <button class="obc-btn obc-btn-validate" style="background: #4CAF50; color: white;">
+                        ✅ Orden Completa
+                    </button>
+                `}
+                <button class="obc-btn obc-btn-export" onclick="exportResults()">
+                    📥 Exportar
+                </button>
+            </div>
+        </div>
+    `;
 }
 
 function displaySummary(results) {
@@ -1074,6 +1363,19 @@ function displaySummary(results) {
 
     const totalExact = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
     const totalPartial = Object.values(results.partial).reduce((sum, arr) => sum + arr.length, 0);
+
+    // ========== NUEVO: DISEÑO SIMPLIFICADO PARA OBC ==========
+    // Si se encontró una OBC única (todas las coincidencias son de la misma orden), mostrar tarjeta simplificada
+    let isSingleOBC = false;
+    if (obcInfo && results.exact.obcBd.length > 0) {
+        const firstOBC = results.exact.obcBd[0]['Outbound_出库单号'];
+        isSingleOBC = firstOBC && results.exact.obcBd.every(row => row['Outbound_出库单号'] === firstOBC);
+    }
+
+    if (isSingleOBC) {
+        displaySimplifiedOBCCard(card, obcInfo, results);
+        return;
+    }
 
     const flexibleCounts = {
         bdStock: results.partial.bdStock.length,
@@ -1582,6 +1884,23 @@ function toggleSection(sectionId) {
 
     content.classList.toggle('collapsed');
     toggle.classList.toggle('collapsed');
+}
+
+// ==================== NAVIGATION ====================
+/**
+ * Redirigir a la aplicación de validación con la orden especificada
+ */
+function goToValidate(obcCode) {
+    // Construir URL relativa a la app de validación
+    const validateUrl = `../validate/index.html?obc=${encodeURIComponent(obcCode)}`;
+
+    // Mostrar notificación
+    showNotification(`🎯 Redirigiendo a validación de ${obcCode}...`, 'info');
+
+    // Redirigir después de un breve delay
+    setTimeout(() => {
+        window.location.href = validateUrl;
+    }, 500);
 }
 
 // ==================== EXPORT & PRINT ====================
