@@ -3749,22 +3749,12 @@ async function executeConsulta() {
         return;
     }
 
-    // ========== SINCRONIZACIÓN FORZADA DEL HISTORIAL ==========
-    // CRÍTICO: Forzar fetch del historial de validaciones ANTES de mostrar resultados
-    // Esto asegura que veamos el progreso real de las órdenes
-    console.log('🔄 [CONSULTA] Sincronizando historial desde servidor...');
-    showNotification('🔄 Sincronizando datos más recientes...', 'info');
-
-    try {
-        // Sincronizar historial desde Google Sheets
-        if (HistoryCache && typeof HistoryCache.syncFromServer === 'function') {
-            await HistoryCache.syncFromServer(false); // false = sin notificación adicional
-            console.log('✅ [CONSULTA] Historial sincronizado exitosamente');
-        }
-    } catch (error) {
-        console.error('❌ [CONSULTA] Error sincronizando historial:', error);
-        showNotification('⚠️ No se pudo sincronizar los datos más recientes. Mostrando cache local.', 'warning');
-    }
+    // ========== USO DE CACHE LOCAL ==========
+    // El historial se sincroniza automáticamente:
+    // 1. Al iniciar la aplicación (carga inicial)
+    // 2. Cada 30 minutos en background (auto-refresh silencioso)
+    // Las consultas usan el cache local para evitar recargas constantes
+    console.log('🔍 [CONSULTA] Usando datos del cache local (última sync: auto)');
 
     const resultDiv = document.getElementById('consulta-result');
     const matches = [];

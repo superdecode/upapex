@@ -88,32 +88,84 @@ const AuthManager = {
     checkSavedSession() {
         const savedToken = localStorage.getItem('google_access_token');
         const savedExpiry = localStorage.getItem('google_token_expiry');
+        const sessionExpiry = localStorage.getItem('wms_session_expiry');
         const savedUser = localStorage.getItem('wms_current_user');
         const savedEmail = localStorage.getItem('wms_user_email');
         const savedName = localStorage.getItem('wms_google_name');
+
+        // Verificar si la sesión de 12 horas expiró
+        if (sessionExpiry) {
+            const sessionExpiryTime = parseInt(sessionExpiry);
+            if (Date.now() > sessionExpiryTime) {
+                console.log('⏰ AuthManager: Sesión de 12 horas expirada');
+                this.clearSession();
+                return false;
+            }
+        }
 
         if (savedToken && savedExpiry) {
             const expiryTime = parseInt(savedExpiry);
             const timeUntilExpiry = expiryTime - Date.now();
 
-            // Si el token expira en menos de 5 minutos, renovarlo
-            if (timeUntilExpiry < 5 * 60 * 1000) {
-                console.log('⚠️ AuthManager: Token próximo a expirar, renovando...');
-                this.renewToken();
-                return false;
+            // Si el token expiró pero la sesión de 12 horas sigue activa, renovar automáticamente
+            if (timeUntilExpiry <= 0 && sessionExpiry) {
+                const sessionExpiryTime = parseInt(sessionExpiry);
+                if (Date.now() < sessionExpiryTime) {
+                    console.log('🔄 AuthManager: Token expirado pero sesión activa, renovando...');
+                    // Restaurar datos de usuario
+                    this.currentUser = savedUser;
+                    this.userEmail = savedEmail;
+                    this.userName = savedName;
+
+                    // Renovar token en background
+                    this.renewToken();
+
+                    if (this.onAuthSuccess) {
+                        this.onAuthSuccess({
+                            user: savedUser,
+                            email: savedEmail,
+                            name: savedName
+                        });
+                    }
+
+                    return true;
+                }
             }
 
-            // Token válido, restaurar sesión
+            // Si el token expira en menos de 10 minutos, renovarlo en background
+            if (timeUntilExpiry < 10 * 60 * 1000 && timeUntilExpiry > 0) {
+                console.log('⚠️ AuthManager: Token próximo a expirar, renovando en background...');
+                // Usar token actual mientras se renueva
+                gapi.client.setToken({ access_token: savedToken });
+                this.currentUser = savedUser;
+                this.userEmail = savedEmail;
+                this.userName = savedName;
+
+                // Renovar en background sin bloquear
+                this.renewToken();
+
+                if (this.onAuthSuccess) {
+                    this.onAuthSuccess({
+                        user: savedUser,
+                        email: savedEmail,
+                        name: savedName
+                    });
+                }
+
+                return true;
+            }
+
+            // Token válido con suficiente tiempo, restaurar sesión
             if (timeUntilExpiry > 0) {
                 gapi.client.setToken({ access_token: savedToken });
                 this.currentUser = savedUser;
                 this.userEmail = savedEmail;
                 this.userName = savedName;
 
-                console.log(`✅ AuthManager: Sesión restaurada (expira en ${Math.floor(timeUntilExpiry / 60000)} min)`);
+                console.log(`✅ AuthManager: Sesión restaurada (token expira en ${Math.floor(timeUntilExpiry / 60000)} min)`);
 
-                // Programar renovación automática
-                this.scheduleTokenRenewal(timeUntilExpiry - 5 * 60 * 1000); // 5 min antes
+                // Programar renovación automática 5 minutos antes de expirar
+                this.scheduleTokenRenewal(Math.max(timeUntilExpiry - 5 * 60 * 1000, 0));
 
                 if (this.onAuthSuccess) {
                     this.onAuthSuccess({
@@ -155,27 +207,47 @@ const AuthManager = {
             return;
         }
 
+        // Marcar que estamos renovando para evitar múltiples intentos
+        if (this.isRenewing) {
+            console.log('⏳ AuthManager: Renovación ya en progreso...');
+            return;
+        }
+
+        this.isRenewing = true;
+        console.log('🔄 AuthManager: Iniciando renovación de token...');
+
         this.tokenClient.callback = async (resp) => {
+            this.isRenewing = false;
+
             if (resp.error) {
                 console.error('❌ AuthManager: Error renovando token:', resp);
-                this.clearSession();
+
+                // Si el error es de acceso denegado, mantener sesión y reintentar después
+                if (resp.error === 'access_denied' || resp.error === 'immediate_failed') {
+                    console.warn('⚠️ AuthManager: Renovación silenciosa falló, reintentando en 5 min...');
+                    // Reintentar en 5 minutos
+                    this.scheduleTokenRenewal(5 * 60 * 1000);
+                } else {
+                    // Otros errores: limpiar sesión
+                    this.clearSession();
+                }
                 return;
             }
 
-            // Guardar nuevo token
-            const expiryTime = Date.now() + (3600 * 1000);
+            // Guardar nuevo token (válido por 1 hora según Google)
+            const tokenExpiryTime = Date.now() + (3600 * 1000); // 1 hora
             localStorage.setItem('google_access_token', resp.access_token);
-            localStorage.setItem('google_token_expiry', expiryTime.toString());
+            localStorage.setItem('google_token_expiry', tokenExpiryTime.toString());
 
             gapi.client.setToken({ access_token: resp.access_token });
 
-            // Programar siguiente renovación
-            this.scheduleTokenRenewal(55 * 60 * 1000); // 55 minutos
+            // Programar siguiente renovación 5 minutos antes de expirar (55 min)
+            this.scheduleTokenRenewal(55 * 60 * 1000);
 
-            console.log('✅ AuthManager: Token renovado exitosamente');
+            console.log('✅ AuthManager: Token renovado exitosamente (próxima renovación en 55 min)');
         };
 
-        // Intentar renovación silenciosa (sin prompt)
+        // Intentar renovación silenciosa (sin prompt al usuario)
         this.tokenClient.requestAccessToken({ prompt: '' });
     },
 
@@ -218,14 +290,18 @@ const AuthManager = {
                 return;
             }
 
-            // Guardar token con tiempo de expiración (1 hora)
-            const expiryTime = Date.now() + (3600 * 1000);
+            // Guardar token con tiempo de expiración real de Google (1 hora)
+            // Pero mantener sesión activa por 12 horas con renovaciones automáticas
+            const tokenExpiryTime = Date.now() + (3600 * 1000); // 1 hora (límite de Google)
+            const sessionExpiryTime = Date.now() + (12 * 60 * 60 * 1000); // 12 horas (sesión del usuario)
+
             localStorage.setItem('google_access_token', resp.access_token);
-            localStorage.setItem('google_token_expiry', expiryTime.toString());
+            localStorage.setItem('google_token_expiry', tokenExpiryTime.toString());
+            localStorage.setItem('wms_session_expiry', sessionExpiryTime.toString()); // Expiración de sesión
 
             gapi.client.setToken({ access_token: resp.access_token });
 
-            // Programar renovación automática (55 minutos)
+            // Programar renovación automática 5 minutos antes de expirar el token (55 min)
             this.scheduleTokenRenewal(55 * 60 * 1000);
 
             // Obtener perfil de usuario
@@ -291,6 +367,14 @@ const AuthManager = {
     clearSession() {
         localStorage.removeItem('google_access_token');
         localStorage.removeItem('google_token_expiry');
+        localStorage.removeItem('wms_session_expiry');
+
+        // Limpiar timeout de renovación si existe
+        if (this.renewalTimeout) {
+            clearTimeout(this.renewalTimeout);
+            this.renewalTimeout = null;
+        }
+
         this.currentUser = null;
         this.userEmail = null;
         this.userName = null;
