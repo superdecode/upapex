@@ -218,7 +218,7 @@ body {
 }
 
 .progress-card.completed {
-    background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%) !important;
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%) !important;
 }
 
 .progress-header {
@@ -279,7 +279,7 @@ body {
 }
 
 .progress-bar-fill.completed {
-    background: linear-gradient(90deg, #fff, #81c784) !important;
+    background: linear-gradient(90deg, #fff, #a5d6a7) !important;
 }
 
 /* === INPUTS === */
@@ -830,6 +830,10 @@ body {
 /* === CONSULTA RAPIDA MODULE === */
 #consulta-module { display: none; }
 
+#consulta-result {
+    margin-top: 20px;
+}
+
 .consulta-result {
     background: white;
     border-radius: 16px;
@@ -933,8 +937,8 @@ body {
 }
 
 .consulta-item.highlight {
-    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-    border-color: #90caf9;
+    background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+    border-color: #ffb74d;
 }
 
 .consulta-item-label {
@@ -982,7 +986,7 @@ body {
 }
 
 .consulta-progress-bar.complete {
-    background: linear-gradient(90deg, var(--primary), #1e40af);
+    background: linear-gradient(90deg, #4caf50, #45a049);
 }
 
 .consulta-action {
@@ -1047,7 +1051,7 @@ body {
 }
 
 .obc-card-badge.complete {
-    background: linear-gradient(135deg, var(--primary), #1e40af);
+    background: linear-gradient(135deg, #4caf50, #45a049);
     color: white;
 }
 
@@ -1106,7 +1110,7 @@ body {
 }
 
 .obc-card-progress-fill.complete {
-    background: linear-gradient(90deg, var(--primary), #1e40af);
+    background: linear-gradient(90deg, #4caf50, #45a049);
 }
 
 .obc-card-button {
@@ -1159,8 +1163,8 @@ body {
     border-radius: 12px;
     font-size: 0.75em;
     font-weight: 600;
-    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-    color: #1565c0;
+    background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+    color: #e65100;
 }
 
 .prerec-grid {
@@ -1193,8 +1197,8 @@ body {
     border-radius: 10px;
     font-size: 0.7em;
     font-weight: 600;
-    background: #e3f2fd;
-    color: #1565c0;
+    background: #fff3e0;
+    color: #e65100;
     margin-left: 6px;
 }
 
@@ -1232,8 +1236,8 @@ body {
 .reconteo-stat.dup .reconteo-stat-number { color: var(--warning); }
 .reconteo-stat.missing { border: 2px solid var(--error); }
 .reconteo-stat.missing .reconteo-stat-number { color: var(--error); }
-.reconteo-stat.extra { border: 2px solid #9c27b0; }
-.reconteo-stat.extra .reconteo-stat-number { color: #9c27b0; }
+.reconteo-stat.extra { border: 2px solid #ff7043; }
+.reconteo-stat.extra .reconteo-stat-number { color: #ff7043; }
 
 .reconteo-table {
     width: 100%;
@@ -1265,7 +1269,7 @@ body {
 .reconteo-table .status-ok { background: #e8f5e9; color: var(--success); }
 .reconteo-table .status-dup { background: #fff3e0; color: var(--warning); }
 .reconteo-table .status-missing { background: #ffebee; color: var(--error); }
-.reconteo-table .status-extra { background: #f3e5f5; color: #9c27b0; }
+.reconteo-table .status-extra { background: #fff3e0; color: #ff7043; }
 
 .reconteo-table-container {
     max-height: 400px;
@@ -1382,7 +1386,7 @@ body {
 }
 
 .faltantes-summary-item.total {
-    background: linear-gradient(135deg, #2196f3, #1976d2);
+    background: linear-gradient(135deg, #ff9966, #ff7043);
     color: white;
 }
 
@@ -1590,11 +1594,11 @@ body {
     position: fixed;
     top: 20px;
     right: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff9966 0%, #ff7043 100%);
     color: white;
     padding: 15px 20px;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 20px rgba(255, 112, 67, 0.4);
     z-index: 10001;
     display: flex;
     align-items: center;
@@ -1802,9 +1806,428 @@ body {
     }
 }
 
-/* === CONSULTA MODULE - ORDER SEARCH === */
+/* === CONSULTA MODULE - ORDER SEARCH (NARANJAS CORPORATIVOS) === */
+
+/* Header con gradiente naranja para búsqueda por OBC */
+.order-search-header-orange {
+    background: linear-gradient(135deg, #ff9966 0%, #ff7043 100%);
+    color: white;
+    padding: 20px 24px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 6px 20px rgba(255, 112, 67, 0.3);
+}
+
+.order-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.order-title-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.order-search-header-orange h3 {
+    margin: 0;
+    font-size: 1.6em;
+    font-weight: 700;
+}
+
+.order-status-badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.8em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.order-status-badge.complete {
+    background: rgba(255, 255, 255, 0.95);
+    color: #4caf50;
+}
+
+.order-status-badge.in-progress {
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
+}
+
+.order-progress-circle {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    border: 4px solid rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.order-progress-circle .progress-value {
+    font-size: 1.3em;
+    font-weight: 800;
+}
+
+.order-search-stats-orange {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.stat-item-orange {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 12px 18px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 100px;
+    backdrop-filter: blur(5px);
+}
+
+.stat-item-orange.success {
+    background: rgba(76, 175, 80, 0.35);
+}
+
+.stat-item-orange.warning {
+    background: rgba(255, 193, 7, 0.35);
+}
+
+.stat-item-orange .stat-label {
+    font-size: 0.8em;
+    opacity: 0.95;
+    font-weight: 500;
+}
+
+.stat-item-orange .stat-value {
+    font-size: 1.6em;
+    font-weight: 800;
+}
+
+.order-info-grid-orange {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    font-size: 0.95em;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* === TARJETA RESUMEN OBC (Consulta Trazabilidad) === */
+.obc-summary-card {
+    background: linear-gradient(135deg, #ff9966 0%, #ff7043 100%);
+    color: white;
+    padding: 24px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 24px rgba(255, 112, 67, 0.35);
+}
+
+.obc-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.obc-summary-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.obc-summary-title .obc-icon {
+    font-size: 1.8em;
+}
+
+.obc-summary-title h3 {
+    margin: 0;
+    font-size: 1.5em;
+    font-weight: 700;
+}
+
+.obc-status-pill {
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.obc-status-pill.complete {
+    background: rgba(255, 255, 255, 0.95);
+    color: #4caf50;
+}
+
+.obc-status-pill.in-progress {
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
+}
+
+.obc-progress-ring {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    border: 4px solid rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4em;
+    font-weight: 800;
+}
+
+.obc-summary-stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.obc-stat {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 16px 24px;
+    border-radius: 12px;
+    text-align: center;
+    min-width: 100px;
+    flex: 1;
+}
+
+.obc-stat.success {
+    background: rgba(76, 175, 80, 0.4);
+}
+
+.obc-stat.warning {
+    background: rgba(255, 193, 7, 0.4);
+}
+
+.obc-stat-value {
+    font-size: 2em;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.obc-stat-label {
+    font-size: 0.85em;
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+.obc-summary-info {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.obc-info-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95em;
+}
+
+.obc-info-icon {
+    font-size: 1.1em;
+}
+
+.obc-info-label {
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.obc-info-value {
+    font-weight: 700;
+}
+
+/* === TABLA DE CAJAS OBC === */
+.obc-boxes-table-wrapper {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    max-height: 450px;
+    overflow-y: auto;
+}
+
+.obc-boxes-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.obc-boxes-table thead {
+    background: linear-gradient(135deg, #ff8a52 0%, #ff7043 100%);
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.obc-boxes-table th {
+    padding: 14px 20px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.95em;
+    letter-spacing: 0.3px;
+}
+
+.obc-boxes-table td {
+    padding: 12px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 0.95em;
+    vertical-align: middle;
+}
+
+.obc-boxes-table tbody tr {
+    transition: background 0.2s;
+}
+
+.obc-boxes-table tbody tr:hover {
+    background: #fef7f1;
+}
+
+.obc-boxes-table tbody tr.validated {
+    background: #f8fff8;
+}
+
+.obc-boxes-table tbody tr.validated:hover {
+    background: #f0fff0;
+}
+
+.obc-boxes-table tbody tr.pending {
+    background: #fffbf5;
+}
+
+.obc-boxes-table tbody tr.pending:hover {
+    background: #fff5eb;
+}
+
+.obc-boxes-table .code-cell {
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 1.05em;
+    color: #333;
+    letter-spacing: 0.5px;
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.status-pill.validated {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+    color: white;
+}
+
+.status-pill.pending {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+    color: white;
+}
+
+/* === LEGACY: TABLA DE DETALLE OBC === */
+.obc-detail-table-container {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.obc-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.obc-detail-table thead {
+    background: linear-gradient(135deg, #ff8a52 0%, #ff7043 100%);
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.obc-detail-table th {
+    padding: 14px 16px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.9em;
+    letter-spacing: 0.3px;
+}
+
+.obc-detail-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 0.95em;
+}
+
+.obc-detail-table tbody tr {
+    transition: background 0.2s;
+}
+
+.obc-detail-table tbody tr:hover {
+    background: #fef7f1;
+}
+
+.obc-detail-table tbody tr.row-validated {
+    background: #f8fff8;
+}
+
+.obc-detail-table tbody tr.row-validated:hover {
+    background: #f0fff0;
+}
+
+.obc-detail-table tbody tr.row-pending {
+    background: #fffbf5;
+}
+
+.obc-detail-table tbody tr.row-pending:hover {
+    background: #fff5eb;
+}
+
+.obc-detail-table .code-cell {
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 1em;
+    color: #333;
+    letter-spacing: 0.5px;
+}
+
+.table-status-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.table-status-badge.validated {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+    color: white;
+}
+
+.table-status-badge.pending {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+    color: white;
+}
+
+/* Legacy header (mantener para compatibilidad) */
 .order-search-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff9966 0%, #ff7043 100%);
     color: white;
     padding: 20px;
     border-radius: 12px;
@@ -1858,7 +2281,7 @@ body {
     font-size: 0.9em;
 }
 
-/* Boxes List */
+/* Boxes List (Legacy - para búsqueda por código de caja) */
 .boxes-list {
     display: flex;
     flex-direction: column;
@@ -1886,12 +2309,12 @@ body {
 
 .box-item.validated {
     border-color: #4caf50;
-    background: #f1f8f4;
+    background: #f8fff8;
 }
 
 .box-item.pending {
     border-color: #ff9800;
-    background: #fff8f0;
+    background: #fffbf5;
 }
 
 .box-code {
@@ -1916,12 +2339,12 @@ body {
 }
 
 .status-badge.validated {
-    background: #4caf50;
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
     color: white;
 }
 
 .status-badge.pending {
-    background: #ff9800;
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
     color: white;
 }
 

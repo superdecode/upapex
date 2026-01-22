@@ -211,18 +211,34 @@ const ConnectionRehydrationManager = {
     
     /**
      * Restaura la autenticación desde token guardado
+     * IMPORTANTE: Token expira después de 12 horas de inactividad
      */
     async restoreAuthentication() {
         const savedToken = localStorage.getItem('google_access_token');
         const tokenExpiry = localStorage.getItem('google_token_expiry');
-        
+        const lastActivity = localStorage.getItem('wms_last_activity');
+
         if (!savedToken || !tokenExpiry) {
             return false;
         }
-        
+
         const expiryTime = parseInt(tokenExpiry, 10);
         const now = Date.now();
-        
+
+        // NUEVA VALIDACIÓN: Expiración por inactividad de 12 horas
+        const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+        if (lastActivity) {
+            const lastActivityTime = parseInt(lastActivity, 10);
+            const inactivityTime = now - lastActivityTime;
+            if (inactivityTime > TWELVE_HOURS_MS) {
+                console.log('⚠️ [REHYDRATION] Sesión expirada por inactividad (12 horas)');
+                localStorage.removeItem('google_access_token');
+                localStorage.removeItem('google_token_expiry');
+                localStorage.removeItem('wms_last_activity');
+                return false;
+            }
+        }
+
         // Verificar si el token aún es válido (con margen de 5 min)
         if (expiryTime > now + (5 * 60 * 1000)) {
             try {
@@ -230,17 +246,20 @@ const ConnectionRehydrationManager = {
                 const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
                     headers: { Authorization: `Bearer ${savedToken}` }
                 });
-                
+
                 if (response.ok) {
                     gapi.client.setToken({ access_token: savedToken });
                     const data = await response.json();
                     USER_EMAIL = data.email || '';
                     USER_GOOGLE_NAME = data.name || 'Usuario';
-                    
+
                     const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
                     const nameToUse = savedAlias || data.name || 'Usuario';
                     CURRENT_USER = window.AvatarSystem?.formatNameToTitle?.(nameToUse) || nameToUse;
-                    
+
+                    // Actualizar timestamp de última actividad
+                    localStorage.setItem('wms_last_activity', Date.now().toString());
+
                     return true;
                 } else {
                     throw new Error('Token inválido');
@@ -249,12 +268,14 @@ const ConnectionRehydrationManager = {
                 console.log('⚠️ [REHYDRATION] Token inválido o expirado');
                 localStorage.removeItem('google_access_token');
                 localStorage.removeItem('google_token_expiry');
+                localStorage.removeItem('wms_last_activity');
                 return false;
             }
         } else {
             console.log('⚠️ [REHYDRATION] Token expirado');
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('google_token_expiry');
+            localStorage.removeItem('wms_last_activity');
             return false;
         }
     },
@@ -2810,6 +2831,9 @@ function setupListeners() {
 
 // ==================== VALIDACIÓN ====================
 async function processScan(raw, isManual = false) {
+    // Actualizar timestamp de última actividad para mantener sesión
+    localStorage.setItem('wms_last_activity', Date.now().toString());
+
     if (!STATE.activeOBC) {
         showNotification('⚠️ Selecciona una orden primero', 'warning');
         return;
@@ -3730,6 +3754,9 @@ function handleConsultaScan(event) {
 }
 
 async function executeConsulta() {
+    // Actualizar timestamp de última actividad para mantener sesión
+    localStorage.setItem('wms_last_activity', Date.now().toString());
+
     const rawInput = document.getElementById('consulta-scanner').value.trim();
 
     if (!rawInput) {
@@ -3812,46 +3839,77 @@ async function executeConsulta() {
         const validated = allBoxes.filter(b => b.isValidated).length;
         const pending = total - validated;
         
+        // Calcular porcentaje de progreso
+        const progressPct = total > 0 ? Math.round((validated / total) * 100) : 0;
+        const isComplete = progressPct >= 100;
+
         resultDiv.style.display = 'block';
         resultDiv.innerHTML = `
-            <div class="order-search-header">
-                <h3>📦 Orden: ${obc}</h3>
-                <div class="order-search-stats">
-                    <div class="stat-item">
-                        <span class="stat-label">Total:</span>
-                        <span class="stat-value">${total}</span>
+            <div class="obc-summary-card">
+                <div class="obc-summary-header">
+                    <div class="obc-summary-title">
+                        <span class="obc-icon">📦</span>
+                        <h3>Orden: ${obc}</h3>
+                        <span class="obc-status-pill ${isComplete ? 'complete' : 'in-progress'}">
+                            ${isComplete ? '✅ Completada' : '🔄 En Proceso'}
+                        </span>
                     </div>
-                    <div class="stat-item success">
-                        <span class="stat-label">✅ Validadas:</span>
-                        <span class="stat-value">${validated}</span>
-                    </div>
-                    <div class="stat-item warning">
-                        <span class="stat-label">⏳ Pendientes:</span>
-                        <span class="stat-value">${pending}</span>
+                    <div class="obc-progress-ring">
+                        <span>${progressPct}%</span>
                     </div>
                 </div>
-                <div class="order-info-grid">
-                    <div><strong>Destino:</strong> ${info.recipient || '-'}</div>
-                    <div><strong>Horario:</strong> ${info.arrivalTime || '-'}</div>
+                <div class="obc-summary-stats">
+                    <div class="obc-stat">
+                        <div class="obc-stat-value">${total}</div>
+                        <div class="obc-stat-label">Total</div>
+                    </div>
+                    <div class="obc-stat success">
+                        <div class="obc-stat-value">${validated}</div>
+                        <div class="obc-stat-label">Validadas</div>
+                    </div>
+                    <div class="obc-stat warning">
+                        <div class="obc-stat-value">${pending}</div>
+                        <div class="obc-stat-label">Pendientes</div>
+                    </div>
+                </div>
+                <div class="obc-summary-info">
+                    <div class="obc-info-item">
+                        <span class="obc-info-icon">🏢</span>
+                        <span class="obc-info-label">Destino:</span>
+                        <span class="obc-info-value">${info.recipient || '-'}</span>
+                    </div>
+                    <div class="obc-info-item">
+                        <span class="obc-info-icon">🕐</span>
+                        <span class="obc-info-label">Horario:</span>
+                        <span class="obc-info-value">${info.arrivalTime || '-'}</span>
+                    </div>
                 </div>
             </div>
-            <div class="boxes-list">
-                ${allBoxes.map(box => `
-                    <div class="box-item ${box.isValidated ? 'validated' : 'pending'}">
-                        <div class="box-code">${box.code}</div>
-                        <div class="box-status">
-                            ${box.isValidated ? `
-                                <span class="status-badge validated">✅ Validada</span>
-                                <div class="box-details">
-                                    <small>Por: ${box.histData.user}</small>
-                                    <small>${box.histData.date} ${box.histData.timestamp}</small>
-                                </div>
-                            ` : `
-                                <span class="status-badge pending">⏳ Pendiente</span>
-                            `}
-                        </div>
-                    </div>
-                `).join('')}
+            <div class="obc-boxes-table-wrapper">
+                <table class="obc-boxes-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Validado por</th>
+                            <th>Fecha y Hora</th>
+                            <th>Estatus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${allBoxes.map(box => `
+                            <tr class="${box.isValidated ? 'validated' : 'pending'}">
+                                <td class="code-cell">${box.code}</td>
+                                <td>${box.isValidated ? box.histData.user : '-'}</td>
+                                <td>${box.isValidated ? `${box.histData.date} ${box.histData.timestamp}` : '-'}</td>
+                                <td>
+                                    <span class="status-pill ${box.isValidated ? 'validated' : 'pending'}">
+                                        ${box.isValidated ? '✅ Validada' : '⏳ Pendiente'}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
             </div>
         `;
 
