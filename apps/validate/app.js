@@ -1563,7 +1563,7 @@ function handleReconnect() {
 
 /**
  * CRÍTICO: Reconexión con recarga automática de BD
- * CORREGIDO: Sistema robusto con polling de token como respaldo para COOP
+ * SOLUCIÓN COOP: Usa polling agresivo + detección por localStorage
  */
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -1572,10 +1572,16 @@ let reconnectCallbackExecuted = false;
 
 async function handleReconnectWithDataReload() {
     console.log('🔄 [VALIDADOR] Iniciando reconexión con recarga de BD...');
+    console.log('🔄 [VALIDADOR] Versión: 3.5.0 - Solución COOP mejorada');
 
     // CRÍTICO: Resetear BD_LOADING para permitir nueva carga
     BD_LOADING = false;
     reconnectCallbackExecuted = false;
+
+    // Guardar token inicial para detectar cambios
+    const initialToken = localStorage.getItem('google_access_token');
+    const initialExpiry = localStorage.getItem('google_token_expiry');
+    console.log('📝 [VALIDADOR] Token inicial:', initialToken ? 'presente' : 'ausente');
 
     if (!AuthManager.tokenClient) {
         console.error('❌ [VALIDADOR] tokenClient no disponible');
@@ -1603,6 +1609,9 @@ async function handleReconnectWithDataReload() {
     try {
         showLoading(true);
 
+        // Variable para el listener de foco (se asigna después)
+        let handleWindowFocus = null;
+
         // Función para procesar reconexión exitosa
         const processSuccessfulReconnect = async () => {
             // Evitar ejecución duplicada
@@ -1618,51 +1627,56 @@ async function handleReconnectWithDataReload() {
                 tokenPollingInterval = null;
             }
 
-            // Reset contador de intentos
-            reconnectAttempts = 0;
-            console.log('✅ [VALIDADOR] Reconexión exitosa');
-
-            // Guardar token con las claves correctas
-            const tokenObj = gapi?.client?.getToken();
-            if (tokenObj && tokenObj.access_token) {
-                localStorage.setItem('google_access_token', tokenObj.access_token);
-                const expiresIn = tokenObj.expires_in || 3600;
-                const expiryTime = Date.now() + (expiresIn * 1000);
-                localStorage.setItem('google_token_expiry', expiryTime.toString());
-                localStorage.setItem('wms_session_expiry', (Date.now() + 12 * 60 * 60 * 1000).toString());
-                console.log('✅ [VALIDADOR] Token guardado en localStorage');
+            // Remover listener de foco si existe
+            if (handleWindowFocus) {
+                window.removeEventListener('focus', handleWindowFocus);
             }
 
-            // Actualizar UI
-            updateUIAfterAuth();
+        // Reset contador de intentos
+        reconnectAttempts = 0;
+        console.log('✅ [VALIDADOR] Reconexión exitosa');
 
-            // CRÍTICO: SIEMPRE recargar BD después de reconexión
-            console.log('🔍 [VALIDADOR] Forzando recarga de BD después de reconexión...');
-            console.log('  - BD_CODES.size (antes):', BD_CODES.size);
-            console.log('  - OBC_TOTALS.size (antes):', OBC_TOTALS.size);
+        // Verificar y establecer token en gapi si es necesario
+        const currentToken = localStorage.getItem('google_access_token');
+        if (currentToken && !gapi?.client?.getToken()?.access_token) {
+            console.log('🔧 [VALIDADOR] Estableciendo token en gapi desde localStorage...');
+            gapi.client.setToken({ access_token: currentToken });
+        }
 
-            // CRÍTICO: Resetear BD_LOADING antes de cargar
-            BD_LOADING = false;
+        // Actualizar UI
+        updateUIAfterAuth();
 
-            try {
-                // Forzar recarga completa de BD
-                await loadDatabaseWithRetry();
+        // Cerrar banner de error si existe
+        const banner = document.getElementById('auth-error-banner');
+        if (banner) banner.remove();
 
-                // Iniciar auto-refresh de BD
-                startBDAutoRefresh();
+        // CRÍTICO: SIEMPRE recargar BD después de reconexión
+        console.log('🔍 [VALIDADOR] Forzando recarga de BD después de reconexión...');
+        console.log('  - BD_CODES.size (antes):', BD_CODES.size);
+        console.log('  - OBC_TOTALS.size (antes):', OBC_TOTALS.size);
 
-                console.log('✅ [VALIDADOR] BD recargada exitosamente');
-                console.log('  - BD_CODES.size (después):', BD_CODES.size);
-                console.log('  - OBC_TOTALS.size (después):', OBC_TOTALS.size);
+        // CRÍTICO: Resetear BD_LOADING antes de cargar
+        BD_LOADING = false;
 
-                showLoading(false);
-                showNotification('✅ Reconectado y BD actualizada', 'success');
-            } catch (dbError) {
-                console.error('❌ [VALIDADOR] Error recargando BD:', dbError);
-                showLoading(false);
-                showNotification('⚠️ Reconectado pero error al cargar BD. Intenta recargar BD manualmente.', 'warning');
-            }
-        };
+        try {
+            // Forzar recarga completa de BD
+            await loadDatabaseWithRetry();
+
+            // Iniciar auto-refresh de BD
+            startBDAutoRefresh();
+
+            console.log('✅ [VALIDADOR] BD recargada exitosamente');
+            console.log('  - BD_CODES.size (después):', BD_CODES.size);
+            console.log('  - OBC_TOTALS.size (después):', OBC_TOTALS.size);
+
+            showLoading(false);
+            showNotification('✅ Reconectado y BD actualizada', 'success');
+        } catch (dbError) {
+            console.error('❌ [VALIDADOR] Error recargando BD:', dbError);
+            showLoading(false);
+            showNotification('⚠️ Reconectado pero error al cargar BD. Intenta recargar BD manualmente.', 'warning');
+        }
+    };
 
         // Configurar callback para manejar la respuesta de autenticación
         AuthManager.tokenClient.callback = async (resp) => {
@@ -1701,9 +1715,6 @@ async function handleReconnectWithDataReload() {
 
         // NUEVO: Iniciar polling de token como respaldo para COOP
         // Esto detecta cuando el token se actualiza aunque el callback no se dispare
-        const initialToken = localStorage.getItem('google_access_token');
-        const initialExpiry = localStorage.getItem('google_token_expiry');
-
         const startTokenPolling = () => {
             let pollCount = 0;
             const maxPolls = 120; // 2 minutos máximo (120 * 1000ms)
@@ -1782,7 +1793,7 @@ async function handleReconnectWithDataReload() {
         startTokenPolling();
 
         // NUEVO: Listener de foco para detectar cuando el usuario regresa del popup
-        const handleWindowFocus = async () => {
+        handleWindowFocus = async () => {
             console.log('👁️ [VALIDADOR] Ventana en foco, verificando token...');
 
             // Esperar un poco para que el token se propague
