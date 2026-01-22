@@ -1072,8 +1072,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // Variable global para TOKEN_CLIENT y expiración
-    let TOKEN_CLIENT = null;
+    // Variables para expiración y renovación de token
     let TOKEN_EXPIRES_AT = 0;
     let tokenRefreshTimeout = null;
 
@@ -1311,22 +1310,39 @@ function updateUIAfterAuth() {
     console.log('✅ [VALIDADOR] UI actualizada:', { hasToken: !!hasToken, user: CURRENT_USER });
 }
 
+// Contador para evitar loops infinitos en handleLogin
+let loginRetryCount = 0;
+const MAX_LOGIN_RETRIES = 20; // 10 segundos máximo
+
 function handleLogin() {
     try {
         console.log('🔐 [VALIDADOR] Iniciando proceso de login...');
         
         if (!TOKEN_CLIENT) {
-            console.warn('⚠️ [VALIDADOR] TOKEN_CLIENT no está listo, esperando...');
+            loginRetryCount++;
+            
+            if (loginRetryCount >= MAX_LOGIN_RETRIES) {
+                console.error('❌ [VALIDADOR] TOKEN_CLIENT no se inicializó después de 10 segundos');
+                showNotification('❌ Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
+                loginRetryCount = 0;
+                return;
+            }
+            
+            console.warn(`⚠️ [VALIDADOR] TOKEN_CLIENT no está listo, esperando... (${loginRetryCount}/${MAX_LOGIN_RETRIES})`);
             showNotification('⏳ Inicializando autenticación...', 'info');
             setTimeout(handleLogin, 500);
             return;
         }
+        
+        // Reset contador cuando TOKEN_CLIENT está listo
+        loginRetryCount = 0;
         
         showNotification('🔄 Conectando con Google...', 'info');
         TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en handleLogin:', error);
         showNotification('❌ Error al iniciar sesión', 'error');
+        loginRetryCount = 0;
     }
 }
 
