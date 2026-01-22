@@ -396,28 +396,43 @@ const ConnectionRehydrationManager = {
     
     /**
      * Intenta reconectar manualmente
+     * CRÍTICO: Limpia tokens y fuerza nueva autenticación
      */
     async manualReconnect() {
         console.log('🔄 [REHYDRATION] Reconexión manual iniciada...');
         showNotification('🔄 Reconectando...', 'info');
-        
+
         // Remover banner de error si existe
         const banner = document.getElementById('auth-error-banner');
         if (banner) banner.remove();
-        
+
+        // CRÍTICO: Limpiar tokens inválidos antes de reconectar
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_token_expiry');
+        if (gapi?.client) {
+            gapi.client.setToken('');
+        }
+
         CONNECTION_STATE.retryCount = 0;
-        
-        // Intentar rehidratar
-        const success = await this.rehydrateConnection();
-        
-        if (success) {
-            showNotification('✅ Reconexión exitosa', 'success');
+        CONNECTION_STATE.isAuthenticated = false;
+
+        // Resetear bandera de carga de BD
+        BD_LOADING = false;
+
+        // Forzar nueva autenticación a través del flujo de login
+        if (window.AuthManager && window.AuthManager.tokenClient) {
+            console.log('🔐 [REHYDRATION] Forzando nueva autenticación...');
+            try {
+                // Solicitar nuevo token con prompt
+                window.AuthManager.tokenClient.requestAccessToken({ prompt: '' });
+            } catch (e) {
+                console.error('❌ [REHYDRATION] Error solicitando token:', e);
+                showNotification('❌ Error de autenticación. Recarga la página.', 'error');
+            }
         } else {
-            showNotification('❌ Reconexión fallida. Inicia sesión nuevamente.', 'error');
-            // Mostrar pantalla de login
-            setTimeout(() => {
-                handleFullLogout();
-            }, 2000);
+            // Fallback: mostrar pantalla de login
+            showNotification('⚠️ Inicia sesión nuevamente', 'warning');
+            showLoginScreen();
         }
     }
 };
@@ -2322,11 +2337,20 @@ async function loadDatabase(silent = false) {
         PROGRESSIVE_LOAD_STATE.phase = 'idle';
         console.error('❌ [VALIDADOR] Error loading database:', error);
         
-        // Detectar errores de autenticación (401/400)
-        if (error.status === 401 || error.status === 400 || error.result?.error?.code === 401) {
-            console.error('🔐 [AUTH-ERROR] Error de autenticación al cargar BD');
+        // Detectar errores de autenticación (401/400/403)
+        const errorCode = error.status || error.result?.error?.code;
+        const isAuthError = errorCode === 401 || errorCode === 400 || errorCode === 403;
+
+        if (isAuthError) {
+            console.error('🔐 [AUTH-ERROR] Error de autenticación al cargar BD, código:', errorCode);
+
+            // Limpiar tokens inválidos
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+            gapi.client.setToken('');
+
             showNotification('🔐 Sesión expirada. Reconecta para continuar.', 'error');
-            
+
             // Mostrar banner de reconexión
             if (typeof showAuthErrorBanner === 'function') {
                 showAuthErrorBanner();
@@ -2425,10 +2449,8 @@ function createAuthErrorBanner() {
 window.createAuthErrorBanner = createAuthErrorBanner;
 window.showAuthErrorBanner = createAuthErrorBanner;
 
-// Función para reconectar manualmente desde el banner
-window.handleReconnect = async function() {
-    await ConnectionRehydrationManager.manualReconnect();
-};
+// NOTA: window.handleReconnect ya está definido en línea 1713
+// Usar ConnectionRehydrationManager.manualReconnect directamente desde el banner
 
 // ==================== AUTO-REFRESH SYSTEM ====================
 let BD_AUTO_REFRESH_INTERVAL = null;

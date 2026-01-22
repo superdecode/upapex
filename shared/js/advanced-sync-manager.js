@@ -73,26 +73,30 @@ class ConcurrencyControl {
     }
     
     /**
-     * Maneja errores de autenticación (401/400)
-     * CORREGIDO: Intenta reconexión automática antes de mostrar banner
+     * Maneja errores de autenticación (401/403/400)
+     * CORREGIDO: Muestra banner para que el usuario reconecte manualmente
+     * (Los popups automáticos son bloqueados por el navegador)
      */
     handleAuthError(error) {
-        console.error('🔐 [AUTH-ERROR] Error de autenticación detectado:', error.status);
+        console.error('🔐 [AUTH-ERROR] Error de autenticación detectado:', error.status || error);
 
-        // Intentar reconexión automática primero
-        if (typeof handleReconnectWithDataReload === 'function') {
-            console.log('🔄 [AUTH-ERROR] Intentando reconexión automática...');
-            try {
-                handleReconnectWithDataReload();
-                return; // El callback de reconexión manejará el resto
-            } catch (e) {
-                console.error('❌ [AUTH-ERROR] Falló reconexión automática:', e);
+        // Limpiar tokens inválidos para forzar nueva autenticación
+        try {
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+            if (typeof gapi !== 'undefined' && gapi?.client) {
+                gapi.client.setToken('');
             }
+        } catch (e) {
+            console.warn('⚠️ [AUTH-ERROR] Error limpiando tokens:', e);
         }
 
-        // Fallback: Mostrar banner de error con botón de reconexión
+        // Mostrar banner de error con botón de reconexión
+        // NO intentar reconexión automática porque los popups son bloqueados
         if (typeof showAuthErrorBanner === 'function') {
             showAuthErrorBanner();
+        } else if (typeof createAuthErrorBanner === 'function') {
+            createAuthErrorBanner();
         } else {
             // Fallback: crear banner manualmente
             this.createAuthErrorBanner();
