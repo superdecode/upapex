@@ -1583,7 +1583,7 @@ let tokenPollingInterval = null;
 let reconnectCallbackExecuted = false;
 async function handleReconnectWithDataReload() {
     console.log('🔄 [VALIDADOR] Iniciando reconexión con recarga de BD...');
-    console.log('🔄 [VALIDADOR] Versión: 3.5.0 - Solución COOP mejorada');
+    console.log('🔄 [VALIDADOR] Versión: 3.6.0 - Solución COOP con renovación robusta');
 
     // CRÍTICO: Resetear BD_LOADING para permitir nueva carga
     BD_LOADING = false;
