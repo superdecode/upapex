@@ -1038,6 +1038,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             gapi.load('client', async () => {
                 console.log('✅ GAPI client cargado');
                 
+                // CRÍTICO: Inicializar gapi.client con discoveryDocs para Google Sheets API
+                try {
+                    await gapi.client.init({
+                        discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
+                    });
+                    console.log('✅ Google Sheets API inicializado');
+                } catch (error) {
+                    console.error('❌ Error inicializando Google Sheets API:', error);
+                    showNotification('❌ Error al inicializar API de Google Sheets', 'error');
+                    return;
+                }
+                
                 // Esperar a que Google Identity Services esté disponible
                 let retries = 0;
                 const maxRetries = 100; // Máximo 10 segundos
@@ -1569,116 +1581,73 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
 let tokenPollingInterval = null;
 let reconnectCallbackExecuted = false;
-
 async function handleReconnectWithDataReload() {
     console.log('🔄 [VALIDADOR] Iniciando reconexión con recarga de BD...');
     console.log('🔄 [VALIDADOR] Versión: 3.5.0 - Solución COOP mejorada');
 
     // CRÍTICO: Resetear BD_LOADING para permitir nueva carga
     BD_LOADING = false;
-    reconnectCallbackExecuted = false;
 
-    // Guardar token inicial para detectar cambios
-    const initialToken = localStorage.getItem('google_access_token');
-    const initialExpiry = localStorage.getItem('google_token_expiry');
-    console.log('📝 [VALIDADOR] Token inicial:', initialToken ? 'presente' : 'ausente');
-
-    if (!AuthManager.tokenClient) {
-        console.error('❌ [VALIDADOR] tokenClient no disponible');
-        showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
-
-        // Intentar reinicializar AuthManager
-        if (typeof AuthManager !== 'undefined' && typeof AuthManager.init === 'function') {
-            console.log('🔄 [VALIDADOR] Intentando reinicializar AuthManager...');
-            try {
-                await AuthManager.init();
-                if (AuthManager.tokenClient) {
-                    console.log('✅ [VALIDADOR] AuthManager reinicializado');
-                } else {
-                    return;
-                }
-            } catch (e) {
-                console.error('❌ [VALIDADOR] No se pudo reinicializar AuthManager:', e);
-                return;
-            }
-        } else {
-            return;
-        }
+    // Verificar si AuthManager está disponible
+    if (!AuthManager || !AuthManager.tokenClient) {
+        console.error('❌ [VALIDADOR] AuthManager no disponible');
+        showNotification('❌ Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
+        return;
     }
 
     try {
         showLoading(true);
 
-        // Variable para el listener de foco (se asigna después)
-        let handleWindowFocus = null;
-
         // Función para procesar reconexión exitosa
         const processSuccessfulReconnect = async () => {
-            // Evitar ejecución duplicada
-            if (reconnectCallbackExecuted) {
-                console.log('⏭️ [VALIDADOR] Callback ya ejecutado, ignorando...');
-                return;
-            }
-            reconnectCallbackExecuted = true;
 
-            // Detener polling si está activo
-            if (tokenPollingInterval) {
-                clearInterval(tokenPollingInterval);
-                tokenPollingInterval = null;
-            }
+            // Reset contador de intentos
+            reconnectAttempts = 0;
+            console.log('✅ [VALIDADOR] Reconexión exitosa');
 
-            // Remover listener de foco si existe
-            if (handleWindowFocus) {
-                window.removeEventListener('focus', handleWindowFocus);
+            // Verificar y establecer token en gapi si es necesario
+            const currentToken = localStorage.getItem('google_access_token');
+            if (currentToken && !gapi?.client?.getToken()?.access_token) {
+                console.log('🔧 [VALIDADOR] Estableciendo token en gapi desde localStorage...');
+                gapi.client.setToken({ access_token: currentToken });
             }
 
-        // Reset contador de intentos
-        reconnectAttempts = 0;
-        console.log('✅ [VALIDADOR] Reconexión exitosa');
+            // Actualizar UI
+            updateUIAfterAuth();
 
-        // Verificar y establecer token en gapi si es necesario
-        const currentToken = localStorage.getItem('google_access_token');
-        if (currentToken && !gapi?.client?.getToken()?.access_token) {
-            console.log('🔧 [VALIDADOR] Estableciendo token en gapi desde localStorage...');
-            gapi.client.setToken({ access_token: currentToken });
-        }
+            // Cerrar banner de error si existe
+            const banner = document.getElementById('auth-error-banner');
+            if (banner) banner.remove();
 
-        // Actualizar UI
-        updateUIAfterAuth();
+            // CRÍTICO: SIEMPRE recargar BD después de reconexión
+            console.log('🔍 [VALIDADOR] Forzando recarga de BD después de reconexión...');
+            console.log('  - BD_CODES.size (antes):', BD_CODES.size);
+            console.log('  - OBC_TOTALS.size (antes):', OBC_TOTALS.size);
 
-        // Cerrar banner de error si existe
-        const banner = document.getElementById('auth-error-banner');
-        if (banner) banner.remove();
+            // CRÍTICO: Resetear BD_LOADING antes de cargar
+            BD_LOADING = false;
 
-        // CRÍTICO: SIEMPRE recargar BD después de reconexión
-        console.log('🔍 [VALIDADOR] Forzando recarga de BD después de reconexión...');
-        console.log('  - BD_CODES.size (antes):', BD_CODES.size);
-        console.log('  - OBC_TOTALS.size (antes):', OBC_TOTALS.size);
+            try {
+                // Forzar recarga completa de BD
+                await loadDatabaseWithRetry();
 
-        // CRÍTICO: Resetear BD_LOADING antes de cargar
-        BD_LOADING = false;
+                // Iniciar auto-refresh de BD
+                startBDAutoRefresh();
 
-        try {
-            // Forzar recarga completa de BD
-            await loadDatabaseWithRetry();
+                console.log('✅ [VALIDADOR] BD recargada exitosamente');
+                console.log('  - BD_CODES.size (después):', BD_CODES.size);
+                console.log('  - OBC_TOTALS.size (después):', OBC_TOTALS.size);
 
-            // Iniciar auto-refresh de BD
-            startBDAutoRefresh();
+                showLoading(false);
+                showNotification('✅ Reconectado y BD actualizada', 'success');
+            } catch (dbError) {
+                console.error('❌ [VALIDADOR] Error recargando BD:', dbError);
+                showLoading(false);
+                showNotification('⚠️ Reconectado pero error al cargar BD. Intenta recargar BD manualmente.', 'warning');
+            }
+        };
 
-            console.log('✅ [VALIDADOR] BD recargada exitosamente');
-            console.log('  - BD_CODES.size (después):', BD_CODES.size);
-            console.log('  - OBC_TOTALS.size (después):', OBC_TOTALS.size);
-
-            showLoading(false);
-            showNotification('✅ Reconectado y BD actualizada', 'success');
-        } catch (dbError) {
-            console.error('❌ [VALIDADOR] Error recargando BD:', dbError);
-            showLoading(false);
-            showNotification('⚠️ Reconectado pero error al cargar BD. Intenta recargar BD manualmente.', 'warning');
-        }
-    };
-
-        // Configurar callback para manejar la respuesta de autenticación
+        // Configurar callback simple para manejar la respuesta de autenticación
         AuthManager.tokenClient.callback = async (resp) => {
             console.log('📥 [VALIDADOR] Callback recibido:', resp?.error || 'success');
 
@@ -1686,19 +1655,12 @@ async function handleReconnectWithDataReload() {
                 console.error('❌ [VALIDADOR] Error en reconexión:', resp);
                 reconnectAttempts++;
 
-                // Detener polling
-                if (tokenPollingInterval) {
-                    clearInterval(tokenPollingInterval);
-                    tokenPollingInterval = null;
-                }
-
                 if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     const delay = Math.pow(2, reconnectAttempts) * 1000;
                     console.log(`🔄 [VALIDADOR] Reintentando reconexión en ${delay}ms (intento ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
                     showNotification(`⏳ Reintentando conexión... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
 
                     setTimeout(() => {
-                        reconnectCallbackExecuted = false;
                         AuthManager.tokenClient.requestAccessToken({ prompt: 'consent' });
                     }, delay);
                 } else {
@@ -1713,144 +1675,7 @@ async function handleReconnectWithDataReload() {
             await processSuccessfulReconnect();
         };
 
-        // NUEVO: Iniciar polling de token como respaldo para COOP
-        // Esto detecta cuando el token se actualiza aunque el callback no se dispare
-        const startTokenPolling = () => {
-            let pollCount = 0;
-            const maxPolls = 120; // 2 minutos máximo (120 * 1000ms)
-
-            console.log('🔍 [VALIDADOR] Iniciando polling de token como respaldo COOP...');
-            console.log('  - Token inicial:', initialToken ? 'presente' : 'ausente');
-
-            tokenPollingInterval = setInterval(async () => {
-                pollCount++;
-
-                // Verificar si ya se procesó por callback
-                if (reconnectCallbackExecuted) {
-                    clearInterval(tokenPollingInterval);
-                    tokenPollingInterval = null;
-                    return;
-                }
-
-                // Verificar si hay token válido en gapi
-                const tokenObj = gapi?.client?.getToken();
-                if (tokenObj && tokenObj.access_token) {
-                    console.log('✅ [VALIDADOR] Token detectado en gapi por polling, procesando...');
-                    clearInterval(tokenPollingInterval);
-                    tokenPollingInterval = null;
-                    await processSuccessfulReconnect();
-                    return;
-                }
-
-                // NUEVO: También verificar cambios en localStorage
-                // AuthManager.login() guarda el token aquí cuando tiene éxito
-                const currentToken = localStorage.getItem('google_access_token');
-                const currentExpiry = localStorage.getItem('google_token_expiry');
-
-                // Si el token cambió o es nuevo, y es válido
-                if (currentToken && currentExpiry) {
-                    const expiryTime = parseInt(currentExpiry);
-                    const isNewToken = currentToken !== initialToken || currentExpiry !== initialExpiry;
-                    const isValidToken = expiryTime > Date.now();
-
-                    if (isNewToken && isValidToken) {
-                        console.log('✅ [VALIDADOR] Nuevo token detectado en localStorage por polling');
-                        console.log('  - Token expiración:', new Date(expiryTime).toLocaleTimeString());
-
-                        // Establecer token en gapi si no está
-                        if (!gapi?.client?.getToken()?.access_token) {
-                            gapi.client.setToken({ access_token: currentToken });
-                            console.log('✅ [VALIDADOR] Token establecido en gapi desde localStorage');
-                        }
-
-                        clearInterval(tokenPollingInterval);
-                        tokenPollingInterval = null;
-                        await processSuccessfulReconnect();
-                        return;
-                    }
-                }
-
-                // Log cada 10 segundos para debug
-                if (pollCount % 10 === 0) {
-                    console.log(`🔍 [VALIDADOR] Polling token... (${pollCount}s)`);
-                }
-
-                // Timeout después de 2 minutos
-                if (pollCount >= maxPolls) {
-                    console.warn('⚠️ [VALIDADOR] Timeout en polling de token');
-                    clearInterval(tokenPollingInterval);
-                    tokenPollingInterval = null;
-
-                    if (!reconnectCallbackExecuted) {
-                        showLoading(false);
-                        showNotification('⚠️ Autenticación pendiente. Si ya iniciaste sesión, recarga la página.', 'warning');
-                    }
-                }
-            }, 1000);
-        };
-
-        // Iniciar polling antes de solicitar token
-        startTokenPolling();
-
-        // NUEVO: Listener de foco para detectar cuando el usuario regresa del popup
-        handleWindowFocus = async () => {
-            console.log('👁️ [VALIDADOR] Ventana en foco, verificando token...');
-
-            // Esperar un poco para que el token se propague
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            if (reconnectCallbackExecuted) {
-                window.removeEventListener('focus', handleWindowFocus);
-                return;
-            }
-
-            // Verificar token en gapi
-            const tokenObj = gapi?.client?.getToken();
-            if (tokenObj && tokenObj.access_token) {
-                console.log('✅ [VALIDADOR] Token detectado en foco de ventana');
-                window.removeEventListener('focus', handleWindowFocus);
-
-                if (tokenPollingInterval) {
-                    clearInterval(tokenPollingInterval);
-                    tokenPollingInterval = null;
-                }
-
-                await processSuccessfulReconnect();
-                return;
-            }
-
-            // También verificar localStorage
-            const currentToken = localStorage.getItem('google_access_token');
-            const currentExpiry = localStorage.getItem('google_token_expiry');
-
-            if (currentToken && currentExpiry) {
-                const expiryTime = parseInt(currentExpiry);
-                const isNewToken = currentToken !== initialToken;
-                const isValidToken = expiryTime > Date.now();
-
-                if (isNewToken && isValidToken) {
-                    console.log('✅ [VALIDADOR] Nuevo token en localStorage detectado en foco');
-                    gapi.client.setToken({ access_token: currentToken });
-                    window.removeEventListener('focus', handleWindowFocus);
-
-                    if (tokenPollingInterval) {
-                        clearInterval(tokenPollingInterval);
-                        tokenPollingInterval = null;
-                    }
-
-                    await processSuccessfulReconnect();
-                }
-            }
-        };
-
-        window.addEventListener('focus', handleWindowFocus);
-
-        // Limpiar listener después de 3 minutos por seguridad
-        setTimeout(() => {
-            window.removeEventListener('focus', handleWindowFocus);
-        }, 180000);
-
-        // Solicitar acceso - siempre usar consent para forzar nueva autenticación
+        // Solicitar acceso - usar consent para forzar nueva autenticación
         console.log('📤 [VALIDADOR] Solicitando access token...');
         AuthManager.tokenClient.requestAccessToken({ prompt: 'consent' });
 
@@ -1858,11 +1683,6 @@ async function handleReconnectWithDataReload() {
         console.error('❌ [VALIDADOR] Error en reconexión:', error);
         showNotification('❌ Error al reconectar', 'error');
         showLoading(false);
-
-        if (tokenPollingInterval) {
-            clearInterval(tokenPollingInterval);
-            tokenPollingInterval = null;
-        }
     }
 }
 
