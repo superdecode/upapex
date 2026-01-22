@@ -1042,7 +1042,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const waitForGIS = () => {
                     if (window.google && google.accounts && google.accounts.oauth2) {
                         console.log('✅ Google Identity Services disponible');
-                        initAuthManager();
+                        console.log('🔍 [DEBUG] Llamando a initAuthManager...');
+                        initAuthManager().then(() => {
+                            console.log('✅ [DEBUG] initAuthManager completado');
+                        }).catch((err) => {
+                            console.error('❌ [DEBUG] Error en initAuthManager:', err);
+                        });
                     } else if (retries < maxRetries) {
                         retries++;
                         if (retries % 10 === 0) {
@@ -1111,6 +1116,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initAuthManager = async () => {
         try {
             console.log('⏳ [VALIDADOR] Inicializando sistema de autenticación...');
+            console.log('🔍 [DEBUG] google object:', typeof google);
+            console.log('🔍 [DEBUG] google.accounts:', typeof google?.accounts);
+            console.log('🔍 [DEBUG] google.accounts.oauth2:', typeof google?.accounts?.oauth2);
+            console.log('🔍 [DEBUG] TOKEN_CLIENT antes de init:', TOKEN_CLIENT);
             
             // Inicializar TOKEN_CLIENT con callback
             TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
@@ -1173,6 +1182,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             });
+            
+            console.log('✅ [DEBUG] TOKEN_CLIENT inicializado:', TOKEN_CLIENT);
+            console.log('✅ [DEBUG] typeof TOKEN_CLIENT:', typeof TOKEN_CLIENT);
+            
+            // Hacer TOKEN_CLIENT accesible globalmente para debugging
+            window.TOKEN_CLIENT = TOKEN_CLIENT;
+            console.log('✅ [DEBUG] TOKEN_CLIENT expuesto en window.TOKEN_CLIENT');
 
             // Verificar si ya hay un token guardado (restaurar sesión)
             const savedToken = localStorage.getItem('wms_google_token');
@@ -1233,6 +1249,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             console.log('✅ [VALIDADOR] Sistema de autenticación inicializado');
+            console.log('✅ [DEBUG] TOKEN_CLIENT final:', TOKEN_CLIENT);
+            console.log('✅ [DEBUG] window.TOKEN_CLIENT:', window.TOKEN_CLIENT);
         } catch (error) {
             console.error('❌ [VALIDADOR] Error crítico en initAuthManager:', error);
             showNotification('❌ Error crítico al inicializar autenticación', 'error');
@@ -1317,6 +1335,9 @@ const MAX_LOGIN_RETRIES = 20; // 10 segundos máximo
 function handleLogin() {
     try {
         console.log('🔐 [VALIDADOR] Iniciando proceso de login...');
+        console.log('🔍 [DEBUG] TOKEN_CLIENT en handleLogin:', TOKEN_CLIENT);
+        console.log('🔍 [DEBUG] window.TOKEN_CLIENT en handleLogin:', window.TOKEN_CLIENT);
+        console.log('🔍 [DEBUG] typeof TOKEN_CLIENT:', typeof TOKEN_CLIENT);
         
         if (!TOKEN_CLIENT) {
             loginRetryCount++;
