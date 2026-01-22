@@ -596,6 +596,19 @@ input:checked + .toggle-slider:before {
     font-family: monospace;
 }
 
+.data-table .col-stock {
+    width: 45px;
+    min-width: 45px;
+    max-width: 60px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.stock-value {
+    font-weight: 600;
+    font-family: monospace;
+}
+
 /* ==================== BADGE ==================== */
 .badge {
     display: inline-block;

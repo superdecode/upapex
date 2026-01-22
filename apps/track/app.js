@@ -1410,7 +1410,7 @@ function renderTable(data, sourceKey) {
                 <thead>
                     <tr>
                         <th style="width: 40px;">#</th>
-                        ${fields.map(f => `<th>${f.label}</th>`).join('')}
+                        ${fields.map(f => `<th${f.type === 'stock' ? ' class="col-stock"' : ''}>${f.label}</th>`).join('')}
                         <th style="width: 80px;">Tipo</th>
                     </tr>
                 </thead>
@@ -1418,7 +1418,7 @@ function renderTable(data, sourceKey) {
                     ${data.map((row, idx) => `
                         <tr>
                             <td style="text-align: center; color: #999; font-weight: 600;">${idx + 1}</td>
-                            ${fields.map(f => `<td>${formatValue(getRowValue(row, f.key), f.type)}</td>`).join('')}
+                            ${fields.map(f => `<td${f.type === 'stock' ? ' class="col-stock"' : ''}>${formatValue(getRowValue(row, f.key), f.type)}</td>`).join('')}
                             <td style="text-align: center;">
                                 ${row._matchType === 'exact'
                                     ? '<span class="badge success">Exacta</span>'
@@ -1464,9 +1464,10 @@ function getRelevantFields(sourceKey) {
     const fieldMap = {
         bdStock: [
             { key: 'Customize Barcode/自定义箱条码', label: 'Código Caja', type: 'code' },
+            { key: 0, label: 'Box Type', type: 'text' },
             { key: 'cellNo', label: 'Ubicación', type: 'text' },
-            { key: 'Available stock/可用库存', label: 'Stock Disponible', type: 'number' },
-            { key: 'Locked Inventory/锁定库存', label: 'Stock Bloqueado', type: 'number' },
+            { key: 'Available stock/可用库存', label: 'Disponible', type: 'stock' },
+            { key: 'Locked Inventory/锁定库存', label: 'Bloqueado', type: 'stock' },
             { key: 4, label: 'Medida', type: 'text' },
             { key: 5, label: 'Peso', type: 'text' },
             { key: 'sku', label: 'SKU', type: 'text' }
@@ -1567,6 +1568,8 @@ function formatValue(value, type) {
             return `<span class="badge ${badgeType}">${value}</span>`;
         case 'number':
             return parseFloat(value).toLocaleString();
+        case 'stock':
+            return `<span class="stock-value">${value}</span>`;
         case 'datetime':
         case 'date':
         case 'time':
