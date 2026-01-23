@@ -74,16 +74,48 @@ class ConcurrencyControl {
     
     /**
      * Maneja errores de autenticación (401/403/400)
-     * CORREGIDO: Muestra banner para que el usuario reconecte manualmente
-     * (Los popups automáticos son bloqueados por el navegador)
+     * MEJORADO: Verifica si el token realmente es inválido antes de borrarlo
+     * 403 puede ser por permisos del spreadsheet, no necesariamente token inválido
      */
-    handleAuthError(error) {
-        console.error('🔐 [AUTH-ERROR] Error de autenticación detectado:', error.status || error);
+    async handleAuthError(error) {
+        const errorCode = error.status || error.result?.error?.code;
+        const errorMessage = error.result?.error?.message || error.message || '';
 
-        // Limpiar tokens inválidos para forzar nueva autenticación
+        console.error('🔐 [AUTH-ERROR] Error detectado:', errorCode, errorMessage);
+
+        // Si es 403 con mensaje de permisos, NO borrar el token
+        if (errorCode === 403 && (errorMessage.includes('permission') || errorMessage.includes('forbidden'))) {
+            console.warn('⚠️ [AUTH-ERROR] Error 403 es de permisos, no de token');
+            if (typeof showNotification === 'function') {
+                showNotification('❌ Sin permisos para acceder al spreadsheet', 'error');
+            }
+            return;
+        }
+
+        // Verificar si el token realmente es inválido antes de borrarlo
+        const token = typeof gapi !== 'undefined' && gapi?.client?.getToken();
+        if (token?.access_token) {
+            try {
+                const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + token.access_token);
+                if (response.ok) {
+                    // Token válido - no borrar
+                    console.log('⚠️ [AUTH-ERROR] Token aún válido, error es de permisos del recurso');
+                    if (typeof showNotification === 'function') {
+                        showNotification('❌ Error de permisos. Verifica acceso al spreadsheet.', 'error');
+                    }
+                    return;
+                }
+            } catch (e) {
+                console.warn('⚠️ [AUTH-ERROR] No se pudo verificar token:', e);
+            }
+        }
+
+        // Token realmente inválido - limpiar
+        console.warn('🔐 [AUTH-ERROR] Token inválido, limpiando...');
         try {
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('google_token_expiry');
+            localStorage.removeItem('wms_google_token');
             if (typeof gapi !== 'undefined' && gapi?.client) {
                 gapi.client.setToken('');
             }
@@ -91,14 +123,15 @@ class ConcurrencyControl {
             console.warn('⚠️ [AUTH-ERROR] Error limpiando tokens:', e);
         }
 
+        // Disparar evento de desconexión
+        window.dispatchEvent(new CustomEvent('auth-disconnected'));
+
         // Mostrar banner de error con botón de reconexión
-        // NO intentar reconexión automática porque los popups son bloqueados
         if (typeof showAuthErrorBanner === 'function') {
             showAuthErrorBanner();
         } else if (typeof createAuthErrorBanner === 'function') {
             createAuthErrorBanner();
         } else {
-            // Fallback: crear banner manualmente
             this.createAuthErrorBanner();
         }
     }

@@ -201,10 +201,11 @@ const AuthManager = {
             }
         };
 
-        // Solicitar token SIN parámetros especiales (igual que valida.html)
-        // Esto muestra el popup normal de Google sin problemas COOP
+        // Solicitar token con selector de cuenta para permitir cambiar de usuario
         console.log('🔐 AuthManager: Solicitando autenticación...');
-        this.tokenClient.requestAccessToken();
+        // Usar prompt: 'select_account' para mostrar selector de cuentas
+        // Esto permite al usuario elegir con qué cuenta iniciar sesión
+        this.tokenClient.requestAccessToken({ prompt: 'select_account' });
     },
 
     /**
@@ -259,6 +260,7 @@ const AuthManager = {
 
     /**
      * Obtener perfil de usuario de Google
+     * MEJORADO: Detecta cambio de cuenta y limpia datos anteriores
      */
     async getUserProfile() {
         const token = gapi?.client?.getToken();
@@ -276,10 +278,26 @@ const AuthManager = {
 
         const profile = await response.json();
 
+        // Detectar cambio de cuenta
+        const previousEmail = localStorage.getItem('wms_user_email');
+        const isNewAccount = previousEmail && previousEmail !== profile.email;
+
+        if (isNewAccount) {
+            console.log('🔄 AuthManager: Cambio de cuenta detectado:', previousEmail, '->', profile.email);
+            // Limpiar datos de la cuenta anterior que no deben persistir
+            // NO limpiar wms_alias_* porque son específicos por email
+            localStorage.removeItem('wms_current_user');
+            localStorage.removeItem('wms_google_name');
+            // Disparar evento para que la app limpie sus datos
+            window.dispatchEvent(new CustomEvent('auth-account-changed', {
+                detail: { previousEmail, newEmail: profile.email }
+            }));
+        }
+
         this.userEmail = profile.email;
         this.userName = profile.name || profile.email.split('@')[0];
 
-        // Verificar si hay alias guardado
+        // Verificar si hay alias guardado para ESTE usuario
         const savedAlias = localStorage.getItem(`wms_alias_${this.userEmail}`);
         this.currentUser = savedAlias || this.userName;
 
@@ -288,7 +306,7 @@ const AuthManager = {
         localStorage.setItem('wms_user_email', this.userEmail);
         localStorage.setItem('wms_google_name', this.userName);
 
-        console.log('✅ AuthManager: User profile loaded:', this.currentUser);
+        console.log('✅ AuthManager: User profile loaded:', this.currentUser, '(' + this.userEmail + ')');
     },
 
     /**

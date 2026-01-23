@@ -2238,16 +2238,46 @@ async function loadDatabase(silent = false) {
         PROGRESSIVE_LOAD_STATE.phase = 'idle';
         console.error('❌ [VALIDADOR] Error loading database:', error);
         
-        // Detectar errores de autenticación (401/400/403)
+        // Detectar errores de autenticación
         const errorCode = error.status || error.result?.error?.code;
-        const isAuthError = errorCode === 401 || errorCode === 400 || errorCode === 403;
+        const errorMessage = error.result?.error?.message || error.message || '';
 
-        if (isAuthError) {
-            console.error('🔐 [AUTH-ERROR] Error de autenticación al cargar BD, código:', errorCode);
+        // Solo tratar como error de auth si es 401 o si el mensaje indica token inválido
+        // 403 puede ser por permisos del spreadsheet, no necesariamente token inválido
+        const isTokenError = errorCode === 401 ||
+            errorMessage.toLowerCase().includes('token') ||
+            errorMessage.toLowerCase().includes('invalid credentials') ||
+            errorMessage.toLowerCase().includes('login required');
 
-            // Limpiar tokens inválidos
+        // 403 con mensaje de permisos NO es error de token
+        const isPermissionError = errorCode === 403 &&
+            (errorMessage.includes('permission') || errorMessage.includes('forbidden'));
+
+        if (isTokenError) {
+            console.error('🔐 [AUTH-ERROR] Error de token al cargar BD, código:', errorCode);
+
+            // Verificar si el token realmente funciona antes de borrarlo
+            const token = gapi?.client?.getToken();
+            if (token?.access_token) {
+                try {
+                    const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + token.access_token);
+                    if (response.ok) {
+                        // Token válido - el error es de permisos del spreadsheet, no del token
+                        console.log('⚠️ [AUTH] Token válido pero error de permisos del spreadsheet');
+                        showNotification('❌ Error de permisos. Verifica que tienes acceso al spreadsheet.', 'error');
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('⚠️ No se pudo verificar token:', e);
+                }
+            }
+
+            // Token realmente inválido - limpiar
             localStorage.removeItem('wms_google_token');
             gapi.client.setToken('');
+
+            // Disparar evento de desconexión
+            window.dispatchEvent(new CustomEvent('auth-disconnected'));
 
             showNotification('🔐 Sesión expirada. Reconecta para continuar.', 'error');
 
@@ -2255,9 +2285,11 @@ async function loadDatabase(silent = false) {
             if (typeof showAuthErrorBanner === 'function') {
                 showAuthErrorBanner();
             } else {
-                // Crear banner manualmente
                 createAuthErrorBanner();
             }
+        } else if (isPermissionError) {
+            console.error('🚫 [PERMISOS] Error de permisos al cargar BD:', errorMessage);
+            showNotification('❌ Sin permisos para acceder al spreadsheet. Contacta al administrador.', 'error');
         } else {
             showNotification('❌ Error cargando base de datos', 'error');
         }
@@ -2651,6 +2683,34 @@ function setupAuthEventListeners() {
         if (errorBanner) {
             errorBanner.remove();
         }
+    });
+
+    // Escuchar cuando cambia la cuenta de usuario
+    window.addEventListener('auth-account-changed', (event) => {
+        const { previousEmail, newEmail } = event.detail;
+        console.log('🔄 [VALIDADOR] Cambio de cuenta detectado:', previousEmail, '->', newEmail);
+
+        // Limpiar variables globales de usuario anterior
+        CURRENT_USER = '';
+        USER_EMAIL = '';
+        USER_GOOGLE_NAME = '';
+
+        // Limpiar datos de validación del usuario anterior
+        VALIDATION_HISTORY = [];
+        PENDING_SYNC = [];
+
+        // Limpiar caché de BD para forzar recarga con la nueva cuenta
+        BD_CODES.clear();
+        OBC_TOTALS.clear();
+        BD_LOADING = false;
+
+        // Actualizar sidebar con datos vacíos (se actualizarán cuando llegue onAuthSuccess)
+        if (window.sidebarComponent) {
+            window.sidebarComponent.setUserEmail('');
+            window.sidebarComponent.setUserName('');
+        }
+
+        showNotification('🔄 Cambio de cuenta detectado. Recargando datos...', 'info');
     });
 
     console.log('✅ [VALIDADOR] Listeners de autenticación configurados');
