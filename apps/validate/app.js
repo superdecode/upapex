@@ -53,7 +53,7 @@ let STATE = {
     currentLocation: '',
     pendingLocationValidation: null
 };
-let TOKEN_CLIENT, audioCtx;
+let audioCtx;
 let lastScanned = null;
 let pendingReloadOBC = null;
 let RECONTEO_STATE = { obc: null, scans: [], stats: { ok: 0, dup: 0, missing: 0, extra: 0 } };
@@ -418,15 +418,10 @@ const ConnectionRehydrationManager = {
         // Resetear bandera de carga de BD
         BD_LOADING = false;
 
-        // Forzar nueva autenticación a través del flujo de login
-        if (TOKEN_CLIENT) {
+        // Forzar nueva autenticación a través de AuthManager
+        if (typeof AuthManager !== 'undefined' && AuthManager.tokenClient) {
             console.log('🔐 [REHYDRATION] Forzando nueva autenticación...');
-            try {
-                TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
-            } catch (e) {
-                console.error('❌ [REHYDRATION] Error solicitando token:', e);
-                showNotification('❌ Error de autenticación. Recarga la página.', 'error');
-            }
+            AuthManager.login();
         } else {
             showNotification('⚠️ Inicia sesión nuevamente', 'warning');
             showLoginScreen();
@@ -1010,255 +1005,109 @@ document.addEventListener('DOMContentLoaded', async () => {
         return; // Si debug está activo, no cargar Google API
     }
     
-    // Modo normal: Inicializar AuthManager
-    // Esperar a que GAPI y Google Identity Services estén cargados
-    const initAuth = async () => {
-        if (!window.gapi) {
-            console.log('⏳ Esperando GAPI...');
-            setTimeout(initAuth, 100);
+    // Modo normal: Usar AuthManager compartido (igual que inventario)
+    initGoogleAuth();
+});
+
+// Variables para tracking de estado GAPI
+let gapiInited = false;
+let gisInited = false;
+
+/**
+ * Inicializa la autenticación con Google usando AuthManager compartido
+ */
+function initGoogleAuth() {
+    if (!window.gapi) {
+        console.log('⏳ Esperando GAPI...');
+        setTimeout(initGoogleAuth, 100);
+        return;
+    }
+
+    gapi.load('client', async () => {
+        try {
+            // CRÍTICO: Inicializar gapi.client con discoveryDocs para Google Sheets API
+            await gapi.client.init({
+                discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
+            });
+            console.log('✅ Google Sheets API inicializado');
+            gapiInited = true;
+            maybeEnableButtons();
+        } catch (error) {
+            console.error('❌ Error inicializando Google Sheets API:', error);
+            showNotification('❌ Error al inicializar API de Google Sheets', 'error');
+        }
+    });
+
+    // Verificar cuando GIS esté listo
+    const checkGIS = () => {
+        if (window.google && google.accounts && google.accounts.oauth2) {
+            console.log('✅ Google Identity Services disponible');
+            gisInited = true;
+            maybeEnableButtons();
+        } else {
+            setTimeout(checkGIS, 100);
+        }
+    };
+    checkGIS();
+}
+
+/**
+ * Habilita la autenticación cuando GAPI y GIS están listos
+ * Patrón idéntico al de inventario
+ */
+async function maybeEnableButtons() {
+    if (gapiInited && gisInited) {
+        console.log('✅ Google APIs initialized');
+
+        // Verificar que AuthManager esté disponible
+        if (typeof AuthManager === 'undefined') {
+            console.error('❌ AuthManager no está disponible');
+            showNotification('❌ Error: Sistema de autenticación no disponible', 'error');
             return;
         }
 
         try {
-            gapi.load('client', async () => {
-                console.log('✅ GAPI client cargado');
-                
-                // CRÍTICO: Inicializar gapi.client con discoveryDocs para Google Sheets API
-                try {
-                    await gapi.client.init({
-                        discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
-                    });
-                    console.log('✅ Google Sheets API inicializado');
-                } catch (error) {
-                    console.error('❌ Error inicializando Google Sheets API:', error);
-                    showNotification('❌ Error al inicializar API de Google Sheets', 'error');
-                    return;
+            // Configurar callbacks de AuthManager (sin re-inicializar gapi)
+            AuthManager.gapiInited = true;
+            AuthManager.onAuthSuccess = async (authData) => {
+                console.log('✅ [VALIDADOR] AuthManager login exitoso:', authData.email);
+                USER_EMAIL = authData.email;
+                USER_GOOGLE_NAME = authData.name;
+                CURRENT_USER = authData.user;
+
+                showMainApp();
+                updateUIAfterAuth();
+
+                // Cargar base de datos
+                console.log('⏳ [VALIDADOR] Cargando base de datos...');
+                await loadDatabase();
+                startBDAutoRefresh();
+
+                // Si no hay alias guardado, mostrar popup de configuración
+                const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                if (!savedAlias) {
+                    setTimeout(() => showAliasPopup(), 500);
                 }
-                
-                // Esperar a que Google Identity Services esté disponible
-                let retries = 0;
-                const maxRetries = 100; // Máximo 10 segundos
-                
-                const waitForGIS = () => {
-                    if (window.google && google.accounts && google.accounts.oauth2) {
-                        console.log('✅ Google Identity Services disponible');
-                        console.log('🔍 [DEBUG] Llamando a initAuthManager...');
-                        initAuthManager().then(() => {
-                            console.log('✅ [DEBUG] initAuthManager completado');
-                        }).catch((err) => {
-                            console.error('❌ [DEBUG] Error en initAuthManager:', err);
-                        });
-                    } else if (retries < maxRetries) {
-                        retries++;
-                        if (retries % 10 === 0) {
-                            console.log(`⏳ Esperando Google Identity Services... (${retries}/${maxRetries})`);
-                        }
-                        setTimeout(waitForGIS, 100);
-                    } else {
-                        console.error('❌ Timeout esperando Google Identity Services');
-                        showNotification('❌ Error cargando Google Identity Services. Verifica tu conexión a internet.', 'error');
-                        
-                        // Mostrar botón de retry en el login
-                        const loginBtn = document.getElementById('login-btn');
-                        if (loginBtn) {
-                            loginBtn.textContent = '🔄 Reintentar Conexión';
-                            loginBtn.disabled = false;
-                            loginBtn.onclick = () => {
-                                location.reload();
-                            };
-                        }
-                    }
-                };
-                waitForGIS();
-            });
+            };
+
+            AuthManager.onAuthError = (error) => {
+                console.error('❌ [VALIDADOR] AuthManager error:', error);
+                showNotification('❌ Error de autenticación', 'error');
+            };
+
+            // Esperar a que GIS esté listo e inicializar tokenClient
+            await AuthManager.waitForGIS();
+
+            // Verificar sesión guardada
+            const restored = await AuthManager.checkSavedSession();
+
+            console.log('✅ [VALIDADOR] AuthManager inicializado' + (restored ? ' (sesión restaurada)' : ''));
         } catch (error) {
-            console.error('❌ Error al cargar GAPI:', error);
-            showNotification('❌ Error al inicializar Google API. Recarga la página.', 'error');
-        }
-    };
-
-    // Variables para expiración y renovación de token
-    let TOKEN_EXPIRES_AT = 0;
-    let tokenRefreshTimeout = null;
-
-    // Función para programar renovación automática de token
-    function scheduleTokenRefresh(expiresInSeconds) {
-        if (tokenRefreshTimeout) {
-            clearTimeout(tokenRefreshTimeout);
-        }
-        
-        // Renovar 5 minutos antes de que expire
-        const refreshTime = Math.max(0, (expiresInSeconds - 300)) * 1000;
-        console.log(`🔄 [AUTH] Token se renovará en ${Math.floor(refreshTime / 60000)} minutos`);
-        
-        tokenRefreshTimeout = setTimeout(() => {
-            console.log('🔄 [AUTH] Renovando token automáticamente...');
-            if (TOKEN_CLIENT) {
-                TOKEN_CLIENT.requestAccessToken({ prompt: '' });
-            }
-        }, refreshTime);
-    }
-
-    // Verificar validez del token con una llamada ligera
-    async function verifyTokenValidity() {
-        try {
-            const token = gapi.client.getToken();
-            if (!token || !token.access_token) return false;
-            
-            const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + token.access_token);
-            return response.ok;
-        } catch (e) {
-            console.error('[AUTH] Error verificando token:', e);
-            return false;
+            console.error('❌ Error inicializando AuthManager:', error);
+            showNotification('❌ Error al inicializar autenticación', 'error');
         }
     }
-
-    const initAuthManager = async () => {
-        try {
-            console.log('⏳ [VALIDADOR] Inicializando sistema de autenticación...');
-            console.log('🔍 [DEBUG] google object:', typeof google);
-            console.log('🔍 [DEBUG] google.accounts:', typeof google?.accounts);
-            console.log('🔍 [DEBUG] google.accounts.oauth2:', typeof google?.accounts?.oauth2);
-            console.log('🔍 [DEBUG] TOKEN_CLIENT antes de init:', TOKEN_CLIENT);
-            
-            // Inicializar TOKEN_CLIENT con callback
-            TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: async (res) => {
-                    if (res?.access_token) {
-                        console.log('✅ [AUTH] Token recibido');
-                        
-                        // Calcular y guardar tiempo de expiración
-                        const expiresIn = res.expires_in || 3600;
-                        TOKEN_EXPIRES_AT = Date.now() + (expiresIn * 1000) - 60000; // Restar 1 minuto de margen
-
-                        gapi.client.setToken(res);
-                        
-                        // Guardar token CON tiempo de expiración (como valida.html)
-                        const tokenData = { ...res, expires_at: TOKEN_EXPIRES_AT };
-                        localStorage.setItem('wms_google_token', JSON.stringify(tokenData));
-                        console.log('✅ [AUTH] Token guardado en wms_google_token');
-
-                        // Obtener perfil de usuario
-                        try {
-                            const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                                headers: { Authorization: `Bearer ${res.access_token}` }
-                            });
-                            const data = await response.json();
-                            USER_EMAIL = data.email || '';
-                            USER_GOOGLE_NAME = data.name || 'Usuario';
-
-                            // Verificar si hay alias guardado
-                            const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                            if (savedAlias) {
-                                CURRENT_USER = savedAlias;
-                                console.log('✅ [VALIDADOR] Alias recuperado:', savedAlias);
-                            } else {
-                                const formatted = window.AvatarSystem?.formatNameToTitle?.(data.name) || data.name;
-                                CURRENT_USER = formatted;
-                                console.log('✅ [VALIDADOR] Usando nombre de usuario:', formatted);
-                            }
-                        } catch (e) {
-                            console.error('❌ [AUTH] Error obteniendo perfil:', e);
-                            CURRENT_USER = 'Usuario';
-                        }
-
-                        showMainApp();
-                        updateUIAfterAuth();
-
-                        console.log('⏳ [VALIDADOR] Cargando base de datos...');
-                        await loadDatabase();
-                        startBDAutoRefresh();
-
-                        // Programar renovación automática antes de que expire
-                        scheduleTokenRefresh(expiresIn);
-
-                        // Si no hay alias guardado, mostrar popup de configuración
-                        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                        if (!savedAlias) {
-                            setTimeout(() => showAliasPopup(), 500);
-                        }
-                    }
-                }
-            });
-            
-            console.log('✅ [DEBUG] TOKEN_CLIENT inicializado:', TOKEN_CLIENT);
-            console.log('✅ [DEBUG] typeof TOKEN_CLIENT:', typeof TOKEN_CLIENT);
-            
-            // Hacer TOKEN_CLIENT accesible globalmente para debugging
-            window.TOKEN_CLIENT = TOKEN_CLIENT;
-            console.log('✅ [DEBUG] TOKEN_CLIENT expuesto en window.TOKEN_CLIENT');
-
-            // Verificar si ya hay un token guardado (restaurar sesión)
-            const savedToken = localStorage.getItem('wms_google_token');
-            if (savedToken) {
-                try {
-                    const tokenObj = JSON.parse(savedToken);
-
-                    // Verificar si el token NO ha expirado
-                    const expiresAt = tokenObj.expires_at || 0;
-                    if (Date.now() >= expiresAt) {
-                        console.log('[AUTH] Token expirado, requiere re-autenticación');
-                        localStorage.removeItem('wms_google_token');
-                        return;
-                    }
-
-                    TOKEN_EXPIRES_AT = expiresAt;
-                    gapi.client.setToken(tokenObj);
-
-                    // Verificar que el token siga siendo válido con una llamada real
-                    const isValid = await verifyTokenValidity();
-                    if (!isValid) {
-                        console.log('[AUTH] Token inválido en verificación de API');
-                        localStorage.removeItem('wms_google_token');
-                        return;
-                    }
-
-                    // Obtener perfil de usuario
-                    try {
-                        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                            headers: { Authorization: `Bearer ${tokenObj.access_token}` }
-                        });
-                        const data = await response.json();
-                        USER_EMAIL = data.email || '';
-                        USER_GOOGLE_NAME = data.name || 'Usuario';
-
-                        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                        CURRENT_USER = savedAlias || window.AvatarSystem?.formatNameToTitle?.(data.name) || data.name;
-                    } catch (e) {
-                        console.error('❌ [AUTH] Error obteniendo perfil:', e);
-                        CURRENT_USER = 'Usuario';
-                    }
-
-                    console.log('✅ [AUTH] Sesión restaurada desde wms_google_token');
-                    showMainApp();
-                    updateUIAfterAuth();
-                    await loadDatabase();
-                    startBDAutoRefresh();
-
-                    // Programar renovación con el tiempo restante
-                    const remainingTime = Math.max(0, (expiresAt - Date.now()) / 1000);
-                    if (remainingTime > 0) {
-                        scheduleTokenRefresh(remainingTime);
-                    }
-                } catch (e) {
-                    console.error('[AUTH] Error restaurando sesión:', e);
-                    localStorage.removeItem('wms_google_token');
-                }
-            }
-            
-            console.log('✅ [VALIDADOR] Sistema de autenticación inicializado');
-            console.log('✅ [DEBUG] TOKEN_CLIENT final:', TOKEN_CLIENT);
-            console.log('✅ [DEBUG] window.TOKEN_CLIENT:', window.TOKEN_CLIENT);
-        } catch (error) {
-            console.error('❌ [VALIDADOR] Error crítico en initAuthManager:', error);
-            showNotification('❌ Error crítico al inicializar autenticación', 'error');
-        }
-    };
-
-    initAuth();
-});
+}
 
 // ==================== TOKEN PERSISTENCE ====================
 // NOTA: Token persistence ahora se maneja directamente en initAuthManager
@@ -1328,47 +1177,48 @@ function updateUIAfterAuth() {
     console.log('✅ [VALIDADOR] UI actualizada:', { hasToken: !!hasToken, user: CURRENT_USER });
 }
 
-// Contador para evitar loops infinitos en handleLogin
-let loginRetryCount = 0;
-const MAX_LOGIN_RETRIES = 20; // 10 segundos máximo
-
+/**
+ * Iniciar sesión con Google usando AuthManager compartido
+ */
 function handleLogin() {
-    try {
-        console.log('🔐 [VALIDADOR] Iniciando proceso de login...');
-        console.log('🔍 [DEBUG] TOKEN_CLIENT en handleLogin:', TOKEN_CLIENT);
-        console.log('🔍 [DEBUG] window.TOKEN_CLIENT en handleLogin:', window.TOKEN_CLIENT);
-        console.log('🔍 [DEBUG] typeof TOKEN_CLIENT:', typeof TOKEN_CLIENT);
-        
-        if (!TOKEN_CLIENT) {
-            loginRetryCount++;
-            
-            if (loginRetryCount >= MAX_LOGIN_RETRIES) {
-                console.error('❌ [VALIDADOR] TOKEN_CLIENT no se inicializó después de 10 segundos');
-                showNotification('❌ Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
-                loginRetryCount = 0;
-                return;
-            }
-            
-            console.warn(`⚠️ [VALIDADOR] TOKEN_CLIENT no está listo, esperando... (${loginRetryCount}/${MAX_LOGIN_RETRIES})`);
-            showNotification('⏳ Inicializando autenticación...', 'info');
-            setTimeout(handleLogin, 500);
+    // Usar AuthManager compartido para el login
+    AuthManager.login();
+}
+
+/**
+ * Cerrar sesión usando AuthManager compartido
+ */
+function handleLogout() {
+    // Verificar datos pendientes antes de salir
+    if (window.syncManager && window.syncManager.getPendingCount() > 0) {
+        if (!confirm(`⚠️ Tienes ${window.syncManager.getPendingCount()} registros sin sincronizar. ¿Salir de todos modos?`)) {
             return;
         }
-        
-        // Reset contador cuando TOKEN_CLIENT está listo
-        loginRetryCount = 0;
-        
-        showNotification('🔄 Conectando con Google...', 'info');
-        TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
-    } catch (error) {
-        console.error('❌ [VALIDADOR] Error en handleLogin:', error);
-        showNotification('❌ Error al iniciar sesión', 'error');
-        loginRetryCount = 0;
     }
+
+    // Usar AuthManager compartido para el logout
+    AuthManager.logout();
+
+    // Detener sincronización automática
+    if (window.syncManager) {
+        window.syncManager.stopAutoSync();
+    }
+
+    // Limpiar sidebar component
+    if (window.sidebarComponent) {
+        window.sidebarComponent.clearGoogleConnection();
+    }
+
+    // Mostrar pantalla de login
+    document.getElementById('main-app').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+
+    updateConnectionUI();
 }
 
 // Hacer disponible globalmente
 window.handleLogin = handleLogin;
+window.handleLogout = handleLogout;
 window.updateUIAfterAuth = updateUIAfterAuth;
 
 function showMainApp() {
@@ -1500,11 +1350,9 @@ async function handleToggleGoogleAuth() {
                 }
             }
 
-            // Si no hay token válido, solicitar nuevo
-            if (!TOKEN_CLIENT) {
-                console.log(' [VALIDADOR] TOKEN_CLIENT no disponible');
-                showNotification(' Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
-                console.log('❌ [VALIDADOR] TOKEN_CLIENT no disponible');
+            // Si no hay token válido, solicitar nuevo usando AuthManager
+            if (typeof AuthManager === 'undefined' || !AuthManager.tokenClient) {
+                console.log('❌ [VALIDADOR] AuthManager no disponible');
                 showNotification('❌ Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
             } else {
                 await handleReconnectWithDataReload();
@@ -1651,22 +1499,17 @@ function handleReconnect() {
 
 /**
  * CRÍTICO: Reconexión con recarga automática de BD
- * SOLUCIÓN COOP: Usa polling agresivo + detección por localStorage
+ * Usa AuthManager compartido para autenticación
  */
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 3;
-let tokenPollingInterval = null;
-let reconnectCallbackExecuted = false;
 async function handleReconnectWithDataReload() {
     console.log('🔄 [VALIDADOR] Iniciando reconexión con recarga de BD...');
-    console.log('🔄 [VALIDADOR] Versión: 3.6.0 - Solución COOP con renovación robusta');
 
     // CRÍTICO: Resetear BD_LOADING para permitir nueva carga
     BD_LOADING = false;
 
-    // Verificar si TOKEN_CLIENT está disponible
-    if (!TOKEN_CLIENT) {
-        console.error('❌ [VALIDADOR] TOKEN_CLIENT no disponible');
+    // Verificar si AuthManager está disponible
+    if (typeof AuthManager === 'undefined') {
+        console.error('❌ [VALIDADOR] AuthManager no disponible');
         showNotification('❌ Error: Sistema de autenticación no disponible. Recarga la página.', 'error');
         return;
     }
@@ -1674,24 +1517,20 @@ async function handleReconnectWithDataReload() {
     try {
         showLoading(true);
 
-        // Función para procesar reconexión exitosa
-        const processSuccessfulReconnect = async () => {
+        // Guardar el callback original de AuthManager
+        const originalOnAuthSuccess = AuthManager.onAuthSuccess;
 
-            // Reset contador de intentos
-            reconnectAttempts = 0;
+        // Configurar callback temporal para manejar la reconexión
+        AuthManager.onAuthSuccess = async (authData) => {
             console.log('✅ [VALIDADOR] Reconexión exitosa');
 
-            // Verificar y establecer token en gapi si es necesario
-            const currentTokenStr = localStorage.getItem('wms_google_token');
-            if (currentTokenStr && !gapi?.client?.getToken()?.access_token) {
-                try {
-                    const tokenObj = JSON.parse(currentTokenStr);
-                    console.log('🔧 [VALIDADOR] Estableciendo token en gapi desde localStorage...');
-                    gapi.client.setToken(tokenObj);
-                } catch (e) {
-                    console.error('❌ Error parseando token:', e);
-                }
-            }
+            // Restaurar callback original
+            AuthManager.onAuthSuccess = originalOnAuthSuccess;
+
+            // Actualizar datos de usuario
+            USER_EMAIL = authData.email;
+            USER_GOOGLE_NAME = authData.name;
+            CURRENT_USER = authData.user;
 
             // Actualizar UI
             updateUIAfterAuth();
@@ -1702,10 +1541,6 @@ async function handleReconnectWithDataReload() {
 
             // CRÍTICO: SIEMPRE recargar BD después de reconexión
             console.log('🔍 [VALIDADOR] Forzando recarga de BD después de reconexión...');
-            console.log('  - BD_CODES.size (antes):', BD_CODES.size);
-            console.log('  - OBC_TOTALS.size (antes):', OBC_TOTALS.size);
-
-            // CRÍTICO: Resetear BD_LOADING antes de cargar
             BD_LOADING = false;
 
             try {
@@ -1716,9 +1551,6 @@ async function handleReconnectWithDataReload() {
                 startBDAutoRefresh();
 
                 console.log('✅ [VALIDADOR] BD recargada exitosamente');
-                console.log('  - BD_CODES.size (después):', BD_CODES.size);
-                console.log('  - OBC_TOTALS.size (después):', OBC_TOTALS.size);
-
                 showLoading(false);
                 showNotification('✅ Reconectado y BD actualizada', 'success');
             } catch (dbError) {
@@ -1728,37 +1560,9 @@ async function handleReconnectWithDataReload() {
             }
         };
 
-        // Configurar callback simple para manejar la respuesta de autenticación
-        TOKEN_CLIENT.callback = async (resp) => {
-            console.log('📥 [VALIDADOR] Callback recibido:', resp?.error || 'success');
-
-            if (resp.error) {
-                console.error('❌ [VALIDADOR] Error en reconexión:', resp);
-                reconnectAttempts++;
-
-                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    const delay = Math.pow(2, reconnectAttempts) * 1000;
-                    console.log(`🔄 [VALIDADOR] Reintentando reconexión en ${delay}ms (intento ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-                    showNotification(`⏳ Reintentando conexión... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
-
-                    setTimeout(() => {
-                        TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
-                    }, delay);
-                } else {
-                    showNotification('❌ No se pudo reconectar. Recarga la página.', 'error');
-                    showLoading(false);
-                    reconnectAttempts = 0;
-                }
-                return;
-            }
-
-            // Procesar éxito
-            await processSuccessfulReconnect();
-        };
-
-        // Solicitar acceso - usar consent para forzar nueva autenticación
-        console.log('📤 [VALIDADOR] Solicitando access token...');
-        TOKEN_CLIENT.requestAccessToken({ prompt: 'consent' });
+        // Usar AuthManager.reconnect() para solicitar nuevo token
+        console.log('📤 [VALIDADOR] Solicitando reconexión via AuthManager...');
+        AuthManager.reconnect();
 
     } catch (error) {
         console.error('❌ [VALIDADOR] Error en reconexión:', error);
