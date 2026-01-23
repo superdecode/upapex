@@ -663,3 +663,302 @@
     color: var(--warning);
     border: 1px solid var(--warning);
 }
+
+/* ==================== ACCESS REQUEST MODAL ==================== */
+.access-request-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.access-request-modal.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.access-request-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+}
+
+.access-request-content {
+    position: relative;
+    background: var(--card-bg, #fff);
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 480px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.3s ease;
+}
+
+.access-request-modal.visible .access-request-content {
+    transform: scale(1) translateY(0);
+}
+
+.access-request-icon {
+    font-size: 4em;
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.access-request-content h2 {
+    text-align: center;
+    margin: 0 0 10px 0;
+    font-size: 1.5em;
+    color: var(--text, #333);
+}
+
+.access-request-message {
+    text-align: center;
+    color: var(--text-secondary, #666);
+    margin-bottom: 20px;
+    font-size: 1em;
+}
+
+.access-request-info {
+    background: var(--bg-secondary, #f5f5f5);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.access-request-info .info-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border, #eee);
+}
+
+.access-request-info .info-item:last-child {
+    border-bottom: none;
+}
+
+.access-request-info .info-label {
+    color: var(--text-secondary, #666);
+    font-size: 0.9em;
+}
+
+.access-request-info .info-value {
+    color: var(--text, #333);
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.access-request-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.btn-request-access {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    color: white;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-request-access:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+}
+
+.btn-open-sheet {
+    background: linear-gradient(135deg, #4285F4, #3367d6);
+    color: white;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-open-sheet:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+}
+
+.access-request-steps {
+    background: rgba(66, 133, 244, 0.08);
+    border: 1px solid rgba(66, 133, 244, 0.2);
+    border-radius: 10px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+}
+
+.access-request-steps p {
+    margin: 0 0 10px 0;
+    color: var(--text, #333);
+    font-size: 0.95em;
+}
+
+.access-request-steps ol {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-secondary, #555);
+    font-size: 0.9em;
+    line-height: 1.6;
+}
+
+.access-request-steps li {
+    margin-bottom: 8px;
+}
+
+.access-request-steps li:last-child {
+    margin-bottom: 0;
+}
+
+.access-request-steps strong {
+    color: var(--text, #333);
+}
+
+.btn-close-modal {
+    width: 100%;
+    background: transparent;
+    color: var(--text-secondary, #666);
+    border: 1px solid var(--border, #ddd);
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-close-modal:hover {
+    background: var(--bg-secondary, #f5f5f5);
+    color: var(--text, #333);
+}
+
+/* ==================== PERMISSION ERROR BANNER ==================== */
+.permission-error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+}
+
+.permission-error-banner.visible {
+    transform: translateY(0);
+}
+
+.permission-error-banner .banner-content {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.permission-error-banner .banner-icon {
+    font-size: 1.3em;
+}
+
+.permission-error-banner .banner-message {
+    flex: 1;
+    font-size: 0.95em;
+}
+
+.permission-error-banner .banner-btn {
+    background: white;
+    color: #e74c3c;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9em;
+}
+
+.permission-error-banner .banner-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.permission-error-banner .banner-close {
+    background: transparent;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 1.2em;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.permission-error-banner .banner-close:hover {
+    opacity: 1;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .access-request-content {
+        padding: 20px;
+        border-radius: 12px;
+    }
+
+    .access-request-icon {
+        font-size: 3em;
+    }
+
+    .access-request-content h2 {
+        font-size: 1.3em;
+    }
+
+    .permission-error-banner .banner-content {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .permission-error-banner .banner-message {
+        width: 100%;
+        order: 1;
+    }
+
+    .permission-error-banner .banner-btn {
+        flex: 1;
+        order: 2;
+    }
+
+    .permission-error-banner .banner-close {
+        order: 3;
+    }
+}

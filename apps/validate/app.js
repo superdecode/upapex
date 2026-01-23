@@ -980,6 +980,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         initSidebarComponent();
         console.log('✅ [VALIDADOR] SidebarComponent inicializado');
 
+        // Inicializar AccessRequestManager para solicitudes de acceso
+        if (typeof AccessRequestManager !== 'undefined') {
+            AccessRequestManager.init({
+                appName: 'Validador',
+                spreadsheetId: SPREADSHEET_WRITE
+            });
+            console.log('✅ [VALIDADOR] AccessRequestManager inicializado');
+        }
+
         renderValidation();
         console.log('✅ [VALIDADOR] Renderización inicial completada');
         
@@ -2289,7 +2298,20 @@ async function loadDatabase(silent = false) {
             }
         } else if (isPermissionError) {
             console.error('🚫 [PERMISOS] Error de permisos al cargar BD:', errorMessage);
-            showNotification('❌ Sin permisos para acceder al spreadsheet. Contacta al administrador.', 'error');
+
+            // Usar AccessRequestManager para mostrar modal de solicitud de acceso
+            if (typeof AccessRequestManager !== 'undefined') {
+                AccessRequestManager.showAccessRequestModal({
+                    spreadsheetId: SPREADSHEET_BD,
+                    spreadsheetName: 'Base de datos del Validador',
+                    errorMessage: 'No tienes permisos para acceder a la base de datos. Solicita acceso al administrador.',
+                    onRequestSent: () => {
+                        showNotification('📤 Solicitud de acceso enviada', 'success');
+                    }
+                });
+            } else {
+                showNotification('❌ Sin permisos para acceder al spreadsheet. Contacta al administrador.', 'error');
+            }
         } else {
             showNotification('❌ Error cargando base de datos', 'error');
         }

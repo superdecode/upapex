@@ -930,6 +930,15 @@ function initializeSidebar() {
             }
 
             console.log('✅ Sidebar inicializado correctamente');
+
+            // Inicializar AccessRequestManager para solicitudes de acceso
+            if (typeof AccessRequestManager !== 'undefined') {
+                AccessRequestManager.init({
+                    appName: 'Inventario',
+                    spreadsheetId: CONFIG.SPREADSHEET_WRITE
+                });
+                console.log('✅ AccessRequestManager inicializado');
+            }
         } catch (error) {
             console.error('❌ Error al crear SidebarComponent:', error);
             renderFallbackSidebar();

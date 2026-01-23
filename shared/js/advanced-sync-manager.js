@@ -83,10 +83,16 @@ class ConcurrencyControl {
 
         console.error('🔐 [AUTH-ERROR] Error detectado:', errorCode, errorMessage);
 
-        // Si es 403 con mensaje de permisos, NO borrar el token
+        // Si es 403 con mensaje de permisos, NO borrar el token - mostrar opción de solicitar acceso
         if (errorCode === 403 && (errorMessage.includes('permission') || errorMessage.includes('forbidden'))) {
             console.warn('⚠️ [AUTH-ERROR] Error 403 es de permisos, no de token');
-            if (typeof showNotification === 'function') {
+
+            // Usar AccessRequestManager si está disponible
+            if (typeof AccessRequestManager !== 'undefined') {
+                AccessRequestManager.showPermissionErrorBanner({
+                    message: 'Sin permisos para sincronizar. Solicita acceso al spreadsheet.'
+                });
+            } else if (typeof showNotification === 'function') {
                 showNotification('❌ Sin permisos para acceder al spreadsheet', 'error');
             }
             return;
@@ -98,9 +104,14 @@ class ConcurrencyControl {
             try {
                 const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + token.access_token);
                 if (response.ok) {
-                    // Token válido - no borrar
+                    // Token válido - no borrar, mostrar opción de solicitar acceso
                     console.log('⚠️ [AUTH-ERROR] Token aún válido, error es de permisos del recurso');
-                    if (typeof showNotification === 'function') {
+
+                    if (typeof AccessRequestManager !== 'undefined') {
+                        AccessRequestManager.showPermissionErrorBanner({
+                            message: 'Token válido pero sin permisos. Solicita acceso al spreadsheet.'
+                        });
+                    } else if (typeof showNotification === 'function') {
                         showNotification('❌ Error de permisos. Verifica acceso al spreadsheet.', 'error');
                     }
                     return;
