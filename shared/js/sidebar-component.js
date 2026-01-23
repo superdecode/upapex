@@ -116,26 +116,37 @@ class SidebarComponent {
     }
 
     checkGoogleConnection() {
-        const token = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.googleToken);
+        // Verificar primero si hay token en gapi.client (fuente de verdad)
+        const gapiToken = typeof gapi !== 'undefined' && gapi?.client?.getToken();
+        if (gapiToken && gapiToken.access_token) {
+            this.avatarState.isGoogleConnected = true;
+            return true;
+        }
+
+        // Fallback: verificar localStorage (para cuando gapi no está listo)
         const expiry = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.googleExpiry);
-        
-        if (token && expiry) {
+        if (expiry) {
             const expiryTime = parseInt(expiry, 10);
             if (Date.now() < expiryTime) {
-                this.avatarState.isGoogleConnected = true;
-                return true;
+                // Hay expiración válida, pero verificar si hay token guardado
+                const savedTokenStr = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.googleToken);
+                if (savedTokenStr) {
+                    this.avatarState.isGoogleConnected = true;
+                    return true;
+                }
             } else {
                 this.clearGoogleConnection();
             }
         }
-        
+
         this.avatarState.isGoogleConnected = false;
         return false;
     }
 
     saveGoogleConnection(token, expiresIn = 3600) {
         const expiryTime = Date.now() + (expiresIn * 1000);
-        localStorage.setItem(window.AVATAR_CONFIG.storageKeys.googleToken, token);
+        // IMPORTANTE: No sobrescribir wms_google_token - AuthManager lo maneja con formato JSON completo
+        // Solo guardar la expiración para referencia del sidebar
         localStorage.setItem(window.AVATAR_CONFIG.storageKeys.googleExpiry, expiryTime.toString());
         this.avatarState.isGoogleConnected = true;
         this.notifyAvatarUpdate();

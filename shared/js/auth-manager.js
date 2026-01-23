@@ -186,6 +186,11 @@ const AuthManager = {
 
                 console.log('✅ AuthManager: Login exitoso');
 
+                // Disparar evento para que sync-manager reactive sincronización
+                window.dispatchEvent(new CustomEvent('auth-token-updated', {
+                    detail: { token: res.access_token, user: this.currentUser }
+                }));
+
                 if (this.onAuthSuccess) {
                     this.onAuthSuccess({
                         user: this.currentUser,
@@ -231,9 +236,12 @@ const AuthManager = {
 
                 console.log('✅ AuthManager: Reconexión exitosa');
 
-                if (typeof showNotification === 'function') {
-                    showNotification('✅ Reconectado exitosamente', 'success');
-                }
+                // Disparar evento para que sync-manager reactive sincronización
+                window.dispatchEvent(new CustomEvent('auth-token-updated', {
+                    detail: { token: res.access_token, user: this.currentUser }
+                }));
+
+                // Notificación ya se muestra desde el listener de auth-token-updated
 
                 if (this.onAuthSuccess) {
                     this.onAuthSuccess({
@@ -317,6 +325,10 @@ const AuthManager = {
             gapi.client.setToken(null);
         }
         this.clearSession();
+
+        // Disparar evento para que sync-manager y UI se actualicen
+        window.dispatchEvent(new CustomEvent('auth-disconnected'));
+        console.log('📤 AuthManager: Evento auth-disconnected disparado');
     },
 
     /**

@@ -969,6 +969,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('⏳ [VALIDADOR] Configurando listeners...');
         setupListeners();
         setupConnectionMonitor();
+        setupAuthEventListeners(); // Escuchar eventos de autenticación
         console.log('✅ [VALIDADOR] Listeners configurados');
 
         console.log('⏳ [VALIDADOR] Inicializando Sync Manager...');
@@ -1303,11 +1304,13 @@ async function handleToggleGoogleAuth() {
             // Solo se borran en logout completo (handleFullLogout)
             // Esto permite reconectar sin pedir credenciales de nuevo
 
-            // 3. Actualizar UI (mantener usuario y datos locales)
+            // 3. Disparar evento para que sync-manager pause sincronización
+            window.dispatchEvent(new CustomEvent('auth-disconnected'));
+
+            // 4. Actualizar UI (mantener usuario y datos locales)
             updateUIAfterAuth();
-            
-            showNotification(' Desconectado de Google. Reconecta para sincronizar.', 'info');
-            console.log(' [VALIDADOR] Desconexión de Google completada');
+
+            showNotification('🔌 Desconectado de Google. Reconecta para sincronizar.', 'info');
             console.log('✅ [VALIDADOR] Desconexión de Google completada');
             
         } else {
@@ -1319,34 +1322,44 @@ async function handleToggleGoogleAuth() {
 
             if (savedTokenStr) {
                 try {
-                    const tokenObj = JSON.parse(savedTokenStr);
-                    const expiresAt = tokenObj.expires_at || 0;
-                    const now = Date.now();
+                    // Verificar si es JSON válido antes de parsear
+                    if (savedTokenStr.startsWith('{')) {
+                        const tokenObj = JSON.parse(savedTokenStr);
+                        const expiresAt = tokenObj.expires_at || 0;
+                        const now = Date.now();
 
-                    // Si el token aún es válido, restaurarlo directamente
-                    if (expiresAt > now + (60 * 1000)) { // Margen de 1 minuto
-                        console.log(' [VALIDADOR] Restaurando token desde localStorage...');
-                        gapi.client.setToken(tokenObj);
+                        // Si el token aún es válido, restaurarlo directamente
+                        if (expiresAt > now + (60 * 1000)) { // Margen de 1 minuto
+                            console.log('🔄 [VALIDADOR] Restaurando token desde localStorage...');
+                            gapi.client.setToken(tokenObj);
 
-                        // Verificar que el token funcione
-                        const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + tokenObj.access_token);
+                            // Verificar que el token funcione
+                            const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + tokenObj.access_token);
 
-                        if (response.ok) {
-                            console.log(' [VALIDADOR] Token restaurado exitosamente');
-                            updateUIAfterAuth();
-                            showNotification(' Reconectado a Google', 'success');
+                            if (response.ok) {
+                                console.log('✅ [VALIDADOR] Token restaurado exitosamente');
 
-                            // Recargar BD si es necesario
-                            if (BD_CODES.size === 0) {
-                                BD_LOADING = false;
-                                await loadDatabaseWithRetry();
-                                startBDAutoRefresh();
+                                // Disparar evento para reactivar sync-manager
+                                window.dispatchEvent(new CustomEvent('auth-token-updated', {
+                                    detail: { token: tokenObj.access_token, source: 'localStorage' }
+                                }));
+
+                                updateUIAfterAuth();
+
+                                // Recargar BD si es necesario
+                                if (BD_CODES.size === 0) {
+                                    BD_LOADING = false;
+                                    await loadDatabaseWithRetry();
+                                    startBDAutoRefresh();
+                                }
+                                return;
                             }
-                            return;
                         }
+                    } else {
+                        console.log('ℹ️ [VALIDADOR] Token en localStorage no es JSON, solicitando nuevo...');
                     }
                 } catch (e) {
-                    console.warn(' [VALIDADOR] Token guardado inválido, solicitando nuevo...', e);
+                    console.warn('⚠️ [VALIDADOR] Token guardado inválido, solicitando nuevo...', e);
                 }
             }
 
@@ -2559,12 +2572,88 @@ function setupConnectionMonitor() {
     // Monitorear cambios de conexión
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
     // Verificar estado inicial
     IS_ONLINE = navigator.onLine;
     updateConnectionUI();
-    
+
     console.log('✅ [VALIDADOR] Monitor de conexión configurado');
+}
+
+/**
+ * Configura listeners para eventos de autenticación
+ * Permite actualizar la UI cuando cambia el estado de autenticación
+ */
+function setupAuthEventListeners() {
+    // Escuchar cuando se desconecta de Google
+    window.addEventListener('auth-disconnected', () => {
+        console.log('🔌 [VALIDADOR] Evento auth-disconnected recibido');
+
+        // Actualizar indicador de conexión a estado desconectado
+        const dot = document.getElementById('connection-dot');
+        const text = document.getElementById('connection-text');
+        if (dot) {
+            dot.className = 'connection-dot disconnected';
+        }
+        if (text) {
+            text.textContent = 'Desconectado';
+        }
+
+        // Actualizar sidebar component
+        if (window.sidebarComponent) {
+            window.sidebarComponent.clearGoogleConnection();
+            window.sidebarComponent.updateAvatarButtons();
+        }
+
+        // Actualizar botón de auth
+        const authBtn = document.getElementById('sidebar-auth-btn');
+        if (authBtn) {
+            authBtn.textContent = '🔌';
+            authBtn.title = 'Conectar Google';
+        }
+
+        // Mostrar notificación
+        showNotification('🔌 Desconectado de Google', 'info');
+    });
+
+    // Escuchar cuando se reconecta exitosamente
+    window.addEventListener('auth-token-updated', () => {
+        console.log('🔗 [VALIDADOR] Evento auth-token-updated recibido');
+
+        // Actualizar indicador de conexión a estado conectado
+        const dot = document.getElementById('connection-dot');
+        const text = document.getElementById('connection-text');
+        if (dot) {
+            dot.className = 'connection-dot connected';
+        }
+        if (text) {
+            text.textContent = 'Conectado';
+        }
+
+        // Actualizar sidebar component
+        if (window.sidebarComponent) {
+            const token = gapi?.client?.getToken();
+            if (token?.access_token) {
+                window.sidebarComponent.saveGoogleConnection(token.access_token, 3600);
+            }
+            window.sidebarComponent.updateAvatarButtons();
+        }
+
+        // Actualizar botón de auth
+        const authBtn = document.getElementById('sidebar-auth-btn');
+        if (authBtn) {
+            authBtn.textContent = '🔗';
+            authBtn.title = 'Desconectar Google';
+        }
+
+        // Cerrar cualquier banner de error de autenticación
+        const errorBanner = document.getElementById('auth-error-banner');
+        if (errorBanner) {
+            errorBanner.remove();
+        }
+    });
+
+    console.log('✅ [VALIDADOR] Listeners de autenticación configurados');
 }
 
 function handleOnline() {

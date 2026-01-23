@@ -807,6 +807,75 @@ class AdvancedSyncManager {
         this.lastErrors = [];
         this.lastSyncTime = null;
         this.initialized = false;
+
+        // Estado de error de token - para evitar saturar consola y UI
+        this.tokenErrorState = {
+            hasError: false,
+            lastErrorTime: null,
+            errorCount: 0,
+            heartbeatPaused: false
+        };
+
+        // Escuchar evento de actualización de token
+        this._setupTokenListener();
+    }
+
+    /**
+     * Configura listener para eventos de autenticación
+     * Permite reactivar la sincronización cuando el token se actualiza
+     */
+    _setupTokenListener() {
+        // Listener para cuando el token se actualiza (reconexión exitosa)
+        window.addEventListener('auth-token-updated', async (event) => {
+            console.log('🔐 [SYNC] Evento auth-token-updated recibido');
+
+            // Limpiar estado de error
+            this.tokenErrorState = {
+                hasError: false,
+                lastErrorTime: null,
+                errorCount: 0,
+                heartbeatPaused: false
+            };
+
+            // Reiniciar heartbeat si estaba pausado
+            if (!this.heartbeatIntervalId) {
+                console.log('🔄 [SYNC] Reiniciando heartbeat después de reconexión...');
+                this.startHeartbeat();
+            }
+
+            // Notificar al usuario
+            if (typeof showNotification === 'function') {
+                showNotification('✅ Conexión con Google establecida. Sincronizando datos...', 'success');
+            }
+
+            // Si hay registros pendientes, sincronizar automáticamente
+            if (this.pendingSync.length > 0) {
+                console.log(`🔄 [SYNC] Sincronizando ${this.pendingSync.length} registros pendientes...`);
+                try {
+                    await this.sync(true);
+                } catch (err) {
+                    console.error('❌ [SYNC] Error en sincronización post-reconexión:', err);
+                }
+            }
+
+            // Actualizar UI
+            this.updateUI(this.pendingSync.length === 0);
+        });
+
+        // Listener para cuando se desconecta
+        window.addEventListener('auth-disconnected', () => {
+            console.log('🔌 [SYNC] Evento auth-disconnected recibido');
+
+            // Marcar estado de error pero no mostrar mensajes repetidos
+            this.tokenErrorState.hasError = true;
+            this.tokenErrorState.heartbeatPaused = true;
+
+            // Detener heartbeat para no saturar consola
+            this.stopAutoSync();
+
+            // Actualizar UI para mostrar estado desconectado
+            this.updateUI(false);
+        });
     }
 
     /**
@@ -843,7 +912,7 @@ class AdvancedSyncManager {
 
     /**
      * Heartbeat para sincronización automática y actualización de UI
-     * CORREGIDO: Mutex para evitar race conditions en sincronización
+     * CORREGIDO: Mutex para evitar race conditions + pausa en error de token
      */
     startHeartbeat() {
         if (this.heartbeatIntervalId) clearInterval(this.heartbeatIntervalId);
@@ -852,10 +921,20 @@ class AdvancedSyncManager {
         let heartbeatRunning = false;
 
         this.heartbeatIntervalId = setInterval(async () => {
+            // Si hay error de token, pausar heartbeat silenciosamente
+            if (this.tokenErrorState.heartbeatPaused) {
+                // Solo loguear cada 30 segundos para no saturar
+                const now = Date.now();
+                if (!this.tokenErrorState.lastErrorTime || now - this.tokenErrorState.lastErrorTime > 30000) {
+                    console.log('⏸️ [HEARTBEAT] Pausado - esperando reconexión de token');
+                    this.tokenErrorState.lastErrorTime = now;
+                }
+                return;
+            }
+
             // Evitar ejecuciones concurrentes del heartbeat
             if (heartbeatRunning) {
-                console.log('⏳ [HEARTBEAT] Heartbeat anterior aún en ejecución, saltando...');
-                return;
+                return; // No loguear para evitar spam
             }
 
             heartbeatRunning = true;
@@ -867,21 +946,39 @@ class AdvancedSyncManager {
                     this.pendingSync = pendingFromDB;
                 }
 
-                // CORREGIDO: Verificar inProgress DESPUÉS de obtener pendientes
-                // y usar una variable local para evitar race condition
-                const shouldSync = this._canSync() && this.pendingSync.length > 0 && !this.inProgress;
+                // Verificar si hay token válido antes de intentar sync
+                const canSync = this._canSync();
+
+                if (!canSync && this.pendingSync.length > 0 && !this.tokenErrorState.hasError) {
+                    // Marcar error de token si no puede sincronizar y hay pendientes
+                    this._handleTokenError('No hay token de autenticación disponible');
+                }
+
+                const shouldSync = canSync && this.pendingSync.length > 0 && !this.inProgress;
 
                 if (shouldSync) {
                     console.log(`🔄 [HEARTBEAT] Sincronización automática: ${this.pendingSync.length} registros pendientes`);
                     // No usar await aquí para no bloquear el heartbeat
                     this.sync(false).catch(err => {
-                        console.error('❌ [HEARTBEAT] Error en sync automático:', err);
+                        // Detectar errores de token específicos
+                        const errMsg = String(err?.message || err || '');
+                        if (errMsg.includes('token') || errMsg.includes('Token') || errMsg.includes('autenticación')) {
+                            this._handleTokenError(errMsg);
+                        } else {
+                            console.error('❌ [HEARTBEAT] Error en sync automático:', err);
+                        }
                     });
                 }
 
                 this.updateUI(this.pendingSync.length === 0);
             } catch (error) {
-                console.warn('⚠️ [HEARTBEAT] Error en heartbeat:', error);
+                // Detectar errores de token
+                const errMsg = String(error?.message || error || '');
+                if (errMsg.includes('token') || errMsg.includes('Token') || errMsg.includes('autenticación')) {
+                    this._handleTokenError(errMsg);
+                } else {
+                    console.warn('⚠️ [HEARTBEAT] Error en heartbeat:', error);
+                }
             } finally {
                 heartbeatRunning = false;
             }
@@ -926,7 +1023,62 @@ class AdvancedSyncManager {
     _canSync() {
         const isOnline = typeof checkOnlineStatus === 'function' ? checkOnlineStatus() : navigator.onLine;
         const hasToken = typeof gapi !== 'undefined' && gapi?.client?.getToken();
-        return isOnline && hasToken;
+        // También verificar que no esté en estado de error de token
+        return isOnline && hasToken && !this.tokenErrorState.heartbeatPaused;
+    }
+
+    /**
+     * Maneja errores de token de forma centralizada
+     * Evita saturar consola y muestra mensaje claro al usuario
+     */
+    _handleTokenError(errorMessage) {
+        const now = Date.now();
+
+        // Evitar mensajes repetidos (máximo 1 cada 30 segundos)
+        if (this.tokenErrorState.hasError &&
+            this.tokenErrorState.lastErrorTime &&
+            now - this.tokenErrorState.lastErrorTime < 30000) {
+            return;
+        }
+
+        this.tokenErrorState.hasError = true;
+        this.tokenErrorState.lastErrorTime = now;
+        this.tokenErrorState.errorCount++;
+        this.tokenErrorState.heartbeatPaused = true;
+
+        console.warn('🔐 [SYNC] Error de token detectado:', errorMessage);
+        console.warn('⏸️ [SYNC] Heartbeat pausado - esperando reconexión');
+
+        // Mostrar mensaje claro al usuario
+        if (typeof showNotification === 'function') {
+            showNotification('⚠️ Sesión expirada. Reconecta con Google para sincronizar.', 'warning');
+        }
+
+        // Actualizar UI para mostrar estado de error
+        this._updateSyncButtonError();
+    }
+
+    /**
+     * Actualiza el botón de sync para mostrar estado de error
+     */
+    _updateSyncButtonError() {
+        const syncBtn = document.getElementById('sync-btn') || document.getElementById('sync-button');
+        if (syncBtn) {
+            syncBtn.classList.add('sync-error');
+            syncBtn.title = 'Sesión expirada - Reconecta con Google';
+        }
+
+        // Actualizar indicador de conexión si existe
+        const connectionDot = document.getElementById('connection-dot');
+        if (connectionDot) {
+            connectionDot.classList.remove('connected');
+            connectionDot.classList.add('disconnected');
+        }
+
+        const connectionText = document.getElementById('connection-text');
+        if (connectionText) {
+            connectionText.textContent = 'Sesión expirada';
+        }
     }
 
     /**
@@ -1059,69 +1211,94 @@ class AdvancedSyncManager {
 
     /**
      * Verificar y renovar token si es necesario
+     * MEJORADO: Valida el token real de gapi.client, no solo localStorage
      */
     async ensureValidToken() {
         // Verificar que gapi esté disponible
         if (typeof gapi === 'undefined' || !gapi.client) {
-            throw new Error('Google API no está disponible');
+            const error = 'Google API no está disponible';
+            this._handleTokenError(error);
+            throw new Error(error);
         }
 
         const token = gapi.client.getToken();
-        
-        // Si no hay token, solicitar autenticación
+
+        // Si no hay token en gapi.client, no podemos sincronizar
         if (!token || !token.access_token) {
-            throw new Error('No hay token de autenticación. Por favor, inicia sesión.');
+            const error = 'No hay token de autenticación. Por favor, reconecta con Google.';
+            this._handleTokenError(error);
+            throw new Error(error);
         }
 
-        // Verificar si el token ha expirado
-        const expiryTime = parseInt(localStorage.getItem('google_token_expiry') || '0');
-        const now = Date.now();
+        // El token existe en gapi.client - verificar expiración si tenemos la info
+        let isExpired = false;
 
-        if (expiryTime > 0 && now >= expiryTime) {
-            console.log('⚠️ Token expirado, solicitando renovación...');
-
-            // Intentar renovar con AuthManager si está disponible
-            if (typeof AuthManager !== 'undefined' && AuthManager.renewToken) {
-                try {
-                    await new Promise((resolve, reject) => {
-                        const timeout = setTimeout(() => reject(new Error('Timeout renovando token')), 15000);
-
-                        // Configurar callback temporal para detectar renovación
-                        const originalCallback = AuthManager.tokenClient?.callback;
-
-                        AuthManager.tokenClient.callback = async (resp) => {
-                            clearTimeout(timeout);
-
-                            if (resp.error) {
-                                // Restaurar callback original
-                                if (originalCallback) AuthManager.tokenClient.callback = originalCallback;
-                                reject(new Error(`Error renovando token: ${resp.error}`));
-                                return;
-                            }
-
-                            const newToken = gapi.client.getToken();
-                            if (newToken && newToken.access_token) {
-                                console.log('✅ Token renovado exitosamente');
-                                // Restaurar callback original
-                                if (originalCallback) AuthManager.tokenClient.callback = originalCallback;
-                                resolve();
-                            } else {
-                                // Restaurar callback original
-                                if (originalCallback) AuthManager.tokenClient.callback = originalCallback;
-                                reject(new Error('No se obtuvo token tras renovación'));
-                            }
-                        };
-
-                        // Solicitar renovación
-                        AuthManager.renewToken();
-                    });
-                } catch (error) {
-                    console.error('❌ Error renovando token:', error);
-                    throw new Error('Token expirado. Por favor, reconecta usando el botón de Google en el sidebar.');
-                }
-            } else {
-                throw new Error('Token expirado. Por favor, reconecta usando el botón de Google en el sidebar.');
+        // Método 1: Verificar expires_in del token actual
+        if (token.expires_in !== undefined) {
+            // expires_in es en segundos desde que se obtuvo el token
+            // No podemos saber exactamente cuándo se obtuvo, así que si expires_in < 60, consideramos expirado
+            if (token.expires_in < 60) {
+                isExpired = true;
             }
+        }
+
+        // Método 2: Verificar wms_google_token (si tiene formato JSON válido)
+        if (!isExpired) {
+            try {
+                const savedTokenStr = localStorage.getItem('wms_google_token');
+                if (savedTokenStr && savedTokenStr.startsWith('{')) {
+                    const savedToken = JSON.parse(savedTokenStr);
+                    const expiresAt = savedToken.expires_at || 0;
+                    if (expiresAt > 0 && Date.now() >= expiresAt) {
+                        isExpired = true;
+                    }
+                }
+                // Si el token no es JSON (es raw), no lo consideramos como indicador de expiración
+            } catch (parseError) {
+                // Ignorar errores de parseo - el token en gapi.client es lo que importa
+                console.log('ℹ️ [SYNC] Token en localStorage no es JSON, usando token de gapi.client');
+            }
+        }
+
+        // Método 3: Verificar formato legacy
+        if (!isExpired) {
+            const expiryTime = parseInt(localStorage.getItem('google_token_expiry') || '0');
+            if (expiryTime > 0 && Date.now() >= expiryTime) {
+                isExpired = true;
+            }
+        }
+
+        // Si parece expirado, verificar con una llamada real antes de fallar
+        if (isExpired) {
+            try {
+                // Hacer una llamada ligera para verificar si el token realmente funciona
+                const response = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + token.access_token);
+                if (response.ok) {
+                    // El token aún funciona, limpiar estado de error
+                    console.log('✅ [SYNC] Token verificado con API, sigue siendo válido');
+                    isExpired = false;
+                }
+            } catch (e) {
+                // Error verificando, asumir expirado
+                console.warn('⚠️ [SYNC] No se pudo verificar token con API');
+            }
+        }
+
+        if (isExpired) {
+            const error = 'Token expirado. Por favor, reconecta con Google.';
+            this._handleTokenError(error);
+            throw new Error(error);
+        }
+
+        // Token válido - limpiar estado de error si existía
+        if (this.tokenErrorState.hasError) {
+            console.log('✅ [SYNC] Token validado correctamente, limpiando estado de error');
+            this.tokenErrorState = {
+                hasError: false,
+                lastErrorTime: null,
+                errorCount: 0,
+                heartbeatPaused: false
+            };
         }
 
         return true;

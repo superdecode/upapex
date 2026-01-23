@@ -1519,8 +1519,8 @@ body {
     border-radius: 50%;
 }
 
-.connection-dot.online { background: var(--success); }
-.connection-dot.offline { background: var(--error); }
+.connection-dot.online, .connection-dot.connected { background: var(--success); }
+.connection-dot.offline, .connection-dot.disconnected { background: var(--error); }
 .connection-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
 
 @keyframes pulse {
