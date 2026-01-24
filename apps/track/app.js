@@ -439,40 +439,40 @@ function searchAllSources(query) {
         truncatedCode: getTruncatedCode(query)
     };
 
-    // Search with similarity tracking
-    searchInSourceWithSimilarity(DATA_CACHE.bdStock, results, 'bdStock', [
+    // Search with similarity tracking - reverse for recent records first
+    searchInSourceWithSimilarity(DATA_CACHE.bdStock.slice().reverse(), results, 'bdStock', [
         'Customize Barcode/自定义箱条码',
         'Box type No./箱类型号'
     ]);
 
-    searchInSourceWithSimilarity(DATA_CACHE.obcBd, results, 'obcBd', [
+    searchInSourceWithSimilarity(DATA_CACHE.obcBd.slice().reverse(), results, 'obcBd', [
         'Custom box barcode_自定义箱条码',
         'Outbound_出库单号',
         'Reference order No._参考单号'
     ]);
 
-    searchInSourceWithSimilarity(DATA_CACHE.validacion, results, 'validacion', [
+    searchInSourceWithSimilarity(DATA_CACHE.validacion.slice().reverse(), results, 'validacion', [
         'Codigo',
         'Orden'
     ]);
 
-    // Search INVENTARIO - using indices like MNE
-    searchInventario(DATA_CACHE.inventario, results, 'inventario');
+    // Search INVENTARIO - reverse for recent records first
+    searchInventario(DATA_CACHE.inventario.slice().reverse(), results, 'inventario');
 
     // Search MNE - reverse for recent records first
     searchMNE(DATA_CACHE.mne.slice().reverse(), results, 'mne');
 
-    // Special search for TRS using column indices
-    searchTRS(DATA_CACHE.trs, results, 'trs');
+    // Special search for TRS - reverse for recent records first
+    searchTRS(DATA_CACHE.trs.slice().reverse(), results, 'trs');
 
-    // Search CANCELADO
-    searchCANCELADO(DATA_CACHE.cancelado, results, 'cancelado');
+    // Search CANCELADO - reverse for recent records first
+    searchCANCELADO(DATA_CACHE.cancelado.slice().reverse(), results, 'cancelado');
 
-    // Search EMBARQUES - Búsqueda con triangulación
-    searchEMBARQUES(DATA_CACHE.embarques, results, 'embarques');
+    // Search EMBARQUES - reverse for recent records first
+    searchEMBARQUES(DATA_CACHE.embarques.slice().reverse(), results, 'embarques');
 
-    // Search REPARACIONES - Búsqueda booleana
-    searchREPARACIONES(DATA_CACHE.reparaciones, results, 'reparaciones');
+    // Search REPARACIONES - reverse for recent records first
+    searchREPARACIONES(DATA_CACHE.reparaciones.slice().reverse(), results, 'reparaciones');
 
     return results;
 }
