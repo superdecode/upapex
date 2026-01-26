@@ -1460,6 +1460,38 @@ function setupEventListeners() {
     });
 }
 
+    // Listeners de autenticación
+    window.addEventListener('auth-account-changed', (event) => {
+        const { previousEmail, newEmail } = event.detail;
+        console.log('🔄 [INVENTORY] Cambio de cuenta detectado:''previousEmail, '->''newEmail);
+
+        // Limpiar datos del usuario anterior
+        STATE.userEmail = '';
+        STATE.userName = '';
+        STATE.userAlias = '';
+
+        // Limpiar inventario
+        STATE.inventory = [];
+        STATE.scannedBoxes = { ok: [], blocked: [], nowms: [] };
+
+        showNotification('🔄 Cambio de cuenta detectado. Recargando datos...''info');
+    });
+
+    window.addEventListener('auth-needs-name-registration', (event) => {
+        const { email, isNewAccount, needsNameRegistration } = event.detail;
+        console.log('👤 [INVENTORY] Se requiere registro de nombre:'{ email, isNewAccount, needsNameRegistration });
+
+        // Recargar datos del avatar y forzar popup si es necesario
+        if (window.sidebarComponent) {
+            window.sidebarComponent.reloadAvatarData(needsNameRegistration);
+        }
+
+        // Actualizar STATE desde AuthManager
+        if (window.AuthManager && window.AuthManager.currentUser) {
+            STATE.userAlias = window.AuthManager.currentUser;
+        }
+    });
+
 // ==================== PROCESAMIENTO DE ESCANEO ====================
 function processScan(rawCode) {
     const result = findCodeInInventory(rawCode, STATE.inventory);

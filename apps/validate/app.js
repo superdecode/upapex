@@ -2735,6 +2735,22 @@ function setupAuthEventListeners() {
         showNotification('🔄 Cambio de cuenta detectado. Recargando datos...', 'info');
     });
 
+    // Escuchar cuando se necesita registro de nombre (cuenta nueva sin alias)
+    window.addEventListener('auth-needs-name-registration', (event) => {
+        const { email, isNewAccount, needsNameRegistration } = event.detail;
+        console.log('👤 [VALIDADOR] Se requiere registro de nombre:', { email, isNewAccount, needsNameRegistration });
+
+        // Recargar datos del avatar y forzar popup si es necesario
+        if (window.sidebarComponent) {
+            window.sidebarComponent.reloadAvatarData(needsNameRegistration);
+        }
+
+        // Actualizar CURRENT_USER desde AuthManager
+        if (window.AuthManager && window.AuthManager.currentUser) {
+            CURRENT_USER = window.AuthManager.currentUser;
+        }
+    });
+
     console.log('✅ [VALIDADOR] Listeners de autenticación configurados');
 }
 

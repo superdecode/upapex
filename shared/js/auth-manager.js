@@ -299,6 +299,8 @@ const AuthManager = {
 
         // Verificar si hay alias guardado para ESTE usuario
         const savedAlias = localStorage.getItem(`wms_alias_${this.userEmail}`);
+        const needsNameRegistration = !savedAlias;
+
         this.currentUser = savedAlias || this.userName;
 
         // Guardar en localStorage
@@ -306,7 +308,20 @@ const AuthManager = {
         localStorage.setItem('wms_user_email', this.userEmail);
         localStorage.setItem('wms_google_name', this.userName);
 
-        console.log('✅ AuthManager: User profile loaded:', this.currentUser, '(' + this.userEmail + ')');
+        // CRÍTICO: Disparar evento si es cuenta nueva o cambio de cuenta sin alias
+        if (isNewAccount || needsNameRegistration) {
+            console.log('🔔 AuthManager: Disparando evento para registro de nombre');
+            window.dispatchEvent(new CustomEvent('auth-needs-name-registration', {
+                detail: {
+                    email: this.userEmail,
+                    googleName: this.userName,
+                    isNewAccount: isNewAccount,
+                    needsNameRegistration: needsNameRegistration
+                }
+            }));
+        }
+
+        console.log('✅ AuthManager: User profile loaded:', this.currentUser, '(' + this.userEmail + ')', needsNameRegistration ? '(needs name registration)' : '');
     },
 
     /**

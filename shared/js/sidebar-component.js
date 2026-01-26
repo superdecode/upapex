@@ -104,15 +104,70 @@ class SidebarComponent {
     loadAvatarData() {
         const savedName = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.userName);
         const savedEmail = localStorage.getItem(window.AVATAR_CONFIG.storageKeys.userEmail);
-        
+
         if (savedName) {
             this.avatarState.userName = savedName;
         }
         if (savedEmail) {
             this.avatarState.userEmail = savedEmail;
         }
-        
+
         this.checkGoogleConnection();
+    }
+
+    /**
+     * Recarga los datos del avatar desde localStorage y AuthManager
+     * IMPORTANTE: Llamar cuando cambia la cuenta de Google
+     * @param {boolean} forceNamePopup - Si true, muestra el popup de nombre si no hay alias
+     */
+    reloadAvatarData(forceNamePopup = false) {
+        // Obtener datos actualizados
+        const email = window.AuthManager?.userEmail || localStorage.getItem(window.AVATAR_CONFIG.storageKeys.userEmail);
+        const googleName = window.AuthManager?.userName || localStorage.getItem('wms_google_name');
+
+        if (email) {
+            this.avatarState.userEmail = email;
+            localStorage.setItem(window.AVATAR_CONFIG.storageKeys.userEmail, email);
+
+            // Buscar alias específico para este email
+            const savedAlias = localStorage.getItem(`wms_alias_${email}`);
+
+            if (savedAlias) {
+                // Tiene alias guardado - usarlo
+                this.avatarState.userName = savedAlias;
+                localStorage.setItem(window.AVATAR_CONFIG.storageKeys.userName, savedAlias);
+
+                // Actualizar variable global
+                if (typeof window.CURRENT_USER !== 'undefined') {
+                    window.CURRENT_USER = savedAlias;
+                }
+            } else if (forceNamePopup) {
+                // No tiene alias - limpiar nombre y mostrar popup
+                this.avatarState.userName = '';
+                localStorage.removeItem(window.AVATAR_CONFIG.storageKeys.userName);
+
+                // Mostrar popup para que registre su nombre
+                setTimeout(() => {
+                    this.showNameEditPopup();
+                    if (typeof showNotification === 'function') {
+                        showNotification('👤 Por favor, registra tu nombre para continuar', 'info');
+                    }
+                }, 500);
+            } else if (googleName) {
+                // Usar nombre de Google temporalmente (pero NO guardarlo como alias)
+                this.avatarState.userName = googleName;
+            }
+        }
+
+        // Actualizar UI
+        this.updateAvatarDisplay();
+        this.checkGoogleConnection();
+        this.notifyAvatarUpdate();
+
+        console.log('🔄 SidebarComponent: Avatar data reloaded', {
+            email: this.avatarState.userEmail,
+            name: this.avatarState.userName
+        });
     }
 
     checkGoogleConnection() {
@@ -187,15 +242,32 @@ class SidebarComponent {
 
     setUserName(name) {
         const validation = this.validateName(name);
-        
+
         if (!validation.valid) {
             return { success: false, message: validation.message };
         }
-        
+
         this.avatarState.userName = validation.formatted;
         localStorage.setItem(window.AVATAR_CONFIG.storageKeys.userName, validation.formatted);
+
+        // CRÍTICO: También guardar como alias específico por email
+        const userEmail = this.avatarState.userEmail || localStorage.getItem(window.AVATAR_CONFIG.storageKeys.userEmail);
+        if (userEmail) {
+            localStorage.setItem(`wms_alias_${userEmail}`, validation.formatted);
+        }
+
+        // CRÍTICO: Actualizar variable global CURRENT_USER para que los registros usen el nuevo nombre
+        if (typeof window.CURRENT_USER !== 'undefined') {
+            window.CURRENT_USER = validation.formatted;
+        }
+
+        // Actualizar también en AuthManager si existe
+        if (window.AuthManager) {
+            window.AuthManager.currentUser = validation.formatted;
+        }
+
         this.notifyAvatarUpdate();
-        
+
         return { success: true, formatted: validation.formatted };
     }
 

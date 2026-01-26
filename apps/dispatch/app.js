@@ -1780,6 +1780,37 @@ function setupEventListeners() {
     setupDateInputListeners();
 
     // Setup delegated click handlers for table rows
+
+    // Listeners de autenticación
+    window.addEventListener('auth-account-changed', (event) => {
+        const { previousEmail, newEmail } = event.detail;
+        console.log('🔄 [DISPATCH] Cambio de cuenta detectado:''previousEmail, '->''newEmail);
+
+        // Limpiar datos del usuario anterior
+        CURRENT_USER = '';
+        USER_EMAIL = '';
+
+        // Limpiar datos de despacho
+        STATE.ordenes = [];
+        STATE.foliosDeCargas.clear();
+
+        showNotification('🔄 Cambio de cuenta detectado. Recargando datos...''info');
+    });
+
+    window.addEventListener('auth-needs-name-registration', (event) => {
+        const { email, isNewAccount, needsNameRegistration } = event.detail;
+        console.log('👤 [DISPATCH] Se requiere registro de nombre:'{ email, isNewAccount, needsNameRegistration });
+
+        // Recargar datos del avatar y forzar popup si es necesario
+        if (window.sidebarComponent) {
+            window.sidebarComponent.reloadAvatarData(needsNameRegistration);
+        }
+
+        // Actualizar CURRENT_USER desde AuthManager
+        if (window.AuthManager && window.AuthManager.currentUser) {
+            CURRENT_USER = window.AuthManager.currentUser;
+        }
+    });
     setupTableClickDelegation();
 }
 
