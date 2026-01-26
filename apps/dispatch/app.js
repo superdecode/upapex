@@ -1784,7 +1784,7 @@ function setupEventListeners() {
     // Listeners de autenticación
     window.addEventListener('auth-account-changed', (event) => {
         const { previousEmail, newEmail } = event.detail;
-        console.log('🔄 [DISPATCH] Cambio de cuenta detectado:''previousEmail, '->''newEmail);
+        console.log('🔄 [DISPATCH] Cambio de cuenta detectado:', previousEmail, '->', newEmail);
 
         // Limpiar datos del usuario anterior
         CURRENT_USER = '';
@@ -1794,12 +1794,12 @@ function setupEventListeners() {
         STATE.ordenes = [];
         STATE.foliosDeCargas.clear();
 
-        showNotification('🔄 Cambio de cuenta detectado. Recargando datos...''info');
+        showNotification('🔄 Cambio de cuenta detectado. Recargando datos...', 'info');
     });
 
     window.addEventListener('auth-needs-name-registration', (event) => {
         const { email, isNewAccount, needsNameRegistration } = event.detail;
-        console.log('👤 [DISPATCH] Se requiere registro de nombre:'{ email, isNewAccount, needsNameRegistration });
+        console.log('👤 [DISPATCH] Se requiere registro de nombre:', { email, isNewAccount, needsNameRegistration });
 
         // Recargar datos del avatar y forzar popup si es necesario
         if (window.sidebarComponent) {
@@ -12384,6 +12384,8 @@ window.verificarTodosLosDespachos = function() {
 };
 
 // ==================== EXPOSE FUNCTIONS GLOBALLY ====================
+window.handleLogin = handleLogin;
+window.handleLogout = handleLogout;
 window.showOrderInfo = showOrderInfo;
 window.printFolioDetails = printFolioDetails;
 window.exportFolioDetailsToExcel = exportFolioDetailsToExcel;
