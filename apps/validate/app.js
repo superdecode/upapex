@@ -1206,6 +1206,21 @@ function handleLogout() {
         }
     }
 
+    // Limpiar datos específicos de la app ANTES de logout
+    localStorage.removeItem('validador_synced_validations');
+    localStorage.removeItem('validador_validation_history');
+    localStorage.removeItem('validador_pending_sync');
+    localStorage.removeItem('validador_last_activity');
+    
+    // Limpiar variables globales
+    CURRENT_USER = '';
+    USER_EMAIL = '';
+    USER_GOOGLE_NAME = '';
+    VALIDATION_HISTORY = [];
+    PENDING_SYNC = [];
+    BD_CODES.clear();
+    OBC_TOTALS.clear();
+
     // Usar AuthManager compartido para el logout
     AuthManager.logout();
 
@@ -2712,6 +2727,12 @@ function setupAuthEventListeners() {
         const { previousEmail, newEmail } = event.detail;
         console.log('🔄 [VALIDADOR] Cambio de cuenta detectado:', previousEmail, '->', newEmail);
 
+        // CRÍTICO: Limpiar localStorage específico de la app
+        localStorage.removeItem('validador_synced_validations');
+        localStorage.removeItem('validador_validation_history');
+        localStorage.removeItem('validador_pending_sync');
+        localStorage.removeItem('validador_last_activity');
+
         // Limpiar variables globales de usuario anterior
         CURRENT_USER = '';
         USER_EMAIL = '';
@@ -2750,6 +2771,17 @@ function setupAuthEventListeners() {
             CURRENT_USER = window.AuthManager.currentUser;
         }
     });
+
+    // CRÍTICO: Escuchar actualizaciones del avatar para sincronizar CURRENT_USER
+    // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
+    if (window.sidebarComponent) {
+        window.sidebarComponent.onAvatarUpdate((avatarState) => {
+            if (avatarState.userName) {
+                CURRENT_USER = avatarState.userName;
+                console.log('🔄 [VALIDADOR] CURRENT_USER sincronizado desde avatar:', CURRENT_USER);
+            }
+        });
+    }
 
     console.log('✅ [VALIDADOR] Listeners de autenticación configurados');
 }

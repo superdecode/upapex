@@ -261,6 +261,12 @@ class SidebarComponent {
             window.CURRENT_USER = validation.formatted;
         }
 
+        // CRÍTICO: Actualizar STATE.userAlias para inventory app
+        if (typeof window.STATE !== 'undefined' && window.STATE.userAlias !== undefined) {
+            window.STATE.userAlias = validation.formatted;
+            console.log('🔄 [SIDEBAR] STATE.userAlias actualizado:', validation.formatted);
+        }
+
         // Actualizar también en AuthManager si existe
         if (window.AuthManager) {
             window.AuthManager.currentUser = validation.formatted;
@@ -401,7 +407,12 @@ class SidebarComponent {
         }
         
         this.updateAvatarDisplay();
-        document.querySelector('.popup-overlay')?.remove();
+        
+        // Cerrar el popup específico del avatar (no otros popups que puedan existir)
+        const avatarPopup = document.getElementById('avatar-name-input')?.closest('.popup-overlay');
+        if (avatarPopup) {
+            avatarPopup.remove();
+        }
         
         if (typeof showNotification === 'function') {
             showNotification(`✅ Nombre actualizado: ${result.formatted}`, 'success');

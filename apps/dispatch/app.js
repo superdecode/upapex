@@ -1786,13 +1786,25 @@ function setupEventListeners() {
         const { previousEmail, newEmail } = event.detail;
         console.log('🔄 [DISPATCH] Cambio de cuenta detectado:', previousEmail, '->', newEmail);
 
+        // CRÍTICO: Limpiar localStorage específico de la app
+        localStorage.removeItem('dispatch_local_state');
+        localStorage.removeItem('dispatch_active_session');
+        // Limpiar alias del usuario anterior
+        if (previousEmail) {
+            localStorage.removeItem(`dispatch_alias_${previousEmail}`);
+        }
+
         // Limpiar datos del usuario anterior
         CURRENT_USER = '';
         USER_EMAIL = '';
+        USER_GOOGLE_NAME = '';
 
         // Limpiar datos de despacho
-        STATE.ordenes = [];
+        STATE.localValidated = [];
+        STATE.localPending = [];
         STATE.foliosDeCargas.clear();
+        STATE.obcData.clear();
+        STATE.bdCajasData.clear();
 
         showNotification('🔄 Cambio de cuenta detectado. Recargando datos...', 'info');
     });
@@ -1811,6 +1823,18 @@ function setupEventListeners() {
             CURRENT_USER = window.AuthManager.currentUser;
         }
     });
+
+    // CRÍTICO: Escuchar actualizaciones del avatar para sincronizar CURRENT_USER
+    // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
+    if (window.sidebarComponent) {
+        window.sidebarComponent.onAvatarUpdate((avatarState) => {
+            if (avatarState.userName) {
+                CURRENT_USER = avatarState.userName;
+                console.log('🔄 [DISPATCH] CURRENT_USER sincronizado desde avatar:', CURRENT_USER);
+                updateUserFooter();
+            }
+        });
+    }
     setupTableClickDelegation();
 }
 
@@ -2134,14 +2158,35 @@ function handleLogout() {
         gapi.client.setToken('');
     }
     
-    // Clear stored tokens
+    // Limpiar datos específicos de la app ANTES de logout
     localStorage.removeItem('gapi_token');
     localStorage.removeItem('gapi_token_expiry');
+    localStorage.removeItem('dispatch_local_state');
+    localStorage.removeItem('dispatch_active_session');
     
-    // Clear app-specific state
+    // Limpiar todos los alias de dispatch (son específicos de esta app)
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('dispatch_alias_')) {
+            localStorage.removeItem(key);
+        }
+    });
+    
+    // Limpiar variables globales
     CURRENT_USER = '';
     USER_EMAIL = '';
     USER_GOOGLE_NAME = '';
+    
+    // Limpiar estado de la app
+    STATE.localValidated = [];
+    STATE.localPending = [];
+    STATE.foliosDeCargas.clear();
+    STATE.obcData.clear();
+    STATE.bdCajasData.clear();
+    
+    // Usar AuthManager si está disponible
+    if (window.AuthManager && typeof window.AuthManager.logout === 'function') {
+        window.AuthManager.logout();
+    }
     
     // Reload to reset the app state
     location.reload();
@@ -7384,9 +7429,10 @@ function showOrderInfo(orden) {
             lastModifiedEl.textContent = lastModified;
         }
         
-        // Mostrar usuario
+        // Mostrar usuario ACTUAL (no el que guardó el registro originalmente)
         if (userEl) {
-            const userName = savedData.usuario || savedData.usuarioModificacion || 'N/A';
+            // Usar CURRENT_USER actual, no el guardado en el registro
+            const userName = CURRENT_USER || USER_GOOGLE_NAME || 'N/A';
             userEl.textContent = userName;
         }
     } else {

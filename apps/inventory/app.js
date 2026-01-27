@@ -1193,6 +1193,18 @@ function handleLogout() {
         }
     }
 
+    // Limpiar datos específicos de la app ANTES de logout
+    localStorage.removeItem('wms_inventory_state');
+    localStorage.removeItem('wms_user_alias');
+    
+    // Limpiar variables de estado
+    STATE.userEmail = '';
+    STATE.userName = '';
+    STATE.userAlias = '';
+    STATE.inventory = [];
+    STATE.scannedBoxes = { ok: [], blocked: [], nowms: [] };
+    STATE.pallets = { ok: { boxes: [] }, blocked: { boxes: [] }, nowms: { boxes: [] } };
+
     // Usar AuthManager compartido para el logout
     AuthManager.logout();
 
@@ -1465,6 +1477,10 @@ function setupEventListeners() {
         const { previousEmail, newEmail } = event.detail;
         console.log('🔄 [INVENTORY] Cambio de cuenta detectado:', previousEmail, '->', newEmail);
 
+        // CRÍTICO: Limpiar localStorage específico de la app
+        localStorage.removeItem('wms_inventory_state');
+        localStorage.removeItem('wms_user_alias');
+
         // Limpiar datos del usuario anterior
         STATE.userEmail = '';
         STATE.userName = '';
@@ -1473,6 +1489,7 @@ function setupEventListeners() {
         // Limpiar inventario
         STATE.inventory = [];
         STATE.scannedBoxes = { ok: [], blocked: [], nowms: [] };
+        STATE.pallets = { ok: { boxes: [] }, blocked: { boxes: [] }, nowms: { boxes: [] } };
 
         showNotification('🔄 Cambio de cuenta detectado. Recargando datos...', 'info');
     });
@@ -1491,6 +1508,18 @@ function setupEventListeners() {
             STATE.userAlias = window.AuthManager.currentUser;
         }
     });
+
+    // CRÍTICO: Escuchar actualizaciones del avatar para sincronizar STATE.userAlias
+    // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
+    if (window.sidebarComponent) {
+        window.sidebarComponent.onAvatarUpdate((avatarState) => {
+            if (avatarState.userName) {
+                STATE.userAlias = avatarState.userName;
+                console.log('🔄 [INVENTORY] STATE.userAlias sincronizado desde avatar:', STATE.userAlias);
+                updateUserDisplay();
+            }
+        });
+    }
 
 // ==================== PROCESAMIENTO DE ESCANEO ====================
 function processScan(rawCode) {

@@ -284,16 +284,23 @@ const AuthManager = {
 
         if (isNewAccount) {
             console.log('🔄 AuthManager: Cambio de cuenta detectado:', previousEmail, '->', profile.email);
-            // Limpiar datos de la cuenta anterior que no deben persistir
-            // NO limpiar wms_alias_* porque son específicos por email
+            
+            // CRÍTICO: Limpiar TODOS los datos de la cuenta anterior ANTES de guardar nuevos datos
             localStorage.removeItem('wms_current_user');
             localStorage.removeItem('wms_google_name');
+            localStorage.removeItem('wms_user_email');
+            
             // Disparar evento para que la app limpie sus datos
+            // Las apps deben limpiar sus datos específicos en este evento
             window.dispatchEvent(new CustomEvent('auth-account-changed', {
                 detail: { previousEmail, newEmail: profile.email }
             }));
+            
+            // Esperar un momento para que las apps procesen el evento
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
 
+        // AHORA sí, guardar los datos del nuevo usuario
         this.userEmail = profile.email;
         this.userName = profile.name || profile.email.split('@')[0];
 
@@ -368,17 +375,29 @@ const AuthManager = {
      * Limpiar sesión guardada
      */
     clearSession() {
+        // Limpiar tokens de autenticación
         localStorage.removeItem(this.TOKEN_STORAGE_KEY);
-        // También limpiar keys legacy por compatibilidad
         localStorage.removeItem('google_access_token');
         localStorage.removeItem('google_token_expiry');
         localStorage.removeItem('wms_session_expiry');
+        localStorage.removeItem('gapi_token');
+        localStorage.removeItem('gapi_token_expiry');
+        localStorage.removeItem('wms_google_token_expiry');
+        
+        // Limpiar datos de usuario
+        localStorage.removeItem('wms_current_user');
+        localStorage.removeItem('wms_user_email');
+        localStorage.removeItem('wms_google_name');
+        localStorage.removeItem('wms_user_name');
+        
+        // NO limpiar wms_alias_* porque son específicos por email y deben persistir
+        // para cuando el usuario vuelva a iniciar sesión con esa cuenta
 
         this.currentUser = null;
         this.userEmail = null;
         this.userName = null;
 
-        console.log('🗑️ AuthManager: Sesión limpiada');
+        console.log('🗑️ AuthManager: Sesión limpiada completamente');
     },
 
     /**
