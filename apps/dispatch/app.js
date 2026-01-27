@@ -783,6 +783,57 @@ function parseOBCDataWithDateFilter(csv, startDate, endDate) {
  * @returns {Array} Array of validated dispatch records
  */
 async function fetchValidatedRecordsFromWriteDB() {
+    // OPTIMIZACIÓN 1: Intentar usar el caché del DispatchSyncManager primero (más rápido)
+    if (window.dispatchSyncManager && window.dispatchSyncManager.cache?.operational?.data) {
+        try {
+            console.log('⚡ [OPTIMIZACIÓN] Usando caché de DispatchSyncManager...');
+            const startTime = performance.now();
+
+            const rows = window.dispatchSyncManager.cache.operational.data;
+            if (rows && rows.length > 1) {
+                // Parse records from cache
+                const records = [];
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (row.length >= 5 && row[4]) {  // Must have orden (column E)
+                        records.push({
+                            folio: row[0] || '',
+                            fecha: row[1] || '',
+                            hora: row[2] || '',
+                            usuario: row[3] || '',
+                            orden: row[4] || '',
+                            destino: row[5] || '',
+                            horario: row[6] || '',
+                            codigo: row[7] || '',
+                            codigo2: row[8] || '',
+                            estatus: row[9] || '',
+                            tarea: row[10] || '',
+                            estatus2: row[11] || '',
+                            cantInicial: parseInt(row[12]) || 0,
+                            cantDespacho: parseInt(row[13]) || 0,
+                            incidencias: row[14] || '',
+                            operador: row[15] || '',
+                            conductor: row[15] || '',
+                            unidad: row[16] || '',
+                            observaciones: row[17] || '',
+                            notaDespacho: row[17] || '',
+                            cantidadDespachar: parseInt(row[13]) || 0
+                        });
+                    }
+                }
+
+                console.log(`⚡ Caché devolvió ${records.length} registros en ${(performance.now() - startTime).toFixed(0)}ms`);
+                return records;
+            }
+        } catch (error) {
+            console.warn('⚠️ Error usando caché de DispatchSyncManager, fallback a carga directa:', error);
+            // Continuar con el método original
+        }
+    }
+
+    // FALLBACK: Método original (carga completa desde Google Sheets)
+    console.log('📥 [FALLBACK] Cargando registros directamente desde Google Sheets...');
+
     if (!gapi?.client?.sheets) {
         console.log('⚠️ Google Sheets API not available');
         return [];
@@ -790,18 +841,18 @@ async function fetchValidatedRecordsFromWriteDB() {
 
     try {
         console.log(`📥 Fetching from SPREADSHEET_WRITE: ${CONFIG.SPREADSHEET_WRITE}`);
-        
+
         // Get sheet metadata to find correct sheet name
         let sheetName = 'BD';
-        
+
         try {
             const metadataResponse = await gapi.client.sheets.spreadsheets.get({
                 spreadsheetId: CONFIG.SPREADSHEET_WRITE
             });
-            
+
             const sheets = metadataResponse.result.sheets;
             console.log('📋 Hojas disponibles:', sheets.map(s => s.properties.title).join(', '));
-            
+
             // Try common sheet names
             const possibleNames = ['Despachos', 'BD', 'Sheet1', 'Hoja1'];
             for (const name of possibleNames) {
@@ -814,7 +865,7 @@ async function fetchValidatedRecordsFromWriteDB() {
         } catch (metaError) {
             console.warn('No se pudo obtener metadata, usando hoja por defecto:', sheetName);
         }
-        
+
         // Fetch all data from the sheet
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SPREADSHEET_WRITE,
@@ -828,7 +879,7 @@ async function fetchValidatedRecordsFromWriteDB() {
         }
 
         console.log(`📊 Encontradas ${rows.length - 1} filas en BD de escritura`);
-        
+
         // Parse all records (we'll filter by OBC later)
         const records = [];
         for (let i = 1; i < rows.length; i++) {
@@ -859,10 +910,10 @@ async function fetchValidatedRecordsFromWriteDB() {
                 });
             }
         }
-        
+
         console.log(`✅ Parseados ${records.length} registros de despacho`);
         return records;
-        
+
     } catch (error) {
         console.error('Error fetching from SPREADSHEET_WRITE:', error);
         throw error;
@@ -1570,17 +1621,17 @@ function getCurrentUserName() {
             return alias;
         }
     }
-    
+
     // 2. Fallback a CURRENT_USER en memoria
     if (CURRENT_USER) {
         return CURRENT_USER;
     }
-    
+
     // 3. Fallback a USER_GOOGLE_NAME
     if (USER_GOOGLE_NAME) {
         return USER_GOOGLE_NAME;
     }
-    
+
     // 4. Último fallback
     return 'Usuario';
 }
@@ -1786,6 +1837,41 @@ function initSidebarComponent() {
         });
 
         window.sidebarComponent.render();
+
+        // CRÍTICO: Registrar callback DESPUÉS de crear el componente
+        // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
+        window.sidebarComponent.onAvatarUpdate((avatarState) => {
+            // Obtener email desde múltiples fuentes (orden de prioridad)
+            let userEmail = USER_EMAIL ||
+                           avatarState.userEmail ||
+                           localStorage.getItem('wms_userEmail') ||
+                           localStorage.getItem('user_email');
+
+            // Si aún no tenemos email, intentar obtenerlo desde Google API
+            if (!userEmail && gapi?.auth2?.getAuthInstance) {
+                try {
+                    const googleUser = gapi.auth2.getAuthInstance().currentUser.get();
+                    if (googleUser && googleUser.isSignedIn()) {
+                        const profile = googleUser.getBasicProfile();
+                        userEmail = profile.getEmail();
+                    }
+                } catch (e) {
+                    // Silenciar error, continuará con el flujo normal
+                }
+            }
+
+            if (avatarState.userName && userEmail) {
+                // CRÍTICO: Actualizar CURRENT_USER inmediatamente
+                CURRENT_USER = avatarState.userName;
+
+                // CRÍTICO: Guardar en localStorage para que persista al refrescar
+                localStorage.setItem(`wms_alias_${userEmail}`, avatarState.userName);
+
+                console.log('✅ [DISPATCH] Nombre actualizado:', avatarState.userName);
+
+                updateUserFooter();
+            }
+        });
     } catch (error) {
         console.error('❌ Error inicializando SidebarComponent:', error);
     }
@@ -1850,27 +1936,9 @@ function setupEventListeners() {
         }
     });
 
-    // CRÍTICO: Escuchar actualizaciones del avatar para sincronizar CURRENT_USER
-    // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
-    if (window.sidebarComponent) {
-        window.sidebarComponent.onAvatarUpdate((avatarState) => {
-            if (avatarState.userName && USER_EMAIL) {
-                // CRÍTICO: Actualizar CURRENT_USER inmediatamente
-                CURRENT_USER = avatarState.userName;
-                
-                // CRÍTICO: Guardar en localStorage para que persista al refrescar
-                localStorage.setItem(`wms_alias_${USER_EMAIL}`, avatarState.userName);
-                
-                // Verificar que se guardó correctamente
-                const verificacion = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-                console.log('🔄 [DISPATCH] CURRENT_USER sincronizado:', CURRENT_USER);
-                console.log('💾 [DISPATCH] Guardado en localStorage:', verificacion);
-                console.log('✅ [DISPATCH] getCurrentUserName() retorna:', getCurrentUserName());
-                
-                updateUserFooter();
-            }
-        });
-    }
+    // NOTA: El callback onAvatarUpdate ahora se registra en initSidebarComponent()
+    // para garantizar que window.sidebarComponent ya existe cuando se registra
+
     setupTableClickDelegation();
 }
 
@@ -3396,13 +3464,8 @@ function updateSummary() {
     }
     
     // ==================== VALIDACIÓN DE SINCRONIZACIÓN ====================
-    console.log('📊 [SYNC] updateSummary - Contadores calculados:', {
-        total: totalCount,
-        validadas: validatedCount,
-        pendientes: pendingCount,
-        fuenteDatos: STATE.dateFilter.active ? 'obcDataFiltered' : 'obcData',
-        filtroActivo: STATE.dateFilter.active
-    });
+    // Log desactivado para reducir ruido en consola
+    // console.log('📊 [SYNC] updateSummary - Contadores calculados:', {...});
 
     // Actualizar usando sidebarComponent
     if (window.sidebarComponent) {
@@ -3717,12 +3780,8 @@ function renderOrdersTable(mode = 'pending') {
     // ==================== SINCRONIZACIÓN: Usar EXACTAMENTE la misma fuente que contadores ====================
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
     
-    console.log('📊 [SYNC] renderOrdersTable - Fuente de datos:', {
-        mode,
-        filtroActivo: STATE.dateFilter.active,
-        totalEnFuente: dataToUse.size,
-        rangoFiltro: STATE.dateFilter.active ? `${STATE.dateFilter.startDate} → ${STATE.dateFilter.endDate}` : 'Sin filtro'
-    });
+    // Log desactivado para reducir ruido en consola
+    // console.log('📊 [SYNC] renderOrdersTable - Fuente de datos:', {...});
 
     if (dataToUse.size === 0) {
         tableBody.innerHTML = `
@@ -3768,10 +3827,8 @@ function renderOrdersTable(mode = 'pending') {
     });
     
     // ==================== VALIDACIÓN DE SINCRONIZACIÓN ====================
-    console.log('📊 [SYNC] Resultados de filtrado:', {
-        totalDespuesFiltro: filteredOrders.length,
-        modo: mode
-    });
+    // Log desactivado para reducir ruido en consola
+    // console.log('📊 [SYNC] Resultados de filtrado:', {...});
 
     tableBody.innerHTML = filteredOrders.map(([orden, data]) => {
         const validaciones = STATE.validacionData.get(orden) || [];
@@ -5498,14 +5555,8 @@ function renderValidatedTable() {
         
         // Debug para primeros 5 registros
         if (index < 5) {
-            console.log(`🎨 RENDER tabla row ${index}:`, {
-                orden: record.orden,
-                'cantDespacho (N)': record.cantDespacho,
-                'cantidadDespachar (alias)': record.cantidadDespachar,
-                'VALOR USADO': cantidadDespachar,
-                operador: record.operador,
-                unidad: record.unidad
-            });
+            // Log desactivado para reducir ruido en consola
+            // console.log(`🎨 RENDER tabla row ${index}:`, {...});
         }
         let dispatchStatus, statusBadge, statusColor;
 
@@ -9813,7 +9864,8 @@ function showLoadingOverlay(show, current = 0, total = 5, customMessage = null) 
         }
 
         overlay.style.display = 'flex';
-        console.log(`📊 Progress: ${current}/${total} (${percentage}%)`);
+        // Log desactivado para reducir ruido en consola
+        // console.log(`📊 Progress: ${current}/${total} (${percentage}%)`);
     } else {
         overlay.style.display = 'none';
     }
