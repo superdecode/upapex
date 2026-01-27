@@ -85,7 +85,7 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     transition: all 0.2s;
-    background-color: #f4d6c6;
+    background-color: #fde6da;
 }
 
 .search-input:focus {
