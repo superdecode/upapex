@@ -1556,6 +1556,35 @@ let USER_EMAIL = '';
 let USER_GOOGLE_NAME = '';
 let IS_ONLINE = navigator.onLine;
 
+/**
+ * CRÍTICO: Obtener el nombre de usuario actual SIEMPRE desde localStorage
+ * Esto asegura que siempre usamos el nombre más reciente, incluso si CURRENT_USER
+ * no se ha actualizado por alguna razón de timing
+ * @returns {string} Nombre de usuario actual
+ */
+function getCurrentUserName() {
+    // 1. Intentar obtener desde wms_alias (más confiable)
+    if (USER_EMAIL) {
+        const alias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+        if (alias) {
+            return alias;
+        }
+    }
+    
+    // 2. Fallback a CURRENT_USER en memoria
+    if (CURRENT_USER) {
+        return CURRENT_USER;
+    }
+    
+    // 3. Fallback a USER_GOOGLE_NAME
+    if (USER_GOOGLE_NAME) {
+        return USER_GOOGLE_NAME;
+    }
+    
+    // 4. Último fallback
+    return 'Usuario';
+}
+
 // Try to restore existing Google session
 function tryRestoreSession() {
     const savedToken = localStorage.getItem('gapi_token');
@@ -1826,10 +1855,18 @@ function setupEventListeners() {
     if (window.sidebarComponent) {
         window.sidebarComponent.onAvatarUpdate((avatarState) => {
             if (avatarState.userName && USER_EMAIL) {
+                // CRÍTICO: Actualizar CURRENT_USER inmediatamente
                 CURRENT_USER = avatarState.userName;
+                
                 // CRÍTICO: Guardar en localStorage para que persista al refrescar
                 localStorage.setItem(`wms_alias_${USER_EMAIL}`, avatarState.userName);
-                console.log('🔄 [DISPATCH] CURRENT_USER sincronizado y guardado:', CURRENT_USER);
+                
+                // Verificar que se guardó correctamente
+                const verificacion = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+                console.log('🔄 [DISPATCH] CURRENT_USER sincronizado:', CURRENT_USER);
+                console.log('💾 [DISPATCH] Guardado en localStorage:', verificacion);
+                console.log('✅ [DISPATCH] getCurrentUserName() retorna:', getCurrentUserName());
+                
                 updateUserFooter();
             }
         });
@@ -5946,7 +5983,7 @@ async function executeConfirmCancelOrder() {
             timestamp: now.toISOString(),                   // Timestamp ISO para referencia interna
             fecha: fecha,                                   // B: Fecha (DD/MM/YYYY)
             hora: hora,                                     // C: Hora (HH:MM)
-            usuario: CURRENT_USER || USER_GOOGLE_NAME || '', // D: Usuario (quien cancela)
+            usuario: getCurrentUserName(),                  // D: Usuario (quien cancela) - SIEMPRE desde localStorage
             orden: STATE.currentOrder,                      // E: Orden
             destino: orderData.recipient || '',             // F: Destino
             horario: normalizeDeliveryDate(orderData.expectedArrival) || '',  // G: Horario (Fecha de Envío normalizada)
@@ -6041,7 +6078,7 @@ async function executeConfirmNoProcesable() {
             timestamp: now.toISOString(),                   // Timestamp ISO para referencia interna
             fecha: fecha,                                   // B: Fecha (DD/MM/YYYY)
             hora: hora,                                     // C: Hora (HH:MM)
-            usuario: CURRENT_USER || USER_GOOGLE_NAME || '', // D: Usuario (quien marca)
+            usuario: getCurrentUserName(),                  // D: Usuario (quien marca) - SIEMPRE desde localStorage
             orden: STATE.currentOrder,                      // E: Orden
             destino: orderData.recipient || '',             // F: Destino
             horario: normalizeDeliveryDate(orderData.expectedArrival) || '',  // G: Horario
@@ -7427,8 +7464,8 @@ function showOrderInfo(orden) {
         
         // Mostrar usuario ACTUAL (no el que guardó el registro originalmente)
         if (userEl) {
-            // Usar CURRENT_USER actual, no el guardado en el registro
-            const userName = CURRENT_USER || USER_GOOGLE_NAME || 'N/A';
+            // Usar getCurrentUserName() para obtener el nombre más reciente
+            const userName = getCurrentUserName();
             userEl.textContent = userName;
         }
     } else {
@@ -8462,8 +8499,8 @@ async function saveValidatedOrderChanges(orden) {
         hora: hora,
         fechaModificacion: fecha,
         horaModificacion: hora,
-        usuario: CURRENT_USER || USER_GOOGLE_NAME || 'Usuario',
-        usuarioModificacion: CURRENT_USER || USER_GOOGLE_NAME || 'Usuario',
+        usuario: getCurrentUserName(),                      // SIEMPRE desde localStorage
+        usuarioModificacion: getCurrentUserName(),          // SIEMPRE desde localStorage
         timestamp: now.toISOString()
     };
 
@@ -8768,7 +8805,7 @@ async function executeConfirmDispatch() {
         timestamp: timestamp.toISOString(),     // Timestamp ISO para referencia interna
         fecha: fecha,                           // B: Fecha (DD/MM/YYYY formato consistente)
         hora: hora,                             // C: Hora (HH:MM formato consistente)
-        usuario: CURRENT_USER,                  // D: Usuario
+        usuario: getCurrentUserName(),          // D: Usuario - CRÍTICO: SIEMPRE desde localStorage
         orden: STATE.currentOrder,              // E: Orden
         destino: orderData.recipient || '',     // F: Destino
         horario: normalizeDeliveryDate(orderData.expectedArrival) || '', // G: Horario (Fecha de Envío normalizada ISO 8601)
