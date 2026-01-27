@@ -1846,8 +1846,10 @@ function initSidebarComponent() {
 
         // CRÍTICO: Registrar callback DESPUÉS de crear el componente
         // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
+        let lastUserName = ''; // Prevenir loops infinitos
         window.sidebarComponent.onAvatarUpdate((avatarState) => {
-            if (!avatarState.userName) return;
+            if (!avatarState.userName || avatarState.userName === lastUserName) return;
+            lastUserName = avatarState.userName;
 
             // CRÍTICO: Actualizar CURRENT_USER inmediatamente (sin depender del email)
             CURRENT_USER = avatarState.userName;
@@ -1862,8 +1864,6 @@ function initSidebarComponent() {
                 // Si no tenemos email todavía, guardar temporalmente en key genérica
                 localStorage.setItem('wms_alias_temp', avatarState.userName);
             }
-
-            console.log('✅ [DISPATCH] Nombre actualizado:', avatarState.userName);
 
             updateUserFooter();
         });
@@ -2223,34 +2223,32 @@ async function getUserProfile() {
         USER_EMAIL = data.email || '';
         USER_GOOGLE_NAME = data.name || 'Usuario';
 
-        // Update avatar system if available
+        // Handle user alias PRIMERO - usar wms_alias para consistencia con AuthManager y sidebar
+        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+        const tempAlias = localStorage.getItem('wms_alias_temp');
+
+        if (savedAlias) {
+            CURRENT_USER = savedAlias;
+        } else if (tempAlias) {
+            // Migrar de key temporal a key específica por email
+            CURRENT_USER = tempAlias;
+            localStorage.setItem(`wms_alias_${USER_EMAIL}`, tempAlias);
+            localStorage.removeItem('wms_alias_temp');
+        } else {
+            CURRENT_USER = USER_GOOGLE_NAME;
+            localStorage.setItem(`wms_alias_${USER_EMAIL}`, USER_GOOGLE_NAME);
+        }
+
+        // Update avatar system DESPUÉS de determinar el nombre correcto
         if (window.sidebarComponent) {
             window.sidebarComponent.setUserEmail(USER_EMAIL);
-            window.sidebarComponent.setUserName(USER_GOOGLE_NAME);
+            window.sidebarComponent.setUserName(CURRENT_USER); // Usar CURRENT_USER en lugar de USER_GOOGLE_NAME
             window.sidebarComponent.saveGoogleConnection(
                 gapi.client.getToken().access_token,
                 (gapi.client.getToken().expires_in || 3600)
             );
         }
 
-        // Handle user alias - usar wms_alias para consistencia con AuthManager y sidebar
-        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
-        const tempAlias = localStorage.getItem('wms_alias_temp');
-
-        if (savedAlias) {
-            CURRENT_USER = savedAlias;
-            console.log('✅ [DISPATCH] Alias cargado desde localStorage:', CURRENT_USER);
-        } else if (tempAlias) {
-            // Migrar de key temporal a key específica por email
-            CURRENT_USER = tempAlias;
-            localStorage.setItem(`wms_alias_${USER_EMAIL}`, tempAlias);
-            localStorage.removeItem('wms_alias_temp');
-            console.log('✅ [DISPATCH] Alias migrado de temporal a email:', CURRENT_USER);
-        } else {
-            CURRENT_USER = USER_GOOGLE_NAME;
-            localStorage.setItem(`wms_alias_${USER_EMAIL}`, USER_GOOGLE_NAME);
-            console.log('✅ [DISPATCH] Alias inicial guardado:', CURRENT_USER);
-        }
         updateUserFooter();
     } catch (e) {
         console.error('Error getting user profile:', e);
@@ -2813,10 +2811,8 @@ function parseValidacionData(csv) {
         const codigosUnicos = debugCodigosUnicos.get(obc)?.size || 0;
         const existe = STATE.validacionData.has(obc);
 
-        console.log(`🔍 AUDIT ${obc}:`);
-        console.log(`   - Existe en validacionData: ${existe}`);
-        console.log(`   - Registros totales: ${registros}`);
-        console.log(`   - Códigos únicos: ${codigosUnicos}`);
+        // Logs de audit desactivados para reducir ruido
+        // console.log(`🔍 AUDIT ${obc}:`, {existe, registros, codigosUnicos});
 
         if (registros > codigosUnicos) {
             console.warn(`   ⚠️ DUPLICIDAD DETECTADA: ${registros} registros vs ${codigosUnicos} códigos únicos`);
@@ -9083,10 +9079,8 @@ async function initSyncManager() {
         badge.style.display = 'none';
     }
     
-    console.log('✅ [DISPATCH] DispatchSyncManager inicializado');
-    console.log('   - Push Inmediato: Escrituras sin espera');
-    console.log('   - Polling: 30s para BD operativa');
-    console.log('   - Caché: 30min para BDs de referencia');
+    // Logs desactivados para reducir ruido
+    // console.log('✅ [DISPATCH] DispatchSyncManager inicializado');
 }
 
 /**
