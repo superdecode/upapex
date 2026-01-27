@@ -1789,10 +1789,7 @@ function setupEventListeners() {
         // CRÍTICO: Limpiar localStorage específico de la app
         localStorage.removeItem('dispatch_local_state');
         localStorage.removeItem('dispatch_active_session');
-        // Limpiar alias del usuario anterior
-        if (previousEmail) {
-            localStorage.removeItem(`dispatch_alias_${previousEmail}`);
-        }
+        // NO limpiar wms_alias_* porque son específicos por email y deben persistir
 
         // Limpiar datos del usuario anterior
         CURRENT_USER = '';
@@ -1828,9 +1825,11 @@ function setupEventListeners() {
     // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
     if (window.sidebarComponent) {
         window.sidebarComponent.onAvatarUpdate((avatarState) => {
-            if (avatarState.userName) {
+            if (avatarState.userName && USER_EMAIL) {
                 CURRENT_USER = avatarState.userName;
-                console.log('🔄 [DISPATCH] CURRENT_USER sincronizado desde avatar:', CURRENT_USER);
+                // CRÍTICO: Guardar en localStorage para que persista al refrescar
+                localStorage.setItem(`wms_alias_${USER_EMAIL}`, avatarState.userName);
+                console.log('🔄 [DISPATCH] CURRENT_USER sincronizado y guardado:', CURRENT_USER);
                 updateUserFooter();
             }
         });
@@ -2134,13 +2133,15 @@ async function getUserProfile() {
             );
         }
 
-        // Handle user alias
-        const savedAlias = localStorage.getItem(`dispatch_alias_${USER_EMAIL}`);
+        // Handle user alias - usar wms_alias para consistencia con AuthManager y sidebar
+        const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
         if (savedAlias) {
             CURRENT_USER = savedAlias;
+            console.log('✅ [DISPATCH] Alias cargado desde localStorage:', CURRENT_USER);
         } else {
             CURRENT_USER = USER_GOOGLE_NAME;
-            localStorage.setItem(`dispatch_alias_${USER_EMAIL}`, USER_GOOGLE_NAME);
+            localStorage.setItem(`wms_alias_${USER_EMAIL}`, USER_GOOGLE_NAME);
+            console.log('✅ [DISPATCH] Alias inicial guardado:', CURRENT_USER);
         }
         updateUserFooter();
     } catch (e) {
@@ -2164,12 +2165,7 @@ function handleLogout() {
     localStorage.removeItem('dispatch_local_state');
     localStorage.removeItem('dispatch_active_session');
     
-    // Limpiar todos los alias de dispatch (son específicos de esta app)
-    Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('dispatch_alias_')) {
-            localStorage.removeItem(key);
-        }
-    });
+    // NO limpiar wms_alias_* porque son compartidos entre apps y deben persistir
     
     // Limpiar variables globales
     CURRENT_USER = '';
