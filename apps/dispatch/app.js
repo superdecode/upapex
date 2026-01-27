@@ -1614,7 +1614,7 @@ let IS_ONLINE = navigator.onLine;
  * @returns {string} Nombre de usuario actual
  */
 function getCurrentUserName() {
-    // 1. Intentar obtener desde wms_alias (más confiable)
+    // 1. Intentar obtener desde wms_alias con email específico (más confiable)
     if (USER_EMAIL) {
         const alias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
         if (alias) {
@@ -1622,17 +1622,23 @@ function getCurrentUserName() {
         }
     }
 
-    // 2. Fallback a CURRENT_USER en memoria
+    // 2. Intentar obtener desde key temporal (cuando no hay email disponible aún)
+    const tempAlias = localStorage.getItem('wms_alias_temp');
+    if (tempAlias) {
+        return tempAlias;
+    }
+
+    // 3. Fallback a CURRENT_USER en memoria
     if (CURRENT_USER) {
         return CURRENT_USER;
     }
 
-    // 3. Fallback a USER_GOOGLE_NAME
+    // 4. Fallback a USER_GOOGLE_NAME
     if (USER_GOOGLE_NAME) {
         return USER_GOOGLE_NAME;
     }
 
-    // 4. Último fallback
+    // 5. Último fallback
     return 'Usuario';
 }
 
@@ -1841,36 +1847,25 @@ function initSidebarComponent() {
         // CRÍTICO: Registrar callback DESPUÉS de crear el componente
         // Esto asegura que cuando el usuario cambia su nombre, se refleje inmediatamente en los registros
         window.sidebarComponent.onAvatarUpdate((avatarState) => {
-            // Obtener email desde múltiples fuentes (orden de prioridad)
-            let userEmail = USER_EMAIL ||
-                           avatarState.userEmail ||
-                           localStorage.getItem('wms_userEmail') ||
-                           localStorage.getItem('user_email');
+            if (!avatarState.userName) return;
 
-            // Si aún no tenemos email, intentar obtenerlo desde Google API
-            if (!userEmail && gapi?.auth2?.getAuthInstance) {
-                try {
-                    const googleUser = gapi.auth2.getAuthInstance().currentUser.get();
-                    if (googleUser && googleUser.isSignedIn()) {
-                        const profile = googleUser.getBasicProfile();
-                        userEmail = profile.getEmail();
-                    }
-                } catch (e) {
-                    // Silenciar error, continuará con el flujo normal
-                }
-            }
+            // CRÍTICO: Actualizar CURRENT_USER inmediatamente (sin depender del email)
+            CURRENT_USER = avatarState.userName;
 
-            if (avatarState.userName && userEmail) {
-                // CRÍTICO: Actualizar CURRENT_USER inmediatamente
-                CURRENT_USER = avatarState.userName;
+            // Guardar en localStorage con email si está disponible, sino usar key genérica
+            const userEmail = USER_EMAIL || avatarState.userEmail;
 
-                // CRÍTICO: Guardar en localStorage para que persista al refrescar
+            if (userEmail) {
+                // Si tenemos email, guardar con email específico
                 localStorage.setItem(`wms_alias_${userEmail}`, avatarState.userName);
-
-                console.log('✅ [DISPATCH] Nombre actualizado:', avatarState.userName);
-
-                updateUserFooter();
+            } else {
+                // Si no tenemos email todavía, guardar temporalmente en key genérica
+                localStorage.setItem('wms_alias_temp', avatarState.userName);
             }
+
+            console.log('✅ [DISPATCH] Nombre actualizado:', avatarState.userName);
+
+            updateUserFooter();
         });
     } catch (error) {
         console.error('❌ Error inicializando SidebarComponent:', error);
@@ -2240,9 +2235,17 @@ async function getUserProfile() {
 
         // Handle user alias - usar wms_alias para consistencia con AuthManager y sidebar
         const savedAlias = localStorage.getItem(`wms_alias_${USER_EMAIL}`);
+        const tempAlias = localStorage.getItem('wms_alias_temp');
+
         if (savedAlias) {
             CURRENT_USER = savedAlias;
             console.log('✅ [DISPATCH] Alias cargado desde localStorage:', CURRENT_USER);
+        } else if (tempAlias) {
+            // Migrar de key temporal a key específica por email
+            CURRENT_USER = tempAlias;
+            localStorage.setItem(`wms_alias_${USER_EMAIL}`, tempAlias);
+            localStorage.removeItem('wms_alias_temp');
+            console.log('✅ [DISPATCH] Alias migrado de temporal a email:', CURRENT_USER);
         } else {
             CURRENT_USER = USER_GOOGLE_NAME;
             localStorage.setItem(`wms_alias_${USER_EMAIL}`, USER_GOOGLE_NAME);
