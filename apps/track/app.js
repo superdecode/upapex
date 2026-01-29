@@ -80,47 +80,94 @@ function forceReloadData() {
 // ==================== DATA LOADING ====================
 async function loadAllData() {
     showLoading(true);
-    const sources = Object.entries(CONFIG.SOURCES);
-    let completed = 0;
 
-    updateLoadingProgress(0, sources.length);
+    // OPTIMIZACIÓN: Cargar solo bases críticas primero
+    const criticalSources = {
+        OBC_BD: CONFIG.SOURCES.OBC_BD,
+        VALIDACION: CONFIG.SOURCES.VALIDACION,
+        REPARACIONES: CONFIG.SOURCES.REPARACIONES
+    };
+
+    const secondarySources = {
+        BD_STOCK: CONFIG.SOURCES.BD_STOCK,
+        INVENTARIO: CONFIG.SOURCES.INVENTARIO,
+        MNE: CONFIG.SOURCES.MNE,
+        TRS: CONFIG.SOURCES.TRS,
+        CANCELADO: CONFIG.SOURCES.CANCELADO,
+        EMBARQUES: CONFIG.SOURCES.EMBARQUES
+    };
+
+    let completed = 0;
+    const totalSources = Object.keys(criticalSources).length + Object.keys(secondarySources).length;
+    updateLoadingProgress(0, totalSources);
 
     try {
-        const results = await Promise.allSettled(
-            sources.map(async ([key, url]) => {
-                const data = await fetchCSV(url);
+        console.log('⚡ FASE 1: Cargando bases críticas (OBC_BD, VALIDACION, REPARACIONES)...');
+
+        // FASE 1: Cargar bases críticas
+        const criticalResults = await Promise.allSettled(
+            Object.entries(criticalSources).map(async ([key, url]) => {
+                const data = await fetchCSV(url, key);
                 completed++;
-                updateLoadingProgress(completed, sources.length);
+                updateLoadingProgress(completed, totalSources);
                 return { key, data };
             })
         );
 
-        results.forEach(result => {
+        criticalResults.forEach(result => {
             if (result.status === 'fulfilled') {
                 const { key, data } = result.value;
                 const mappedKey = {
-                    BD_STOCK: 'bdStock',
                     OBC_BD: 'obcBd',
                     VALIDACION: 'validacion',
-                    INVENTARIO: 'inventario',
-                    MNE: 'mne',
-                    TRS: 'trs',
-                    CANCELADO: 'cancelado',
-                    EMBARQUES: 'embarques',
                     REPARACIONES: 'reparaciones'
                 }[key];
                 DATA_CACHE[mappedKey] = data;
             }
         });
 
-        DATA_CACHE.lastUpdate = Date.now();
-        saveToCache();
-        showNotification('✅ Bases de datos cargadas correctamente', 'success');
+        console.log('✅ FASE 1 completa - App lista para búsquedas');
+        showNotification('✅ Bases críticas cargadas - App lista', 'success');
+        showLoading(false);
+
+        // FASE 2: Cargar bases secundarias en background
+        console.log('📦 FASE 2: Cargando bases secundarias en segundo plano...');
+
+        setTimeout(async () => {
+            const secondaryResults = await Promise.allSettled(
+                Object.entries(secondarySources).map(async ([key, url]) => {
+                    const data = await fetchCSV(url, key);
+                    completed++;
+                    updateLoadingProgress(completed, totalSources);
+                    return { key, data };
+                })
+            );
+
+            secondaryResults.forEach(result => {
+                if (result.status === 'fulfilled') {
+                    const { key, data } = result.value;
+                    const mappedKey = {
+                        BD_STOCK: 'bdStock',
+                        INVENTARIO: 'inventario',
+                        MNE: 'mne',
+                        TRS: 'trs',
+                        CANCELADO: 'cancelado',
+                        EMBARQUES: 'embarques'
+                    }[key];
+                    DATA_CACHE[mappedKey] = data;
+                }
+            });
+
+            DATA_CACHE.lastUpdate = Date.now();
+            saveToCache();
+            console.log('✅ FASE 2 completa - Todas las bases cargadas');
+            showNotification('✅ Todas las bases de datos cargadas', 'success', 2000);
+        }, 1000); // Esperar 1 segundo después de la carga crítica
+
     } catch (e) {
         console.error('Error loading data:', e);
         showNotification('❌ Error al cargar algunas bases de datos', 'error');
         loadFromCache();
-    } finally {
         showLoading(false);
     }
 }
@@ -131,7 +178,7 @@ function updateLoadingProgress(completed, total) {
     document.getElementById('loading-progress').textContent = `${completed}/${total} completadas`;
 }
 
-async function fetchCSV(url) {
+async function fetchCSV(url, sourceName = '') {
     const response = await fetch(url, {
         method: 'GET',
         mode: 'cors',
@@ -141,17 +188,27 @@ async function fetchCSV(url) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const csv = await response.text();
-    return parseCSV(csv);
+    return parseCSV(csv, sourceName);
 }
 
-function parseCSV(csv) {
+function parseCSV(csv, sourceName = '') {
+    const startTime = performance.now();
     const lines = csv.split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
 
     const headers = parseCSVLine(lines[0]);
     const data = [];
 
-    for (let i = 1; i < lines.length; i++) {
+    // OPTIMIZACIÓN: Limitar a últimos 50,000 registros para bases grandes
+    const MAX_ROWS = 50000;
+    const totalLines = lines.length - 1;
+    const startIndex = totalLines > MAX_ROWS ? lines.length - MAX_ROWS : 1;
+
+    if (totalLines > MAX_ROWS) {
+        console.log(`⚡ [${sourceName}] Optimización: procesando últimos ${MAX_ROWS.toLocaleString()} de ${totalLines.toLocaleString()} registros (${((MAX_ROWS/totalLines)*100).toFixed(1)}%)`);
+    }
+
+    for (let i = startIndex; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         if (values.length > 0) {
             const row = {};
@@ -162,6 +219,12 @@ function parseCSV(csv) {
             row._values = values;
             data.push(row);
         }
+    }
+
+    const endTime = performance.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    if (sourceName) {
+        console.log(`✅ [${sourceName}] Procesado: ${data.length.toLocaleString()} registros en ${duration}s`);
     }
 
     return data;
@@ -189,9 +252,29 @@ function parseCSVLine(line) {
 
 function saveToCache() {
     try {
-        localStorage.setItem('box_query_cache', JSON.stringify(DATA_CACHE));
+        const dataToSave = JSON.stringify(DATA_CACHE);
+        const sizeInMB = (new Blob([dataToSave]).size / (1024 * 1024)).toFixed(2);
+        console.log(`💾 Intentando guardar cache: ${sizeInMB}MB`);
+
+        // Si es mayor a 4MB, no intentar guardar (LocalStorage máximo ~5-10MB)
+        if (parseFloat(sizeInMB) > 4) {
+            console.warn(`⚠️ Cache demasiado grande (${sizeInMB}MB), omitiendo guardado`);
+            showNotification('ℹ️ Cache muy grande - No se guardará (se recargará al refrescar)', 'info', 3000);
+            return;
+        }
+
+        localStorage.setItem('box_query_cache', dataToSave);
+        console.log(`✅ Cache guardado: ${sizeInMB}MB`);
     } catch (e) {
-        console.error('Error saving to cache:', e);
+        if (e.name === 'QuotaExceededError') {
+            console.error('❌ QuotaExceededError: LocalStorage lleno');
+            // Simplemente limpiar el cache viejo y NO guardar nada
+            localStorage.removeItem('box_query_cache');
+            console.log('🧹 Cache eliminado - Los datos se recargarán en el próximo refresh');
+            showNotification('ℹ️ Cache no guardado (los datos se recargarán al refrescar)', 'info', 3000);
+        } else {
+            console.error('Error saving to cache:', e);
+        }
     }
 }
 
@@ -836,9 +919,12 @@ function searchEMBARQUES(data, results, sourceName) {
 function searchREPARACIONES(data, results, sourceName) {
     const query = results.query;
     const baseCode = results.baseCode;
-    const searchIndices = [2]; // CODIGO (índice 2)
+    // MEJORA: Buscar en columna B (OBC) Y columna C (CODIGO)
+    const searchIndices = [1, 2]; // B: OBC (índice 1), C: CODIGO (índice 2)
     const exactMatches = [];
     const fuzzyMatches = [];
+
+    console.log(`🪚 [REPARACIONES] Buscando "${query}" en columnas B (OBC) y C (CODIGO)...`);
 
     data.forEach(row => {
         if (!row._values || row._values.length < 3) return;
@@ -857,12 +943,14 @@ function searchREPARACIONES(data, results, sourceName) {
 
             const cellUpper = cellValue.toString().toUpperCase();
             const queryUpper = query.toUpperCase();
+            const columnName = idx === 1 ? 'OBC (Col B)' : 'CODIGO (Col C)';
 
             // ========== MATCH EXACTO (100%) ==========
             if (cellUpper === queryUpper) {
                 matchType = 'exact';
-                matchMethod = 'Exacto';
+                matchMethod = `Exacto en ${columnName}`;
                 similarity = 100;
+                console.log(`✅ [REPARACIONES] Match exacto en ${columnName}: "${cellValue}"`);
                 break;
             }
 
@@ -872,8 +960,9 @@ function searchREPARACIONES(data, results, sourceName) {
             // MATCH POR INCLUSIÓN (95%)
             if (!matchType && cellUpper.includes(queryUpper)) {
                 matchType = 'fuzzy';
-                matchMethod = 'Inclusión';
+                matchMethod = `Inclusión en ${columnName}`;
                 similarity = 95;
+                console.log(`✅ [REPARACIONES] Match parcial en ${columnName}: "${cellValue}"`);
                 break;
             }
 
