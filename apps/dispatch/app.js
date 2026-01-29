@@ -11839,6 +11839,9 @@ function printFolioDelivery(folioCompleto, incluirResumen = false) {
     showNotification('🖨️ Preparando impresión...', 'info');
 }
 
+// Expose globally for resumen-entrega-module.js
+window.printFolioDelivery = printFolioDelivery;
+
 // ==================== FOLIO DETAILS ACTIONS ====================
 /**
  * Print current folio details
