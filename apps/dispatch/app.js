@@ -10307,7 +10307,7 @@ function renderFoliosTable() {
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                             </svg>
                         </button>
-                        <button class="btn-action print" onclick="event.stopPropagation(); printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
+                        <button class="btn-action print" onclick="event.stopPropagation(); showResumenEntregaModal('${folio.folio}')" title="Imprimir Folio de Entrega">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9"></polyline>
                                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
@@ -10935,7 +10935,7 @@ function renderFoliosManagementTable() {
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                             </svg>
                         </button>
-                        <button class="btn-action print" onclick="event.stopPropagation(); printFolioDelivery('${folio.folio}')" title="Imprimir Folio de Entrega">
+                        <button class="btn-action print" onclick="event.stopPropagation(); showResumenEntregaModal('${folio.folio}')" title="Imprimir Folio de Entrega">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9"></polyline>
                                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
@@ -11352,10 +11352,10 @@ function updateFolioDetailsSortIndicators() {
 /**
  * Imprime el folio de entrega (PDF)
  */
-function printFolioDelivery(folioCompleto) {
+function printFolioDelivery(folioCompleto, incluirResumen = false) {
     // ==================== PRE-VALIDATION: INTEGRITY CHECK ====================
     // Ensure header counts match body rows before printing
-    
+
     // Obtener todas las órdenes del folio desde la base de datos sincronizada
     const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
 
@@ -11704,6 +11704,101 @@ function printFolioDelivery(folioCompleto) {
                 </div>
             </div>
 
+            ${incluirResumen ? `
+            <!-- RESUMEN DE ENTREGA -->
+            <div style="page-break-before: always;"></div>
+
+            <!-- Encabezado Resumen (IGUAL al del folio) -->
+            <div class="header">
+                <div class="header-title">RESUMEN DE ENTREGA</div>
+                <div class="header-row">
+                    <div class="header-cell">
+                        <span class="header-label">Folio:</span>
+                        <span class="header-value">${folioCompleto}</span>
+                    </div>
+                    <div class="header-cell">
+                        <span class="header-label">Conductor:</span>
+                        <span class="header-value">${conductor}</span>
+                    </div>
+                    <div class="header-cell">
+                        <span class="header-label">Unidad:</span>
+                        <span class="header-value">${unidad}</span>
+                    </div>
+                </div>
+                <div class="header-row">
+                    <div class="header-cell">
+                        <span class="header-label">Horario:</span>
+                        <span class="header-value">${horarioInicial} - ${horarioFinal}</span>
+                    </div>
+                    <div class="header-cell">
+                        <span class="header-label">Total:</span>
+                        <span class="header-value">${totalOrdenes} órdenes / ${totalCajas} cajas</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen de cantidades (25% más alto) -->
+            <div style="border: 1px solid #fed7aa; margin-bottom: 8px; padding: 0;">
+                <div style="display: flex; background: #fff7ed;">
+                    <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #fed7aa; text-align: center;">
+                        <span style="font-weight: 600; color: #78716c; font-size: 7.5pt; text-transform: uppercase; display: block; margin-bottom: 4px;">Despachado</span>
+                        <span style="font-size: 13pt; font-weight: 700; color: #292524;">${totalCajas}</span>
+                    </div>
+                    <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #fed7aa; text-align: center;">
+                        <span style="font-weight: 600; color: #78716c; font-size: 7.5pt; text-transform: uppercase; display: block; margin-bottom: 4px;">Entregado</span>
+                        <span style="font-size: 13pt; font-weight: 700; color: #292524;">_______</span>
+                    </div>
+                    <div style="flex: 1; padding: 8px 10px; text-align: center;">
+                        <span style="font-weight: 600; color: #78716c; font-size: 7.5pt; text-transform: uppercase; display: block; margin-bottom: 4px;">Cant. Rechazos</span>
+                        <span style="font-size: 13pt; font-weight: 700; color: #292524;">_______</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabla de rechazos (título como parte del thead + 14 filas) -->
+            <table style="border-collapse: collapse; margin-bottom: 0px; margin-top: 0px;">
+                <thead>
+                    <tr>
+                        <th colspan="4" style="background: #ffedd5; color: #9a3412; padding: 4px; text-align: center; font-weight: 700; font-size: 9pt; letter-spacing: 0.5px; border: 1px solid #fed7aa;">DETALLADO RECHAZOS</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 30px; text-align: center; vertical-align: middle; border-right: 1px solid #fed7aa;">#</th>
+                        <th style="width: 32%; vertical-align: middle; border-right: 1px solid #fed7aa;">CÓDIGO</th>
+                        <th style="width: 12%; text-align: center; vertical-align: middle; border-right: 1px solid #fed7aa;">CANT</th>
+                        <th style="width: 56%; vertical-align: middle;">OBSERVACIÓN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${Array.from({length: 14}, (_, i) => `
+                        <tr>
+                            <td style="text-align: center; vertical-align: middle; padding: 8px 3px; height: 22px; border-right: 1px solid #fef3c7; border-left: 1px solid #fef3c7;">${i + 1}</td>
+                            <td style="vertical-align: middle; padding: 8px 4px; border-right: 1px solid #fef3c7;"></td>
+                            <td style="text-align: center; vertical-align: middle; padding: 8px 3px; border-right: 1px solid #fef3c7;"></td>
+                            <td style="vertical-align: middle; padding: 8px 4px; border-right: 1px solid #fef3c7;"></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <!-- Zona de firmas (compactada para evitar salto) -->
+            <div style="display: flex; justify-content: space-between; margin-top: 20px; page-break-inside: avoid;">
+                <div style="flex: 1; text-align: center;">
+                    <div style="border-top: 1px solid #334155; margin: 35px 30px 6px 30px;"></div>
+                    <div style="font-weight: 600; color: #78716c; font-size: 8pt;">Conductor Nombre</div>
+                    <div style="color: #292524; font-weight: 600; font-size: 8pt;">${conductor}</div>
+                </div>
+                <div style="flex: 1; text-align: center;">
+                    <div style="border-top: 1px solid #334155; margin: 35px 30px 6px 30px;"></div>
+                    <div style="font-weight: 600; color: #78716c; font-size: 8pt;">Recibe</div>
+                </div>
+            </div>
+
+            <!-- Footer resumen (sin borde superior para ahorrar espacio) -->
+            <div style="margin-top: 3px; text-align: center; font-size: 7pt; color: #78716c; page-break-inside: avoid;">
+                📅 Generado el ${new Date().toLocaleString('es-MX')} • Sistema de Despacho WMS
+            </div>
+            ` : ''}
+
             <script>
                 // Auto-imprimir cuando se carga la página
                 window.onload = function() {
@@ -11753,7 +11848,8 @@ function printFolioDetails() {
         showNotification('⚠️ No hay folio seleccionado', 'warning');
         return;
     }
-    printFolioDelivery(STATE.currentFolio);
+    // Mostrar modal de confirmación para incluir Resumen de Entrega
+    showResumenEntregaModal(STATE.currentFolio);
 }
 
 /**
