@@ -531,7 +531,7 @@ async function lazyLoadDataByDate(startDate, endDate) {
         }
 
         // ==================== STEP 3: Load VALIDACION and MNE in parallel (Critical Reference Data) ====================
-        showLoadingOverlay(true, 2, TOTAL_STEPS, '📊 Paso 3/5: Cargando datos de Validación de Surtido y MNE en paralelo...');
+        showLoadingOverlay(true, 2, TOTAL_STEPS, '📊 Paso 3/5: Cargando datos de Validación de Surtido y MNE...');
         console.log('👉 PASO 3/5: Cargando VALIDACION y MNE en paralelo (datos críticos)...');
 
         const cacheBuster = Date.now();
@@ -6067,18 +6067,51 @@ async function executeConfirmCancelOrder() {
             return;
         }
 
-        // Add to local validated
-        STATE.localValidated.push(validationRecord);
-        saveLocalState();
+        // CRÍTICO: Verificar si la orden ya existe para evitar duplicados
+        const existingIndex = STATE.localValidated.findIndex(r => r.orden === STATE.currentOrder);
 
-        // Add to sync queue to write to database
-        if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
-            await window.syncManager.pushImmediate(validationRecord);
-        } else if (window.syncManager && typeof window.syncManager.addToQueue === 'function') {
-            // Fallback para compatibilidad con versiones anteriores
-            await window.syncManager.addToQueue(validationRecord);
+        if (existingIndex !== -1) {
+            // Actualizar registro existente a Cancelada
+            console.log('⚠️ Orden ya existe, actualizando a "Cancelada"');
+            STATE.localValidated[existingIndex] = {
+                ...STATE.localValidated[existingIndex],
+                ...validationRecord,
+                // Preservar timestamp original si existe
+                fechaModificacion: validationRecord.fecha,
+                horaModificacion: validationRecord.hora,
+                usuarioModificacion: validationRecord.usuario
+            };
+
+            saveLocalState();
+
+            // Sincronizar actualización con BD
+            if (dispatchSyncManager && typeof dispatchSyncManager.updateExistingRecord === 'function') {
+                const syncResult = await dispatchSyncManager.updateExistingRecord(STATE.localValidated[existingIndex]);
+                if (syncResult.success) {
+                    console.log(`✅ Orden ${STATE.currentOrder} actualizada a "Cancelada" en BD (fila ${syncResult.rowIndex || 'N/A'})`);
+                } else {
+                    console.warn(`⚠️ Error actualizando orden ${STATE.currentOrder}:`, syncResult.error || syncResult.message);
+                }
+            } else {
+                console.warn('⚠️ updateExistingRecord no disponible - usando pushImmediate (puede crear duplicado)');
+                if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
+                    await window.syncManager.pushImmediate(STATE.localValidated[existingIndex]);
+                }
+            }
         } else {
-            console.warn('⚠️ syncManager no disponible - la sincronización se realizará más tarde');
+            // Crear nuevo registro Cancelado
+            console.log('✅ Creando nuevo registro "Cancelada"');
+            STATE.localValidated.push(validationRecord);
+            saveLocalState();
+
+            // Sincronizar nuevo registro con BD
+            if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
+                await window.syncManager.pushImmediate(validationRecord);
+            } else if (window.syncManager && typeof window.syncManager.addToQueue === 'function') {
+                await window.syncManager.addToQueue(validationRecord);
+            } else {
+                console.warn('⚠️ syncManager no disponible - la sincronización se realizará más tarde');
+            }
         }
 
         // Close modals
@@ -6162,18 +6195,51 @@ async function executeConfirmNoProcesable() {
             return;
         }
 
-        // Add to local validated
-        STATE.localValidated.push(validationRecord);
-        saveLocalState();
+        // CRÍTICO: Verificar si la orden ya existe para evitar duplicados
+        const existingIndex = STATE.localValidated.findIndex(r => r.orden === STATE.currentOrder);
 
-        // Add to sync queue to write to database
-        if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
-            await window.syncManager.pushImmediate(validationRecord);
-        } else if (window.syncManager && typeof window.syncManager.addToQueue === 'function') {
-            // Fallback para compatibilidad con versiones anteriores
-            await window.syncManager.addToQueue(validationRecord);
+        if (existingIndex !== -1) {
+            // Actualizar registro existente
+            console.log('⚠️ Orden ya existe, actualizando a "No Procesable"');
+            STATE.localValidated[existingIndex] = {
+                ...STATE.localValidated[existingIndex],
+                ...validationRecord,
+                // Preservar timestamp original si existe
+                fechaModificacion: validationRecord.fecha,
+                horaModificacion: validationRecord.hora,
+                usuarioModificacion: validationRecord.usuario
+            };
+
+            saveLocalState();
+
+            // Sincronizar actualización con BD
+            if (dispatchSyncManager && typeof dispatchSyncManager.updateExistingRecord === 'function') {
+                const syncResult = await dispatchSyncManager.updateExistingRecord(STATE.localValidated[existingIndex]);
+                if (syncResult.success) {
+                    console.log(`✅ Orden ${STATE.currentOrder} actualizada a "No Procesable" en BD (fila ${syncResult.rowIndex || 'N/A'})`);
+                } else {
+                    console.warn(`⚠️ Error actualizando orden ${STATE.currentOrder}:`, syncResult.error || syncResult.message);
+                }
+            } else {
+                console.warn('⚠️ updateExistingRecord no disponible - usando pushImmediate (puede crear duplicado)');
+                if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
+                    await window.syncManager.pushImmediate(STATE.localValidated[existingIndex]);
+                }
+            }
         } else {
-            console.warn('⚠️ syncManager no disponible - la sincronización se realizará más tarde');
+            // Crear nuevo registro
+            console.log('✅ Creando nuevo registro "No Procesable"');
+            STATE.localValidated.push(validationRecord);
+            saveLocalState();
+
+            // Sincronizar nuevo registro con BD
+            if (window.syncManager && typeof window.syncManager.pushImmediate === 'function') {
+                await window.syncManager.pushImmediate(validationRecord);
+            } else if (window.syncManager && typeof window.syncManager.addToQueue === 'function') {
+                await window.syncManager.addToQueue(validationRecord);
+            } else {
+                console.warn('⚠️ syncManager no disponible - la sincronización se realizará más tarde');
+            }
         }
 
         // Close modals
@@ -7512,10 +7578,10 @@ function showOrderInfo(orden) {
             lastModifiedEl.textContent = lastModified;
         }
         
-        // Mostrar usuario ACTUAL (no el que guardó el registro originalmente)
+        // Mostrar usuario que EDITÓ/MODIFICÓ la orden (no el usuario actual que la visualiza)
         if (userEl) {
-            // Usar getCurrentUserName() para obtener el nombre más reciente
-            const userName = getCurrentUserName();
+            // Prioridad: usuarioModificacion > usuario > fallback
+            const userName = savedData.usuarioModificacion || savedData.usuario || getCurrentUserName();
             userEl.textContent = userName;
         }
     } else {
@@ -8402,6 +8468,10 @@ async function saveValidatedOrderChanges(orden) {
         // Update the current order being edited
         const recordIndex = STATE.localValidated.findIndex(r => r.orden === orden);
         if (recordIndex !== -1) {
+            // Obtener timestamp y usuario actual para la cancelación
+            const now = new Date();
+            const { fecha, hora } = formatDateTimeForDB(now);
+
             // Update the status to cancelled
             STATE.localValidated[recordIndex].estatus = 'Cancelada';
             STATE.localValidated[recordIndex].cantidadDespachar = 0;
@@ -8411,15 +8481,40 @@ async function saveValidatedOrderChanges(orden) {
             STATE.localValidated[recordIndex].folio = '';
             STATE.localValidated[recordIndex].nota = 'Orden cancelada';
 
-            // Save state
+            // CRÍTICO: Actualizar campos de auditoría al cancelar
+            STATE.localValidated[recordIndex].fechaModificacion = fecha;
+            STATE.localValidated[recordIndex].horaModificacion = hora;
+            STATE.localValidated[recordIndex].usuarioModificacion = getCurrentUserName();
+            STATE.localValidated[recordIndex].timestamp = now.toISOString();
+            STATE.localValidated[recordIndex].lastModified = now.toISOString();
+
+            // Save state locally
             saveLocalState();
+
+            // CRÍTICO: Sincronizar inmediatamente con BD para evitar duplicados
+            console.log('📝 Sincronizando cancelación con BD...');
+            if (dispatchSyncManager && typeof dispatchSyncManager.updateExistingRecord === 'function') {
+                try {
+                    const syncResult = await dispatchSyncManager.updateExistingRecord(STATE.localValidated[recordIndex]);
+                    if (syncResult.success) {
+                        console.log(`✅ Orden ${orden} cancelada en BD (fila ${syncResult.rowIndex || 'N/A'})`);
+                    } else {
+                        console.warn(`⚠️ Error sincronizando cancelación de orden ${orden}:`, syncResult.error || syncResult.message);
+                    }
+                } catch (error) {
+                    console.error('❌ Error sincronizando cancelación:', error);
+                }
+            } else {
+                console.warn('⚠️ updateExistingRecord no disponible para cancelación');
+            }
 
             // Close modal and refresh tables
             closeInfoModal();
             renderValidatedTable();
+            renderOtrosTable(); // IMPORTANTE: También actualizar tabla de Otros
             updateTabBadges();
 
-            showNotification('🚫 Orden actualizada como Cancelada', 'info');
+            showNotification('🚫 Orden actualizada como Cancelada y sincronizada', 'info');
         }
         return;
     }
@@ -8559,11 +8654,25 @@ async function saveValidatedOrderChanges(orden) {
     // Save to localStorage
     try {
         localStorage.setItem('localValidated', JSON.stringify(STATE.localValidated));
-        showNotification('✅ Cambios guardados exitosamente', 'success');
 
-        // Trigger sync if available
-        if (window.syncManager) {
-            await syncPendingData();
+        // CRÍTICO: Sincronizar inmediatamente con BD usando updateExistingRecord
+        console.log('📝 Sincronizando cambios de edición con BD...');
+        if (dispatchSyncManager && typeof dispatchSyncManager.updateExistingRecord === 'function') {
+            const syncResult = await dispatchSyncManager.updateExistingRecord(updatedRecord);
+            if (syncResult.success) {
+                console.log(`✅ Orden ${orden} actualizada en BD (fila ${syncResult.rowIndex || 'N/A'})`);
+                showNotification('✅ Cambios guardados y sincronizados con BD', 'success');
+            } else {
+                console.warn(`⚠️ Error sincronizando orden ${orden}:`, syncResult.error || syncResult.message);
+                showNotification('⚠️ Cambios guardados localmente, pero falló sincronización con BD', 'warning');
+            }
+        } else {
+            console.warn('⚠️ updateExistingRecord no disponible - usando syncPendingData como fallback');
+            // Fallback a syncPendingData (puede crear duplicados)
+            if (window.syncManager) {
+                await syncPendingData();
+            }
+            showNotification('✅ Cambios guardados exitosamente', 'success');
         }
 
         // Update ALL tables to ensure synchronization
@@ -8575,7 +8684,7 @@ async function saveValidatedOrderChanges(orden) {
         if (STATE.currentFolio) {
             renderFolioDetailsTable(STATE.currentFolio);
         }
-        
+
         // Update all badges
         updateTabBadges();
         updateValidatedBadges();
