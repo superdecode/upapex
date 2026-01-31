@@ -646,6 +646,14 @@ class SidebarComponent {
                     <div><span id="bd-count">0</span> registros cargados</div>
                     <div id="bd-update-time">Sin actualizar</div>
                 </div>
+
+                <!-- Indicador de progreso de carga en segundo plano -->
+                <div id="background-loading-indicator" class="background-loading-indicator" style="display: none;">
+                    <div class="loading-message">Cargando bases complementarias...</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar"></div>
+                    </div>
+                </div>
             </div>
         `;
     }

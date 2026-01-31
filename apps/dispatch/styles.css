@@ -603,6 +603,13 @@ select option[data-is-current="true"] {
     animation: spin 0.8s linear infinite;
 }
 
+/* Spinner naranja sutil para datos de segundo plano */
+.spinner-orange {
+    border: 2px solid rgba(249, 115, 22, 0.15);
+    border-top-color: #f97316;
+    opacity: 0.8;
+}
+
 @keyframes spin {
     to { transform: rotate(360deg); }
 }

@@ -513,14 +513,25 @@ async function lazyLoadDataByDate(startDate, endDate) {
         // ==================== STEP 1: Fetch OBC DB ====================
         showLoadingOverlay(true, 0, TOTAL_STEPS, '📦 Paso 1/3: Descargando base de órdenes OBC...');
         console.log('👉 PASO 1/3: Descargando BD_CAJAS (OBC orders database)...');
-        
+
         let allOBCOrders = [];
         try {
-            const bdCajasResponse = await fetch(CONFIG.SOURCES.BD_CAJAS);
-            if (!bdCajasResponse.ok) {
-                throw new Error(`HTTP error! status: ${bdCajasResponse.status}`);
+            let bdCajasCsv;
+            if (dispatchSyncManager) {
+                // Usar syncManager si está disponible (maneja caché y autenticación)
+                bdCajasCsv = await dispatchSyncManager.getReferenceData('bd_cajas', CONFIG.SOURCES.BD_CAJAS, true);
+            } else {
+                // Fallback a fetch directo con cache-busting
+                const cacheBuster = Date.now();
+                const url = CONFIG.SOURCES.BD_CAJAS.includes('?')
+                    ? `${CONFIG.SOURCES.BD_CAJAS}&_t=${cacheBuster}`
+                    : `${CONFIG.SOURCES.BD_CAJAS}?_t=${cacheBuster}`;
+                const bdCajasResponse = await fetch(url, { cache: 'no-store' });
+                if (!bdCajasResponse.ok) {
+                    throw new Error(`HTTP error! status: ${bdCajasResponse.status}`);
+                }
+                bdCajasCsv = await bdCajasResponse.text();
             }
-            const bdCajasCsv = await bdCajasResponse.text();
             allOBCOrders = parseOBCDataWithDateFilter(bdCajasCsv, startDate, endDate);
             console.log(`✅ PASO 1/3 COMPLETO: ${allOBCOrders.length} órdenes encontradas en el rango de fechas`);
         } catch (error) {
@@ -675,11 +686,14 @@ function parseOBCDataWithDateFilter(csv, startDate, endDate) {
         if (cols.length >= 9) {
             totalRows++;
             const obc = cols[0]?.trim();
-            const expectedArrival = cols[4]?.trim(); // Column E: Expected Arrival (fecha de despacho)
+            // CRITERIO DE FILTRADO: Para órdenes OBC (no validadas), filtrar por expectedArrival
+            // Esta es la fecha de entrega esperada según el sistema OBC
+            const expectedArrival = cols[4]?.trim(); // Column E: Expected Arrival (fecha de entrega OBC)
             const codigo = cols[8]?.trim();          // Column I: Custom Barcode
 
             if (obc && expectedArrival) {
                 // FILTRO WHERE: Validar fecha ANTES de procesar
+                // NOTA: Órdenes validadas se filtran por fecha de despacho real en renderValidatedTable
                 const orderDate = parseOrderDate(expectedArrival);
 
                 // Sample para debugging
@@ -906,17 +920,12 @@ async function fetchValidatedRecordsFromWriteDB() {
 function crossReferenceOrders(obcOrders, validatedRecords) {
     // Create a Set of validated OBC codes for quick lookup
     const validatedOBCSet = new Set();
-    const validatedByOBC = new Map(); // OBC -> array of validation records
+    const validatedByOBC = new Map(); // OBC → array of validation records
     
     validatedRecords.forEach(record => {
         if (record.orden) {
             const obcCode = record.orden.trim().toUpperCase();
             validatedOBCSet.add(obcCode);
-            
-            if (!validatedByOBC.has(obcCode)) {
-                validatedByOBC.set(obcCode, []);
-            }
-            validatedByOBC.get(obcCode).push(record);
         }
     });
     
@@ -925,24 +934,39 @@ function crossReferenceOrders(obcOrders, validatedRecords) {
     const pendingOrders = [];
     const validatedOrders = [];
     
+    // CORRECCIÓN CRÍTICA: Primero agregar TODOS los registros validados
+    // Esto preserva registros históricos que no están en el OBC actual
+    validatedRecords.forEach(record => {
+        if (record.orden) {
+            const obcCode = record.orden.trim().toUpperCase();
+            const obcOrder = obcOrders.find(o => o.orden.trim().toUpperCase() === obcCode);
+            
+            if (obcOrder) {
+                // Si la orden está en OBC actual, enriquecer con datos OBC
+                validatedOrders.push({
+                    ...record,
+                    totalCajas: obcOrder.totalCajas,
+                    recipient: obcOrder.recipient,
+                    expectedArrival: obcOrder.expectedArrival
+                });
+            } else {
+                // Si NO está en OBC actual, preservar el registro validado tal cual
+                // Esto es CRÍTICO para mantener registros históricos
+                validatedOrders.push({
+                    ...record,
+                    totalCajas: record.totalCajas || record.cantInicial || 0,
+                    recipient: record.destino || '',
+                    expectedArrival: record.horario || ''
+                });
+            }
+        }
+    });
+    
+    // Identificar órdenes pendientes (en OBC pero NO validadas)
     obcOrders.forEach(order => {
         const obcCode = order.orden.trim().toUpperCase();
         
-        if (validatedOBCSet.has(obcCode)) {
-            // This order has been validated - get its validation records
-            const validationRecords = validatedByOBC.get(obcCode) || [];
-            
-            // Add each validation record to validatedOrders
-            validationRecords.forEach(record => {
-                validatedOrders.push({
-                    ...record,
-                    // Add OBC data for reference
-                    totalCajas: order.totalCajas,
-                    recipient: order.recipient,
-                    expectedArrival: order.expectedArrival
-                });
-            });
-        } else {
+        if (!validatedOBCSet.has(obcCode)) {
             // This order is still pending
             pendingOrders.push(order);
         }
@@ -950,8 +974,9 @@ function crossReferenceOrders(obcOrders, validatedRecords) {
     
     console.log(`✅ Resultado del cruce:`);
     console.log(`   - Pendientes: ${pendingOrders.length}`);
-    console.log(`   - Validadas: ${validatedOrders.length}`);
+    console.log(`   - Validadas (TODAS): ${validatedOrders.length}`);
     console.log(`   - OBCs validados: ${validatedOBCSet.size}`);
+    console.log(`   - Registros históricos preservados: ${validatedOrders.length - validatedOBCSet.size}`);
     
     return { pendingOrders, validatedOrders, validatedOBCSet };
 }
@@ -2506,10 +2531,20 @@ async function loadHeavyReferenceDataInBackground() {
 
                 // CRÍTICO: Re-renderizar tablas ahora que VALIDACION está disponible
                 console.log('🔄 [BACKGROUND] Re-renderizando tablas con datos de VALIDACION...');
+                console.log(`   - STATE.localValidated.length: ${STATE.localValidated.length}`);
+                console.log(`   - STATE.validacionData.size: ${STATE.validacionData.size}`);
+                console.log(`   - STATE.dateFilter.active: ${STATE.dateFilter.active}`);
+                if (STATE.dateFilter.active) {
+                    console.log(`   - Rango filtro: ${STATE.dateFilter.startDate} a ${STATE.dateFilter.endDate}`);
+                }
+
                 if (typeof renderOrdersList === 'function') renderOrdersList();
                 if (typeof renderValidatedTable === 'function') renderValidatedTable();
                 if (typeof renderOtrosTable === 'function') renderOtrosTable();
                 if (typeof updateSummary === 'function') updateSummary();
+
+                // Re-renderizar tarjetas KPI del modal si está abierto
+                refreshModalKPICardsIfOpen();
             } catch (e) {
                 console.warn('⚠️ [BACKGROUND] Error cargando VALIDACION:', e);
             }
@@ -2531,6 +2566,9 @@ async function loadHeavyReferenceDataInBackground() {
                 LOAD_STATE.backgroundData.mne = true;
                 completedCount++;
                 console.log('✅ [BACKGROUND] MNE cargada');
+
+                // Re-renderizar tarjetas KPI del modal si está abierto
+                refreshModalKPICardsIfOpen();
             } catch (e) {
                 console.warn('⚠️ [BACKGROUND] Error cargando MNE:', e);
             }
@@ -2552,6 +2590,9 @@ async function loadHeavyReferenceDataInBackground() {
                 LOAD_STATE.backgroundData.trs = true;
                 completedCount++;
                 console.log('✅ [BACKGROUND] TRS cargada');
+
+                // Re-renderizar tarjetas KPI del modal si está abierto
+                refreshModalKPICardsIfOpen();
             } catch (e) {
                 console.warn('⚠️ [BACKGROUND] Error cargando TRS:', e);
             }
@@ -3664,48 +3705,91 @@ function executeExit() {
     backToStart();
 }
 
-function updateSummary() {
-    // ==================== USAR MISMA FUENTE QUE TABLAS ====================
+/**
+ * FUNCIÓN CENTRALIZADA: Obtener órdenes filtradas según modo
+ * Esta función garantiza que contador y tabla usen exactamente la misma lógica de filtrado
+ * @param {string} mode - 'todo', 'pending', 'validated', etc.
+ * @returns {Array} Array de [orden, data] filtrado
+ */
+function getFilteredOrders(mode = 'pending') {
     const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
-    
-    // Contar órdenes totales (OBC) - DIRECTAMENTE desde el Map
-    const totalCount = dataToUse.size;
-    
+    const ordersArray = Array.from(dataToUse.entries());
+
+    if (mode === 'todo') {
+        // Mostrar todas las órdenes sin filtro adicional
+        return ordersArray;
+    }
+
+    // Filtrar según el modo
+    return ordersArray.filter(([orden]) => {
+        const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
+
+        if (mode === 'pending') {
+            // Solo mostrar órdenes Pendiente o Pendiente Calidad
+            // EXCLUIR: Canceladas, No Procesables, y Validadas normales
+            if (isValidated && validatedData) {
+                const estatus = validatedData.estatus || '';
+                const calidad = validatedData.calidad || '';
+
+                // EXCLUIR Canceladas y No Procesables
+                if (estatus === 'Cancelada' || estatus === 'No Procesable') {
+                    return false;
+                }
+
+                // Incluir solo si es Pendiente Calidad
+                return calidad.includes('Pendiente') || estatus === 'Pendiente Calidad';
+            }
+            // Incluir si no está validada (Pendiente genuino)
+            return !isValidated;
+        }
+
+        return !isValidated;
+    });
+}
+
+function updateSummary() {
+    // ==================== SINCRONIZACIÓN: Usar función centralizada ====================
+    // Esto garantiza que el contador muestre exactamente lo que se ve en las tablas
+
     // MEJORA: Configurar deep linking en tarjetas de resumen
     setupSummaryCardLinks();
-    
-    // Contar validadas - usar la misma lógica que updateTabBadges
+
+    // Obtener órdenes filtradas usando la MISMA lógica que las tablas
+    const todoOrders = getFilteredOrders('todo');
+    const pendingOrders = getFilteredOrders('pending');
+
+    // Contar validadas - filtrar por fecha si hay filtro activo
     let validatedCount = 0;
-    let pendingCount = 0;
-    
-    // Filtrar validadas por fecha si hay filtro activo
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
         const startDate = parseDateLocal(STATE.dateFilter.startDate);
         const endDate = parseDateLocal(STATE.dateFilter.endDate);
         endDate.setHours(23, 59, 59, 999);
 
         validatedCount = STATE.localValidated.filter(record => {
-            const orderData = STATE.obcData.get(record.orden) || {};
-            const dateStr = orderData.expectedArrival || record.fecha;
+            // Excluir Canceladas y No Procesables
+            const estatus = record.estatus || '';
+            if (estatus === 'Cancelada' || estatus === 'No Procesable') {
+                return false;
+            }
+
+            // Filtrar por fecha de despacho
+            const dateStr = record.fecha; // Usar fecha de despacho para consistencia
             if (!dateStr) return false;
             const orderDate = parseDateLocal(dateStr);
             return orderDate && orderDate >= startDate && orderDate <= endDate;
         }).length;
     } else {
-        validatedCount = STATE.localValidated.length;
+        // Sin filtro de fecha, contar solo las que no son Canceladas/No Procesables
+        validatedCount = STATE.localValidated.filter(record => {
+            const estatus = record.estatus || '';
+            return estatus !== 'Cancelada' && estatus !== 'No Procesable';
+        }).length;
     }
-    
-    // Contar pendientes desde OBC - MISMO LOOP que renderOrdersTable
-    for (const [orden] of dataToUse.entries()) {
-        const { validated: isValidated } = isOrderValidated(orden);
-        if (!isValidated) {
-            pendingCount++;
-        }
-    }
-    
-    // ==================== VALIDACIÓN DE SINCRONIZACIÓN ====================
-    // Log desactivado para reducir ruido en consola
-    // console.log('📊 [SYNC] updateSummary - Contadores calculados:', {...});
+
+    const totalCount = todoOrders.length;
+    const pendingCount = pendingOrders.length;
+
+    console.log(`📊 [SYNC] updateSummary - Contadores: Total=${totalCount}, Pendientes=${pendingCount}, Validadas=${validatedCount}`);
 
     // Actualizar usando sidebarComponent
     if (window.sidebarComponent) {
@@ -4017,13 +4101,11 @@ function renderOrdersTable(mode = 'pending') {
         return;
     }
 
-    // ==================== SINCRONIZACIÓN: Usar EXACTAMENTE la misma fuente que contadores ====================
-    const dataToUse = STATE.dateFilter.active ? STATE.obcDataFiltered : STATE.obcData;
-    
-    // Log desactivado para reducir ruido en consola
-    // console.log('📊 [SYNC] renderOrdersTable - Fuente de datos:', {...});
+    // ==================== SINCRONIZACIÓN: Usar función centralizada ====================
+    // Esto garantiza que la tabla muestre exactamente lo que cuenta updateSummary()
+    const filteredOrders = getFilteredOrders(mode);
 
-    if (dataToUse.size === 0) {
+    if (filteredOrders.length === 0) {
         tableBody.innerHTML = `
             <tr>
                 <td colspan="10" class="table-empty-state">
@@ -4036,39 +4118,7 @@ function renderOrdersTable(mode = 'pending') {
         return;
     }
 
-    const ordersArray = Array.from(dataToUse.entries());
-
-    // Filtrar según el modo
-    const filteredOrders = ordersArray.filter(([orden]) => {
-        const { validated: isValidated, data: validatedData } = isOrderValidated(orden);
-
-        if (mode === 'todo') {
-            // Mostrar todas las órdenes (Pendiente + Validada + Otros)
-            return true;
-        } else if (mode === 'pending') {
-            // Solo mostrar órdenes Pendiente o Pendiente Calidad
-            // EXCLUIR: Canceladas, No Procesables, y Validadas normales
-            if (isValidated && validatedData) {
-                const estatus = validatedData.estatus || '';
-                const calidad = validatedData.calidad || '';
-
-                // EXCLUIR Canceladas y No Procesables
-                if (estatus === 'Cancelada' || estatus === 'No Procesable') {
-                    return false;
-                }
-
-                // Incluir solo si es Pendiente Calidad
-                return calidad.includes('Pendiente') || estatus === 'Pendiente Calidad';
-            }
-            // Incluir si no está validada (Pendiente genuino)
-            return !isValidated;
-        }
-        return !isValidated;
-    });
-    
-    // ==================== VALIDACIÓN DE SINCRONIZACIÓN ====================
-    // Log desactivado para reducir ruido en consola
-    // console.log('📊 [SYNC] Resultados de filtrado:', {...});
+    console.log(`📊 [SYNC] renderOrdersTable(${mode}) - Renderizando ${filteredOrders.length} órdenes`);
 
     tableBody.innerHTML = filteredOrders.map(([orden, data]) => {
         const validaciones = STATE.validacionData.get(orden) || [];
@@ -4121,10 +4171,20 @@ function renderOrdersTable(mode = 'pending') {
             statusBadge = createStatusBadge('pendiente', 'Pendiente');
         }
 
-        // CHANGE 6: Only show validation % if cajasValidadas > 0 AND totalCajas > 0
-        // Handle over-validation case (more validated than expected)
+        // CRÍTICO: Verificar si VALIDACION está cargada antes de mostrar datos
         let validationDisplay;
-        if (cajasValidadas === 0 || totalCajas === 0) {
+        const validacionCargada = LOAD_STATE.backgroundData.validacion;
+
+        if (!validacionCargada) {
+            // Datos aún no disponibles - mostrar spinner
+            validationDisplay = `
+                <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <div class="spinner-small spinner-orange"></div>
+                    <span style="font-size: 0.75em; color: #f97316;">Cargando...</span>
+                </div>
+            `;
+        } else if (cajasValidadas === 0 || totalCajas === 0) {
+            // Datos cargados pero sin validaciones
             validationDisplay = '<span class="empty-cell">N/A</span>';
         } else if (cajasValidadas > totalCajas) {
             // Over-validation warning
@@ -4134,6 +4194,7 @@ function renderOrdersTable(mode = 'pending') {
                 <span class="progress-text" style="color: #f59e0b;" title="⚠️ Sobre-validación: ${cajasValidadas} validadas vs ${totalCajas} esperadas (+${exceso})">⚠️ ${porcentajeValidacion}%</span>
             `;
         } else {
+            // Mostrar porcentaje normal
             validationDisplay = `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`;
         }
 
@@ -5714,6 +5775,8 @@ function renderValidatedTable() {
     const tableBody = document.getElementById('validated-table-body');
     if (!tableBody) return;
 
+    console.log(`🔍 [DEBUG renderValidatedTable] STATE.localValidated.length: ${STATE.localValidated.length}`);
+
     if (STATE.localValidated.length === 0) {
         tableBody.innerHTML = `
             <tr>
@@ -5736,6 +5799,8 @@ function renderValidatedTable() {
         return estatus !== 'Cancelada' && estatus !== 'No Procesable';
     });
 
+    console.log(`🔍 [DEBUG] Después de filtrar Canceladas/No Procesables: ${filteredValidated.length}`);
+
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
         // Parse dates as local time to avoid timezone offset issues
         const startParts = STATE.dateFilter.startDate.split('-');
@@ -5747,15 +5812,23 @@ function renderValidatedTable() {
         endDate.setHours(23, 59, 59, 999);
 
         filteredValidated = filteredValidated.filter(record => {
-            // CRÍTICO: Filtrar por FECHA DE DESPACHO (record.fecha), NO por fecha de entrega
+            // CRITERIO DE FILTRADO: Para órdenes validadas, filtrar por FECHA DE DESPACHO REAL (record.fecha)
+            // Esto es diferente del filtro OBC que usa expectedArrival (fecha de entrega esperada)
+            // RAZÓN: Una vez validada, la fecha relevante es cuándo se despachó realmente, no cuándo se esperaba
             // El filtro de fecha debe mostrar órdenes despachadas en el rango, no órdenes con entrega en el rango
             const fechaDespacho = record.fecha; // DD/MM/YYYY
 
-            if (!fechaDespacho) return false;
+            if (!fechaDespacho) {
+                console.log(`⚠️ [DEBUG] Registro sin fecha: ${record.orden}`);
+                return false;
+            }
 
             // Convertir DD/MM/YYYY a Date
             const parts = fechaDespacho.split('/');
-            if (parts.length !== 3) return false;
+            if (parts.length !== 3) {
+                console.log(`⚠️ [DEBUG] Fecha inválida para ${record.orden}: ${fechaDespacho}`);
+                return false;
+            }
 
             const despachoDate = new Date(
                 parseInt(parts[2]),        // Año
@@ -5764,8 +5837,16 @@ function renderValidatedTable() {
             );
             despachoDate.setHours(12, 0, 0, 0); // Medio día para evitar problemas de zona horaria
 
-            return despachoDate >= startDate && despachoDate <= endDate;
+            const inRange = despachoDate >= startDate && despachoDate <= endDate;
+
+            if (!inRange && filteredValidated.length <= 5) {
+                console.log(`🔍 [DEBUG] Orden ${record.orden} fuera de rango: ${fechaDespacho} (${despachoDate.toLocaleDateString()}) no está entre ${startDate.toLocaleDateString()} y ${endDate.toLocaleDateString()}`);
+            }
+
+            return inRange;
         });
+
+        console.log(`🔍 [DEBUG] Después de filtrar por fecha: ${filteredValidated.length}`);
     }
 
     // Update filter indicator
@@ -5805,11 +5886,24 @@ function renderValidatedTable() {
         const porcentajeValidacion = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
         const tieneRastreo = rastreoData.length > 0;
 
-        // CHANGE 6: Only show validation % if cajasValidadas > 0 AND totalCajas > 0
-        // Handle over-validation case (more validated than expected)
+        // CRÍTICO: Verificar si VALIDACION está cargada antes de mostrar datos
         let validationDisplay;
-        if (cajasValidadas === 0 || totalCajas === 0) {
-            validationDisplay = '<span class="empty-cell">N/A</span>';
+        const validacionCargada = LOAD_STATE.backgroundData.validacion;
+
+        if (!validacionCargada) {
+            // Datos aún no disponibles - mostrar spinner
+            validationDisplay = `
+                <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <div class="spinner-small spinner-orange"></div>
+                    <span style="font-size: 0.75em; color: #f97316;">Cargando...</span>
+                </div>
+            `;
+        } else if (totalCajas === 0) {
+            // No hay información de total de cajas
+            validationDisplay = '<span class="empty-cell" title="Sin información de total de cajas">Sin Info</span>';
+        } else if (cajasValidadas === 0) {
+            // 0% validado (diferente a N/A) - mostrar barra vacía con 0%
+            validationDisplay = `<div class="progress-bar"><div class="progress-fill" style="width: 0%"></div></div><span class="progress-text">0%</span>`;
         } else if (cajasValidadas > totalCajas) {
             // Over-validation warning
             const exceso = cajasValidadas - totalCajas;
@@ -5818,6 +5912,7 @@ function renderValidatedTable() {
                 <span class="progress-text" style="color: #f59e0b;" title="⚠️ Sobre-validación: ${cajasValidadas} validadas vs ${totalCajas} esperadas (+${exceso})">⚠️ ${porcentajeValidacion}%</span>
             `;
         } else {
+            // Mostrar porcentaje normal
             validationDisplay = `<div class="progress-bar"><div class="progress-fill" style="width: ${porcentajeValidacion}%"></div></div><span class="progress-text">${porcentajeValidacion}%</span>`;
         }
 
@@ -5831,19 +5926,10 @@ function renderValidatedTable() {
             // Log desactivado para reducir ruido en consola
             // console.log(`🎨 RENDER tabla row ${index}:`, {...});
         }
-        let dispatchStatus, statusBadge, statusColor;
-
-        if (record.estatus === 'Cancelada') {
-            statusBadge = 'Cancelada';
-            statusColor = '#ef4444';  // Rojo
-        } else if (record.estatus === 'No Procesable') {
-            statusBadge = 'No Procesable';
-            statusColor = '#eab308';  // Amarillo
-        } else {
-            dispatchStatus = calculateOrderStatus(totalCajas, cantidadDespachar);
-            statusBadge = dispatchStatus.status;
-            statusColor = dispatchStatus.color;
-        }
+        // Calculate dispatch status with explicit status handling
+        const dispatchStatus = calculateOrderStatus(totalCajas, cantidadDespachar, record.estatus);
+        const statusBadge = dispatchStatus.status;
+        const statusColor = dispatchStatus.color;
 
         // OPTIMIZACIÓN: Buscar TRS relacionados (simplificado para mejor rendimiento)
         let trsCount = 0;
@@ -7715,18 +7801,38 @@ function closeHistoricalOrderModal() {
     }
 }
 
-// ==================== ESTATUS DE ORDEN ====================
 /**
  * Calcula el estatus de despacho comparando cantidad despachada vs cantidad original OC
  * @param {number} totalCajas - Cantidad original de cajas (de OBC)
  * @param {number} cantidadDespachar - Cantidad despachada
+ * @param {string} estatusRecord - Estatus explícito desde el registro validado (opcional)
  * @returns {object} - { status: string, color: string }
  * - Igual → Completado (green)
  * - Despachada < Original → Parcial (orange)
  * - Despachada > Original → Anormalidad (red)
+ * - Cancelada → Cancelada (red)
+ * - No Procesable → No Procesable (orange)
  */
-function calculateOrderStatus(totalCajas, cantidadDespachar) {
-    if (!totalCajas || totalCajas === 0) return { status: 'Sin Información', color: '#999' };
+function calculateOrderStatus(totalCajas, cantidadDespachar, estatusRecord = '') {
+    // PRIORIDAD 1: Estatus explícito (Cancelada, No Procesable)
+    if (estatusRecord === 'Cancelada') {
+        return { status: 'Cancelada', color: '#ef4444' };
+    }
+    if (estatusRecord === 'No Procesable') {
+        return { status: 'No Procesable', color: '#f97316' };
+    }
+
+    // PRIORIDAD 2: Cálculo basado en cantidades
+    // Si no hay información de cajas totales, considerar como "Completado" por defecto
+    // (la orden fue validada/despachada exitosamente)
+    if (!totalCajas || totalCajas === 0) {
+        // Si hay cantidad despachada, considerar completado
+        if (cantidadDespachar && cantidadDespachar > 0) {
+            return { status: 'Completado', color: '#10b981' };
+        }
+        // Si tampoco hay cantidad despachada, sin información
+        return { status: 'Sin Información', color: '#999' };
+    }
 
     if (cantidadDespachar < totalCajas) {
         return { status: 'Parcial', color: '#f59e0b' };
@@ -7811,14 +7917,19 @@ function showOrderInfo(orden) {
     if (!orderData) {
         const validatedRecord = STATE.localValidated.find(v => v.orden === orden);
         if (validatedRecord) {
-            // Create a minimal orderData from validated record
+            // Create enhanced orderData from validated record with all available fields
             orderData = {
                 orden: validatedRecord.orden,
-                recipient: validatedRecord.destino,
-                expectedArrival: validatedRecord.horario,
+                recipient: validatedRecord.destino || '',
+                expectedArrival: validatedRecord.horario || validatedRecord.fecha || '',
                 totalCajas: validatedRecord.totalCajas || 0,
                 referenceNo: validatedRecord.referenceNo || '',
-                trackingCode: validatedRecord.trackingCode || ''
+                trackingCode: validatedRecord.trackingCode || '',
+                shippingService: validatedRecord.shippingService || '',
+                remark: validatedRecord.remark || '',
+                boxType: validatedRecord.boxType || '',
+                customBarcode: validatedRecord.customBarcode || '',
+                isValidated: true
             };
         }
     }
@@ -7837,9 +7948,10 @@ function showOrderInfo(orden) {
     if (validationCheck.validated && validationCheck.data) {
         const totalCajas = orderData.totalCajas || 0;
         const cantidadDespachar = validationCheck.data.cantidadDespachar || 0;
-        const statusInfo = calculateOrderStatus(totalCajas, cantidadDespachar);
+        const estatusRecord = validationCheck.data.estatus || '';
+        const statusInfo = calculateOrderStatus(totalCajas, cantidadDespachar, estatusRecord);
 
-        console.log(`📊 Status Badge - Order ${orden}: totalCajas=${totalCajas}, cantidadDespachar=${cantidadDespachar}, status=${statusInfo.status}`);
+        console.log(`📊 Status Badge - Order ${orden}: totalCajas=${totalCajas}, cantidadDespachar=${cantidadDespachar}, estatus=${estatusRecord}, status=${statusInfo.status}`);
 
         statusBadgeHTML = ` <span class="status-badge-modal" style="background-color: ${statusInfo.color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.75em; font-weight: 600; margin-left: 10px;">${statusInfo.status}</span>`;
     }
@@ -8212,6 +8324,39 @@ function toggleOrderNoProcesable() {
     }
 }
 
+/**
+ * Re-renderiza las tarjetas KPI del modal si el modal está abierto actualmente
+ * Se llama cuando los datos de segundo plano (VALIDACION, MNE, TRS) terminan de cargar
+ */
+function refreshModalKPICardsIfOpen() {
+    // Verificar si el modal está abierto y hay una orden actual
+    const modal = document.getElementById('info-modal');
+    if (!modal || modal.style.display === 'none' || !STATE.currentOrder) {
+        return; // Modal cerrado, no hacer nada
+    }
+
+    // Obtener datos actuales de la orden
+    let orderData = STATE.obcData.get(STATE.currentOrder);
+    if (!orderData) {
+        const validatedRecord = STATE.localValidated.find(v => v.orden === STATE.currentOrder);
+        if (validatedRecord) {
+            orderData = {
+                orden: validatedRecord.orden,
+                recipient: validatedRecord.destino,
+                expectedArrival: validatedRecord.horario,
+                totalCajas: validatedRecord.totalCajas || 0,
+                referenceNo: validatedRecord.referenceNo || '',
+                trackingCode: validatedRecord.trackingCode || ''
+            };
+        }
+    }
+
+    if (orderData) {
+        console.log(`🔄 [MODAL] Actualizando tarjetas KPI para ${STATE.currentOrder} (datos de segundo plano listos)`);
+        renderKPICards(orderData);
+    }
+}
+
 function renderKPICards(orderData) {
     const kpiCards = document.getElementById('kpi-cards');
     const validaciones = STATE.validacionData.get(orderData.orden) || [];
@@ -8241,6 +8386,33 @@ function renderKPICards(orderData) {
         }
     });
 
+    // OPTIMIZACIÓN: Generar contenido de tarjetas según estado de carga de datos
+    const validacionCardContent = !LOAD_STATE.backgroundData.validacion
+        ? `<div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+               <div class="spinner-small spinner-orange"></div>
+               <span style="font-size: 0.75em; color: #f97316;">Cargando...</span>
+           </div>`
+        : `${cajasValidadas}/${totalCajas} cajas
+           ${totalCajas > 0 ? `
+               <div class="kpi-progress">
+                   <div class="kpi-progress-bar" style="width: ${(cajasValidadas/totalCajas*100).toFixed(0)}%"></div>
+               </div>
+           ` : ''}`;
+
+    const trsCardContent = !LOAD_STATE.backgroundData.trs
+        ? `<div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+               <div class="spinner-small spinner-orange"></div>
+               <span style="font-size: 0.75em; color: #f97316;">Cargando...</span>
+           </div>`
+        : `${trsCount} relacionados`;
+
+    const rastreoCardContent = !LOAD_STATE.backgroundData.mne
+        ? `<div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+               <div class="spinner-small spinner-orange"></div>
+               <span style="font-size: 0.75em; color: #f97316;">Cargando...</span>
+           </div>`
+        : `${rastreoData.length} cajas`;
+
     kpiCards.innerHTML = `
         <div class="kpi-card orden" onclick="scrollToSection('section-detalle-obc')">
             <div class="kpi-card-icon">📦</div>
@@ -8260,26 +8432,21 @@ function renderKPICards(orderData) {
             <div class="kpi-card-icon">✅</div>
             <div class="kpi-card-content">
                 <div class="kpi-card-label">Validación</div>
-                <div class="kpi-card-value">${cajasValidadas}/${totalCajas} cajas</div>
-                ${totalCajas > 0 ? `
-                    <div class="kpi-progress">
-                        <div class="kpi-progress-bar" style="width: ${(cajasValidadas/totalCajas*100).toFixed(0)}%"></div>
-                    </div>
-                ` : ''}
+                <div class="kpi-card-value">${validacionCardContent}</div>
             </div>
         </div>
         <div class="kpi-card trs" onclick="scrollToSection('section-trs')">
             <div class="kpi-card-icon">🔄</div>
             <div class="kpi-card-content">
                 <div class="kpi-card-label">TRS</div>
-                <div class="kpi-card-value">${trsCount} relacionados</div>
+                <div class="kpi-card-value">${trsCardContent}</div>
             </div>
         </div>
         <div class="kpi-card cajas" onclick="scrollToSection('section-rastreo')">
             <div class="kpi-card-icon">📍</div>
             <div class="kpi-card-content">
                 <div class="kpi-card-label">Rastreo</div>
-                <div class="kpi-card-value">${rastreoData.length} cajas</div>
+                <div class="kpi-card-value">${rastreoCardContent}</div>
             </div>
         </div>
     `;
