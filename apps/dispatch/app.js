@@ -501,17 +501,18 @@ async function lazyLoadDataByDate(startDate, endDate) {
         return;
     }
 
-    const TOTAL_STEPS = 5; // Incrementado para incluir carga de referencias
-    
+    const TOTAL_STEPS = 3; // OPTIMIZADO: Solo 3 pasos bloqueantes (OBC + Validados + Cruzar)
+
     try {
         console.log('\n========================================');
-        console.log(`📅 INICIANDO CARGA DE DATOS`);
+        console.log(`📅 INICIANDO CARGA PRIORITARIA DE DATOS`);
         console.log(`   Rango: ${startDate} a ${endDate}`);
+        console.log(`   🚀 VALIDACION, MNE y TRS se cargarán en segundo plano`);
         console.log('========================================\n');
-        
+
         // ==================== STEP 1: Fetch OBC DB ====================
-        showLoadingOverlay(true, 0, TOTAL_STEPS, '📦 Paso 1/4: Descargando base de órdenes OBC...');
-        console.log('👉 PASO 1/4: Descargando BD_CAJAS (OBC orders database)...');
+        showLoadingOverlay(true, 0, TOTAL_STEPS, '📦 Paso 1/3: Descargando base de órdenes OBC...');
+        console.log('👉 PASO 1/3: Descargando BD_CAJAS (OBC orders database)...');
         
         let allOBCOrders = [];
         try {
@@ -521,7 +522,7 @@ async function lazyLoadDataByDate(startDate, endDate) {
             }
             const bdCajasCsv = await bdCajasResponse.text();
             allOBCOrders = parseOBCDataWithDateFilter(bdCajasCsv, startDate, endDate);
-            console.log(`✅ PASO 1 COMPLETO: ${allOBCOrders.length} órdenes encontradas en el rango de fechas`);
+            console.log(`✅ PASO 1/3 COMPLETO: ${allOBCOrders.length} órdenes encontradas en el rango de fechas`);
         } catch (error) {
             console.error('Error loading BD_CAJAS:', error);
             throw new Error('No se pudo cargar la base de órdenes OBC');
@@ -539,86 +540,35 @@ async function lazyLoadDataByDate(startDate, endDate) {
         }
         
         // ==================== STEP 2: Fetch Validated Records from SPREADSHEET_WRITE ====================
-        showLoadingOverlay(true, 1, TOTAL_STEPS, '📝 Paso 2/5: Cargando registros de despacho (BD Escritura)...');
-        console.log('👉 PASO 2/5: Cargando registros validados desde SPREADSHEET_WRITE...');
+        showLoadingOverlay(true, 1, TOTAL_STEPS, '📝 Paso 2/3: Cargando registros de despacho (BD Escritura)...');
+        console.log('👉 PASO 2/3: Cargando registros validados desde SPREADSHEET_WRITE...');
 
         let validatedRecords = [];
         try {
             validatedRecords = await fetchValidatedRecordsFromWriteDB();
-            console.log(`✅ PASO 2 COMPLETO: ${validatedRecords.length} registros de despacho encontrados`);
+            console.log(`✅ PASO 2/3 COMPLETO: ${validatedRecords.length} registros de despacho encontrados`);
         } catch (error) {
             console.warn('Error loading validated records:', error);
             console.log('⚠️ Continuando sin registros validados...');
         }
 
-        // ==================== STEP 3: Load VALIDACION and MNE in parallel (Critical Reference Data) ====================
-        showLoadingOverlay(true, 2, TOTAL_STEPS, '📊 Paso 3/5: Cargando datos de Validación de Surtido y MNE...');
-        console.log('👉 PASO 3/5: Cargando VALIDACION y MNE en paralelo (datos críticos)...');
+        // ==================== PASO 3 OPTIMIZADO: Delegar carga pesada a segundo plano ====================
+        // VALIDACION, MNE y TRS se cargarán en background (NO bloquean UI)
+        console.log('🚀 Delegando carga de VALIDACION, MNE y TRS al background...');
+        loadHeavyReferenceDataInBackground();
 
-        const cacheBuster = Date.now();
-
-        // Cargar VALIDACION y MNE en paralelo usando Promise.all
-        await Promise.all([
-            // VALIDACION
-            (async () => {
-                try {
-                    let validacionCsv;
-                    if (dispatchSyncManager) {
-                        validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION, true);
-                    } else {
-                        const url = CONFIG.SOURCES.VALIDACION.includes('?')
-                            ? `${CONFIG.SOURCES.VALIDACION}&_t=${cacheBuster}`
-                            : `${CONFIG.SOURCES.VALIDACION}?_t=${cacheBuster}`;
-                        const response = await fetch(url, { cache: 'no-store' });
-                        validacionCsv = await response.text();
-                    }
-                    if (validacionCsv) parseValidacionData(validacionCsv);
-                    console.log('✅ VALIDACION cargada en paralelo');
-                    return { success: true, type: 'VALIDACION' };
-                } catch (e) {
-                    console.warn('⚠️ Error cargando VALIDACION:', e);
-                    return { success: false, type: 'VALIDACION', error: e };
-                }
-            })(),
-
-            // MNE
-            (async () => {
-                try {
-                    let mneCsv;
-                    if (dispatchSyncManager) {
-                        mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE, true);
-                    } else {
-                        const url = CONFIG.SOURCES.MNE.includes('?')
-                            ? `${CONFIG.SOURCES.MNE}&_t=${cacheBuster}`
-                            : `${CONFIG.SOURCES.MNE}?_t=${cacheBuster}`;
-                        const response = await fetch(url, { cache: 'no-store' });
-                        mneCsv = await response.text();
-                    }
-                    if (mneCsv) parseMNEData(mneCsv);
-                    console.log('✅ MNE cargada en paralelo');
-                    return { success: true, type: 'MNE' };
-                } catch (e) {
-                    console.warn('⚠️ Error cargando MNE:', e);
-                    return { success: false, type: 'MNE', error: e };
-                }
-            })()
-        ]);
-
-        console.log('✅ PASO 3 COMPLETO: Datos de referencia críticos cargados en paralelo');
-
-        // ==================== STEP 4: Cross-reference OBC with Validated ====================
-        showLoadingOverlay(true, 3, TOTAL_STEPS, '🔄 Paso 4/5: Cruzando órdenes con registros validados...');
-        console.log('👉 PASO 4/5: Cruzando órdenes OBC con registros validados...');
+        // ==================== STEP 3: Cross-reference OBC with Validated ====================
+        showLoadingOverlay(true, 2, TOTAL_STEPS, '🔄 Paso 3/3: Cruzando órdenes con registros validados...');
+        console.log('👉 PASO 3/3: Cruzando órdenes OBC con registros validados...');
 
         const { pendingOrders, validatedOrders, validatedOBCSet } = crossReferenceOrders(allOBCOrders, validatedRecords);
 
-        console.log(`✅ PASO 4 COMPLETO:`);
+        console.log(`✅ PASO 3/3 COMPLETO:`);
         console.log(`   - Órdenes pendientes: ${pendingOrders.length}`);
         console.log(`   - Órdenes validadas: ${validatedOrders.length}`);
 
-        // ==================== STEP 5: Update STATE and Render ====================
-        showLoadingOverlay(true, 4, TOTAL_STEPS, '✅ Paso 5/5: Preparando visualización...');
-        console.log('👉 PASO 5/5: Actualizando estado y preparando render...');
+        // ==================== FINALIZACIÓN: Update STATE and Render ====================
+        console.log('👉 FINALIZANDO: Actualizando estado y preparando visualización...');
         
         // Clear and populate STATE
         STATE.obcData.clear();
@@ -685,117 +635,123 @@ async function lazyLoadDataByDate(startDate, endDate) {
  * @param {string} endDate - End date YYYY-MM-DD
  * @returns {Array} Array of orders within date range
  */
+/**
+ * FUNCIÓN OPTIMIZADA: Parsea CSV de OBC con filtro estricto de fecha
+ * MEJORA: Solo UN recorrido del CSV en lugar de DOS (optimización crítica para >30k filas)
+ * FILTRO WHERE: Descarta inmediatamente registros fuera del rango de fechas
+ * @param {string} csv - CSV completo de BD_CAJAS
+ * @param {string} startDate - Fecha inicio (YYYY-MM-DD)
+ * @param {string} endDate - Fecha fin (YYYY-MM-DD)
+ * @returns {Array} - Órdenes únicas dentro del rango de fechas
+ */
 function parseOBCDataWithDateFilter(csv, startDate, endDate) {
     const lines = csv.split('\n').filter(l => l.trim());
-    const orders = [];
-    
-    // Parse dates for comparison
+
+    // OPTIMIZACIÓN: Parse de fechas de filtro solo UNA VEZ
     const startParts = startDate.split('-');
     const filterStartDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
     filterStartDate.setHours(0, 0, 0, 0);
-    
+
     const endParts = endDate.split('-');
     const filterEndDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
     filterEndDate.setHours(23, 59, 59, 999);
-    
-    console.log(`🔍 Filtrando OBC por fecha: ${filterStartDate.toLocaleDateString('es-MX')} - ${filterEndDate.toLocaleDateString('es-MX')}`);
-    
-    // Also clear and rebuild bdCajasData for box codes
+
+    console.log(`🔍 [FILTRO ESTRICTO] Rango: ${filterStartDate.toLocaleDateString('es-MX')} - ${filterEndDate.toLocaleDateString('es-MX')}`);
+
+    // OPTIMIZACIÓN: Estructuras de datos para UN solo recorrido
     STATE.bdCajasData.clear();
-    const cajasCountMap = new Map();
-    const allBoxCodes = new Map();
-    
+    const cajasCountMap = new Map();     // OBC → count de cajas
+    const allBoxCodes = new Map();       // Código → [cajas]
+    const uniqueOrders = new Map();      // OBC → datos de orden
+
     let totalRows = 0;
     let matchedRows = 0;
     let sampleDates = [];
-    
+
+    // OPTIMIZACIÓN CRÍTICA: UN SOLO RECORRIDO del CSV
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
-        
+
         if (cols.length >= 9) {
             totalRows++;
             const obc = cols[0]?.trim();
             const expectedArrival = cols[4]?.trim(); // Column E: Expected Arrival (fecha de despacho)
-            const codigo = cols[8]?.trim(); // Column I: Custom Barcode
-            
+            const codigo = cols[8]?.trim();          // Column I: Custom Barcode
+
             if (obc && expectedArrival) {
-                // Parse the order date
+                // FILTRO WHERE: Validar fecha ANTES de procesar
                 const orderDate = parseOrderDate(expectedArrival);
-                
-                // Sample dates for debugging (con hora)
+
+                // Sample para debugging
                 if (sampleDates.length < 5) {
-                    const dateTimeStr = orderDate ? 
-                        `${orderDate.toLocaleDateString('es-MX')} ${orderDate.toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit'})}` : 
+                    const dateTimeStr = orderDate ?
+                        `${orderDate.toLocaleDateString('es-MX')} ${orderDate.toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit'})}` :
                         'INVALID';
                     sampleDates.push(`${obc}: "${expectedArrival}" → ${dateTimeStr}`);
                 }
-                
-                // Check if order is within date range
-                if (orderDate && orderDate >= filterStartDate && orderDate <= filterEndDate) {
-                    matchedRows++;
-                    
-                    // Count boxes per OBC
-                    cajasCountMap.set(obc, (cajasCountMap.get(obc) || 0) + 1);
-                    
-                    // Index by box code
-                    if (codigo) {
-                        const codigoUpper = codigo.toUpperCase();
-                        if (!allBoxCodes.has(codigoUpper)) {
-                            allBoxCodes.set(codigoUpper, []);
-                        }
-                        allBoxCodes.get(codigoUpper).push({
-                            obc: obc,
-                            referenceNo: cols[1]?.trim() || '',
-                            shippingService: cols[2]?.trim() || '',
-                            trackingCode: cols[3]?.trim() || '',
-                            expectedArrival: expectedArrival,
-                            remark: cols[5]?.trim() || '',
-                            recipient: cols[6]?.trim() || '',
-                            boxType: cols[7]?.trim() || '',
-                            codigoCaja: codigo
-                        });
+
+                // DESCARTE INMEDIATO: Si no está en rango, continuar sin procesar
+                if (!orderDate || orderDate < filterStartDate || orderDate > filterEndDate) {
+                    continue; // SALTAR esta fila (WHERE filter)
+                }
+
+                matchedRows++;
+
+                // PROCESAMIENTO: Solo filas que pasaron el filtro WHERE
+                // 1. Contar cajas por OBC
+                cajasCountMap.set(obc, (cajasCountMap.get(obc) || 0) + 1);
+
+                // 2. Indexar por código de caja
+                if (codigo) {
+                    const codigoUpper = codigo.toUpperCase();
+                    if (!allBoxCodes.has(codigoUpper)) {
+                        allBoxCodes.set(codigoUpper, []);
                     }
+                    allBoxCodes.get(codigoUpper).push({
+                        obc: obc,
+                        referenceNo: cols[1]?.trim() || '',
+                        shippingService: cols[2]?.trim() || '',
+                        trackingCode: cols[3]?.trim() || '',
+                        expectedArrival: expectedArrival,
+                        remark: cols[5]?.trim() || '',
+                        recipient: cols[6]?.trim() || '',
+                        boxType: cols[7]?.trim() || '',
+                        codigoCaja: codigo
+                    });
+                }
+
+                // 3. Crear orden única (si no existe)
+                if (!uniqueOrders.has(obc)) {
+                    uniqueOrders.set(obc, {
+                        orden: obc,
+                        referenceNo: cols[1]?.trim() || '',
+                        shippingService: cols[2]?.trim() || '',
+                        trackingCode: cols[3]?.trim() || '',
+                        expectedArrival: expectedArrival,
+                        remark: cols[5]?.trim() || '',
+                        recipient: cols[6]?.trim() || '',
+                        boxType: cols[7]?.trim() || '',
+                        customBarcode: cols[8]?.trim() || '',
+                        totalCajas: 0, // Se actualizará después
+                        isValidated: false
+                    });
                 }
             }
         }
     }
-    
-    console.log(`📊 Procesadas ${totalRows} filas, ${matchedRows} coinciden con el filtro`);
-    console.log(`📅 Muestra de fechas:`, sampleDates);
-    
-    // Build unique orders array
-    const uniqueOrders = new Map();
-    
-    for (let i = 1; i < lines.length; i++) {
-        const cols = parseCSVLine(lines[i]);
-        
-        if (cols.length >= 9) {
-            const obc = cols[0]?.trim();
-            const expectedArrival = cols[4]?.trim();
-            
-            if (obc && expectedArrival && cajasCountMap.has(obc) && !uniqueOrders.has(obc)) {
-                uniqueOrders.set(obc, {
-                    orden: obc,
-                    referenceNo: cols[1]?.trim() || '',
-                    shippingService: cols[2]?.trim() || '',
-                    trackingCode: cols[3]?.trim() || '',
-                    expectedArrival: expectedArrival,
-                    remark: cols[5]?.trim() || '',
-                    recipient: cols[6]?.trim() || '',
-                    boxType: cols[7]?.trim() || '',
-                    customBarcode: cols[8]?.trim() || '',
-                    totalCajas: cajasCountMap.get(obc) || 0,
-                    isValidated: false
-                });
-            }
-        }
+
+    // Actualizar totalCajas en cada orden única
+    for (const [obc, order] of uniqueOrders) {
+        order.totalCajas = cajasCountMap.get(obc) || 0;
     }
-    
+
     // Update STATE.bdCajasData
     STATE.bdCajasData = allBoxCodes;
-    
-    console.log(`✅ ${uniqueOrders.size} órdenes únicas encontradas, ${STATE.bdCajasData.size} códigos de caja indexados`);
-    
+
+    console.log(`✅ [OPTIMIZACIÓN] ${totalRows} filas procesadas → ${matchedRows} en rango (${((matchedRows/totalRows)*100).toFixed(1)}%)`);
+    console.log(`📦 ${uniqueOrders.size} órdenes únicas, ${STATE.bdCajasData.size} códigos indexados`);
+    console.log(`📅 Muestra de fechas:`, sampleDates);
+
     return Array.from(uniqueOrders.values());
 }
 
@@ -2337,7 +2293,14 @@ const LOAD_STATE = {
     referenceLoaded: false,     // BDs de referencia (LISTAS)
     backgroundLoading: false,   // Carga en segundo plano en progreso
     lastDateFilter: null,       // Último filtro de fecha aplicado
-    loadedDateRanges: []        // Rangos de fecha ya cargados
+    loadedDateRanges: [],       // Rangos de fecha ya cargados
+    // Sistema de flags para datos de segundo plano
+    backgroundData: {
+        validacion: false,      // Base de Surtido (VALIDACION)
+        mne: false,             // Rastreo MNE
+        trs: false,             // TRS Etiquetado
+        isComplete: false       // true cuando todos los datos están cargados
+    }
 };
 
 /**
@@ -2455,6 +2418,213 @@ async function loadReferenceDataInBackground() {
             LOAD_STATE.backgroundLoading = false;
         }
     }, 100); // Pequeño delay para permitir que la UI se renderice primero
+}
+
+/**
+ * Calcula el rango de fechas óptimo para cargar VALIDACION
+ * OPTIMIZACIÓN: Solo 7 días antes de la fecha del filtro hasta la fecha del filtro
+ * (La validación de surtido se hace máximo 7 días antes de la fecha de envío)
+ * @returns {Object} - { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
+ */
+function calculateValidacionDateRange() {
+    // Si hay filtro activo, usar ese rango
+    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+        const filterStart = new Date(STATE.dateFilter.startDate);
+        const filterEnd = new Date(STATE.dateFilter.endDate);
+
+        // Calcular 7 días ANTES de la fecha de inicio del filtro
+        const sevenDaysBefore = new Date(filterStart);
+        sevenDaysBefore.setDate(filterStart.getDate() - 7);
+
+        return {
+            start: sevenDaysBefore.toISOString().split('T')[0],
+            end: filterEnd.toISOString().split('T')[0]
+        };
+    }
+
+    // Fallback: Último mes (si no hay filtro activo)
+    const today = new Date();
+    const oneMonthAgo = new Date(today);
+    oneMonthAgo.setMonth(today.getMonth() - 1);
+
+    return {
+        start: oneMonthAgo.toISOString().split('T')[0],
+        end: today.toISOString().split('T')[0]
+    };
+}
+
+/**
+ * CARGA DE DATOS PESADOS EN SEGUNDO PLANO (VALIDACION, MNE, TRS)
+ * Estos datos NO bloquean la carga inicial del despacho
+ * Se cargan asíncronamente y muestran un indicador de progreso discreto
+ * CRÍTICO: Las validaciones/procesamiento NO deben ejecutarse hasta que isComplete = true
+ *
+ * OPTIMIZACIÓN: VALIDACION se carga con rango de 7 días ANTES de la fecha del filtro
+ * (La validación de surtido se hace máximo 7 días antes de la fecha de envío)
+ */
+async function loadHeavyReferenceDataInBackground() {
+    if (LOAD_STATE.backgroundLoading) {
+        console.log('⚡ [BACKGROUND] Carga pesada ya en progreso, omitiendo...');
+        return;
+    }
+
+    LOAD_STATE.backgroundLoading = true;
+    console.log('📦 [BACKGROUND] Iniciando carga de datos pesados (VALIDACION, MNE, TRS)...');
+
+    // Calcular rango de 7 días antes del filtro activo (para optimizar VALIDACION)
+    const dateRangeForValidacion = calculateValidacionDateRange();
+    console.log(`📅 [OPTIMIZACIÓN] VALIDACION se cargará con rango: ${dateRangeForValidacion.start} a ${dateRangeForValidacion.end}`);
+
+    // Mostrar indicador de progreso discreto en sidebar footer
+    updateBackgroundLoadingIndicator('Cargando bases complementarias...', 0, 3);
+
+    // Usar setTimeout para no bloquear el hilo principal
+    setTimeout(async () => {
+        try {
+            const cacheBuster = Date.now();
+            let completedCount = 0;
+
+            // VALIDACION (Base de Surtido) - Dato más pesado (~10k registros)
+            try {
+                updateBackgroundLoadingIndicator('Cargando Base de Surtido (VALIDACION)...', completedCount, 3);
+                let validacionCsv;
+                if (dispatchSyncManager) {
+                    validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION, true);
+                } else {
+                    const url = CONFIG.SOURCES.VALIDACION.includes('?')
+                        ? `${CONFIG.SOURCES.VALIDACION}&_t=${cacheBuster}`
+                        : `${CONFIG.SOURCES.VALIDACION}?_t=${cacheBuster}`;
+                    const response = await fetch(url, { cache: 'no-store' });
+                    validacionCsv = await response.text();
+                }
+                if (validacionCsv) {
+                    parseValidacionData(validacionCsv, dateRangeForValidacion);
+                }
+                LOAD_STATE.backgroundData.validacion = true;
+                completedCount++;
+                console.log('✅ [BACKGROUND] VALIDACION cargada');
+
+                // CRÍTICO: Re-renderizar tablas ahora que VALIDACION está disponible
+                console.log('🔄 [BACKGROUND] Re-renderizando tablas con datos de VALIDACION...');
+                if (typeof renderOrdersList === 'function') renderOrdersList();
+                if (typeof renderValidatedTable === 'function') renderValidatedTable();
+                if (typeof renderOtrosTable === 'function') renderOtrosTable();
+                if (typeof updateSummary === 'function') updateSummary();
+            } catch (e) {
+                console.warn('⚠️ [BACKGROUND] Error cargando VALIDACION:', e);
+            }
+
+            // MNE (Rastreo)
+            try {
+                updateBackgroundLoadingIndicator('Cargando Rastreo MNE...', completedCount, 3);
+                let mneCsv;
+                if (dispatchSyncManager) {
+                    mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE, true);
+                } else {
+                    const url = CONFIG.SOURCES.MNE.includes('?')
+                        ? `${CONFIG.SOURCES.MNE}&_t=${cacheBuster}`
+                        : `${CONFIG.SOURCES.MNE}?_t=${cacheBuster}`;
+                    const response = await fetch(url, { cache: 'no-store' });
+                    mneCsv = await response.text();
+                }
+                if (mneCsv) parseMNEData(mneCsv);
+                LOAD_STATE.backgroundData.mne = true;
+                completedCount++;
+                console.log('✅ [BACKGROUND] MNE cargada');
+            } catch (e) {
+                console.warn('⚠️ [BACKGROUND] Error cargando MNE:', e);
+            }
+
+            // TRS (Rastreo Etiquetado)
+            try {
+                updateBackgroundLoadingIndicator('Cargando TRS Etiquetado...', completedCount, 3);
+                let trsCsv;
+                if (dispatchSyncManager) {
+                    trsCsv = await dispatchSyncManager.getReferenceData('trs', CONFIG.SOURCES.TRS, true);
+                } else {
+                    const url = CONFIG.SOURCES.TRS.includes('?')
+                        ? `${CONFIG.SOURCES.TRS}&_t=${cacheBuster}`
+                        : `${CONFIG.SOURCES.TRS}?_t=${cacheBuster}`;
+                    const response = await fetch(url, { cache: 'no-store' });
+                    trsCsv = await response.text();
+                }
+                if (trsCsv) parseTRSData(trsCsv);
+                LOAD_STATE.backgroundData.trs = true;
+                completedCount++;
+                console.log('✅ [BACKGROUND] TRS cargada');
+            } catch (e) {
+                console.warn('⚠️ [BACKGROUND] Error cargando TRS:', e);
+            }
+
+            // Marcar carga completa
+            LOAD_STATE.backgroundData.isComplete = true;
+            LOAD_STATE.referenceLoaded = true;
+            LOAD_STATE.backgroundLoading = false;
+
+            // Ocultar indicador de progreso y mostrar confirmación
+            updateBackgroundLoadingIndicator('Bases complementarias cargadas', 3, 3);
+            setTimeout(() => {
+                hideBackgroundLoadingIndicator();
+            }, 2000);
+
+            console.log('✅ [BACKGROUND] Todas las bases pesadas cargadas exitosamente');
+            console.log(`   - VALIDACION: ${LOAD_STATE.backgroundData.validacion ? '✅' : '❌'}`);
+            console.log(`   - MNE: ${LOAD_STATE.backgroundData.mne ? '✅' : '❌'}`);
+            console.log(`   - TRS: ${LOAD_STATE.backgroundData.trs ? '✅' : '❌'}`);
+
+        } catch (error) {
+            console.error('❌ [BACKGROUND] Error en carga de datos pesados:', error);
+            LOAD_STATE.backgroundLoading = false;
+            hideBackgroundLoadingIndicator();
+        }
+    }, 100); // Pequeño delay para permitir que la UI se renderice primero
+}
+
+/**
+ * Actualiza el indicador de progreso de carga en segundo plano (sidebar footer)
+ * @param {string} message - Mensaje a mostrar
+ * @param {number} current - Número de tareas completadas
+ * @param {number} total - Número total de tareas
+ */
+function updateBackgroundLoadingIndicator(message, current, total) {
+    const indicator = document.getElementById('background-loading-indicator');
+    if (!indicator) {
+        console.warn('⚠️ Indicador de progreso no encontrado en el DOM');
+        return;
+    }
+
+    const progressBar = indicator.querySelector('.progress-bar');
+    const messageEl = indicator.querySelector('.loading-message');
+
+    if (progressBar) {
+        const percentage = total > 0 ? (current / total) * 100 : 0;
+        progressBar.style.width = `${percentage}%`;
+    }
+
+    if (messageEl) {
+        messageEl.textContent = message;
+    }
+
+    // Mostrar indicador si está oculto
+    indicator.style.display = 'block';
+}
+
+/**
+ * Oculta el indicador de progreso de carga en segundo plano
+ */
+function hideBackgroundLoadingIndicator() {
+    const indicator = document.getElementById('background-loading-indicator');
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
+}
+
+/**
+ * Verifica si los datos de segundo plano están completamente cargados
+ * @returns {boolean} - true si todos los datos están cargados
+ */
+function isBackgroundDataLoaded() {
+    return LOAD_STATE.backgroundData.isComplete;
 }
 
 /**
@@ -2780,9 +2950,33 @@ function parseTRSData(csv) {
     }
 }
 
-function parseValidacionData(csv) {
+/**
+ * Parse VALIDACION data con filtro opcional de rango de fechas
+ * OPTIMIZACIÓN: Filtro por rango de fechas para reducir datos procesados
+ * @param {string} csv - CSV de base de VALIDACION
+ * @param {Object} dateRange - Rango opcional { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
+ */
+function parseValidacionData(csv, dateRange = null) {
     const lines = csv.split('\n').filter(l => l.trim());
     STATE.validacionData.clear();
+
+    // OPTIMIZACIÓN: Parse de fechas de filtro solo SI se proporciona rango
+    let filterStartDate = null;
+    let filterEndDate = null;
+    let totalRows = 0;
+    let matchedRows = 0;
+
+    if (dateRange && dateRange.start && dateRange.end) {
+        const startParts = dateRange.start.split('-');
+        filterStartDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        filterStartDate.setHours(0, 0, 0, 0);
+
+        const endParts = dateRange.end.split('-');
+        filterEndDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+        filterEndDate.setHours(23, 59, 59, 999);
+
+        console.log(`🔍 [VALIDACION FILTER] Rango: ${filterStartDate.toLocaleDateString('es-MX')} - ${filterEndDate.toLocaleDateString('es-MX')}`);
+    }
 
     // 🔍 DEBUG: Contadores para auditoría
     const debugOBCs = ['OBC3822601050RS', 'OBC0592601040S1', 'OBC4102601090RY'];
@@ -2792,15 +2986,38 @@ function parseValidacionData(csv) {
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length >= 5) {
+            totalRows++;
+            const fechaValidacion = cols[0]?.trim(); // DD/MM/YYYY
             const orden = cols[3]?.trim();
             const codigo = cols[4]?.trim();
+
+            // FILTRO WHERE: Si hay rango de fechas, verificar ANTES de procesar
+            if (filterStartDate && filterEndDate && fechaValidacion) {
+                // Convertir DD/MM/YYYY a Date
+                const parts = fechaValidacion.split('/');
+                if (parts.length === 3) {
+                    const validacionDate = new Date(
+                        parseInt(parts[2]),        // Año
+                        parseInt(parts[1]) - 1,    // Mes (0-indexed)
+                        parseInt(parts[0])         // Día
+                    );
+                    validacionDate.setHours(12, 0, 0, 0);
+
+                    // DESCARTE INMEDIATO: Si no está en rango, continuar sin procesar
+                    if (validacionDate < filterStartDate || validacionDate > filterEndDate) {
+                        continue; // SALTAR esta fila (WHERE filter)
+                    }
+                }
+            }
+
+            matchedRows++;
 
             if (orden) {
                 if (!STATE.validacionData.has(orden)) {
                     STATE.validacionData.set(orden, []);
                 }
                 STATE.validacionData.get(orden).push({
-                    fecha: cols[0]?.trim() || '',
+                    fecha: fechaValidacion || '',
                     hora: cols[1]?.trim() || '',
                     usuario: cols[2]?.trim() || '',
                     orden: orden,
@@ -2824,6 +3041,9 @@ function parseValidacionData(csv) {
         }
     }
 
+    if (filterStartDate && filterEndDate) {
+        console.log(`✅ [VALIDACION FILTER] ${totalRows} filas procesadas → ${matchedRows} en rango (${((matchedRows/totalRows)*100).toFixed(1)}%)`);
+    }
     console.log('✅ Validacion Data parsed:', STATE.validacionData.size, 'orders');
 
     // 🔍 DEBUG: Reportar problemas detectados
@@ -4471,12 +4691,19 @@ function applyAgendaFilters(filterText, selectedValues) {
                     <td><span class="order-code">${orden.numeroOrden}</span></td>
                     <td style="text-align: center;"><strong>${orden.cajas}</strong></td>
                     <td style="text-align: center;">
-                        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            <div class="progress-bar" style="width: 60px;">
-                                <div class="progress-fill" style="width: ${orden.porcentajeSurtido}%"></div>
+                        ${orden.porcentajeSurtido === -1 ? `
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <div class="spinner-small"></div>
+                                <span style="font-size: 0.8em; color: #999;">Cargando...</span>
                             </div>
-                            <span class="progress-text">${orden.porcentajeSurtido}%</span>
-                        </div>
+                        ` : `
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <div class="progress-bar" style="width: 60px;">
+                                    <div class="progress-fill" style="width: ${orden.porcentajeSurtido}%"></div>
+                                </div>
+                                <span class="progress-text">${orden.porcentajeSurtido}%</span>
+                            </div>
+                        `}
                     </td>
                     <td>
                         <span class="status-badge ${estatusClass}">${estatusIcon} ${orden.estatus}</span>
@@ -6056,6 +6283,13 @@ function validateDispatchRecord(record) {
  * Execute order cancellation
  */
 async function executeConfirmCancelOrder() {
+    // ==================== BLOQUEO: Verificar datos de segundo plano ====================
+    if (!isBackgroundDataLoaded()) {
+        showNotification('⏳ Cargando bases de datos complementarias. Por favor, espera un momento para procesar.', 'warning', 4000);
+        closeCancelOrderModal();
+        return;
+    }
+
     if (!STATE.currentOrder) {
         closeCancelOrderModal();
         return;
@@ -6185,6 +6419,13 @@ async function executeConfirmCancelOrder() {
  * Similar a cancelación pero con estatus y color diferente (amarillo)
  */
 async function executeConfirmNoProcesable() {
+    // ==================== BLOQUEO: Verificar datos de segundo plano ====================
+    if (!isBackgroundDataLoaded()) {
+        showNotification('⏳ Cargando bases de datos complementarias. Por favor, espera un momento para procesar.', 'warning', 4000);
+        closeNoProcesableModal();
+        return;
+    }
+
     if (!STATE.currentOrder) {
         closeNoProcesableModal();
         return;
@@ -8935,6 +9176,14 @@ function closeConfirmDispatch() {
 }
 
 async function executeConfirmDispatch() {
+    // ==================== BLOQUEO: Verificar datos de segundo plano ====================
+    // CRÍTICO: No permitir validación si los datos complementarios no están cargados
+    if (!isBackgroundDataLoaded()) {
+        showNotification('⏳ Cargando bases de datos complementarias. Por favor, espera un momento para procesar.', 'warning', 4000);
+        closeConfirmDispatch();
+        return;
+    }
+
     // Validate edit operation (check online status)
     const editValidation = validateEditOperation(STATE.currentOrder, 'dispatch');
     if (!editValidation.allowed) {
@@ -12240,8 +12489,18 @@ function groupOrdersByDestino(ordersData) {
         const rastreoData = STATE.mneData.get(orden) || [];
         const totalCajas = data.totalCajas || 0;
         // FIXED: Count unique validated boxes instead of total records
-        const cajasValidadas = getCajasValidadasUnicas(orden);
-        const porcentajeSurtido = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
+        // CRÍTICO: Si VALIDACION no está cargada, mostrar indicador de carga
+        const validacionCargada = LOAD_STATE.backgroundData.validacion;
+        let cajasValidadas = 0;
+        let porcentajeSurtido = 0;
+
+        if (validacionCargada) {
+            cajasValidadas = getCajasValidadasUnicas(orden);
+            porcentajeSurtido = totalCajas > 0 ? Math.round((cajasValidadas / totalCajas) * 100) : 0;
+        } else {
+            // Datos aún no disponibles, se mostrará spinner
+            porcentajeSurtido = -1; // Flag especial para indicar "cargando"
+        }
         const { validated: isValidated } = isOrderValidated(orden);
         const estatusTexto = isValidated ? 'Validada' : 'Pendiente';
 
@@ -12372,12 +12631,19 @@ function renderVistaAgenda() {
                     <td>${orden.track}</td>
                     <td style="text-align: center;"><strong>${orden.cajas}</strong></td>
                     <td style="text-align: center;">
-                        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            <div class="progress-bar" style="width: 60px;">
-                                <div class="progress-fill" style="width: ${orden.porcentajeSurtido}%"></div>
+                        ${orden.porcentajeSurtido === -1 ? `
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <div class="spinner-small"></div>
+                                <span style="font-size: 0.8em; color: #999;">Cargando...</span>
                             </div>
-                            <span class="progress-text">${orden.porcentajeSurtido}%</span>
-                        </div>
+                        ` : `
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <div class="progress-bar" style="width: 60px;">
+                                    <div class="progress-fill" style="width: ${orden.porcentajeSurtido}%"></div>
+                                </div>
+                                <span class="progress-text">${orden.porcentajeSurtido}%</span>
+                            </div>
+                        `}
                     </td>
                     <td>
                         <span class="status-badge ${estatusClass}">${estatusIcon} ${orden.estatus}</span>
