@@ -262,6 +262,18 @@ async function loadExistingValidatedRecords(startDate = null, endDate = null) {
     }
 
     try {
+        // OPTIMIZACIÓN: Si no se especifica rango de fechas, cargar solo último mes
+        if (!startDate && !endDate) {
+            const today = new Date();
+            const oneMonthAgo = new Date(today);
+            oneMonthAgo.setMonth(today.getMonth() - 1);
+
+            startDate = oneMonthAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+            endDate = today.toISOString().split('T')[0];
+
+            console.log(`📅 Carga optimizada: Solo registros del último mes (${startDate} a ${endDate})`);
+        }
+
         console.log('📥 Loading validated records from write database...');
         
         // First, try to get sheet metadata to verify sheet name
@@ -361,7 +373,7 @@ async function loadExistingValidatedRecords(startDate = null, endDate = null) {
         // Extract and rebuild folios map
         rebuildFoliosFromRecords(validatedRecords);
         
-        console.log(`✅ Loaded ${validatedRecords.length} validated records (filtered: ${startDate ? 'YES' : 'NO'})`);
+        console.log(`✅ Loaded ${validatedRecords.length} validated records (rango: ${startDate || 'N/A'} a ${endDate || 'N/A'})`);
         
         // Save to local storage
         saveLocalState();
@@ -8995,6 +9007,17 @@ async function executeConfirmDispatch() {
         return;
     }
 
+    // CRÍTICO: Verificar NUEVAMENTE si la orden ya fue validada (prevención de duplicados)
+    // Esto es necesario porque puede haber clicks duplicados o sincronización en paralelo
+    const finalValidationCheck = isOrderValidated(STATE.currentOrder);
+    if (finalValidationCheck.validated) {
+        console.warn(`⚠️ DUPLICADO PREVENIDO: Orden ${STATE.currentOrder} ya fue validada`);
+        const source = finalValidationCheck.source === 'local' ? 'localmente' : 'en la base de datos';
+        showNotification(`⚠️ Esta orden ya fue procesada ${source}`, 'warning');
+        closeInfoModal();
+        return;
+    }
+
     console.log('📝 DISPATCH RECORD CREADO:', {
         orden: STATE.currentOrder,
         cantInicial: totalCajas,
@@ -9229,9 +9252,10 @@ function handleRemoteDataUpdate(rows) {
         }
     }
     
-    // Detectar nuevos registros que no están en localValidated
-    const localFolios = new Set(STATE.localValidated.map(r => r.folio));
-    const newRemoteRecords = remoteRecords.filter(r => r.folio && !localFolios.has(r.folio));
+    // CRÍTICO: Detectar nuevos registros basándose en ORDEN (no en folio)
+    // Un folio puede tener múltiples órdenes, necesitamos comparar por orden única
+    const localOrdenes = new Set(STATE.localValidated.map(r => r.orden));
+    const newRemoteRecords = remoteRecords.filter(r => r.orden && !localOrdenes.has(r.orden));
     
     if (newRemoteRecords.length > 0) {
         console.log(`🆕 [SYNC] ${newRemoteRecords.length} nuevos registros de otros usuarios`);
