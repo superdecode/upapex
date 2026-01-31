@@ -263,15 +263,24 @@ async function loadExistingValidatedRecords(startDate = null, endDate = null) {
 
     try {
         // OPTIMIZACIÓN: Si no se especifica rango de fechas, cargar solo último mes
+        // PERO respeta el filtro activo si el usuario ya seleccionó un rango
         if (!startDate && !endDate) {
-            const today = new Date();
-            const oneMonthAgo = new Date(today);
-            oneMonthAgo.setMonth(today.getMonth() - 1);
+            // PRIORIDAD 1: Usar filtro activo del usuario
+            if (STATE.dateFilter && STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+                startDate = STATE.dateFilter.startDate;
+                endDate = STATE.dateFilter.endDate;
+                console.log(`📅 Usando filtro de fecha activo: ${startDate} a ${endDate}`);
+            } else {
+                // PRIORIDAD 2: Si no hay filtro, cargar solo último mes (optimización)
+                const today = new Date();
+                const oneMonthAgo = new Date(today);
+                oneMonthAgo.setMonth(today.getMonth() - 1);
 
-            startDate = oneMonthAgo.toISOString().split('T')[0]; // YYYY-MM-DD
-            endDate = today.toISOString().split('T')[0];
+                startDate = oneMonthAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+                endDate = today.toISOString().split('T')[0];
 
-            console.log(`📅 Carga optimizada: Solo registros del último mes (${startDate} a ${endDate})`);
+                console.log(`📅 Carga optimizada: Solo registros del último mes (${startDate} a ${endDate})`);
+            }
         }
 
         console.log('📥 Loading validated records from write database...');
@@ -5216,16 +5225,32 @@ function renderOtrosTable() {
 
     // Aplicar filtro de fecha si está activo
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        const startDate = parseDateLocal(STATE.dateFilter.startDate);
-        const endDate = parseDateLocal(STATE.dateFilter.endDate);
+        const startParts = STATE.dateFilter.startDate.split('-');
+        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        startDate.setHours(0, 0, 0, 0);
+
+        const endParts = STATE.dateFilter.endDate.split('-');
+        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
         endDate.setHours(23, 59, 59, 999);
 
         otrosOrders = otrosOrders.filter(record => {
-            const orderData = STATE.obcData.get(record.orden) || {};
-            const dateStr = record.horario || orderData.expectedArrival;
-            if (!dateStr) return false;
-            const orderDate = parseOrderDate(dateStr);
-            return orderDate && orderDate >= startDate && orderDate <= endDate;
+            // CRÍTICO: Filtrar por FECHA DE CANCELACIÓN/NO PROCESABLE (record.fecha), NO por fecha de entrega
+            const fechaDespacho = record.fecha; // DD/MM/YYYY
+
+            if (!fechaDespacho) return false;
+
+            // Convertir DD/MM/YYYY a Date
+            const parts = fechaDespacho.split('/');
+            if (parts.length !== 3) return false;
+
+            const despachoDate = new Date(
+                parseInt(parts[2]),        // Año
+                parseInt(parts[1]) - 1,    // Mes (0-indexed)
+                parseInt(parts[0])         // Día
+            );
+            despachoDate.setHours(12, 0, 0, 0); // Medio día para evitar problemas de zona horaria
+
+            return despachoDate >= startDate && despachoDate <= endDate;
         });
     }
 
@@ -5495,14 +5520,24 @@ function renderValidatedTable() {
         endDate.setHours(23, 59, 59, 999);
 
         filteredValidated = filteredValidated.filter(record => {
-            // Get the order data to check expectedArrival (delivery date)
-            const orderData = STATE.obcData.get(record.orden) || {};
-            const dateStr = record.horario || orderData.expectedArrival;
+            // CRÍTICO: Filtrar por FECHA DE DESPACHO (record.fecha), NO por fecha de entrega
+            // El filtro de fecha debe mostrar órdenes despachadas en el rango, no órdenes con entrega en el rango
+            const fechaDespacho = record.fecha; // DD/MM/YYYY
 
-            if (!dateStr) return false;
+            if (!fechaDespacho) return false;
 
-            const orderDate = parseOrderDate(dateStr);
-            return orderDate && orderDate >= startDate && orderDate <= endDate;
+            // Convertir DD/MM/YYYY a Date
+            const parts = fechaDespacho.split('/');
+            if (parts.length !== 3) return false;
+
+            const despachoDate = new Date(
+                parseInt(parts[2]),        // Año
+                parseInt(parts[1]) - 1,    // Mes (0-indexed)
+                parseInt(parts[0])         // Día
+            );
+            despachoDate.setHours(12, 0, 0, 0); // Medio día para evitar problemas de zona horaria
+
+            return despachoDate >= startDate && despachoDate <= endDate;
         });
     }
 
