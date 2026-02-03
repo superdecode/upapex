@@ -5512,34 +5512,9 @@ function renderOtrosTable() {
     console.log('🔍 Órdenes filtradas para Otros:', otrosOrders.length, otrosOrders.map(r => ({ orden: r.orden, estatus: r.estatus })));
 
     // Aplicar filtro de fecha si está activo
+    // REFERENCIACIÓN CRUZADA: Mostrar solo órdenes que estén en el universo de "Todo" (obcDataFiltered)
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        const startParts = STATE.dateFilter.startDate.split('-');
-        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
-        startDate.setHours(0, 0, 0, 0);
-
-        const endParts = STATE.dateFilter.endDate.split('-');
-        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
-        endDate.setHours(23, 59, 59, 999);
-
-        otrosOrders = otrosOrders.filter(record => {
-            // CRÍTICO: Filtrar por FECHA DE CANCELACIÓN/NO PROCESABLE (record.fecha), NO por fecha de entrega
-            const fechaDespacho = record.fecha; // DD/MM/YYYY
-
-            if (!fechaDespacho) return false;
-
-            // Convertir DD/MM/YYYY a Date
-            const parts = fechaDespacho.split('/');
-            if (parts.length !== 3) return false;
-
-            const despachoDate = new Date(
-                parseInt(parts[2]),        // Año
-                parseInt(parts[1]) - 1,    // Mes (0-indexed)
-                parseInt(parts[0])         // Día
-            );
-            despachoDate.setHours(12, 0, 0, 0); // Medio día para evitar problemas de zona horaria
-
-            return despachoDate >= startDate && despachoDate <= endDate;
-        });
+        otrosOrders = otrosOrders.filter(record => STATE.obcDataFiltered.has(record.orden));
     }
 
     // Si no hay órdenes, mostrar mensaje
@@ -5801,52 +5776,11 @@ function renderValidatedTable() {
 
     console.log(`🔍 [DEBUG] Después de filtrar Canceladas/No Procesables: ${filteredValidated.length}`);
 
+    // Aplicar filtro de fecha si está activo
+    // REFERENCIACIÓN CRUZADA: Mostrar solo órdenes que estén en el universo de "Todo" (obcDataFiltered)
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        // Parse dates as local time to avoid timezone offset issues
-        const startParts = STATE.dateFilter.startDate.split('-');
-        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
-        startDate.setHours(0, 0, 0, 0);
-
-        const endParts = STATE.dateFilter.endDate.split('-');
-        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
-        endDate.setHours(23, 59, 59, 999);
-
-        filteredValidated = filteredValidated.filter(record => {
-            // CRITERIO DE FILTRADO: Para órdenes validadas, filtrar por FECHA DE DESPACHO REAL (record.fecha)
-            // Esto es diferente del filtro OBC que usa expectedArrival (fecha de entrega esperada)
-            // RAZÓN: Una vez validada, la fecha relevante es cuándo se despachó realmente, no cuándo se esperaba
-            // El filtro de fecha debe mostrar órdenes despachadas en el rango, no órdenes con entrega en el rango
-            const fechaDespacho = record.fecha; // DD/MM/YYYY
-
-            if (!fechaDespacho) {
-                console.log(`⚠️ [DEBUG] Registro sin fecha: ${record.orden}`);
-                return false;
-            }
-
-            // Convertir DD/MM/YYYY a Date
-            const parts = fechaDespacho.split('/');
-            if (parts.length !== 3) {
-                console.log(`⚠️ [DEBUG] Fecha inválida para ${record.orden}: ${fechaDespacho}`);
-                return false;
-            }
-
-            const despachoDate = new Date(
-                parseInt(parts[2]),        // Año
-                parseInt(parts[1]) - 1,    // Mes (0-indexed)
-                parseInt(parts[0])         // Día
-            );
-            despachoDate.setHours(12, 0, 0, 0); // Medio día para evitar problemas de zona horaria
-
-            const inRange = despachoDate >= startDate && despachoDate <= endDate;
-
-            if (!inRange && filteredValidated.length <= 5) {
-                console.log(`🔍 [DEBUG] Orden ${record.orden} fuera de rango: ${fechaDespacho} (${despachoDate.toLocaleDateString()}) no está entre ${startDate.toLocaleDateString()} y ${endDate.toLocaleDateString()}`);
-            }
-
-            return inRange;
-        });
-
-        console.log(`🔍 [DEBUG] Después de filtrar por fecha: ${filteredValidated.length}`);
+        filteredValidated = filteredValidated.filter(record => STATE.obcDataFiltered.has(record.orden));
+        console.log(`🔍 [DEBUG] Después de ref. cruzada con universo Todo: ${filteredValidated.length}`);
     }
 
     // Update filter indicator
@@ -9815,26 +9749,14 @@ function updateTabBadges() {
     const pendingBadgeFolios = document.getElementById('pending-badge-folios');
 
     // Calculate validated count - EXCLUIR Canceladas y No Procesables
-    // Filtrar por fecha si está activo
+    // REFERENCIACIÓN CRUZADA: Contar solo órdenes que estén en el universo de "Todo" (obcDataFiltered)
     let validatedCount = 0;
     let otrosCount = 0;
 
     if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        const startParts = STATE.dateFilter.startDate.split('-');
-        const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
-        startDate.setHours(0, 0, 0, 0);
-
-        const endParts = STATE.dateFilter.endDate.split('-');
-        const endDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
-        endDate.setHours(23, 59, 59, 999);
-
+        // Con filtro activo: contar solo órdenes en obcDataFiltered
         STATE.localValidated.forEach(record => {
-            const orderData = STATE.obcData.get(record.orden) || {};
-            const dateStr = record.horario || orderData.expectedArrival;
-            if (!dateStr) return;
-            const orderDate = parseOrderDate(dateStr);
-            if (orderDate && orderDate >= startDate && orderDate <= endDate) {
-                // Separar "Otros" de "Validadas"
+            if (STATE.obcDataFiltered.has(record.orden)) {
                 if (record.estatus === 'Cancelada' || record.estatus === 'No Procesable') {
                     otrosCount++;
                 } else {
@@ -10732,43 +10654,34 @@ function renderFoliosTable() {
     
     if (useGlobalFilter) {
         // ============================================================
-        // NUEVA LÓGICA DE TRIANGULACIÓN (Solo para filtro global)
-        // Paso A: Identificar órdenes por Fecha de Envío
-        // Paso B: Extraer IDs de Folios de esas órdenes
-        // Paso C: Mostrar solo esos folios (DISTINCT)
+        // REFERENCIACIÓN CRUZADA CON UNIVERSO DE "TODO"
+        // Los folios se muestran en función del universo de órdenes
+        // que aparecen en la pestaña "Todo" (obcDataFiltered).
+        // Si una orden del universo tiene folio asignado, ese folio
+        // se muestra completo (con TODAS sus órdenes, incluso las
+        // de otras fechas que fueron mezcladas en el mismo folio).
         // ============================================================
-        
-        const startDate = parseDateLocal(STATE.dateFilter.startDate);
-        const endDate = parseDateLocal(STATE.dateFilter.endDate);
-        endDate.setHours(23, 59, 59, 999);
 
-        // PASO A: Filtrar órdenes validadas por Fecha de Envío (columna G - horario)
-        const ordenesEnRango = STATE.localValidated.filter(record => {
-            const orderData = STATE.obcData.get(record.orden) || {};
-            const dateStr = record.horario || orderData.expectedArrival;
-            
-            if (!dateStr) return false;
-            
-            const orderDate = parseOrderDate(dateStr);
-            return orderDate && orderDate >= startDate && orderDate <= endDate;
-        });
+        // PASO A: Obtener el universo de órdenes de "Todo" (ya filtrado por expectedArrival)
+        const universoTodo = STATE.obcDataFiltered;
 
-        // PASO B: Extraer IDs de Folios únicos (DISTINCT)
-        const foliosIdsEnRango = new Set();
-        ordenesEnRango.forEach(record => {
-            if (record.folio) {
-                foliosIdsEnRango.add(record.folio);
+        // PASO B: Encontrar en localValidated las órdenes que están en el universo
+        // y extraer sus folios únicos
+        const foliosIdsDelUniverso = new Set();
+        STATE.localValidated.forEach(record => {
+            if (record.folio && universoTodo.has(record.orden)) {
+                foliosIdsDelUniverso.add(record.folio);
             }
         });
 
-        // PASO C: Filtrar folios que estén en el Set de IDs
-        folios = folios.filter(folio => foliosIdsEnRango.has(folio.folio));
-        
-        console.log(`📋 [TRIANGULACIÓN] Filtro Global Activo:`);
-        console.log(`   - Órdenes en rango de fecha de envío: ${ordenesEnRango.length}`);
-        console.log(`   - Folios únicos encontrados: ${foliosIdsEnRango.size}`);
+        // PASO C: Filtrar folios que contengan al menos una orden del universo
+        folios = folios.filter(folio => foliosIdsDelUniverso.has(folio.folio));
+
+        console.log(`📋 [REF. CRUZADA] Filtro Global Activo:`);
+        console.log(`   - Órdenes en universo "Todo": ${universoTodo.size}`);
+        console.log(`   - Folios únicos referenciados: ${foliosIdsDelUniverso.size}`);
         console.log(`   - Folios a mostrar: ${folios.length}`);
-        
+
         // Actualizar texto del botón de filtro de folios (mismo formato que otras pestañas)
         const filterText = document.getElementById('folios-date-filter-text');
         if (filterText) {
