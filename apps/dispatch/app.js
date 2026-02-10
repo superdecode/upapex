@@ -89,6 +89,15 @@ let STATE = {
         validated: '',    // Search filter for validated tab
         otros: '',        // Search filter for otros tab
         folios: ''        // Search filter for folios tab
+    },
+    // Sticky Fields: Persistencia de Conductor, Unidad y Folio entre validaciones
+    // Se actualizan dinámicamente cuando el usuario cambia valores
+    // Se resetean al cambiar filtro de fechas, cerrar sesión o cambiar módulo
+    stickyFields: {
+        conductor: '',
+        unidad: '',
+        folio: '',
+        dateKey: null  // Clave de fecha para detectar cambio de rango de validación
     }
 };
 
@@ -1206,9 +1215,63 @@ function validateEditOperation(orden, operationType) {
 }
 
 // ==================== SISTEMA DE FOLIOS DE CARGA ====================
+
+// ==================== STICKY FIELDS (Campos Persistentes) ====================
 /**
- * Obtiene la fecha actual en formato YYYY-MM-DD
+ * Actualiza un campo Sticky Field cuando el usuario lo modifica manualmente.
+ * Los Sticky Fields persisten entre validaciones para agilizar la captura masiva.
+ *
+ * @param {string} field - Campo a actualizar: 'conductor', 'unidad', o 'folio'
+ * @param {string} value - Nuevo valor del campo
  */
+function updateStickyField(field, value) {
+    if (!STATE.stickyFields) return;
+
+    const currentDateKey = getCurrentDateKey();
+
+    // Actualizar el campo específico
+    STATE.stickyFields[field] = value;
+
+    // Actualizar la clave de fecha para mantener el contexto
+    STATE.stickyFields.dateKey = currentDateKey;
+
+    console.log(`🔄 [Sticky] ${field} actualizado a: ${value} (dateKey: ${currentDateKey})`);
+}
+
+/**
+ * Resetea todos los Sticky Fields.
+ * Se llama cuando: cambia el filtro de fechas, se cierra sesión, o se cambia de módulo.
+ */
+function resetStickyFields() {
+    STATE.stickyFields = {
+        conductor: '',
+        unidad: '',
+        folio: '',
+        dateKey: null
+    };
+    console.log('🔄 [Sticky] Campos reseteados');
+}
+
+/**
+ * Guarda los Sticky Fields actuales basados en los valores del modal.
+ * Se llama después de una validación exitosa.
+ */
+function saveStickyFieldsFromModal() {
+    const conductor = document.getElementById('modal-operador')?.value || '';
+    const unidad = document.getElementById('modal-unidad')?.value || '';
+    const folio = document.getElementById('modal-folio-carga')?.value || '';
+    const currentDateKey = getCurrentDateKey();
+
+    STATE.stickyFields = {
+        conductor: conductor,
+        unidad: unidad,
+        folio: folio,
+        dateKey: currentDateKey
+    };
+
+    console.log(`🔄 [Sticky] Guardados después de validación: conductor=${conductor}, unidad=${unidad}, folio=${folio}`);
+}
+
 /**
  * Obtiene la clave de fecha para folios
  * NUEVA LÓGICA: Si hay filtro activo, usa la Fecha Inicial como referencia
@@ -1481,11 +1544,19 @@ function setupFolioSelectorListeners() {
     }
 
     if (conductorSelect) {
-        conductorSelect.addEventListener('change', updateFolioSelector);
+        conductorSelect.addEventListener('change', function() {
+            updateFolioSelector();
+            // STICKY FIELDS: Actualizar conductor cuando el usuario lo cambia
+            updateStickyField('conductor', this.value);
+        });
     }
 
     if (unidadSelect) {
-        unidadSelect.addEventListener('change', updateFolioSelector);
+        unidadSelect.addEventListener('change', function() {
+            updateFolioSelector();
+            // STICKY FIELDS: Actualizar unidad cuando el usuario lo cambia
+            updateStickyField('unidad', this.value);
+        });
     }
 
     // NUEVO: Validar existencia de folio al seleccionarlo
@@ -1495,6 +1566,10 @@ function setupFolioSelectorListeners() {
     if (folioSelect) {
         folioSelect.addEventListener('change', async function() {
             const selectedFolio = this.value;
+
+            // STICKY FIELDS: Actualizar folio cuando el usuario lo cambia
+            updateStickyField('folio', selectedFolio);
+
             if (!selectedFolio) {
                 previousSelectedFolio = '';
                 return;
@@ -2286,6 +2361,9 @@ function handleLogout() {
     STATE.foliosDeCargas.clear();
     STATE.obcData.clear();
     STATE.bdCajasData.clear();
+
+    // STICKY FIELDS: Resetear al cerrar sesión
+    resetStickyFields();
     
     // Usar AuthManager si está disponible
     if (window.AuthManager && typeof window.AuthManager.logout === 'function') {
@@ -8057,6 +8135,44 @@ function showOrderInfo(orden) {
             confirmBtn.innerHTML = '✅ Confirmar';
             confirmBtn.onclick = function() { confirmDispatch(); };
         }
+
+        // STICKY FIELDS: Precargar valores persistentes para órdenes NO validadas
+        // Solo si hay datos en stickyFields y estamos en el mismo rango de fechas
+        const currentDateKey = getCurrentDateKey();
+        const sticky = STATE.stickyFields;
+
+        // Verificar si estamos en el mismo contexto de validación (misma fecha)
+        if (sticky.dateKey === currentDateKey && (sticky.conductor || sticky.unidad || sticky.folio)) {
+            setTimeout(() => {
+                // Precargar Conductor
+                const operadorSelect = document.getElementById('modal-operador');
+                if (operadorSelect && sticky.conductor) {
+                    operadorSelect.value = sticky.conductor;
+                    console.log(`🔄 [Sticky] Conductor precargado: ${sticky.conductor}`);
+                }
+
+                // Precargar Unidad
+                const unidadSelect = document.getElementById('modal-unidad');
+                if (unidadSelect && sticky.unidad) {
+                    unidadSelect.value = sticky.unidad;
+                    console.log(`🔄 [Sticky] Unidad precargada: ${sticky.unidad}`);
+                }
+
+                // Actualizar selector de folios basado en conductor/unidad precargados
+                if (sticky.conductor && sticky.unidad) {
+                    updateFolioSelector();
+                }
+
+                // Precargar Folio (después de actualizar el selector)
+                setTimeout(() => {
+                    const folioSelect = document.getElementById('modal-folio-carga');
+                    if (folioSelect && sticky.folio) {
+                        folioSelect.value = sticky.folio;
+                        console.log(`🔄 [Sticky] Folio precargado: ${sticky.folio}`);
+                    }
+                }, 50);
+            }, 100);
+        }
     }
 
     // Setup event listeners for folio selector
@@ -9040,6 +9156,9 @@ async function saveValidatedOrderChanges(orden) {
 
     STATE.localValidated[recordIndex] = updatedRecord;
 
+    // STICKY FIELDS: Guardar valores para precargar en próxima validación
+    saveStickyFieldsFromModal();
+
     // Save to localStorage
     try {
         localStorage.setItem('localValidated', JSON.stringify(STATE.localValidated));
@@ -9436,6 +9555,9 @@ async function executeConfirmDispatch() {
         }
     }
 
+    // STICKY FIELDS: Guardar valores para precargar en próxima validación
+    saveStickyFieldsFromModal();
+
     closeInfoModal();
     showNotification(`✅ Despacho confirmado: ${STATE.currentOrder || ''} (${folio || ''})`, 'success');
 
@@ -9443,10 +9565,6 @@ async function executeConfirmDispatch() {
     updateTabBadges();
     renderOrdersList();
     updateSummary();
-
-    // Clear selections
-    document.getElementById('modal-operador').value = '';
-    document.getElementById('modal-unidad').value = '';
 }
 
 async function initSyncManager() {
@@ -9985,7 +10103,7 @@ async function applyDateFilter() {
     
     if (isFilterChange) {
         console.log('🔄 [CAMBIO FILTRO] Detectado cambio de filtro de fecha - Limpiando contexto anterior...');
-        
+
         // LIMPIAR DATOS ANTERIORES COMPLETAMENTE
         STATE.obcDataFiltered.clear();
         STATE.obcData.clear();
@@ -9993,15 +10111,18 @@ async function applyDateFilter() {
         STATE.mneData.clear();
         STATE.bdCajasData.clear();
         STATE.trsData = [];
-        
+
         // Limpiar validaciones locales del rango anterior
         STATE.localValidated = [];
         STATE.localPending = [];
-        
+
+        // STICKY FIELDS: Resetear al cambiar filtro de fechas (nuevo contexto de validación)
+        resetStickyFields();
+
         // Reset load state para forzar recarga completa
         LOAD_STATE.criticalLoaded = false;
         LOAD_STATE.referencesLoaded = false;
-        
+
         console.log('✅ [CAMBIO FILTRO] Contexto anterior eliminado - Preparando nueva carga');
     }
 
@@ -10142,6 +10263,9 @@ function clearDateFilter() {
     STATE.bdCajasData.clear();
     STATE.localValidated = [];
     STATE.localPending = [];
+
+    // STICKY FIELDS: Resetear al limpiar filtro (nueva sesión de validación)
+    resetStickyFields();
 
     document.getElementById('date-start').value = '';
     document.getElementById('date-end').value = '';
