@@ -2645,6 +2645,11 @@ async function loadHeavyReferenceDataInBackground() {
                 completedCount++;
                 console.log('✅ [BACKGROUND] MNE cargada');
 
+                // Re-renderizar tablas para mostrar datos de rastreo actualizados
+                if (typeof renderOrdersList === 'function') renderOrdersList();
+                if (typeof renderValidatedTable === 'function') renderValidatedTable();
+                if (typeof renderOtrosTable === 'function') renderOtrosTable();
+
                 // Re-renderizar tarjetas KPI del modal si está abierto
                 refreshModalKPICardsIfOpen();
             } catch (e) {
@@ -3217,10 +3222,24 @@ function parseMNEData(csv) {
     const lines = csv.split('\n').filter(l => l.trim());
     STATE.mneData.clear();
 
+    // DEBUG: Log header para verificar estructura de columnas
+    if (lines.length > 0) {
+        const headerCols = parseCSVLine(lines[0]);
+        console.log('📊 [MNE DEBUG] Header columnas:', headerCols.slice(0, 10));
+        console.log('📊 [MNE DEBUG] Total líneas CSV:', lines.length);
+    }
+
+    let parsedCount = 0;
+    let skippedCount = 0;
+
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length >= 6) {
-            const obc = cols[3]?.trim();
+            // Normalizar OBC: trim, mayúsculas, eliminar caracteres especiales
+            let obc = cols[3]?.trim()?.toUpperCase() || '';
+            // Eliminar posibles caracteres invisibles o espacios extra
+            obc = obc.replace(/\s+/g, '').replace(/[^\w-]/g, '');
+
             if (obc && !cols[0]?.toLowerCase().includes('fecha')) {
                 if (!STATE.mneData.has(obc)) {
                     STATE.mneData.set(obc, []);
@@ -3234,9 +3253,86 @@ function parseMNEData(csv) {
                     responsable: cols[12]?.trim() || '',
                     estado: cols[16]?.trim() || '📦 En proceso'
                 });
+                parsedCount++;
+            } else {
+                skippedCount++;
+            }
+        } else {
+            skippedCount++;
+        }
+    }
+
+    console.log(`📊 [MNE DEBUG] Parsing completado:`);
+    console.log(`   - Registros parseados: ${parsedCount}`);
+    console.log(`   - Registros saltados: ${skippedCount}`);
+    console.log(`   - OBCs únicos en mneData: ${STATE.mneData.size}`);
+
+    // DEBUG: Mostrar primeras 5 claves para verificar formato
+    if (STATE.mneData.size > 0) {
+        const keys = Array.from(STATE.mneData.keys()).slice(0, 5);
+        console.log(`📊 [MNE DEBUG] Primeras 5 claves (OBCs):`, keys);
+
+        // DEBUG: Comparar con claves de obcData para detectar discrepancias de formato
+        if (STATE.obcData.size > 0) {
+            const obcKeys = Array.from(STATE.obcData.keys()).slice(0, 5);
+            console.log(`📊 [MNE DEBUG] Primeras 5 claves de obcData para comparar:`, obcKeys);
+
+            // Verificar si hay intersección
+            let matchCount = 0;
+            for (const mneKey of STATE.mneData.keys()) {
+                if (STATE.obcData.has(mneKey)) {
+                    matchCount++;
+                }
+            }
+            console.log(`📊 [MNE DEBUG] Coincidencias exactas entre mneData y obcData: ${matchCount} de ${STATE.mneData.size}`);
+
+            // Si no hay coincidencias, buscar por qué
+            if (matchCount === 0) {
+                const sampleMneKey = keys[0];
+                const sampleObcKey = obcKeys[0];
+                console.warn(`⚠️ [MNE DEBUG] Sin coincidencias! Ejemplo MNE: "${sampleMneKey}" (len=${sampleMneKey.length}), Ejemplo OBC: "${sampleObcKey}" (len=${sampleObcKey.length})`);
+
+                // Verificar si es problema de espacios o caracteres especiales
+                const mneCharCodes = [...sampleMneKey].map(c => c.charCodeAt(0));
+                const obcCharCodes = [...sampleObcKey.slice(0, sampleMneKey.length)].map(c => c.charCodeAt(0));
+                console.warn(`⚠️ [MNE DEBUG] Char codes MNE: ${mneCharCodes.slice(0, 10).join(',')}`);
+                console.warn(`⚠️ [MNE DEBUG] Char codes OBC: ${obcCharCodes.slice(0, 10).join(',')}`);
             }
         }
     }
+}
+
+/**
+ * Obtiene los datos de rastreo (MNE) para una orden.
+ * Normaliza la clave para asegurar coincidencia independientemente del formato.
+ * @param {string} orden - El código de la orden
+ * @returns {Array} - Array de datos de rastreo o vacío si no hay
+ */
+function getRastreoDataForOrder(orden) {
+    if (!orden) return [];
+
+    // Normalizar la clave de búsqueda
+    const normalizedKey = orden.trim().toUpperCase().replace(/\s+/g, '').replace(/[^\w-]/g, '');
+
+    // Buscar con clave normalizada
+    let data = STATE.mneData.get(normalizedKey);
+
+    // Si no se encuentra, intentar con la clave original
+    if (!data) {
+        data = STATE.mneData.get(orden);
+    }
+
+    // Si aún no se encuentra, intentar búsqueda parcial
+    if (!data && STATE.mneData.size > 0) {
+        for (const [key, value] of STATE.mneData.entries()) {
+            if (key.includes(normalizedKey) || normalizedKey.includes(key)) {
+                data = value;
+                break;
+            }
+        }
+    }
+
+    return data || [];
 }
 
 function parseCSVLine(line) {
@@ -4200,7 +4296,7 @@ function renderOrdersTable(mode = 'pending') {
 
     tableBody.innerHTML = filteredOrders.map(([orden, data]) => {
         const validaciones = STATE.validacionData.get(orden) || [];
-        const rastreoData = STATE.mneData.get(orden) || [];
+        const rastreoData = getRastreoDataForOrder(orden);
         // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES), not from validation/rastreo
         const totalCajas = data.totalCajas || 0;
         // FIXED: Count unique validated boxes instead of total records
@@ -5890,7 +5986,7 @@ function renderValidatedTable() {
         // Obtener datos originales de la orden si existen
         const orderData = STATE.obcData.get(record.orden) || {};
         const validaciones = STATE.validacionData.get(record.orden) || [];
-        const rastreoData = STATE.mneData.get(record.orden) || [];
+        const rastreoData = getRastreoDataForOrder(record.orden);
         // FIXED: Use totalCajas from OBC database (RESUMEN_ORDENES) as primary source
         const totalCajas = orderData.totalCajas || record.totalCajas || 0;
         // FIXED: Count unique validated boxes instead of total records
@@ -6152,7 +6248,7 @@ function showCancelOrderModal() {
     const orderData = STATE.obcData.get(STATE.currentOrder);
     if (!orderData) return;
 
-    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
+    const rastreoData = getRastreoDataForOrder(STATE.currentOrder);
     const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
     const totalCajas = orderData.totalCajas || rastreoData.length || validaciones.length || 0;
 
@@ -6185,7 +6281,7 @@ function showNoProcesableModal() {
     const orderData = STATE.obcData.get(STATE.currentOrder);
     if (!orderData) return;
 
-    const rastreoData = STATE.mneData.get(STATE.currentOrder) || [];
+    const rastreoData = getRastreoDataForOrder(STATE.currentOrder);
     const validaciones = STATE.validacionData.get(STATE.currentOrder) || [];
     const totalCajas = orderData.totalCajas || rastreoData.length || validaciones.length || 0;
 
@@ -8381,7 +8477,8 @@ function toggleOrderNoProcesable() {
 function refreshModalKPICardsIfOpen() {
     // Verificar si el modal está abierto y hay una orden actual
     const modal = document.getElementById('info-modal');
-    if (!modal || modal.style.display === 'none' || !STATE.currentOrder) {
+    // FIXED: El modal usa classList.contains('show') para visibilidad, no style.display
+    if (!modal || !modal.classList.contains('show') || !STATE.currentOrder) {
         return; // Modal cerrado, no hacer nada
     }
 
@@ -8412,7 +8509,33 @@ function renderKPICards(orderData) {
     const validaciones = STATE.validacionData.get(orderData.orden) || [];
     // FIXED: Count unique validated boxes instead of total records
     const cajasValidadas = getCajasValidadasUnicas(orderData.orden);
-    const rastreoData = STATE.mneData.get(orderData.orden) || [];
+    const rastreoData = getRastreoDataForOrder(orderData.orden);
+
+    // DEBUG: Diagnóstico de rastreo
+    console.log(`📊 [RASTREO DEBUG] Buscando orden: "${orderData.orden}"`);
+    console.log(`📊 [RASTREO DEBUG] mneData.size: ${STATE.mneData.size}`);
+    console.log(`📊 [RASTREO DEBUG] rastreoData encontrado: ${rastreoData.length} registros`);
+    console.log(`📊 [RASTREO DEBUG] LOAD_STATE.backgroundData.mne: ${LOAD_STATE.backgroundData.mne}`);
+
+    // DEBUG: Verificar si existe la clave exacta o similar
+    if (STATE.mneData.size > 0 && rastreoData.length === 0) {
+        // Buscar coincidencias parciales para diagnóstico
+        const ordenUpper = orderData.orden.toUpperCase();
+        let foundSimilar = false;
+        for (const [key, value] of STATE.mneData.entries()) {
+            if (key.toUpperCase().includes(ordenUpper) || ordenUpper.includes(key.toUpperCase())) {
+                console.log(`📊 [RASTREO DEBUG] Coincidencia parcial encontrada: "${key}" con ${value.length} registros`);
+                foundSimilar = true;
+                break;
+            }
+        }
+        if (!foundSimilar) {
+            console.log(`📊 [RASTREO DEBUG] No se encontró coincidencia parcial para "${orderData.orden}"`);
+            // Mostrar algunas claves existentes para comparar
+            const sampleKeys = Array.from(STATE.mneData.keys()).slice(0, 3);
+            console.log(`📊 [RASTREO DEBUG] Ejemplo de claves existentes:`, sampleKeys);
+        }
+    }
     // FIXED: Use totalCajas from OBC database
     const totalCajas = orderData.totalCajas || 0;
 
@@ -8521,7 +8644,7 @@ function scrollToSection(sectionId) {
 function renderModalBody(orden, orderData) {
     const modalBody = document.getElementById('modal-body');
     const validaciones = STATE.validacionData.get(orden) || [];
-    const rastreoData = STATE.mneData.get(orden) || [];
+    const rastreoData = getRastreoDataForOrder(orden);
 
     // Búsqueda cruzada TRS usando códigos de cajas (no OBC directo)
     const boxCodes = new Set();
@@ -12690,7 +12813,7 @@ function groupOrdersByDestino(ordersData) {
         }
 
         const validaciones = STATE.validacionData.get(orden) || [];
-        const rastreoData = STATE.mneData.get(orden) || [];
+        const rastreoData = getRastreoDataForOrder(orden);
         const totalCajas = data.totalCajas || 0;
         // FIXED: Count unique validated boxes instead of total records
         // CRÍTICO: Si VALIDACION no está cargada, mostrar indicador de carga
