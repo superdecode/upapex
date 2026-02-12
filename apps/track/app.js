@@ -15,7 +15,7 @@ const CONFIG = {
         REPARACIONES: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSe-hbpLGtctz-xY2Tk-9j5p6sbxtCC8dE-84UF7Gc0x4P5uSgygqmPHunD0ZLYVV6RCyvBsHI18OL7/pub?gid=131145537&single=true&output=csv'
     },
     CACHE_DURATION: 30 * 60 * 1000, // 30 minutos
-    MAX_RESULTS: 20
+    MAX_RESULTS: 500
 };
 
 // ==================== STATE ====================
@@ -155,8 +155,25 @@ async function loadAllData() {
                         EMBARQUES: 'embarques'
                     }[key];
                     DATA_CACHE[mappedKey] = data;
+                    console.log(`📦 [FASE2] ${key} -> ${mappedKey}: ${data.length} registros`);
+                } else {
+                    console.error(`❌ [FASE2] Falló carga:`, result.reason);
                 }
             });
+
+            // DEBUG: Verificar datos de CANCELADO
+            console.log(`🔍 [DEBUG] CANCELADO total registros: ${DATA_CACHE.cancelado.length}`);
+            if (DATA_CACHE.cancelado.length > 0) {
+                console.log(`🔍 [DEBUG] CANCELADO primer registro:`, DATA_CACHE.cancelado[0]._values?.slice(0, 6));
+                console.log(`🔍 [DEBUG] CANCELADO último registro:`, DATA_CACHE.cancelado[DATA_CACHE.cancelado.length - 1]._values?.slice(0, 6));
+                const test49 = DATA_CACHE.cancelado.filter(r => {
+                    const v1 = (r._values?.[1] || '').toString();
+                    const v2 = (r._values?.[2] || '').toString();
+                    return v1.includes('49033248') || v2.includes('49033248');
+                });
+                console.log(`🔍 [DEBUG] CANCELADO registros con '49033248': ${test49.length}`);
+                if (test49.length > 0) console.log(`🔍 [DEBUG] Ejemplo:`, test49[0]._values?.slice(0, 6));
+            }
 
             DATA_CACHE.lastUpdate = Date.now();
             saveToCache();
@@ -199,16 +216,11 @@ function parseCSV(csv, sourceName = '') {
     const headers = parseCSVLine(lines[0]);
     const data = [];
 
-    // OPTIMIZACIÓN: Limitar a últimos 50,000 registros para bases grandes
-    const MAX_ROWS = 50000;
+    // CARGA COMPLETA: Sin límite de filas para garantizar búsqueda total
     const totalLines = lines.length - 1;
-    const startIndex = totalLines > MAX_ROWS ? lines.length - MAX_ROWS : 1;
+    console.log(`📊 [${sourceName}] Procesando ${totalLines.toLocaleString()} registros (carga completa)`);
 
-    if (totalLines > MAX_ROWS) {
-        console.log(`⚡ [${sourceName}] Optimización: procesando últimos ${MAX_ROWS.toLocaleString()} de ${totalLines.toLocaleString()} registros (${((MAX_ROWS/totalLines)*100).toFixed(1)}%)`);
-    }
-
-    for (let i = startIndex; i < lines.length; i++) {
+    for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         if (values.length > 0) {
             const row = {};
@@ -251,27 +263,19 @@ function parseCSVLine(line) {
 }
 
 function saveToCache() {
+    let sizeInMB = '?';
     try {
         const dataToSave = JSON.stringify(DATA_CACHE);
-        const sizeInMB = (new Blob([dataToSave]).size / (1024 * 1024)).toFixed(2);
+        sizeInMB = (new Blob([dataToSave]).size / (1024 * 1024)).toFixed(2);
         console.log(`💾 Intentando guardar cache: ${sizeInMB}MB`);
-
-        // Si es mayor a 4MB, no intentar guardar (LocalStorage máximo ~5-10MB)
-        if (parseFloat(sizeInMB) > 4) {
-            console.warn(`⚠️ Cache demasiado grande (${sizeInMB}MB), omitiendo guardado`);
-            showNotification('ℹ️ Cache muy grande - No se guardará (se recargará al refrescar)', 'info', 3000);
-            return;
-        }
 
         localStorage.setItem('box_query_cache', dataToSave);
         console.log(`✅ Cache guardado: ${sizeInMB}MB`);
     } catch (e) {
         if (e.name === 'QuotaExceededError') {
-            console.error('❌ QuotaExceededError: LocalStorage lleno');
-            // Simplemente limpiar el cache viejo y NO guardar nada
+            console.warn(`⚠️ Cache demasiado grande (${sizeInMB}MB) para LocalStorage`);
             localStorage.removeItem('box_query_cache');
-            console.log('🧹 Cache eliminado - Los datos se recargarán en el próximo refresh');
-            showNotification('ℹ️ Cache no guardado (los datos se recargarán al refrescar)', 'info', 3000);
+            console.log('🧹 Cache limpiado - Los datos permanecen en memoria y se recargarán al refrescar');
         } else {
             console.error('Error saving to cache:', e);
         }
@@ -312,6 +316,7 @@ function performSearch() {
     setTimeout(() => {
         try {
             CURRENT_SEARCH = query;
+            console.log(`🔍 [SEARCH] Cache state: cancelado=${DATA_CACHE.cancelado.length}, bdStock=${DATA_CACHE.bdStock.length}, obcBd=${DATA_CACHE.obcBd.length}, inventario=${DATA_CACHE.inventario.length}, mne=${DATA_CACHE.mne.length}, trs=${DATA_CACHE.trs.length}, embarques=${DATA_CACHE.embarques.length}, reparaciones=${DATA_CACHE.reparaciones.length}`);
             const results = searchAllSources(query);
             displayResults(results, query);
 
@@ -731,13 +736,16 @@ function searchInventario(data, results, sourceName) {
 function searchCANCELADO(data, results, sourceName) {
     const query = results.query;
     const baseCode = results.baseCode;
-    const searchIndices = [1, 2];
+    const queryUpper = query.toUpperCase();
+    // Buscar en CODIGO 1 (idx 1), CODIGO 2 (idx 2), UBICACION (idx 3), NOTA (idx 5)
+    const searchIndices = [1, 2, 3, 5];
+    console.log(`🏷️ [${sourceName}] Buscando "${query}" (upper: "${queryUpper}") en ${data.length} registros...`);
 
     data.forEach(row => {
         if (!row._values || row._values.length < 3) return;
 
         const firstVal = row._values[0]?.toString() || '';
-        if (!firstVal || firstVal.toLowerCase().includes('fecha')) return;
+        if (firstVal.toLowerCase().includes('fecha') && firstVal.toLowerCase().includes('codigo')) return;
 
         let isMatch = false;
 
@@ -746,21 +754,29 @@ function searchCANCELADO(data, results, sourceName) {
             if (!cellValue) continue;
 
             const cellUpper = cellValue.toString().toUpperCase();
-            const queryUpper = query.toUpperCase();
 
+            // Match exacto
             if (cellUpper === queryUpper) {
                 isMatch = true;
                 break;
             }
 
+            // Match por inclusión en valor RAW (ej: "49033248" en "49033248/391")
             if (cellUpper.includes(queryUpper)) {
                 isMatch = true;
                 break;
             }
 
-            if (baseCode) {
-                const normalizedCell = normalizeCode(cellValue);
-                if (normalizedCell.includes(baseCode)) {
+            // Match por código normalizado
+            const normalizedCell = normalizeCode(cellValue);
+            if (normalizedCell.includes(query)) {
+                isMatch = true;
+                break;
+            }
+
+            // Match por baseCode
+            if (baseCode && baseCode !== query) {
+                if (normalizedCell.includes(baseCode) || cellUpper.includes(baseCode)) {
                     isMatch = true;
                     break;
                 }
@@ -772,6 +788,7 @@ function searchCANCELADO(data, results, sourceName) {
             results.exact[sourceName].push(enrichedRow);
         }
     });
+    console.log(`🏷️ [${sourceName}] Resultado: ${results.exact[sourceName].length} coincidencias exactas`);
 }
 
 /**
@@ -1606,8 +1623,8 @@ function getRelevantFields(sourceKey) {
         ],
         cancelado: [
             { key: 0, label: 'Fecha', type: 'date' },
-            { key: 1, label: 'Código', type: 'code' },
-            { key: 2, label: 'Orden', type: 'code' },
+            { key: 1, label: 'Código 1', type: 'code' },
+            { key: 2, label: 'Código 2', type: 'code' },
             { key: 3, label: 'Ubicación', type: 'text' },
             { key: 4, label: 'Responsable', type: 'text' },
             { key: 5, label: 'Nota', type: 'text' }
