@@ -1201,7 +1201,7 @@ function handleLogout() {
     STATE.userEmail = '';
     STATE.userName = '';
     STATE.userAlias = '';
-    STATE.inventory = [];
+    STATE.inventory = new Map();
     STATE.scannedBoxes = { ok: [], blocked: [], nowms: [] };
     STATE.pallets = { ok: { boxes: [] }, blocked: { boxes: [] }, nowms: { boxes: [] } };
 
@@ -1487,7 +1487,7 @@ function setupEventListeners() {
         STATE.userAlias = '';
 
         // Limpiar inventario
-        STATE.inventory = [];
+        STATE.inventory = new Map();
         STATE.scannedBoxes = { ok: [], blocked: [], nowms: [] };
         STATE.pallets = { ok: { boxes: [] }, blocked: { boxes: [] }, nowms: { boxes: [] } };
 
