@@ -34,6 +34,18 @@ let DATA_CACHE = {
 
 let CURRENT_SEARCH = null;
 let GLOBAL_SEARCH_MODE = 'exact'; // 'exact' or 'flexible'
+
+// Background loading state
+let BACKGROUND_LOADING = {
+    active: false,
+    startTime: null,
+    totalSources: 0,
+    completedSources: 0,
+    completedNames: [],
+    pendingNames: [],
+    sourceTimes: [] // durations in ms per source for ETA calc
+};
+
 let SECTION_MODES = {
     bdStock: 'exact',
     obcBd: 'exact',
@@ -133,10 +145,27 @@ async function loadAllData() {
         // FASE 2: Cargar bases secundarias en background
         console.log('📦 FASE 2: Cargando bases secundarias en segundo plano...');
 
+        const secondaryKeys = Object.keys(secondarySources);
+        BACKGROUND_LOADING = {
+            active: true,
+            startTime: Date.now(),
+            totalSources: secondaryKeys.length,
+            completedSources: 0,
+            completedNames: [],
+            pendingNames: [...secondaryKeys],
+            sourceTimes: []
+        };
+
         setTimeout(async () => {
             const secondaryResults = await Promise.allSettled(
                 Object.entries(secondarySources).map(async ([key, url]) => {
+                    const sourceStart = Date.now();
                     const data = await fetchCSV(url, key);
+                    const sourceTime = Date.now() - sourceStart;
+                    BACKGROUND_LOADING.sourceTimes.push(sourceTime);
+                    BACKGROUND_LOADING.completedSources++;
+                    BACKGROUND_LOADING.completedNames.push(key);
+                    BACKGROUND_LOADING.pendingNames = BACKGROUND_LOADING.pendingNames.filter(k => k !== key);
                     completed++;
                     updateLoadingProgress(completed, totalSources);
                     return { key, data };
@@ -155,26 +184,10 @@ async function loadAllData() {
                         EMBARQUES: 'embarques'
                     }[key];
                     DATA_CACHE[mappedKey] = data;
-                    console.log(`📦 [FASE2] ${key} -> ${mappedKey}: ${data.length} registros`);
-                } else {
-                    console.error(`❌ [FASE2] Falló carga:`, result.reason);
                 }
             });
 
-            // DEBUG: Verificar datos de CANCELADO
-            console.log(`🔍 [DEBUG] CANCELADO total registros: ${DATA_CACHE.cancelado.length}`);
-            if (DATA_CACHE.cancelado.length > 0) {
-                console.log(`🔍 [DEBUG] CANCELADO primer registro:`, DATA_CACHE.cancelado[0]._values?.slice(0, 6));
-                console.log(`🔍 [DEBUG] CANCELADO último registro:`, DATA_CACHE.cancelado[DATA_CACHE.cancelado.length - 1]._values?.slice(0, 6));
-                const test49 = DATA_CACHE.cancelado.filter(r => {
-                    const v1 = (r._values?.[1] || '').toString();
-                    const v2 = (r._values?.[2] || '').toString();
-                    return v1.includes('49033248') || v2.includes('49033248');
-                });
-                console.log(`🔍 [DEBUG] CANCELADO registros con '49033248': ${test49.length}`);
-                if (test49.length > 0) console.log(`🔍 [DEBUG] Ejemplo:`, test49[0]._values?.slice(0, 6));
-            }
-
+            BACKGROUND_LOADING.active = false;
             DATA_CACHE.lastUpdate = Date.now();
             saveToCache();
             console.log('✅ FASE 2 completa - Todas las bases cargadas');
@@ -300,6 +313,18 @@ function loadFromCache() {
 }
 
 // ==================== SEARCH ====================
+function getBackgroundETA() {
+    const bg = BACKGROUND_LOADING;
+    if (!bg.active || bg.completedSources === 0) {
+        // No data yet to estimate - use a default
+        return { seconds: 30, pending: bg.pendingNames };
+    }
+    const avgTimePerSource = bg.sourceTimes.reduce((a, b) => a + b, 0) / bg.sourceTimes.length;
+    const remaining = bg.totalSources - bg.completedSources;
+    const etaMs = avgTimePerSource * remaining;
+    return { seconds: Math.max(1, Math.ceil(etaMs / 1000)), pending: bg.pendingNames };
+}
+
 function performSearch() {
     const input = document.getElementById('search-input');
     const query = normalizeCode(input.value.trim());
@@ -309,6 +334,32 @@ function performSearch() {
         return;
     }
 
+    // Check if background loading is still active
+    if (BACKGROUND_LOADING.active) {
+        const eta = getBackgroundETA();
+        const pendingList = eta.pending.map(k => {
+            const names = { BD_STOCK: 'BD Stock', INVENTARIO: 'Inventario', MNE: 'MNE', TRS: 'TRS', CANCELADO: 'Otros', EMBARQUES: 'Embarques' };
+            return names[k] || k;
+        }).join(', ');
+
+        const userChoice = confirm(
+            `⏳ Aún se están cargando bases de datos en segundo plano.\n\n` +
+            `📊 Progreso: ${BACKGROUND_LOADING.completedSources}/${BACKGROUND_LOADING.totalSources} bases listas\n` +
+            `⏱️ Tiempo estimado restante: ~${eta.seconds} segundos\n` +
+            `📋 Pendientes: ${pendingList}\n\n` +
+            `¿Deseas buscar ahora con los datos ya cargados?\n` +
+            `(Los resultados pueden estar incompletos)\n\n` +
+            `• Aceptar = Buscar ahora (datos parciales)\n` +
+            `• Cancelar = Esperar a que terminen de cargar`
+        );
+
+        if (!userChoice) {
+            showNotification(`⏳ Esperando carga... ~${eta.seconds}s restantes. Intenta de nuevo cuando termine.`, 'info', 5000);
+            return;
+        }
+        showNotification('⚠️ Buscando con datos parciales - algunas bases aún cargan', 'warning', 4000);
+    }
+
     // Show preloader and hide other elements
     showSearchPreloader(true);
 
@@ -316,7 +367,6 @@ function performSearch() {
     setTimeout(() => {
         try {
             CURRENT_SEARCH = query;
-            console.log(`🔍 [SEARCH] Cache state: cancelado=${DATA_CACHE.cancelado.length}, bdStock=${DATA_CACHE.bdStock.length}, obcBd=${DATA_CACHE.obcBd.length}, inventario=${DATA_CACHE.inventario.length}, mne=${DATA_CACHE.mne.length}, trs=${DATA_CACHE.trs.length}, embarques=${DATA_CACHE.embarques.length}, reparaciones=${DATA_CACHE.reparaciones.length}`);
             const results = searchAllSources(query);
             displayResults(results, query);
 
@@ -326,9 +376,11 @@ function performSearch() {
             // Show success notification
             const totalResults = Object.values(results.exact).reduce((sum, arr) => sum + arr.length, 0);
             if (totalResults > 0) {
-                showNotification(`✅ Búsqueda completada: ${totalResults} coincidencia${totalResults > 1 ? 's' : ''} encontrada${totalResults > 1 ? 's' : ''}`, 'success');
+                const partialWarning = BACKGROUND_LOADING.active ? ' (⚠️ datos parciales)' : '';
+                showNotification(`✅ Búsqueda completada: ${totalResults} coincidencia${totalResults > 1 ? 's' : ''} encontrada${totalResults > 1 ? 's' : ''}${partialWarning}`, 'success');
             } else {
-                showNotification('ℹ️ No se encontraron resultados', 'info');
+                const partialWarning = BACKGROUND_LOADING.active ? ' - Algunas bases aún cargan, intenta de nuevo en unos segundos' : '';
+                showNotification(`ℹ️ No se encontraron resultados${partialWarning}`, 'info');
             }
         } catch (error) {
             console.error('Error during search:', error);
@@ -739,7 +791,6 @@ function searchCANCELADO(data, results, sourceName) {
     const queryUpper = query.toUpperCase();
     // Buscar en CODIGO 1 (idx 1), CODIGO 2 (idx 2), UBICACION (idx 3), NOTA (idx 5)
     const searchIndices = [1, 2, 3, 5];
-    console.log(`🏷️ [${sourceName}] Buscando "${query}" (upper: "${queryUpper}") en ${data.length} registros...`);
 
     data.forEach(row => {
         if (!row._values || row._values.length < 3) return;
@@ -788,7 +839,6 @@ function searchCANCELADO(data, results, sourceName) {
             results.exact[sourceName].push(enrichedRow);
         }
     });
-    console.log(`🏷️ [${sourceName}] Resultado: ${results.exact[sourceName].length} coincidencias exactas`);
 }
 
 /**
