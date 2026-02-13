@@ -4135,7 +4135,7 @@ function parseOrderDate(dateStr) {
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Intentar formato dd/mm/yyyy o dd-mm-yyyy
+    // Intentar formato dd/mm/yyyy, mm/dd/yyyy o dd-mm-yyyy (sin hora)
     const parts = cleanStr.split(/[/-]/);
     if (parts.length === 3) {
         let d, m, y;
@@ -4147,10 +4147,27 @@ function parseOrderDate(dateStr) {
             m = parseInt(parts[1]);
             d = parseInt(parts[2]);
         } else {
-            // Formato DD-MM-YYYY o DD/MM/YYYY
-            d = parseInt(parts[0]);
-            m = parseInt(parts[1]);
-            y = parseInt(parts[2]);
+            // DETECCIÓN INTELIGENTE entre DD/MM/YYYY y MM/DD/YYYY
+            const first = parseInt(parts[0]);
+            const second = parseInt(parts[1]);
+            const third = parseInt(parts[2]);
+
+            if (second > 12) {
+                // Formato MM/DD/YYYY (americano) - ej: 2/13/2026
+                m = first;
+                d = second;
+                y = third;
+            } else if (first > 12) {
+                // Formato DD/MM/YYYY (europeo) - ej: 13/02/2026
+                d = first;
+                m = second;
+                y = third;
+            } else {
+                // Ambiguo, usar MM/DD/YYYY (formato del CSV)
+                m = first;
+                d = second;
+                y = third;
+            }
         }
 
         const year = y < 100 ? 2000 + y : y;
@@ -4159,21 +4176,42 @@ function parseOrderDate(dateStr) {
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Intentar formato DD/MM/YYYY HH:MM:SS (con hora)
+    // Intentar formato DD/MM/YYYY HH:MM:SS o MM/DD/YYYY HH:MM:SS (con hora)
     const partsWithTime = cleanStr.split(' ');
     if (partsWithTime.length >= 2) {
         const datePart = partsWithTime[0];
         const timePart = partsWithTime[1];
-        
+
         const datePartsOnly = datePart.split(/[/-]/);
         const timePartsOnly = timePart.split(':');
-        
+
         if (datePartsOnly.length === 3 && timePartsOnly.length >= 2) {
-            const d = parseInt(datePartsOnly[0]);
-            const m = parseInt(datePartsOnly[1]);
-            const y = parseInt(datePartsOnly[2]);
+            let d, m, y;
+            const first = parseInt(datePartsOnly[0]);
+            const second = parseInt(datePartsOnly[1]);
+            const third = parseInt(datePartsOnly[2]);
+
+            // DETECCIÓN INTELIGENTE: Si el segundo número > 12, debe ser MM/DD/YYYY (formato americano)
+            // Si el primer número > 12, debe ser DD/MM/YYYY (formato europeo)
+            if (second > 12) {
+                // Formato MM/DD/YYYY (americano) - ej: 2/13/2026
+                m = first;
+                d = second;
+                y = third;
+            } else if (first > 12) {
+                // Formato DD/MM/YYYY (europeo) - ej: 13/02/2026
+                d = first;
+                m = second;
+                y = third;
+            } else {
+                // Ambiguo (ambos <= 12), intentar MM/DD/YYYY primero (CSV usa formato americano)
+                // Validar creando la fecha y verificando si es válida
+                m = first;
+                d = second;
+                y = third;
+            }
+
             const year = y < 100 ? 2000 + y : y;
-            
             const hours = parseInt(timePartsOnly[0]) || 0;
             const minutes = parseInt(timePartsOnly[1]) || 0;
             const seconds = timePartsOnly[2] ? parseInt(timePartsOnly[2]) : 0;
@@ -4182,13 +4220,33 @@ function parseOrderDate(dateStr) {
             if (!isNaN(date.getTime())) return date;
         }
     } else if (partsWithTime.length === 1) {
-        // Solo fecha sin hora
+        // Solo fecha sin hora - aplicar misma lógica de detección
         const datePart = partsWithTime[0];
         const datePartsOnly = datePart.split(/[/-]/);
         if (datePartsOnly.length === 3) {
-            const d = parseInt(datePartsOnly[0]);
-            const m = parseInt(datePartsOnly[1]);
-            const y = parseInt(datePartsOnly[2]);
+            let d, m, y;
+            const first = parseInt(datePartsOnly[0]);
+            const second = parseInt(datePartsOnly[1]);
+            const third = parseInt(datePartsOnly[2]);
+
+            // DETECCIÓN INTELIGENTE: Si el segundo número > 12, debe ser MM/DD/YYYY
+            if (second > 12) {
+                // Formato MM/DD/YYYY (americano)
+                m = first;
+                d = second;
+                y = third;
+            } else if (first > 12) {
+                // Formato DD/MM/YYYY (europeo)
+                d = first;
+                m = second;
+                y = third;
+            } else {
+                // Ambiguo, usar MM/DD/YYYY (formato del CSV)
+                m = first;
+                d = second;
+                y = third;
+            }
+
             const year = y < 100 ? 2000 + y : y;
 
             date = new Date(year, m - 1, d);
