@@ -345,8 +345,9 @@ function printFolioConResumen(folioCompleto, incluirResumen = true) {
         return;
     }
 
-    // Obtener órdenes del folio
-    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
+    // Obtener órdenes del folio y eliminar duplicados
+    const ordenesDelFolioRaw = STATE.localValidated.filter(record => record.folio === folioCompleto);
+    const ordenesDelFolio = removeDuplicateOrders(ordenesDelFolioRaw);
 
     if (ordenesDelFolio.length === 0) {
         showNotification('⚠️ No hay órdenes en este folio', 'warning');

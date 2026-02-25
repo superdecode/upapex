@@ -1,8 +1,10 @@
-# Fix: Parseo de Fechas en Formato Americano (MM/DD/YYYY)
+# Fix: Parseo de Fechas + Búsqueda Global sin Filtro
 
 **Fecha del Fix**: 2026-02-12
-**Versión**: app.js v3.9.7
-**Problema Reportado**: Orden OBC3542602060S3 no aparece en filtro del 13-02-2026
+**Versión**: app.js v3.9.8
+**Problemas Reportados**:
+1. Orden OBC3542602060S3 no aparece en filtro del 13-02-2026
+2. Buscar OBC directamente no muestra alerta si la orden existe en otra fecha
 
 ---
 
@@ -20,9 +22,11 @@ La función `parseOrderDate()` asumía que TODAS las fechas estaban en formato e
 
 ---
 
-## ✅ Solución Implementada
+## ✅ Soluciones Implementadas
 
-Se implementó **detección inteligente de formato** en la función `parseOrderDate()`:
+### 1. Detección Inteligente de Formato de Fecha
+
+Se implementó **detección inteligente de formato** en la función `parseOrderDate()` ([app.js:4138-4240](app.js#L4138)):
 
 ```javascript
 // DETECCIÓN INTELIGENTE
@@ -48,6 +52,35 @@ if (second > 12) {
 1. Si el **segundo número > 12** → **MM/DD/YYYY** (ej: 2/13/2026)
 2. Si el **primer número > 12** → **DD/MM/YYYY** (ej: 13/02/2026)
 3. Si **ambos ≤ 12** → **MM/DD/YYYY** por defecto (formato del CSV)
+
+### 2. Búsqueda Global sin Filtro de Fecha
+
+Se agregó **búsqueda directa en CSV completo** cuando se busca por OBC ([app.js:7538-7605](app.js#L7538)):
+
+#### Funcionalidad:
+- Cuando se busca directamente por OBC (ej: `OBC3542602070RU`)
+- Si NO se encuentra en los datos cargados (filtro activo)
+- Se descarga el CSV completo y busca SIN filtro de fecha
+- Si encuentra la orden, muestra:
+  - ✅ **Alerta** con la fecha real de la orden
+  - ✅ **Indicador** si es del pasado/futuro vs filtro actual
+  - ✅ **Opción** para abrir la orden como excepción o ajustar filtro
+
+#### Ejemplo:
+```
+Usuario busca: OBC3542602070RU
+Filtro activo: 13-02-2026
+Orden existe con fecha: 10-02-2026
+
+Resultado:
+⏪ Orden Fuera del Filtro Activo
+Esta orden es del pasado y no corresponde al rango de fechas actual.
+
+Fecha de la orden: 10/02/2026
+Filtro activo: 13/02/2026 - 13/02/2026
+
+[Abrir como Excepción] [Ajustar Filtro] [Cancelar]
+```
 
 ---
 
@@ -92,7 +125,8 @@ curl -sL "BD_CAJAS_URL" | grep "OBC3542602060S3"
 | Archivo | Líneas | Cambio |
 |---------|--------|--------|
 | `app.js` | 4138-4240 | Función `parseOrderDate()` - Detección inteligente de formato |
-| `index.html` | 1217 | Versión actualizada a v3.9.7 |
+| `app.js` | 7538-7605 | Función `executeSearch()` - Búsqueda global sin filtro de fecha |
+| `index.html` | 1217 | Versión actualizada a v3.9.8 |
 
 ---
 
@@ -113,7 +147,15 @@ curl -sL "BD_CAJAS_URL" | grep "OBC3542602060S3"
 - En el buscador, ingresar: `OBC3542602060S3`
 - **Resultado esperado**: ✅ La orden aparece en la lista
 
-### 4. Verificar Otras Órdenes del 13-02-2026
+### 4. Verificar Búsqueda Global (Orden Fuera de Rango)
+- Mantener filtro: 13-02-2026
+- Buscar orden diferente: `OBC3542602070RU` (fecha: 10-02-2026)
+- **Resultado esperado**:
+  - ✅ Muestra alerta: "Orden Fuera del Filtro Activo"
+  - ✅ Indica que es "del pasado" (10 feb vs 13 feb)
+  - ✅ Ofrece opciones para abrir como excepción o ajustar filtro
+
+### 5. Verificar Otras Órdenes del 13-02-2026
 Órdenes que ahora deberían aparecer:
 - OBC3542602060S0
 - OBC3542602060S1
@@ -155,11 +197,19 @@ curl -sL "BD_CAJAS_URL" | grep "OBC3542602060S3"
 ## ✅ Estado del Fix
 
 **Status**: ✅ COMPLETADO Y VALIDADO
-**Órdenes Corregidas**: 38,994
+**Versión**: app.js v3.9.8
+**Órdenes Corregidas**: 38,994 (parseo de fechas)
+**Nueva Funcionalidad**: Búsqueda global sin filtro de fecha
 **Tasa de Éxito**: 100%
 **Regresiones**: Ninguna detectada
+
+### Mejoras Implementadas:
+1. ✅ Parseo correcto de formatos MM/DD/YYYY y DD/MM/YYYY
+2. ✅ Búsqueda global en CSV completo cuando OBC no está en filtro
+3. ✅ Alertas inteligentes para órdenes fuera de rango de fechas
+4. ✅ Opción de abrir órdenes como excepción o ajustar filtro
 
 ---
 
 **Documentado por**: Sistema de Auditoría Dispatch
-**Última actualización**: 2026-02-12
+**Última actualización**: 2026-02-12 (v3.9.8)

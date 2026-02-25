@@ -14,9 +14,10 @@ function openEditFolioModal(folioCompleto) {
     
     currentEditingFolio = folioCompleto;
     
-    // Obtener órdenes del folio
-    const ordenesDelFolio = STATE.localValidated.filter(r => r.folio === folioCompleto);
-    
+    // Obtener órdenes del folio y eliminar duplicados
+    const ordenesDelFolioRaw = STATE.localValidated.filter(r => r.folio === folioCompleto);
+    const ordenesDelFolio = removeDuplicateOrders(ordenesDelFolioRaw);
+
     if (ordenesDelFolio.length === 0) {
         showNotification('❌ No se encontraron órdenes en este folio', 'error');
         return;
@@ -304,9 +305,10 @@ async function executeEditFolio() {
         unidad
     });
     
-    // Obtener órdenes del folio actual
-    const ordenesDelFolio = STATE.localValidated.filter(r => r.folio === currentEditingFolio);
-    
+    // Obtener órdenes del folio actual y eliminar duplicados
+    const ordenesDelFolioRaw = STATE.localValidated.filter(r => r.folio === currentEditingFolio);
+    const ordenesDelFolio = removeDuplicateOrders(ordenesDelFolioRaw);
+
     // ESCENARIO A: Sin conflictos (folio nuevo o mismo conductor/unidad)
     const dateKey = getCurrentDateKey();
     const foliosDelDia = STATE.foliosDeCargas.get(dateKey) || new Map();
@@ -457,9 +459,10 @@ function showMergeFolioModal(ordenesOrigen, folioDestino, conductor, unidad, fol
         folioInfo
     };
     
-    // Obtener órdenes existentes en el folio destino
-    const ordenesExistentes = STATE.localValidated.filter(r => r.folio === folioDestino);
-    
+    // Obtener órdenes existentes en el folio destino y eliminar duplicados
+    const ordenesExistentesRaw = STATE.localValidated.filter(r => r.folio === folioDestino);
+    const ordenesExistentes = removeDuplicateOrders(ordenesExistentesRaw);
+
     // Poblar modal
     document.getElementById('merge-folio-source').textContent = currentEditingFolio;
     document.getElementById('merge-folio-orders-count').textContent = `${ordenesOrigen.length} orden${ordenesOrigen.length > 1 ? 'es' : ''}`;

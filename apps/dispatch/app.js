@@ -3218,6 +3218,25 @@ function getCajasValidadasUnicas(orden) {
     return codigosUnicos.size;
 }
 
+/**
+ * Helper function to remove duplicate orders based on OBC number
+ * Keeps the most recent record (by timestamp)
+ * @param {Array} orders - Array of order records
+ * @returns {Array} - Deduplicated array of orders
+ */
+function removeDuplicateOrders(orders) {
+    if (!orders || orders.length === 0) return [];
+
+    const ordenesMap = new Map();
+    orders.forEach(record => {
+        const existingRecord = ordenesMap.get(record.orden);
+        if (!existingRecord || (record.timestamp && (!existingRecord.timestamp || record.timestamp > existingRecord.timestamp))) {
+            ordenesMap.set(record.orden, record);
+        }
+    });
+    return Array.from(ordenesMap.values());
+}
+
 function parseMNEData(csv) {
     const lines = csv.split('\n').filter(l => l.trim());
     STATE.mneData.clear();
@@ -7535,24 +7554,92 @@ async function executeSearch() {
         searchInput.value = '';
     }
 
+    // ==================== BÚSQUEDA DIRECTA EN CSV COMPLETO (SIN FILTRO DE FECHA) ====================
+    // Si no se encontró y es una búsqueda de OBC, buscar directamente en el CSV sin filtro de fecha
+    if (foundOrders.length === 0 && isOBC) {
+        console.log('🔍 [BÚSQUEDA GLOBAL] No encontrado en datos cargados. Buscando en CSV completo sin filtro de fecha...');
+        showSearchLoader(true, 'Buscando en base de datos completa...');
+
+        try {
+            // Fetch CSV directamente
+            const cacheBuster = Date.now();
+            const csvUrl = CONFIG.SOURCES.BD_CAJAS.includes('?')
+                ? `${CONFIG.SOURCES.BD_CAJAS}&_t=${cacheBuster}`
+                : `${CONFIG.SOURCES.BD_CAJAS}?_t=${cacheBuster}`;
+
+            const response = await fetch(csvUrl, { cache: 'no-store' });
+            if (response.ok) {
+                const csv = await response.text();
+                const lines = csv.split('\n').filter(l => l.trim());
+
+                console.log(`📥 CSV descargado: ${lines.length} líneas totales`);
+
+                // Buscar OBC en CSV completo
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    if (cols.length >= 9) {
+                        const obc = cols[0]?.trim();
+                        if (obc === query || obc.includes(query)) {
+                            const expectedArrival = cols[4]?.trim();
+                            const recipient = cols[6]?.trim();
+
+                            // Parsear fecha
+                            const orderDate = parseOrderDate(expectedArrival);
+                            const fechaFormateada = orderDate
+                                ? orderDate.toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                                : 'Fecha no disponible';
+
+                            console.log(`✅ [BÚSQUEDA GLOBAL] Orden encontrada: ${obc}, Fecha: ${fechaFormateada}`);
+
+                            foundOrders.push({
+                                orden: obc,
+                                source: 'Búsqueda Global (CSV Completo)',
+                                confidence: 100,
+                                fecha: fechaFormateada,
+                                fechaRaw: expectedArrival,
+                                recipient: recipient || 'N/A',
+                                orderDate: orderDate
+                            });
+
+                            // Si es match exacto, romper loop
+                            if (obc === query) break;
+                        }
+                    }
+                }
+
+                if (foundOrders.length > 0) {
+                    console.log(`✅ [BÚSQUEDA GLOBAL] ${foundOrders.length} orden(es) encontrada(s) en CSV completo`);
+                } else {
+                    console.log('❌ [BÚSQUEDA GLOBAL] Orden no existe en la base de datos');
+                }
+            } else {
+                console.error('❌ Error descargando CSV:', response.status);
+            }
+        } catch (error) {
+            console.error('❌ Error en búsqueda global:', error);
+        }
+
+        hideSearchLoader();
+    }
+
     if (foundOrders.length === 0) {
         console.error('❌ No se encontraron resultados para:', {
             rawQuery,
             queryNormalized,
             query,
-            'Canales buscados': ['OBC', 'Código Caja', 'Código Track', 'Código Referencia', 'MNE', 'Validaciones', 'TRS', 'Background Index']
+            'Canales buscados': ['OBC', 'Código Caja', 'Código Track', 'Código Referencia', 'MNE', 'Validaciones', 'TRS', 'Background Index', 'CSV Completo']
         });
-        
+
         // Verificar si el índice está cargando
         if (typeof isBackgroundIndexReady === 'function' && !isBackgroundIndexReady()) {
             const status = getBackgroundIndexStatus();
             if (status.isLoading) {
                 showNotification(`⏳ Búsqueda histórica cargando... ${status.loadProgress.toFixed(0)}%`, 'info', 3000);
             } else {
-                showNotification('❌ No se encontró la orden o código', 'error');
+                showNotification('❌ No se encontró la orden o código en la base de datos', 'error');
             }
         } else {
-            showNotification('❌ No se encontró la orden o código', 'error');
+            showNotification('❌ No se encontró la orden o código en la base de datos', 'error');
         }
         return;
     }
@@ -11196,9 +11283,9 @@ function updateFoliosBadges() {
 
     visibleRows.forEach((row, index) => {
         // Get values from table cells
-        // Column 2: Cant. Cajas, Column 3: Cant. Órdenes
-        const cajasText = row.cells[2]?.textContent.trim() || '0';
-        const ordenesText = row.cells[3]?.textContent.trim() || '0';
+        // Column 3: Cant. Cajas, Column 4: Cant. Órdenes
+        const cajasText = row.cells[3]?.textContent.trim() || '0';
+        const ordenesText = row.cells[4]?.textContent.trim() || '0';
 
         if (index < 3) { // Log primeras 3 filas para debug
             console.log(`🔍 Fila ${index}:`, { cajas: cajasText, ordenes: ordenesText });
@@ -11988,8 +12075,9 @@ function renderFolioDetailsTable(folioCompleto) {
     const tableBody = document.getElementById('folio-details-table-body');
     if (!tableBody) return;
 
-    // Get orders for this folio
-    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
+    // Get orders for this folio and remove duplicates
+    const ordenesDelFolioRaw = STATE.localValidated.filter(record => record.folio === folioCompleto);
+    const ordenesDelFolio = removeDuplicateOrders(ordenesDelFolioRaw);
 
     if (ordenesDelFolio.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="13" class="table-empty-state"><div class="table-empty-icon">📋</div><div class="table-empty-text">No hay órdenes en este folio</div></td></tr>';
@@ -12158,8 +12246,9 @@ function printFolioDelivery(folioCompleto, incluirResumen = false) {
     // ==================== PRE-VALIDATION: INTEGRITY CHECK ====================
     // Ensure header counts match body rows before printing
 
-    // Obtener todas las órdenes del folio desde la base de datos sincronizada
-    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === folioCompleto);
+    // Obtener todas las órdenes del folio desde la base de datos sincronizada y eliminar duplicados
+    const ordenesDelFolioRaw = STATE.localValidated.filter(record => record.folio === folioCompleto);
+    const ordenesDelFolio = removeDuplicateOrders(ordenesDelFolioRaw);
 
     if (ordenesDelFolio.length === 0) {
         showNotification('⚠️ No hay órdenes en este folio', 'warning');
@@ -12666,7 +12755,9 @@ function exportFolioDetailsToExcel() {
         return;
     }
 
-    const ordenesDelFolio = STATE.localValidated.filter(record => record.folio === STATE.currentFolio);
+    // Obtener órdenes del folio y eliminar duplicados
+    const ordenesDelFolioRaw = STATE.localValidated.filter(record => record.folio === STATE.currentFolio);
+    const ordenesDelFolio = removeDuplicateOrders(ordenesDelFolioRaw);
 
     if (ordenesDelFolio.length === 0) {
         showNotification('⚠️ No hay órdenes en este folio', 'warning');
