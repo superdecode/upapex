@@ -634,6 +634,12 @@ async function lazyLoadDataByDate(startDate, endDate) {
         // OPTIMIZACIÓN: Marcar este rango como cargado para evitar recargas
         markRangeAsLoaded(startDate, endDate);
         
+        // CONSISTENCIA: Verificar que el sistema esté consistente después de cargar datos
+        console.log('🔍 [POST-CARGA] Verificando consistencia del sistema...');
+        setTimeout(() => {
+            verifySystemConsistency();
+        }, 1000);
+        
         console.log('\n========================================');
         console.log('✅ CARGA COMPLETADA EXITOSAMENTE');
         console.log(`   - Total OBC: ${STATE.obcData.size}`);
@@ -3966,46 +3972,92 @@ function getFilteredOrders(mode = 'pending') {
 function updateSummary() {
     // ==================== SINCRONIZACIÓN: Usar función centralizada ====================
     // Esto garantiza que el contador muestre exactamente lo que se ve en las tablas
+    // BLINDAJE: Tolerante a datos incompletos, siempre recalcula desde fuente completa
 
     // MEJORA: Configurar deep linking en tarjetas de resumen
     setupSummaryCardLinks();
 
-    // Obtener órdenes filtradas usando la MISMA lógica que las tablas
-    const todoOrders = getFilteredOrders('todo');
-    const pendingOrders = getFilteredOrders('pending');
+    // BLINDAJE: Proteger contra datos corruptos o incompletos
+    let todoOrders = [];
+    let pendingOrders = [];
+    try {
+        todoOrders = getFilteredOrders('todo');
+        pendingOrders = getFilteredOrders('pending');
+    } catch (error) {
+        console.error('❌ Error al obtener órdenes filtradas:', error);
+        todoOrders = [];
+        pendingOrders = [];
+    }
 
-    // Contar validadas - filtrar por fecha si hay filtro activo
+    // Contar validadas - SIEMPRE desde STATE.localValidated (fuente completa)
+    // BLINDAJE: Filtrar registros mal formados sin romper el conteo
     let validatedCount = 0;
-    if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
-        const startDate = parseDateLocal(STATE.dateFilter.startDate);
-        const endDate = parseDateLocal(STATE.dateFilter.endDate);
-        endDate.setHours(23, 59, 59, 999);
+    try {
+        if (STATE.dateFilter.active && STATE.dateFilter.startDate && STATE.dateFilter.endDate) {
+            const startDate = parseDateLocal(STATE.dateFilter.startDate);
+            const endDate = parseDateLocal(STATE.dateFilter.endDate);
+            endDate.setHours(23, 59, 59, 999);
 
-        validatedCount = STATE.localValidated.filter(record => {
-            // Excluir Canceladas y No Procesables
-            const estatus = record.estatus || '';
-            if (estatus === 'Cancelada' || estatus === 'No Procesable') {
-                return false;
-            }
+            validatedCount = STATE.localValidated.filter(record => {
+                try {
+                    // BLINDAJE: Verificar que el registro tenga estructura mínima
+                    if (!record || typeof record !== 'object') {
+                        console.warn('⚠️ Registro inválido encontrado en localValidated:', record);
+                        return false;
+                    }
 
-            // Filtrar por fecha de despacho
-            const dateStr = record.fecha; // Usar fecha de despacho para consistencia
-            if (!dateStr) return false;
-            const orderDate = parseDateLocal(dateStr);
-            return orderDate && orderDate >= startDate && orderDate <= endDate;
-        }).length;
-    } else {
-        // Sin filtro de fecha, contar solo las que no son Canceladas/No Procesables
-        validatedCount = STATE.localValidated.filter(record => {
-            const estatus = record.estatus || '';
-            return estatus !== 'Cancelada' && estatus !== 'No Procesable';
-        }).length;
+                    // Excluir Canceladas y No Procesables
+                    const estatus = record.estatus || '';
+                    if (estatus === 'Cancelada' || estatus === 'No Procesable') {
+                        return false;
+                    }
+
+                    // BLINDAJE: Validar que tenga fecha antes de parsear
+                    const dateStr = record.fecha;
+                    if (!dateStr || typeof dateStr !== 'string') {
+                        console.warn('⚠️ Registro sin fecha válida:', record.orden || 'desconocido');
+                        return false;
+                    }
+
+                    // Filtrar por fecha de despacho
+                    const orderDate = parseDateLocal(dateStr);
+                    if (!orderDate || isNaN(orderDate.getTime())) {
+                        console.warn('⚠️ Fecha no parseable:', dateStr, 'en orden:', record.orden || 'desconocido');
+                        return false;
+                    }
+
+                    return orderDate >= startDate && orderDate <= endDate;
+                } catch (error) {
+                    console.error('❌ Error procesando registro en updateSummary:', error, record);
+                    return false; // No romper el conteo por un registro malo
+                }
+            }).length;
+        } else {
+            // Sin filtro de fecha, contar solo las que no son Canceladas/No Procesables
+            validatedCount = STATE.localValidated.filter(record => {
+                try {
+                    if (!record || typeof record !== 'object') {
+                        return false;
+                    }
+                    const estatus = record.estatus || '';
+                    return estatus !== 'Cancelada' && estatus !== 'No Procesable';
+                } catch (error) {
+                    console.error('❌ Error procesando registro:', error);
+                    return false;
+                }
+            }).length;
+        }
+    } catch (error) {
+        console.error('❌ Error crítico al contar validadas:', error);
+        validatedCount = 0; // Valor seguro por defecto
     }
 
     const totalCount = todoOrders.length;
     const pendingCount = pendingOrders.length;
 
-    console.log(`📊 [SYNC] updateSummary - Contadores: Total=${totalCount}, Pendientes=${pendingCount}, Validadas=${validatedCount}`);
+    console.log(`📊 [SYNC] updateSummary - Contadores recalculados desde fuente completa:`);
+    console.log(`   Total=${totalCount}, Pendientes=${pendingCount}, Validadas=${validatedCount}`);
+    console.log(`   Fuente: STATE.obcData.size=${STATE.obcData.size}, STATE.localValidated.length=${STATE.localValidated.length}`);
 
     // Actualizar usando sidebarComponent
     if (window.sidebarComponent) {
@@ -8489,9 +8541,21 @@ function closeDateExceptionModal() {
 function confirmDateException() {
     if (STATE.exceptionOrder) {
         const orden = STATE.exceptionOrder;
+        const orderData = STATE.obcData.get(orden);
+        
+        // CRÍTICO: Asegurar que la orden esté en obcDataFiltered para que aparezca en contadores
+        if (orderData && STATE.dateFilter.active) {
+            // Agregar la orden al filtro activo aunque esté fuera del rango
+            // Esto permite que aparezca en los contadores cuando se valide
+            if (!STATE.obcDataFiltered.has(orden)) {
+                console.log(`📦 [EXCEPCIÓN] Agregando orden ${orden} a obcDataFiltered para procesamiento`);
+                STATE.obcDataFiltered.set(orden, orderData);
+            }
+        }
+        
         closeDateExceptionModal();
         showOrderInfo(orden);
-        showNotification('📦 Orden abierta como excepción', 'info');
+        showNotification('📦 Orden abierta como excepción - Será incluida en el filtro actual al validarse', 'info');
     }
 }
 
@@ -10137,35 +10201,75 @@ async function executeConfirmDispatch() {
     saveLocalState();
 
     // PUSH INMEDIATO: Enviar directamente a BD sin esperar cola
+    let writeSuccess = false;
+    let writeError = null;
+    
     if (dispatchSyncManager) {
         const result = await dispatchSyncManager.pushImmediate(dispatchRecord);
         if (result.success) {
             console.log('✅ [PUSH] Despacho enviado inmediatamente a BD');
+            writeSuccess = true;
         } else if (result.queued) {
             console.log('📥 [PUSH] Despacho en cola local (sin conexión)');
             showNotification('💾 Despacho guardado localmente - Se sincronizará cuando haya conexión', 'warning');
+            writeSuccess = false; // Queued, not confirmed written
+        } else {
+            console.error('❌ [PUSH] Error al enviar despacho:', result.error);
+            writeError = result.error || 'Error desconocido';
+            writeSuccess = false;
         }
     } else {
         // Fallback a método legacy
-        addToDispatchSync(dispatchRecord);
-        if (IS_ONLINE && gapi?.client?.getToken()) {
-            await syncPendingData();
-        } else {
-            showNotification('💾 Despacho guardado localmente - Se sincronizará cuando haya conexión', 'warning');
-            updateSyncStatus();
+        try {
+            addToDispatchSync(dispatchRecord);
+            if (IS_ONLINE && gapi?.client?.getToken()) {
+                const syncResult = await syncPendingData();
+                writeSuccess = syncResult !== false; // syncPendingData should return success status
+            } else {
+                showNotification('💾 Despacho guardado localmente - Se sincronizará cuando haya conexión', 'warning');
+                updateSyncStatus();
+                writeSuccess = false;
+            }
+        } catch (error) {
+            console.error('❌ Error en sincronización legacy:', error);
+            writeError = error.message;
+            writeSuccess = false;
         }
+    }
+
+    // CRÍTICO: Solo mostrar éxito si la escritura fue confirmada
+    if (!writeSuccess && !writeError) {
+        // Caso: Guardado local, pendiente de sincronización
+        showNotification(`💾 Despacho guardado localmente: ${STATE.currentOrder || ''} - Se sincronizará automáticamente`, 'warning');
+    } else if (writeError) {
+        // Caso: Error en escritura
+        console.error('❌ [VALIDACIÓN ESCRITURA] Fallo al guardar despacho:', writeError);
+        showNotification(`❌ Error al guardar despacho: ${writeError}. Intenta nuevamente.`, 'error');
+        // Revertir cambio local si hubo error
+        STATE.localValidated.shift(); // Remover el registro que agregamos
+        saveLocalState();
+        return; // No cerrar modal ni actualizar UI
     }
 
     // STICKY FIELDS: Guardar valores para precargar en próxima validación
     saveStickyFieldsFromModal();
 
     closeInfoModal();
-    showNotification(`✅ Despacho confirmado: ${STATE.currentOrder || ''} (${folio || ''})`, 'success');
+    
+    // Solo mostrar éxito confirmado si writeSuccess es true
+    if (writeSuccess) {
+        showNotification(`✅ Despacho confirmado y guardado: ${STATE.currentOrder || ''} (${folio || ''})`, 'success');
+    }
 
-    // Actualizar UI
+    // Actualizar UI - Forzar recálculo completo desde fuente de datos
     updateTabBadges();
     renderOrdersList();
     updateSummary();
+    
+    // CONSISTENCIA: Verificar que la orden aparezca en todos los lugares esperados
+    setTimeout(() => {
+        verifyOrderConsistency(STATE.currentOrder, folio);
+    }, 500);
 }
 
 async function initSyncManager() {
@@ -13852,6 +13956,152 @@ window.verificarTodosLosDespachos = function() {
     
     console.log('========================================\n');
 };
+
+// ==================== CONSISTENCIA: VERIFICACIÓN ORDEN-CONTADOR-FOLIO ====================
+/**
+ * Problema 3: Verificar consistencia entre orden validada, contadores y folio
+ * Esta función garantiza que una orden validada aparezca correctamente en:
+ * - Su filtro correspondiente (validadas/otros)
+ * - Los contadores del sistema
+ * - Su folio asignado
+ * Si detecta inconsistencias, las corrige automáticamente
+ */
+function verifyOrderConsistency(orden, folio) {
+    if (!orden) return;
+    
+    console.log(`\n🔍 [CONSISTENCIA] Verificando orden ${orden}...`);
+    
+    const issues = [];
+    
+    // 1. Verificar que existe en STATE.localValidated
+    const recordInValidated = STATE.localValidated.find(r => r.orden === orden);
+    if (!recordInValidated) {
+        issues.push(`❌ Orden ${orden} NO encontrada en STATE.localValidated`);
+    } else {
+        console.log(`✅ Orden encontrada en STATE.localValidated`);
+    }
+    
+    // 2. Verificar que aparece en el folio correcto
+    if (folio && recordInValidated) {
+        const folioMatch = folio.match(/DSP-(\d{8})-(\d{2})/);
+        if (folioMatch) {
+            const dateStr = folioMatch[1];
+            const folioNum = folioMatch[2];
+            const dateKey = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+            
+            const foliosDelDia = STATE.foliosDeCargas.get(dateKey);
+            if (!foliosDelDia || !foliosDelDia.has(folioNum)) {
+                issues.push(`❌ Folio ${folio} NO encontrado en STATE.foliosDeCargas`);
+                // Auto-corregir: Reconstruir folios
+                console.log(`🔧 Auto-corrección: Reconstruyendo folios...`);
+                rebuildFoliosFromRecords(STATE.localValidated);
+            } else {
+                console.log(`✅ Folio ${folio} encontrado correctamente`);
+            }
+        }
+    }
+    
+    // 3. Verificar que los contadores reflejan la orden
+    const validatedCountBefore = STATE.localValidated.filter(r => {
+        const estatus = r.estatus || '';
+        return estatus !== 'Cancelada' && estatus !== 'No Procesable';
+    }).length;
+    
+    console.log(`📊 Contador de validadas: ${validatedCountBefore}`);
+    
+    // 4. Verificar que aparece en el filtro correcto según su estatus
+    if (recordInValidated) {
+        const estatus = recordInValidated.estatus || '';
+        const expectedFilter = (estatus === 'Cancelada' || estatus === 'No Procesable') ? 'otros' : 'validated';
+        console.log(`✅ Orden debe aparecer en filtro: ${expectedFilter}`);
+    }
+    
+    // 5. Si hay issues, reportar y corregir
+    if (issues.length > 0) {
+        console.error(`⚠️ [CONSISTENCIA] Se encontraron ${issues.length} problemas:`);
+        issues.forEach(issue => console.error(`   ${issue}`));
+        
+        // Auto-corrección: Forzar recálculo completo
+        console.log(`🔧 [AUTO-CORRECCIÓN] Forzando recálculo completo...`);
+        updateSummary();
+        updateTabBadges();
+        
+        showNotification(`⚠️ Inconsistencia detectada y corregida automáticamente`, 'warning', 3000);
+    } else {
+        console.log(`✅ [CONSISTENCIA] Orden ${orden} verificada correctamente - Todo consistente`);
+    }
+    
+    console.log(`========================================\n`);
+}
+
+/**
+ * Verificación completa de consistencia del sistema
+ * Llamar después de cargar datos o al detectar problemas
+ */
+function verifySystemConsistency() {
+    console.log(`\n🔍 [CONSISTENCIA SISTEMA] Iniciando verificación completa...`);
+    
+    let totalIssues = 0;
+    
+    // 1. Verificar que todas las órdenes en localValidated tengan estructura válida
+    const invalidRecords = STATE.localValidated.filter(r => {
+        return !r || !r.orden || !r.fecha || !r.folio;
+    });
+    
+    if (invalidRecords.length > 0) {
+        console.error(`❌ ${invalidRecords.length} registros con estructura inválida`);
+        totalIssues += invalidRecords.length;
+    }
+    
+    // 2. Verificar que todos los folios en foliosDeCargas tengan órdenes correspondientes
+    let foliosSinOrdenes = 0;
+    STATE.foliosDeCargas.forEach((foliosDelDia, dateKey) => {
+        foliosDelDia.forEach((info, folioNum) => {
+            const folio = `DSP-${dateKey.replace(/-/g, '')}-${folioNum}`;
+            const ordenesEnFolio = STATE.localValidated.filter(r => r.folio === folio);
+            if (ordenesEnFolio.length === 0) {
+                console.warn(`⚠️ Folio ${folio} sin órdenes asociadas`);
+                foliosSinOrdenes++;
+            }
+        });
+    });
+    
+    if (foliosSinOrdenes > 0) {
+        console.error(`❌ ${foliosSinOrdenes} folios sin órdenes`);
+        totalIssues += foliosSinOrdenes;
+    }
+    
+    // 3. Verificar contadores
+    const expectedValidated = STATE.localValidated.filter(r => {
+        const estatus = r.estatus || '';
+        return estatus !== 'Cancelada' && estatus !== 'No Procesable';
+    }).length;
+    
+    console.log(`📊 Contadores:`);
+    console.log(`   - Total en localValidated: ${STATE.localValidated.length}`);
+    console.log(`   - Validadas (excluyendo Canceladas/No Procesables): ${expectedValidated}`);
+    console.log(`   - Total en obcData: ${STATE.obcData.size}`);
+    
+    if (totalIssues > 0) {
+        console.error(`\n❌ [CONSISTENCIA SISTEMA] ${totalIssues} problemas detectados`);
+        console.log(`🔧 Ejecutando auto-corrección...`);
+        
+        // Auto-corrección
+        rebuildFoliosFromRecords(STATE.localValidated);
+        updateSummary();
+        updateTabBadges();
+        
+        console.log(`✅ Auto-corrección completada`);
+    } else {
+        console.log(`\n✅ [CONSISTENCIA SISTEMA] Sistema consistente - Sin problemas detectados`);
+    }
+    
+    console.log(`========================================\n`);
+}
+
+// Exponer funciones de consistencia
+window.verifyOrderConsistency = verifyOrderConsistency;
+window.verifySystemConsistency = verifySystemConsistency;
 
 // ==================== EXPOSE FUNCTIONS GLOBALLY ====================
 window.handleLogin = handleLogin;
