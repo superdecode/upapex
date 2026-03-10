@@ -703,7 +703,23 @@ function parseOBCDataWithDateFilter(csv, startDate, endDate) {
             if (obc && expectedArrival) {
                 // FILTRO WHERE: Validar fecha ANTES de procesar
                 // NOTA: Órdenes validadas se filtran por fecha de despacho real en renderValidatedTable
-                const orderDate = parseOrderDate(expectedArrival);
+                const orderDate = parseOrderDate(expectedArrival, obc);
+
+                // 🔍 DEBUG: Rastrear orden específica
+                if (obc === 'OBC1472603060RS') {
+                    console.log(`🔍 [DEBUG] Orden encontrada en CSV: ${obc}`);
+                    console.log(`   - expectedArrival (raw): "${expectedArrival}"`);
+                    console.log(`   - orderDate (parsed):`, orderDate);
+                    console.log(`   - filterStartDate:`, filterStartDate);
+                    console.log(`   - filterEndDate:`, filterEndDate);
+                    if (orderDate) {
+                        console.log(`   - orderDate < filterStartDate:`, orderDate < filterStartDate);
+                        console.log(`   - orderDate > filterEndDate:`, orderDate > filterEndDate);
+                        console.log(`   - ¿Pasa filtro?:`, !(orderDate < filterStartDate || orderDate > filterEndDate));
+                    } else {
+                        console.log(`   ❌ orderDate es null - La fecha no pudo ser parseada`);
+                    }
+                }
 
                 // Sample para debugging
                 if (sampleDates.length < 5) {
@@ -715,7 +731,14 @@ function parseOBCDataWithDateFilter(csv, startDate, endDate) {
 
                 // DESCARTE INMEDIATO: Si no está en rango, continuar sin procesar
                 if (!orderDate || orderDate < filterStartDate || orderDate > filterEndDate) {
+                    if (obc === 'OBC1472603060RS') {
+                        console.log(`   ❌ ORDEN DESCARTADA - No pasa el filtro de fecha`);
+                    }
                     continue; // SALTAR esta fila (WHERE filter)
+                }
+                
+                if (obc === 'OBC1472603060RS') {
+                    console.log(`   ✅ ORDEN INCLUIDA - Pasa el filtro de fecha`);
                 }
 
                 matchedRows++;
@@ -4135,15 +4158,32 @@ function filterOrdersByDateRange() {
     console.log(`📅 Muestra de fechas procesadas:`, sampleDates);
 }
 
-function parseOrderDate(dateStr) {
+function parseOrderDate(dateStr, debugOBC = null) {
     if (!dateStr) return null;
 
     // Remover espacios extras
     const cleanStr = dateStr.trim();
 
+    const isDebugMode = debugOBC && (debugOBC === 'OBC1472603060RS' || window.DEBUG_DATE_PARSE);
+
+    if (isDebugMode) {
+        console.log(`🔍 [parseOrderDate] Procesando fecha para ${debugOBC}:`);
+        console.log(`   - Input original: "${dateStr}"`);
+        console.log(`   - Después de trim: "${cleanStr}"`);
+    }
+
     // Intentar parse directo (formato ISO: YYYY-MM-DD o YYYY-MM-DD HH:mm:ss)
     let date = new Date(cleanStr);
-    if (!isNaN(date.getTime())) return date;
+    if (!isNaN(date.getTime())) {
+        if (isDebugMode) {
+            console.log(`   ✅ Parse directo exitoso: ${date.toISOString()}`);
+        }
+        return date;
+    }
+
+    if (isDebugMode) {
+        console.log(`   ⚠️ Parse directo falló, intentando otros formatos...`);
+    }
 
     // Intentar formato ISO 8601 explícito: YYYY-MM-DD HH:mm:ss
     const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
@@ -4269,8 +4309,20 @@ function parseOrderDate(dateStr) {
             const year = y < 100 ? 2000 + y : y;
 
             date = new Date(year, m - 1, d);
-            if (!isNaN(date.getTime())) return date;
+            if (!isNaN(date.getTime())) {
+                if (isDebugMode) {
+                    console.log(`   ✅ Parse exitoso con lógica ambigua: ${date.toISOString()}`);
+                }
+                return date;
+            }
         }
+    }
+
+    // Si llegamos aquí, ningún formato funcionó
+    if (isDebugMode) {
+        console.error(`   ❌ [parseOrderDate] NO SE PUDO PARSEAR LA FECHA: "${cleanStr}"`);
+        console.error(`   - Se intentaron todos los formatos disponibles`);
+        console.error(`   - La orden ${debugOBC} será EXCLUIDA del filtro por fecha inválida`);
     }
 
     return null;
@@ -7189,16 +7241,63 @@ async function executeSearch() {
 
     if (isOBC) {
         // ===== LÓGICA PARA OBC =====
-        // Prioridad 1: Match exacto
-        if (STATE.obcData.has(query)) {
-            foundOrders.push({ orden: query, source: 'OBC Directo', confidence: 100 });
-        } else {
-            // Prioridad 2: Match parcial
-            for (const orden of STATE.obcData.keys()) {
-                if (orden.includes(query)) {
-                    foundOrders.push({ orden, source: 'OBC Parcial', confidence: 80 });
+        // CORRECCIÓN: Buscar PRIMERO en índice global histórico, luego en datos filtrados
+
+        // Prioridad 1: Buscar en índice global histórico (TODAS las órdenes)
+        if (typeof BACKGROUND_INDEX !== 'undefined' && BACKGROUND_INDEX.isReady) {
+            console.log(`🔍 [OBC Search] Buscando "${query}" en índice global...`);
+
+            // Buscar OBC directamente en obcData global
+            const querySimple = query.toUpperCase().trim();
+
+            // Match exacto
+            if (BACKGROUND_INDEX.obcData.has(querySimple)) {
+                const data = BACKGROUND_INDEX.obcData.get(querySimple);
+                foundOrders.push({
+                    orden: data.obc || query,
+                    source: 'OBC Histórico (Exacto)',
+                    confidence: 100,
+                    fecha: data.fecha || 'N/A',
+                    recipient: data.recipient || 'N/A'
+                });
+                console.log(`✅ [OBC Search] Encontrado en índice global:`, data);
+            } else {
+                // Match parcial en índice global
+                console.log(`🔍 [OBC Search] No encontrado exacto, buscando parcial...`);
+                for (const [obc, data] of BACKGROUND_INDEX.obcData.entries()) {
+                    if (obc.includes(querySimple)) {
+                        foundOrders.push({
+                            orden: data.obc || obc,
+                            source: 'OBC Histórico (Parcial)',
+                            confidence: 90,
+                            fecha: data.fecha || 'N/A',
+                            recipient: data.recipient || 'N/A'
+                        });
+                        console.log(`✅ [OBC Search] Match parcial:`, data);
+                    }
                 }
             }
+        }
+
+        // Prioridad 2: Buscar en datos filtrados actuales (solo si no se encontró en histórico)
+        if (foundOrders.length === 0) {
+            console.log(`🔍 [OBC Search] No encontrado en índice global, buscando en datos filtrados...`);
+
+            // Match exacto en filtro actual
+            if (STATE.obcData.has(query)) {
+                foundOrders.push({ orden: query, source: 'OBC Directo (Filtro Actual)', confidence: 100 });
+            } else {
+                // Match parcial en filtro actual
+                for (const orden of STATE.obcData.keys()) {
+                    if (orden.includes(query)) {
+                        foundOrders.push({ orden, source: 'OBC Parcial (Filtro Actual)', confidence: 80 });
+                    }
+                }
+            }
+        }
+
+        if (foundOrders.length === 0) {
+            console.warn(`⚠️ [OBC Search] No se encontró "${query}" ni en índice global ni en datos filtrados`);
         }
     } else {
         // ===== LÓGICA CRÍTICA PARA CÓDIGO DE CAJA =====
@@ -7688,6 +7787,8 @@ async function executeSearch() {
                 showHistoricalOrderConfirmationModal(orderMatch.orden, query, {
                     fecha: orderMatch.fecha,
                     recipient: orderMatch.recipient,
+                    trackingCode: orderMatch.trackingCode,
+                    referenceNo: orderMatch.referenceNo,
                     source: orderMatch.source
                 });
             } else {
@@ -7877,9 +7978,9 @@ async function showHistoricalOrderConfirmationModal(orden, searchQuery, backgrou
         console.log('✅ [Confirmación Histórica] Usando datos del Background Index:', backgroundData);
         recipient = backgroundData.recipient || 'N/A';
         expectedArrival = backgroundData.fecha || 'N/A';
-        trackingCode = 'N/A'; // Background index no tiene trackingCode en este contexto
-        referenceNo = 'N/A';  // Background index no tiene referenceNo en este contexto
-        totalCajas = 0;
+        trackingCode = backgroundData.trackingCode || 'N/A';
+        referenceNo = backgroundData.referenceNo || 'N/A';
+        totalCajas = 0; // No disponible en índice, se cargará al abrir
     } else {
         // Prioridad 2: Intentar obtener datos de STATE.obcData (datos completos sin filtro)
         orderData = STATE.obcData.get(orden);
@@ -8036,12 +8137,244 @@ async function showHistoricalOrderConfirmationModal(orden, searchQuery, backgrou
 
 /**
  * Confirma y abre la orden histórica
+ * CARGA COMPLETA: Descarga todos los datos necesarios de la orden desde Google Sheets
  */
-function confirmOpenHistoricalOrder(orden) {
+async function confirmOpenHistoricalOrder(orden) {
     console.log('✅ Usuario confirmó apertura de orden histórica:', orden);
     closeHistoricalOrderModal();
-    showNotification(`📦 Abriendo orden histórica: ${orden}`, 'info', 2000);
-    showOrderInfo(orden);
+    showNotification(`⏳ Cargando datos completos de la orden ${orden}...`, 'info');
+
+    try {
+        // Verificar si la orden ya está en STATE.obcData
+        let orderData = STATE.obcData.get(orden);
+
+        if (!orderData) {
+            console.log(`📥 [Carga Histórica] Buscando orden "${orden}" directamente en Google Sheets...`);
+            console.log(`🔍 [Carga Histórica] SIN FILTROS DE FECHA - Búsqueda directa por OBC`);
+
+            if (!gapi?.client?.sheets) {
+                throw new Error('Google Sheets API no disponible');
+            }
+
+            // MÉTODO DIRECTO: Usar Google Sheets API para buscar por OBC específico
+            // Cargar TODO el rango de BD (columnas A:I) y filtrar en cliente
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: CONFIG.SPREADSHEET_OBC,
+                range: 'BD!A:I'  // Todas las columnas necesarias
+            });
+
+            const rows = response.result.values;
+            if (!rows || rows.length <= 1) {
+                throw new Error('No hay datos en la hoja BD_CAJAS');
+            }
+
+            console.log(`📊 [Carga Histórica] Recibidas ${rows.length - 1} filas de Google Sheets`);
+            console.log(`🔍 [Carga Histórica] Filtrando por OBC: "${orden}"`);
+
+            const cajasCountMap = new Map();
+            const allBoxCodes = new Map();
+            let foundOrderData = null;
+            const ordenNormalized = orden.trim().toUpperCase();
+            let matchCount = 0;
+
+            // Procesar solo las filas que coincidan con el OBC buscado (SIN FILTRO DE FECHA)
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+
+                if (row.length >= 9) {
+                    const obc = row[0]?.trim() || '';
+                    const obcNormalized = obc.toUpperCase();
+
+                    // Comparación exacta (case-insensitive)
+                    if (obcNormalized === ordenNormalized) {
+                        matchCount++;
+
+                        const codigo = row[8]?.trim() || '';
+
+                        if (matchCount === 1) {
+                            console.log(`✅ [Carga Histórica] Primera caja encontrada (fila ${i + 1}):`, {
+                                obc: obc,
+                                recipient: row[6]?.trim(),
+                                expectedArrival: row[4]?.trim(),
+                                codigo: codigo
+                            });
+                        }
+
+                        // Contar cajas
+                        cajasCountMap.set(obc, (cajasCountMap.get(obc) || 0) + 1);
+
+                        // Guardar datos de la orden (primera ocurrencia)
+                        if (!foundOrderData) {
+                            foundOrderData = {
+                                orden: obc,
+                                referenceNo: row[1]?.trim() || '',
+                                shippingService: row[2]?.trim() || '',
+                                trackingCode: row[3]?.trim() || '',
+                                expectedArrival: row[4]?.trim() || '',
+                                remark: row[5]?.trim() || '',
+                                recipient: row[6]?.trim() || '',
+                                boxType: row[7]?.trim() || '',
+                                customBarcode: row[8]?.trim() || '',
+                                totalCajas: 0,
+                                isValidated: false
+                            };
+                        }
+
+                        // Indexar código de caja
+                        if (codigo) {
+                            const codigoUpper = codigo.toUpperCase();
+                            if (!allBoxCodes.has(codigoUpper)) {
+                                allBoxCodes.set(codigoUpper, []);
+                            }
+                            allBoxCodes.get(codigoUpper).push({
+                                obc: obc,
+                                referenceNo: row[1]?.trim() || '',
+                                shippingService: row[2]?.trim() || '',
+                                trackingCode: row[3]?.trim() || '',
+                                expectedArrival: row[4]?.trim() || '',
+                                remark: row[5]?.trim() || '',
+                                recipient: row[6]?.trim() || '',
+                                boxType: row[7]?.trim() || '',
+                                codigoCaja: codigo
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (!foundOrderData) {
+                console.error(`❌ [Carga Histórica] No se encontró ninguna fila con OBC = "${orden}"`);
+                console.error(`📋 [Carga Histórica] Total de filas procesadas: ${rows.length - 1}`);
+                throw new Error(`No se encontró la orden ${orden} en Google Sheets`);
+            }
+
+            // Actualizar totalCajas
+            foundOrderData.totalCajas = cajasCountMap.get(orden) || matchCount;
+
+            console.log(`✅ [Carga Histórica] Orden encontrada:`, {
+                orden: foundOrderData.orden,
+                totalCajas: foundOrderData.totalCajas,
+                recipient: foundOrderData.recipient,
+                expectedArrival: foundOrderData.expectedArrival,
+                trackingCode: foundOrderData.trackingCode,
+                referenceNo: foundOrderData.referenceNo,
+                codigosIndexados: allBoxCodes.size
+            });
+
+            // Agregar a STATE.obcData
+            STATE.obcData.set(orden, foundOrderData);
+
+            // Agregar códigos de caja a STATE.bdCajasData
+            for (const [codigo, cajas] of allBoxCodes.entries()) {
+                if (!STATE.bdCajasData.has(codigo)) {
+                    STATE.bdCajasData.set(codigo, cajas);
+                } else {
+                    // Merge con datos existentes
+                    const existing = STATE.bdCajasData.get(codigo);
+                    STATE.bdCajasData.set(codigo, [...existing, ...cajas]);
+                }
+            }
+
+            orderData = foundOrderData;
+
+        } else {
+            console.log('✅ [Carga Histórica] Orden encontrada en caché local');
+        }
+
+        // Cargar datos de validación, MNE y TRS si no están cargados
+        await loadSupportingDataForOrder(orden);
+
+        // Ahora sí, abrir el modal con todos los datos cargados
+        showNotification(`✅ Orden cargada: ${orden} (${orderData.totalCajas} cajas)`, 'success', 2000);
+        showOrderInfo(orden);
+
+    } catch (error) {
+        console.error('❌ [Carga Histórica] Error completo:', error);
+        showNotification(`❌ Error al cargar orden: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Carga datos de soporte (validación, MNE, TRS) para una orden específica
+ */
+async function loadSupportingDataForOrder(orden) {
+    console.log(`📥 [Carga Soporte] Cargando datos de validación/MNE/TRS para ${orden}...`);
+
+    try {
+        // Cargar datos de validación si no están en STATE
+        if (!STATE.validacionData.has(orden) && CONFIG.SOURCES.VALIDACION) {
+            console.log('📥 Cargando datos de validación...');
+            try {
+                let validacionCsv;
+                if (dispatchSyncManager) {
+                    validacionCsv = await dispatchSyncManager.getReferenceData('validacion', CONFIG.SOURCES.VALIDACION, false);
+                } else {
+                    const response = await fetch(CONFIG.SOURCES.VALIDACION);
+                    validacionCsv = await response.text();
+                }
+
+                const lines = validacionCsv.split('\n').filter(l => l.trim());
+                const validaciones = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    if (cols.length >= 3 && cols[0]?.trim() === orden) {
+                        validaciones.push({
+                            orden: cols[0]?.trim(),
+                            codigo: cols[1]?.trim(),
+                            fecha: cols[2]?.trim()
+                        });
+                    }
+                }
+
+                if (validaciones.length > 0) {
+                    STATE.validacionData.set(orden, validaciones);
+                    console.log(`✅ Validaciones cargadas: ${validaciones.length}`);
+                }
+            } catch (error) {
+                console.warn('⚠️ Error cargando validaciones:', error);
+            }
+        }
+
+        // Cargar datos de MNE si no están en STATE
+        if (!STATE.mneData.has(orden) && CONFIG.SOURCES.MNE) {
+            console.log('📥 Cargando datos de MNE...');
+            try {
+                let mneCsv;
+                if (dispatchSyncManager) {
+                    mneCsv = await dispatchSyncManager.getReferenceData('mne', CONFIG.SOURCES.MNE, false);
+                } else {
+                    const response = await fetch(CONFIG.SOURCES.MNE);
+                    mneCsv = await response.text();
+                }
+
+                const lines = mneCsv.split('\n').filter(l => l.trim());
+                const rastreos = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    if (cols.length >= 2 && cols[1]?.trim() === orden) {
+                        rastreos.push({
+                            codigo: cols[0]?.trim(),
+                            orden: cols[1]?.trim()
+                        });
+                    }
+                }
+
+                if (rastreos.length > 0) {
+                    STATE.mneData.set(orden, rastreos);
+                    console.log(`✅ Rastreos MNE cargados: ${rastreos.length}`);
+                }
+            } catch (error) {
+                console.warn('⚠️ Error cargando MNE:', error);
+            }
+        }
+
+        console.log(`✅ [Carga Soporte] Datos de soporte procesados para ${orden}`);
+
+    } catch (error) {
+        console.warn('⚠️ Error cargando datos de soporte:', error);
+    }
 }
 
 /**
