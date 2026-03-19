@@ -17,7 +17,9 @@ const CONFIG = {
         // TRS Etiquetado - IGUAL QUE TRACK
         TRS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2NOvCCzIW0IS9ANzOYl7GKBq5I-XQM9e_V1tu_2VrDMq4Frgjol5uj6-4dBgEQcfB8b-k6ovaOJGc/pub?output=csv',
         // Conductores y Unidades
-        LISTAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTmbzg922y1KMVnV0JqBijR43Ma8e5X_AO2KVzjHBnRtGBx-0aXLZ8UUlKCO_XHOpV1qfggQyNjtqde/pub?gid=799838428&single=true&output=csv'
+        LISTAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTmbzg922y1KMVnV0JqBijR43Ma8e5X_AO2KVzjHBnRtGBx-0aXLZ8UUlKCO_XHOpV1qfggQyNjtqde/pub?gid=799838428&single=true&output=csv',
+        // CSV de asignaciones TRS (columna 1: Fecha, columna 3: TRS, columna 9: Responsable)
+        TRS_ASIGNACIONES: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSciMHHzh_ztifsh_tTl-pG4yKCkXGzaR2oXUBRhiW3WqpV1czcpneXGAgwOXZBhBkM092MAFs5PbNq/pub?gid=1487056187&single=true&output=csv'
     }
 };
 
@@ -29,6 +31,12 @@ let STATE = {
     validacionData: new Map(),
     mneData: new Map(),
     trsData: [],
+    // Cache para asignaciones TRS (responsables)
+    trsAsignacionesCache: {
+        data: new Map(),      // TRS normalizado → {fecha, responsable}
+        lastFetch: null,      // Timestamp del último fetch
+        ttl: 3600000          // 1 hora en ms
+    },
     operadores: [],
     unidades: [],
     currentOrder: null,
@@ -2278,7 +2286,7 @@ function handleLogin() {
         showNotification('⏳ Inicializando Google API, intenta de nuevo en un momento', 'warning');
         return;
     }
-    
+
     tokenClient.callback = async (resp) => {
         if (resp.error !== undefined) {
             console.error('Auth error:', resp);
@@ -3101,6 +3109,340 @@ function parseTRSData(csv) {
             });
         }
     }
+}
+
+/**
+ * Normaliza un código TRS para comparación consistente
+ * Quita espacios, guiones, convierte a mayúsculas, agrega prefijo TRS si no lo tiene
+ * @param {string} trs - Código TRS sin normalizar
+ * @returns {string} - Código TRS normalizado (ej: "TRS001")
+ */
+function normalizeTRSCode(trs) {
+    if (!trs) return '';
+    let normalized = trs.toString().trim().toUpperCase();
+    // Remover guiones y espacios
+    normalized = normalized.replace(/[-\s]/g, '');
+    // Agregar prefijo TRS si no lo tiene
+    if (!normalized.startsWith('TRS') && /^\d+$/.test(normalized)) {
+        normalized = 'TRS' + normalized;
+    }
+    return normalized;
+}
+
+/**
+ * Fetch y parseo del CSV de asignaciones TRS (responsables)
+ * Implementa caché de 1 hora para optimizar rendimiento
+ * @param {boolean} forceRefresh - Forzar recarga ignorando caché
+ * @returns {Promise<Map>} - Mapa de TRS normalizado → {fecha, responsable}
+ */
+async function fetchTRSAsignaciones(forceRefresh = false) {
+    const cache = STATE.trsAsignacionesCache;
+    const now = Date.now();
+    
+    // Verificar si el caché es válido
+    if (!forceRefresh && cache.lastFetch && (now - cache.lastFetch) < cache.ttl && cache.data.size > 0) {
+        console.log('📋 [TRS Asignaciones] Usando caché válido');
+        return cache.data;
+    }
+    
+    console.log('📋 [TRS Asignaciones] Fetching CSV de asignaciones...');
+    
+    try {
+        const response = await fetch(CONFIG.SOURCES.TRS_ASIGNACIONES, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const csvText = await response.text();
+        const lines = csvText.split('\n').filter(l => l.trim());
+        
+        cache.data.clear();
+        
+        // Parsear CSV: columna 1 (índice 0) = Fecha, columna 3 (índice 2) = TRS, columna 9 (índice 8) = Responsable
+        for (let i = 1; i < lines.length; i++) {
+            const cols = parseCSVLine(lines[i]);
+            if (cols.length >= 9) {
+                const fecha = cols[0]?.trim() || '';
+                const trs = cols[2]?.trim() || '';
+                const responsable = cols[8]?.trim() || '';
+                
+                if (trs) {
+                    const trsNormalized = normalizeTRSCode(trs);
+                    cache.data.set(trsNormalized, {
+                        fecha: fecha,
+                        responsable: responsable
+                    });
+                }
+            }
+        }
+        
+        cache.lastFetch = now;
+        console.log(`✅ [TRS Asignaciones] Cargadas ${cache.data.size} asignaciones`);
+        return cache.data;
+        
+    } catch (error) {
+        console.warn('⚠️ [TRS Asignaciones] Error al cargar CSV:', error);
+        // Retornar caché existente si hay error (degradación elegante)
+        return cache.data;
+    }
+}
+
+/**
+ * Obtiene la asignación (fecha y responsable) para un TRS específico
+ * @param {string} trs - Código TRS
+ * @returns {{fecha: string, responsable: string}} - Datos de asignación o valores por defecto
+ */
+function getTRSAsignacion(trs) {
+    const cache = STATE.trsAsignacionesCache.data;
+
+    // Intento 1: Match exacto normalizado
+    const trsNormalized = normalizeTRSCode(trs);
+    let asignacion = cache.get(trsNormalized);
+
+    // Intento 2: Buscar por valor directo (sin normalizar)
+    if (!asignacion && trs) {
+        const trsUpper = trs.trim().toUpperCase();
+        asignacion = cache.get(trsUpper);
+    }
+
+    // Intento 3: Buscar por substring exacto dentro de las claves del cache
+    if (!asignacion && trs) {
+        const trsClean = trs.trim().toUpperCase().replace(/[-\s]/g, '');
+        for (const [key, val] of cache.entries()) {
+            const keyClean = key.replace(/[-\s]/g, '');
+            if (keyClean === trsClean || keyClean.includes(trsClean) || trsClean.includes(keyClean)) {
+                if (Math.min(keyClean.length, trsClean.length) >= 4) {
+                    asignacion = val;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (asignacion) {
+        return {
+            fecha: formatFechaAsignacion(asignacion.fecha),
+            responsable: asignacion.responsable || '-'
+        };
+    }
+
+    return { fecha: '-', responsable: '-' };
+}
+
+/**
+ * Formatea la fecha de asignación a formato legible DD/MM/YYYY
+ * @param {string} fecha - Fecha en cualquier formato
+ * @returns {string} - Fecha formateada o "-" si no es válida
+ */
+function formatFechaAsignacion(fecha) {
+    if (!fecha || fecha === '-') return '-';
+    
+    try {
+        // Intentar parsear diferentes formatos
+        let dateObj;
+        
+        // Formato ISO: YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+            dateObj = new Date(fecha);
+        }
+        // Formato DD/MM/YYYY
+        else if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(fecha)) {
+            const parts = fecha.split('/');
+            dateObj = new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+        // Formato MM/DD/YYYY (US)
+        else if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(fecha)) {
+            dateObj = new Date(fecha);
+        }
+        else {
+            dateObj = new Date(fecha);
+        }
+        
+        if (isNaN(dateObj.getTime())) return fecha; // Retornar original si no se puede parsear
+        
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const year = dateObj.getFullYear();
+        
+        return `${day}/${month}/${year}`;
+    } catch (e) {
+        return fecha; // Retornar original si hay error
+    }
+}
+
+/**
+ * MEJORADO: Busca TRS relacionados para una orden usando múltiples criterios
+ * 1. Códigos de cajas de validaciones y rastreo
+ * 2. Código base de las cajas
+ * 3. Referencia de la OBC
+ * 4. Tracking de la OBC
+ * @param {string} orden - Número de orden
+ * @param {Object} orderData - Datos de la orden
+ * @returns {Array} - Array de TRS relacionados con matchParam y matchType
+ */
+function findTRSRelacionados(orden, orderData) {
+    const validaciones = STATE.validacionData.get(orden) || [];
+    const rastreoData = getRastreoDataForOrder(orden);
+    
+    // Recopilar todos los códigos de búsqueda
+    const searchCodes = new Set();
+    const searchCodesBase = new Set();
+    
+    // 1. Códigos de cajas de validaciones
+    validaciones.forEach(v => {
+        if (v.codigo) {
+            const code = v.codigo.trim().toUpperCase();
+            searchCodes.add(code);
+            // Extraer código base (sin número de caja al final)
+            const baseCode = extractBaseCodeForTRS(code);
+            if (baseCode) searchCodesBase.add(baseCode);
+        }
+    });
+    
+    // 2. Códigos de cajas de rastreo MNE
+    rastreoData.forEach(r => {
+        if (r.codigo) {
+            const code = r.codigo.trim().toUpperCase();
+            searchCodes.add(code);
+            const baseCode = extractBaseCodeForTRS(code);
+            if (baseCode) searchCodesBase.add(baseCode);
+        }
+    });
+    
+    // 3. Códigos de BD Cajas para esta orden
+    for (const [codigo, cajas] of STATE.bdCajasData.entries()) {
+        if (cajas.some(c => c.obc === orden)) {
+            const code = codigo.trim().toUpperCase();
+            searchCodes.add(code);
+            const baseCode = extractBaseCodeForTRS(code);
+            if (baseCode) searchCodesBase.add(baseCode);
+        }
+    }
+    
+    // 4. Referencia de la OBC
+    if (orderData && orderData.referenceNo) {
+        const ref = orderData.referenceNo.trim().toUpperCase();
+        searchCodes.add(ref);
+        const baseCode = extractBaseCodeForTRS(ref);
+        if (baseCode) searchCodesBase.add(baseCode);
+    }
+    
+    // 5. Tracking de la OBC
+    if (orderData && orderData.trackingCode) {
+        const track = orderData.trackingCode.trim().toUpperCase();
+        searchCodes.add(track);
+        const baseCode = extractBaseCodeForTRS(track);
+        if (baseCode) searchCodesBase.add(baseCode);
+    }
+    
+
+    // Buscar TRS que coincidan
+    const trsRelacionados = [];
+    const trsEncontrados = new Set(); // Evitar duplicados
+
+    STATE.trsData.forEach(t => {
+        if (trsEncontrados.has(t.trs)) return; // Ya encontrado
+        
+        let matchParam = null;
+        let matchType = null;
+        
+        // Normalizar códigos del TRS para comparación
+        const codigoOrigNorm = t.codigoOriginal ? t.codigoOriginal.trim().toUpperCase() : '';
+        const codigoNuevoNorm = t.codigoNuevo ? t.codigoNuevo.trim().toUpperCase() : '';
+        const referenciaNorm = t.referencia ? t.referencia.trim().toUpperCase() : '';
+        
+        // Extraer códigos base del TRS
+        const codigoOrigBase = extractBaseCodeForTRS(codigoOrigNorm);
+        const codigoNuevoBase = extractBaseCodeForTRS(codigoNuevoNorm);
+        
+        // Función auxiliar: match exacto como substring, ambas direcciones
+        // Requiere que el valor más corto tenga al menos 5 caracteres para evitar falsos positivos
+        const exactSubstringMatch = (fieldValue, searchValue) => {
+            if (!fieldValue || !searchValue) return false;
+            if (fieldValue === searchValue) return true;
+            const minLen = Math.min(fieldValue.length, searchValue.length);
+            if (minLen < 5) return false; // Evitar matches con códigos muy cortos
+            return fieldValue.includes(searchValue) || searchValue.includes(fieldValue);
+        };
+
+        // PRIORIDAD 1: Match exacto con códigos directos (bidireccional con largo mínimo)
+        for (const code of searchCodes) {
+            if (codigoOrigNorm && exactSubstringMatch(codigoOrigNorm, code)) {
+                matchParam = code;
+                matchType = 'Código Original';
+                break;
+            }
+            if (codigoNuevoNorm && exactSubstringMatch(codigoNuevoNorm, code)) {
+                matchParam = code;
+                matchType = 'Código Nuevo';
+                break;
+            }
+        }
+
+        // PRIORIDAD 2: Match por código base (bidireccional con largo mínimo)
+        if (!matchParam) {
+            for (const baseCode of searchCodesBase) {
+                if (codigoOrigBase && exactSubstringMatch(codigoOrigBase, baseCode)) {
+                    matchParam = baseCode;
+                    matchType = 'Código Base (Original)';
+                    break;
+                }
+                if (codigoNuevoBase && exactSubstringMatch(codigoNuevoBase, baseCode)) {
+                    matchParam = baseCode;
+                    matchType = 'Código Base (Nuevo)';
+                    break;
+                }
+            }
+        }
+
+        // PRIORIDAD 3: Match por referencia del TRS (bidireccional con largo mínimo)
+        if (!matchParam && referenciaNorm) {
+            for (const code of searchCodes) {
+                if (exactSubstringMatch(referenciaNorm, code)) {
+                    matchParam = code;
+                    matchType = 'Referencia TRS';
+                    break;
+                }
+            }
+        }
+        
+        if (matchParam) {
+            trsEncontrados.add(t.trs);
+            trsRelacionados.push({
+                ...t,
+                matchParam: matchParam,
+                matchType: matchType
+            });
+        }
+    });
+    
+    return trsRelacionados;
+}
+
+/**
+ * Extrae el código base de un código de caja (sin número de caja al final)
+ * Ejemplo: "ABC123-01" → "ABC123", "XYZ789/02" → "XYZ789"
+ * @param {string} code - Código completo
+ * @returns {string} - Código base
+ */
+function extractBaseCodeForTRS(code) {
+    if (!code) return '';
+    
+    // Usar función compartida si está disponible
+    if (typeof window.extractBaseCode === 'function') {
+        return window.extractBaseCode(code);
+    }
+    
+    // Fallback: remover sufijos numéricos comunes (-01, /01, etc.)
+    let base = code.trim().toUpperCase();
+    
+    // Remover sufijos como -01, -02, /01, /02, etc.
+    base = base.replace(/[-\/]\d{1,3}$/, '');
+    
+    // Remover sufijos como 01, 02 al final si hay un separador antes
+    base = base.replace(/\s+\d{1,3}$/, '');
+    
+    return base;
 }
 
 /**
@@ -6220,26 +6562,10 @@ function renderValidatedTable() {
         const statusBadge = dispatchStatus.status;
         const statusColor = dispatchStatus.color;
 
-        // OPTIMIZACIÓN: Buscar TRS relacionados (simplificado para mejor rendimiento)
-        let trsCount = 0;
-        if (validaciones.length > 0 || rastreoData.length > 0) {
-            const boxCodes = new Set();
-            validaciones.forEach(v => { if (v.codigo) boxCodes.add(v.codigo.trim()); });
-            rastreoData.forEach(r => { if (r.codigo) boxCodes.add(r.codigo.trim()); });
-
-            // Solo buscar si hay códigos
-            if (boxCodes.size > 0 && STATE.trsData.length > 0) {
-                for (const t of STATE.trsData) {
-                    for (const code of boxCodes) {
-                        if ((t.codigoOriginal && t.codigoOriginal.includes(code)) ||
-                            (t.codigoNuevo && t.codigoNuevo.includes(code))) {
-                            trsCount++;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // MEJORADO: Usar función centralizada para buscar TRS relacionados
+        // Busca por: códigos de cajas, código base, referencia OBC, tracking OBC
+        const trsRelacionadosCard = findTRSRelacionados(record.orden, orderData);
+        const trsCount = trsRelacionadosCard.length;
 
         // Estatus de calidad
         let estatusCalidad = 'N/A';
@@ -8647,6 +8973,26 @@ function showOrderInfo(orden) {
     // Render Modal Body with sections
     renderModalBody(orden, orderData);
 
+    // Fetch TRS asignaciones y actualizar celdas de fecha/responsable una vez cargadas
+    fetchTRSAsignaciones().then(() => {
+        // Re-poblar las celdas de fecha asig. y responsable en la tabla TRS del modal
+        const trsTableBody = document.getElementById('trs-table-body');
+        if (trsTableBody) {
+            const rows = trsTableBody.querySelectorAll('tr');
+            rows.forEach(row => {
+                const trsCell = row.querySelectorAll('td')[1]; // Columna TRS (índice 1)
+                const fechaCell = row.querySelector('.trs-fecha-asig');
+                const respCell = row.querySelector('.trs-responsable');
+                if (trsCell && fechaCell && respCell) {
+                    const trsCode = trsCell.textContent.trim();
+                    const asignacion = getTRSAsignacion(trsCode);
+                    fechaCell.textContent = asignacion.fecha;
+                    respCell.textContent = asignacion.responsable;
+                }
+            });
+        }
+    }).catch(e => console.warn('⚠️ Error cargando TRS asignaciones:', e));
+
     // Populate modal footer with saved data if order is validated
     if (validationCheck.validated && validationCheck.data) {
         const savedData = validationCheck.data;
@@ -9081,25 +9427,9 @@ function renderKPICards(orderData) {
     // FIXED: Use totalCajas from OBC database
     const totalCajas = orderData.totalCajas || 0;
 
-    // Búsqueda cruzada TRS usando códigos de cajas
-    const boxCodes = new Set();
-    validaciones.forEach(v => {
-        if (v.codigo) boxCodes.add(v.codigo.trim());
-    });
-    rastreoData.forEach(r => {
-        if (r.codigo) boxCodes.add(r.codigo.trim());
-    });
-
-    let trsCount = 0;
-    STATE.trsData.forEach(t => {
-        for (const code of boxCodes) {
-            if ((t.codigoOriginal && t.codigoOriginal.includes(code)) ||
-                (t.codigoNuevo && t.codigoNuevo.includes(code))) {
-                trsCount++;
-                break;
-            }
-        }
-    });
+    // MEJORADO: Usar función centralizada para contar TRS relacionados
+    const trsRelacionadosKPI = findTRSRelacionados(orderData.orden, orderData);
+    const trsCount = trsRelacionadosKPI.length;
 
     // OPTIMIZACIÓN: Generar contenido de tarjetas según estado de carga de datos
     const validacionCardContent = !LOAD_STATE.backgroundData.validacion
@@ -9188,39 +9518,9 @@ function renderModalBody(orden, orderData) {
     const validaciones = STATE.validacionData.get(orden) || [];
     const rastreoData = getRastreoDataForOrder(orden);
 
-    // Búsqueda cruzada TRS usando códigos de cajas (no OBC directo)
-    const boxCodes = new Set();
-    validaciones.forEach(v => {
-        if (v.codigo) boxCodes.add(v.codigo.trim());
-    });
-    rastreoData.forEach(r => {
-        if (r.codigo) boxCodes.add(r.codigo.trim());
-    });
-
-    // Buscar TRS que coincidan con códigos de cajas
-    const trsRelacionados = [];
-    STATE.trsData.forEach(t => {
-        let matchParam = null;
-
-        // Buscar coincidencia en codigoOriginal o codigoNuevo
-        for (const code of boxCodes) {
-            if (t.codigoOriginal && t.codigoOriginal.includes(code)) {
-                matchParam = code;
-                break;
-            }
-            if (t.codigoNuevo && t.codigoNuevo.includes(code)) {
-                matchParam = code;
-                break;
-            }
-        }
-
-        if (matchParam) {
-            trsRelacionados.push({
-                ...t,
-                matchParam: matchParam
-            });
-        }
-    });
+    // MEJORADO: Usar función centralizada para buscar TRS relacionados
+    // Busca por: códigos de cajas, código base, referencia OBC, tracking OBC
+    const trsRelacionados = findTRSRelacionados(orden, orderData);
 
     // Detectar si hay TRS para auto-activar Control de Calidad
     const hasTRS = trsRelacionados.length > 0;
@@ -9383,7 +9683,7 @@ function renderModalBody(orden, orderData) {
         `;
     }
 
-    // TRS Relacionados
+    // TRS Relacionados con columnas de Fecha Asignación y Responsable
     if (trsRelacionados.length > 0) {
         html += `
             <div class="section-card" id="section-trs">
@@ -9391,13 +9691,13 @@ function renderModalBody(orden, orderData) {
                     <div class="section-header-left">
                         <div class="section-title">🔄 TRS Relacionados (${trsRelacionados.length})</div>
                     </div>
-                    <span class="section-toggle" id="section-trs-content-toggle">
+                    <span class="section-toggle collapsed" id="section-trs-content-toggle">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </span>
                 </div>
-                <div class="section-content" id="section-trs-content">
+                <div class="section-content collapsed" id="section-trs-content">
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -9407,18 +9707,24 @@ function renderModalBody(orden, orderData) {
                                     <th>Referencia</th>
                                     <th>Código Original</th>
                                     <th>Código Nuevo</th>
+                                    <th>Fecha Asig.</th>
+                                    <th>Responsable</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                ${trsRelacionados.map(t => `
+                            <tbody id="trs-table-body">
+                                ${trsRelacionados.map(t => {
+                                    const asignacion = getTRSAsignacion(t.trs);
+                                    return `
                                     <tr>
                                         <td><code class="highlight">${makeCopyable(t.matchParam)}</code></td>
                                         <td><code>${makeCopyable(t.trs)}</code></td>
                                         <td>${t.referencia}</td>
                                         <td><code>${makeCopyable(t.codigoOriginal || '-')}</code></td>
                                         <td><code>${makeCopyable(t.codigoNuevo || '-')}</code></td>
+                                        <td class="trs-fecha-asig">${asignacion.fecha}</td>
+                                        <td class="trs-responsable">${asignacion.responsable}</td>
                                     </tr>
-                                `).join('')}
+                                `}).join('')}
                             </tbody>
                         </table>
                     </div>
