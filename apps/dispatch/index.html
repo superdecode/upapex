@@ -609,10 +609,13 @@
                                     <span class="badge badge-primary" id="agenda-total-ordenes-badge">0 órdenes</span>
                                     <span class="badge badge-success" id="agenda-total-cajas-badge">0 cajas</span>
                                     <div class="action-buttons-group" style="display: inline-flex; gap: 8px; margin-left: 12px;">
-                                        <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir agenda">
+                                        <button class="btn btn-secondary btn-sm" onclick="printAgenda()" title="Imprimir Agenda">
                                             🖨️ Imprimir
                                         </button>
-                                        <button class="btn btn-success btn-sm" onclick="exportAgendaToExcel()" title="Exportar a Excel">
+                                        <button class="btn btn-primary btn-sm" onclick="printOrdenesDeTrabajoReport()" title="Imprimir Agenda con Órdenes de Trabajo">
+                                            📋 Imprimir Órdenes de Trabajo
+                                        </button>
+                                        <button class="btn btn-success btn-sm" onclick="showExportAgendaModal()" title="Exportar a CSV">
                                             📊 Exportar
                                         </button>
                                     </div>
@@ -1147,6 +1150,43 @@
                 <button class="btn btn-secondary" onclick="closeNoProcesableModal()">
                     Cancelar Operación
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROCESSING OVERLAY - Feedback visual para acciones -->
+    <div id="processing-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:99999; justify-content:center; align-items:center;">
+        <div style="background:white; border-radius:16px; padding:30px 40px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.2); min-width:280px;">
+            <div class="preloader-spinner" style="margin:0 auto 15px;"></div>
+            <div id="processing-message" style="font-size:1.05em; color:#333; font-weight:600;">Procesando...</div>
+            <button id="processing-cancel-btn" onclick="cancelProcessing()" style="display:none; margin-top:18px; padding:10px 28px; background:#ef4444; color:white; border:none; border-radius:8px; font-size:0.95em; font-weight:600; cursor:pointer; transition:background 0.2s;">
+                ✕ Cancelar
+            </button>
+        </div>
+    </div>
+
+    <!-- EXPORT AGENDA MODAL - Elegir tipo de exportación -->
+    <div class="modal-overlay" id="export-agenda-modal" style="display:none;">
+        <div class="modal-content" style="max-width:450px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📊</span>
+                    <span>Exportar Agenda</span>
+                </div>
+                <button class="modal-close" onclick="closeExportAgendaModal()">×</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <p style="color:#666; margin-bottom:20px; text-align:center;">¿Deseas incluir la información de Órdenes de Trabajo?</p>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                    <button class="btn btn-success" onclick="executeExportAgenda(false)" style="padding:14px; font-size:1em;">
+                        📊 Exportar Agenda
+                        <div style="font-size:0.8em; opacity:0.8; margin-top:4px;">Solo columnas estándar</div>
+                    </button>
+                    <button class="btn btn-primary" onclick="executeExportAgenda(true)" style="padding:14px; font-size:1em;">
+                        📋 Exportar con Órdenes de Trabajo
+                        <div style="font-size:0.8em; opacity:0.8; margin-top:4px;">Incluye N° TRS, Fecha Asig., Responsable</div>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

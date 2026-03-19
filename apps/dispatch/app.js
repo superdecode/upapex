@@ -8887,6 +8887,15 @@ function confirmDateException() {
 
 // ==================== ORDER INFO MODAL ====================
 function showOrderInfo(orden) {
+    showProcessing('Cargando orden...');
+    // Defer heavy work to allow overlay to render
+    requestAnimationFrame(() => setTimeout(() => {
+        _showOrderInfoInternal(orden);
+        hideProcessing();
+    }, 30));
+}
+
+function _showOrderInfoInternal(orden) {
     let orderData = STATE.obcData.get(orden);
 
     // If not found in obcData, try to get from validated records
@@ -10367,6 +10376,15 @@ function closeConfirmDispatch() {
 }
 
 async function executeConfirmDispatch() {
+    showProcessing('Registrando despacho...');
+    try {
+        await _executeConfirmDispatchInternal();
+    } finally {
+        hideProcessing();
+    }
+}
+
+async function _executeConfirmDispatchInternal() {
     // ==================== BLOQUEO: Verificar datos de segundo plano ====================
     // CRÍTICO: No permitir validación si los datos complementarios no están cargados
     if (!isBackgroundDataLoaded()) {
@@ -11507,6 +11525,73 @@ function showLoadingOverlay(show, current = 0, total = 5, customMessage = null) 
     } else {
         overlay.style.display = 'none';
     }
+}
+
+// ==================== PROCESSING OVERLAY ====================
+let _processingCancelled = false;
+let _processingCancelTimeoutId = null;
+
+function showProcessing(message = 'Procesando...', cancellable = false) {
+    _processingCancelled = false;
+    const overlay = document.getElementById('processing-overlay');
+    const msgEl = document.getElementById('processing-message');
+    const cancelBtn = document.getElementById('processing-cancel-btn');
+    if (overlay) {
+        if (msgEl) msgEl.textContent = message;
+        if (cancelBtn) {
+            // Mostrar botón cancelar con delay para no aparecer en acciones rápidas
+            cancelBtn.style.display = 'none';
+            if (_processingCancelTimeoutId) clearTimeout(_processingCancelTimeoutId);
+            if (cancellable) {
+                _processingCancelTimeoutId = setTimeout(() => {
+                    if (overlay.style.display === 'flex') {
+                        cancelBtn.style.display = 'inline-block';
+                    }
+                }, 800);
+            }
+        }
+        overlay.style.display = 'flex';
+    }
+}
+
+function hideProcessing() {
+    const overlay = document.getElementById('processing-overlay');
+    const cancelBtn = document.getElementById('processing-cancel-btn');
+    if (_processingCancelTimeoutId) { clearTimeout(_processingCancelTimeoutId); _processingCancelTimeoutId = null; }
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+}
+
+function cancelProcessing() {
+    _processingCancelled = true;
+    hideProcessing();
+    showNotification('⚠️ Proceso cancelado', 'warning');
+}
+
+function isProcessingCancelled() {
+    return _processingCancelled;
+}
+
+// Wraps an async action with processing overlay feedback
+function withProcessing(message, asyncFn, cancellable = true) {
+    showProcessing(message, cancellable);
+    // Use requestAnimationFrame to ensure overlay renders before heavy work
+    requestAnimationFrame(() => {
+        setTimeout(async () => {
+            try {
+                if (!_processingCancelled) {
+                    await asyncFn();
+                }
+            } catch (e) {
+                if (!_processingCancelled) {
+                    console.error('Error in processing action:', e);
+                    showNotification('❌ Error: ' + e.message, 'error');
+                }
+            } finally {
+                hideProcessing();
+            }
+        }, 50);
+    });
 }
 
 function showNotification(message, type = 'info') {
@@ -13591,6 +13676,15 @@ function openVistaAgenda() {
         return;
     }
 
+    withProcessing('📅 Cargando Vista Agenda...', () => { _openVistaAgendaInternal(dataToUse); });
+}
+
+function _openVistaAgendaInternal(dataToUse) {
+    if (dataToUse.size === 0) {
+        showNotification('⚠️ No hay órdenes para mostrar en la agenda', 'warning');
+        return;
+    }
+
     // Save inherited state
     STATE.vistaAgenda.fechaHeredada = STATE.dateFilter.active ? {
         startDate: STATE.dateFilter.startDate,
@@ -13943,6 +14037,10 @@ function exportAgendaToExcel() {
         showNotification('⚠️ No hay datos para exportar', 'warning');
         return;
     }
+    withProcessing('📊 Exportando Agenda...', () => { _exportAgendaInternal(); });
+}
+
+function _exportAgendaInternal() {
 
     const exportData = [];
 
@@ -14032,6 +14130,130 @@ function exportAgendaToExcel() {
 }
 
 /**
+ * Exportar "Agenda de Salida Con Órdenes de Trabajo"
+ * Idéntico a Agenda de Órdenes + 3 columnas: N° TRS, Fecha Asig., Responsable
+ */
+async function exportOrdenesDeTrabajoToExcel() {
+    try {
+        // Precarga: fetch CSV de asignaciones TRS (usa caché si < 1 hora)
+        await fetchTRSAsignaciones();
+        if (isProcessingCancelled()) return;
+
+        const headers = ['Destino', 'Horario', 'Número de Orden', 'Código', 'Track', 'Cantidad de Cajas', '% Surtido', 'Estatus', 'N° TRS', 'Fecha Asig.', 'Responsable'];
+        const exportData = [];
+
+        // Header info
+        exportData.push({
+            'Destino': 'AGENDA DE SALIDA CON ÓRDENES DE TRABAJO',
+            'Horario': STATE.vistaAgenda.fechaHeredada.formatted,
+            'Número de Orden': `Exportado: ${new Date().toLocaleString('es-MX')}`
+        });
+        exportData.push({}); // Empty row
+
+        // Procesar cada grupo
+        let totalOrdenes = 0;
+        const totalOrdenesCount = STATE.vistaAgenda.datosAgrupados.reduce((sum, g) => sum + g.ordenes.length, 0);
+
+        STATE.vistaAgenda.datosAgrupados.forEach(grupo => {
+            // Grupo header
+            const grupoRow = {};
+            headers.forEach(h => grupoRow[h] = '');
+            grupoRow['Destino'] = `DESTINO: ${grupo.destino}`;
+            exportData.push(grupoRow);
+
+            // Orders con TRS
+            grupo.ordenes.forEach(orden => {
+                totalOrdenes++;
+                const orderData = orden.data || {};
+
+                // Buscar TRS relacionadas usando función existente
+                const trsRelacionados = findTRSRelacionados(orden.numeroOrden, orderData);
+
+                // Para cada TRS, obtener asignación
+                let trsNumeros = '-';
+                let trsFechas = '-';
+                let trsResponsables = '-';
+
+                if (trsRelacionados.length > 0) {
+                    const trsDatos = trsRelacionados.map(t => {
+                        const asignacion = getTRSAsignacion(t.trs);
+                        return {
+                            numero: t.trs || '-',
+                            fecha: asignacion.fecha || '-',
+                            responsable: asignacion.responsable || '-'
+                        };
+                    });
+
+                    trsNumeros = trsDatos.map(d => d.numero).join('\n');
+                    trsFechas = trsDatos.map(d => d.fecha).join('\n');
+                    trsResponsables = trsDatos.map(d => d.responsable).join('\n');
+                }
+
+                exportData.push({
+                    'Destino': '',
+                    'Horario': orden.horario,
+                    'Número de Orden': orden.numeroOrden,
+                    'Código': orden.codigo,
+                    'Track': orden.track,
+                    'Cantidad de Cajas': orden.cajas,
+                    '% Surtido': `${orden.porcentajeSurtido}%`,
+                    'Estatus': orden.estatus,
+                    'N° TRS': trsNumeros,
+                    'Fecha Asig.': trsFechas,
+                    'Responsable': trsResponsables
+                });
+            });
+
+            // Subtotal
+            const subRow = {};
+            headers.forEach(h => subRow[h] = '');
+            subRow['Destino'] = `SUBTOTAL ${grupo.destino}`;
+            subRow['Horario'] = `${grupo.subtotales.totalOrdenes} órdenes`;
+            subRow['Número de Orden'] = `${grupo.subtotales.totalCajas} cajas`;
+            subRow['% Surtido'] = `Promedio: ${grupo.subtotales.promedioSurtido}%`;
+            exportData.push(subRow);
+            exportData.push({}); // Empty row
+        });
+
+        // Resumen general
+        const totales = calculateGeneralTotals(STATE.vistaAgenda.datosAgrupados);
+        exportData.push({});
+        const resumenRow = {};
+        headers.forEach(h => resumenRow[h] = '');
+        resumenRow['Destino'] = 'RESUMEN GENERAL';
+        resumenRow['Horario'] = `Total Órdenes: ${totales.ordenes}`;
+        resumenRow['Número de Orden'] = `Total Cajas: ${totales.cajas}`;
+        resumenRow['Cantidad de Cajas'] = `Promedio Surtido: ${totales.promedioSurtido}%`;
+        resumenRow['% Surtido'] = `Órdenes Validadas: ${totales.validadas}`;
+        exportData.push(resumenRow);
+
+        // Convert to CSV
+        const csvContent = [
+            headers.join(','),
+            ...exportData.map(row => headers.map(header => {
+                const value = row[header] || '';
+                return `"${String(value).replace(/"/g, '""')}"`;
+            }).join(','))
+        ].join('\n');
+
+        // Create download
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset-utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Ordenes_Trabajo_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        showNotification(`✅ Órdenes de Trabajo exportadas (${totalOrdenesCount} órdenes)`, 'success');
+
+    } catch (error) {
+        console.error('Error al generar Órdenes de Trabajo:', error);
+        showNotification('❌ Error al generar reporte. Intente nuevamente.', 'error');
+    }
+}
+
+/**
  * Print agenda
  */
 function printAgenda() {
@@ -14039,6 +14261,10 @@ function printAgenda() {
         showNotification('⚠️ No hay datos para imprimir', 'warning');
         return;
     }
+    withProcessing('🖨️ Preparando impresión...', () => _printAgendaInternal());
+}
+
+function _printAgendaInternal() {
 
     const totales = calculateGeneralTotals(STATE.vistaAgenda.datosAgrupados);
 
@@ -14161,8 +14387,191 @@ function printAgenda() {
     setTimeout(() => {
         printWindow.print();
     }, 250);
+}
 
-    showNotification('🖨️ Preparando impresión...', 'info');
+// ==================== EXPORT AGENDA MODAL ====================
+function showExportAgendaModal() {
+    if (!STATE.vistaAgenda.datosAgrupados || STATE.vistaAgenda.datosAgrupados.length === 0) {
+        showNotification('⚠️ No hay datos para exportar', 'warning');
+        return;
+    }
+    document.getElementById('export-agenda-modal').style.display = 'flex';
+}
+
+function closeExportAgendaModal() {
+    document.getElementById('export-agenda-modal').style.display = 'none';
+}
+
+function executeExportAgenda(includeOrdenesTrabajo) {
+    closeExportAgendaModal();
+    if (includeOrdenesTrabajo) {
+        withProcessing('📋 Generando reporte con Órdenes de Trabajo...', () => exportOrdenesDeTrabajoToExcel());
+    } else {
+        withProcessing('📊 Exportando Agenda...', () => {
+            _exportAgendaInternal();
+        });
+    }
+}
+
+// ==================== PRINT ÓRDENES DE TRABAJO ====================
+function printOrdenesDeTrabajoReport() {
+    if (!STATE.vistaAgenda.datosAgrupados || STATE.vistaAgenda.datosAgrupados.length === 0) {
+        showNotification('⚠️ No hay datos para imprimir', 'warning');
+        return;
+    }
+    withProcessing('📋 Preparando impresión de Órdenes de Trabajo...', async () => {
+        // Precarga CSV asignaciones
+        await fetchTRSAsignaciones();
+        if (isProcessingCancelled()) return;
+
+        const totales = calculateGeneralTotals(STATE.vistaAgenda.datosAgrupados);
+
+        let printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Agenda de Salida Con Órdenes de Trabajo</title>
+                <style>
+                    @page { margin: 0.6in; size: landscape; }
+                    body { font-family: Arial, sans-serif; font-size: 11px; }
+                    .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #2563eb; padding-bottom: 12px; }
+                    .header h1 { margin: 0; color: #2563eb; font-size: 20px; }
+                    .header .date { color: #64748b; font-size: 12px; margin-top: 6px; }
+                    .group { margin-bottom: 20px; page-break-inside: avoid; }
+                    .group-title { background: #eff6ff; padding: 8px 10px; font-weight: 700; color: #2563eb; font-size: 13px; margin-bottom: 8px; border-left: 4px solid #2563eb; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+                    th { background: #f1f5f9; color: #475569; padding: 6px 5px; text-align: left; font-weight: 700; border-bottom: 2px solid #e2e8f0; font-size: 10px; }
+                    td { padding: 5px; border-bottom: 1px solid #e5e7eb; font-size: 11px; vertical-align: top; }
+                    .subtotal { background: #eff6ff; font-weight: 700; color: #2563eb; }
+                    .summary { margin-top: 20px; padding: 15px; background: #f8fafc; border-left: 4px solid #2563eb; }
+                    .summary h3 { margin: 0 0 10px 0; color: #2563eb; font-size: 14px; }
+                    .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+                    .summary-item { display: flex; justify-content: space-between; padding: 4px 0; }
+                    .summary-label { color: #64748b; font-size: 11px; }
+                    .summary-value { font-weight: 700; color: #2563eb; font-size: 11px; }
+                    .validated-row { background: #f0fdf4; }
+                    .trs-cell { color: #2563eb; font-weight: 600; font-size: 10px; }
+                    .trs-cell div { margin-bottom: 2px; }
+                    .resp-cell { font-size: 10px; }
+                    .resp-cell div { margin-bottom: 2px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>📋 AGENDA DE SALIDA CON ÓRDENES DE TRABAJO</h1>
+                    <div class="date">Fecha: ${STATE.vistaAgenda.fechaHeredada.formatted}</div>
+                    <div class="date">Generado: ${new Date().toLocaleString('es-MX')}</div>
+                </div>
+        `;
+
+        STATE.vistaAgenda.datosAgrupados.forEach(grupo => {
+            printContent += `
+                <div class="group">
+                    <div class="group-title">🏢 DESTINO: ${grupo.destino}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Horario</th>
+                                <th>N° Orden</th>
+                                <th>Código</th>
+                                <th>Track</th>
+                                <th style="text-align:center;">Cajas</th>
+                                <th style="text-align:center;">% Surt.</th>
+                                <th>Estatus</th>
+                                <th style="border-left:2px solid #2563eb;">N° TRS</th>
+                                <th>Fecha Asig.</th>
+                                <th>Responsable</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            grupo.ordenes.forEach(orden => {
+                const rowClass = orden.esValidada ? 'validated-row' : '';
+                const orderData = orden.data || {};
+                const trsRelacionados = findTRSRelacionados(orden.numeroOrden, orderData);
+
+                let trsHTML = '-';
+                let fechaHTML = '-';
+                let respHTML = '-';
+
+                if (trsRelacionados.length > 0) {
+                    trsHTML = trsRelacionados.map(t => `<div>${t.trs}</div>`).join('');
+                    fechaHTML = trsRelacionados.map(t => {
+                        const a = getTRSAsignacion(t.trs);
+                        return `<div>${a.fecha}</div>`;
+                    }).join('');
+                    respHTML = trsRelacionados.map(t => {
+                        const a = getTRSAsignacion(t.trs);
+                        return `<div>${a.responsable}</div>`;
+                    }).join('');
+                }
+
+                printContent += `
+                    <tr class="${rowClass}">
+                        <td>${orden.horario}</td>
+                        <td>${orden.numeroOrden}</td>
+                        <td>${orden.codigo}</td>
+                        <td>${orden.track}</td>
+                        <td style="text-align:center;">${orden.cajas}</td>
+                        <td style="text-align:center;">${orden.porcentajeSurtido}%</td>
+                        <td>${orden.estatus}</td>
+                        <td class="trs-cell" style="border-left:2px solid #2563eb;">${trsHTML}</td>
+                        <td class="resp-cell">${fechaHTML}</td>
+                        <td class="resp-cell">${respHTML}</td>
+                    </tr>
+                `;
+            });
+
+            printContent += `
+                        </tbody>
+                        <tfoot>
+                            <tr class="subtotal">
+                                <td colspan="10">
+                                    📊 SUBTOTAL: ${grupo.subtotales.totalOrdenes} orden${grupo.subtotales.totalOrdenes !== 1 ? 'es' : ''} |
+                                    ${grupo.subtotales.totalCajas} caja${grupo.subtotales.totalCajas !== 1 ? 's' : ''} |
+                                    Promedio: ${grupo.subtotales.promedioSurtido}%
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+        });
+
+        printContent += `
+                <div class="summary">
+                    <h3>📊 RESUMEN GENERAL</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Total Órdenes:</span>
+                            <span class="summary-value">${totales.ordenes}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Total Cajas:</span>
+                            <span class="summary-value">${totales.cajas}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Promedio Surtido:</span>
+                            <span class="summary-value">${totales.promedioSurtido}%</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Validadas:</span>
+                            <span class="summary-value">${totales.validadas}</span>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 250);
+    });
 }
 
 /**
