@@ -3283,89 +3283,98 @@ function formatFechaAsignacion(fecha) {
 function findTRSRelacionados(orden, orderData) {
     const validaciones = STATE.validacionData.get(orden) || [];
     const rastreoData = getRastreoDataForOrder(orden);
-    
+
     // Recopilar todos los códigos de búsqueda
     const searchCodes = new Set();
     const searchCodesBase = new Set();
-    
+    // Set normalizado (sin guiones, espacios ni caracteres especiales) para matching flexible
+    const searchCodesNorm = new Set();
+
+    // Helper: normalizar código quitando guiones, espacios y caracteres especiales
+    const normalizeForMatch = (code) => {
+        if (!code) return '';
+        return code.replace(/[-\s_./\\]/g, '').toUpperCase();
+    };
+
+    // Helper: agregar código a todos los sets de búsqueda
+    const addSearchCode = (rawCode) => {
+        if (!rawCode) return;
+        const code = rawCode.trim().toUpperCase();
+        if (code.length < 3) return; // Ignorar códigos muy cortos
+        searchCodes.add(code);
+        searchCodesNorm.add(normalizeForMatch(code));
+        const baseCode = extractBaseCodeForTRS(code);
+        if (baseCode) {
+            // SIEMPRE agregar código base (aunque sea igual al original)
+            // para garantizar que CRITERIO 2 compare base-vs-base
+            searchCodesBase.add(baseCode);
+            searchCodesNorm.add(normalizeForMatch(baseCode));
+        }
+    };
+
     // 1. Códigos de cajas de validaciones
     validaciones.forEach(v => {
-        if (v.codigo) {
-            const code = v.codigo.trim().toUpperCase();
-            searchCodes.add(code);
-            // Extraer código base (sin número de caja al final)
-            const baseCode = extractBaseCodeForTRS(code);
-            if (baseCode) searchCodesBase.add(baseCode);
-        }
+        if (v.codigo) addSearchCode(v.codigo);
     });
-    
+
     // 2. Códigos de cajas de rastreo MNE
     rastreoData.forEach(r => {
-        if (r.codigo) {
-            const code = r.codigo.trim().toUpperCase();
-            searchCodes.add(code);
-            const baseCode = extractBaseCodeForTRS(code);
-            if (baseCode) searchCodesBase.add(baseCode);
-        }
+        if (r.codigo) addSearchCode(r.codigo);
     });
-    
+
     // 3. Códigos de BD Cajas para esta orden
     for (const [codigo, cajas] of STATE.bdCajasData.entries()) {
         if (cajas.some(c => c.obc === orden)) {
-            const code = codigo.trim().toUpperCase();
-            searchCodes.add(code);
-            const baseCode = extractBaseCodeForTRS(code);
-            if (baseCode) searchCodesBase.add(baseCode);
+            addSearchCode(codigo);
         }
     }
-    
-    // 4. Referencia de la OBC
-    if (orderData && orderData.referenceNo) {
-        const ref = orderData.referenceNo.trim().toUpperCase();
-        searchCodes.add(ref);
-        const baseCode = extractBaseCodeForTRS(ref);
-        if (baseCode) searchCodesBase.add(baseCode);
-    }
-    
-    // 5. Tracking de la OBC
-    if (orderData && orderData.trackingCode) {
-        const track = orderData.trackingCode.trim().toUpperCase();
-        searchCodes.add(track);
-        const baseCode = extractBaseCodeForTRS(track);
-        if (baseCode) searchCodesBase.add(baseCode);
-    }
-    
 
-    // Buscar TRS que coincidan
+    // 4. Referencia de la OBC (SIEMPRE se busca)
+    if (orderData && orderData.referenceNo) {
+        addSearchCode(orderData.referenceNo);
+    }
+
+    // 5. Tracking de la OBC (SIEMPRE se busca)
+    if (orderData && orderData.trackingCode) {
+        addSearchCode(orderData.trackingCode);
+    }
+
+
+    // Función auxiliar: match exacto como substring, ambas direcciones
+    // Requiere que el valor más corto tenga al menos 4 caracteres para evitar falsos positivos
+    const exactSubstringMatch = (fieldValue, searchValue) => {
+        if (!fieldValue || !searchValue) return false;
+        if (fieldValue === searchValue) return true;
+        const minLen = Math.min(fieldValue.length, searchValue.length);
+        if (minLen < 4) return false; // Evitar matches con códigos muy cortos
+        return fieldValue.includes(searchValue) || searchValue.includes(fieldValue);
+    };
+
+    // Buscar TRS que coincidan - TODOS los criterios se evalúan siempre
     const trsRelacionados = [];
     const trsEncontrados = new Set(); // Evitar duplicados
 
     STATE.trsData.forEach(t => {
         if (trsEncontrados.has(t.trs)) return; // Ya encontrado
-        
+
         let matchParam = null;
         let matchType = null;
-        
+
         // Normalizar códigos del TRS para comparación
         const codigoOrigNorm = t.codigoOriginal ? t.codigoOriginal.trim().toUpperCase() : '';
         const codigoNuevoNorm = t.codigoNuevo ? t.codigoNuevo.trim().toUpperCase() : '';
         const referenciaNorm = t.referencia ? t.referencia.trim().toUpperCase() : '';
-        
+
         // Extraer códigos base del TRS
         const codigoOrigBase = extractBaseCodeForTRS(codigoOrigNorm);
         const codigoNuevoBase = extractBaseCodeForTRS(codigoNuevoNorm);
-        
-        // Función auxiliar: match exacto como substring, ambas direcciones
-        // Requiere que el valor más corto tenga al menos 5 caracteres para evitar falsos positivos
-        const exactSubstringMatch = (fieldValue, searchValue) => {
-            if (!fieldValue || !searchValue) return false;
-            if (fieldValue === searchValue) return true;
-            const minLen = Math.min(fieldValue.length, searchValue.length);
-            if (minLen < 5) return false; // Evitar matches con códigos muy cortos
-            return fieldValue.includes(searchValue) || searchValue.includes(fieldValue);
-        };
 
-        // PRIORIDAD 1: Match exacto con códigos directos (bidireccional con largo mínimo)
+        // Versiones normalizadas del TRS (sin guiones/espacios)
+        const codigoOrigStripped = normalizeForMatch(codigoOrigNorm);
+        const codigoNuevoStripped = normalizeForMatch(codigoNuevoNorm);
+        const referenciaStripped = normalizeForMatch(referenciaNorm);
+
+        // CRITERIO 1: Match directo con códigos completos contra codigoOriginal/codigoNuevo
         for (const code of searchCodes) {
             if (codigoOrigNorm && exactSubstringMatch(codigoOrigNorm, code)) {
                 matchParam = code;
@@ -3379,7 +3388,7 @@ function findTRSRelacionados(orden, orderData) {
             }
         }
 
-        // PRIORIDAD 2: Match por código base (bidireccional con largo mínimo)
+        // CRITERIO 2: Match por código base contra códigos base del TRS
         if (!matchParam) {
             for (const baseCode of searchCodesBase) {
                 if (codigoOrigBase && exactSubstringMatch(codigoOrigBase, baseCode)) {
@@ -3395,7 +3404,7 @@ function findTRSRelacionados(orden, orderData) {
             }
         }
 
-        // PRIORIDAD 3: Match por referencia del TRS (bidireccional con largo mínimo)
+        // CRITERIO 3: Match por referencia del TRS contra códigos de búsqueda Y códigos base
         if (!matchParam && referenciaNorm) {
             for (const code of searchCodes) {
                 if (exactSubstringMatch(referenciaNorm, code)) {
@@ -3404,8 +3413,40 @@ function findTRSRelacionados(orden, orderData) {
                     break;
                 }
             }
+            // También comparar referencia TRS contra códigos base
+            if (!matchParam) {
+                for (const baseCode of searchCodesBase) {
+                    if (exactSubstringMatch(referenciaNorm, baseCode)) {
+                        matchParam = baseCode;
+                        matchType = 'Referencia TRS (Base)';
+                        break;
+                    }
+                }
+            }
         }
-        
+
+        // CRITERIO 4: Match normalizado (sin guiones/espacios) como fallback
+        if (!matchParam) {
+            for (const normCode of searchCodesNorm) {
+                if (normCode.length < 4) continue;
+                if (codigoOrigStripped && exactSubstringMatch(codigoOrigStripped, normCode)) {
+                    matchParam = normCode;
+                    matchType = 'Código Original (Normalizado)';
+                    break;
+                }
+                if (codigoNuevoStripped && exactSubstringMatch(codigoNuevoStripped, normCode)) {
+                    matchParam = normCode;
+                    matchType = 'Código Nuevo (Normalizado)';
+                    break;
+                }
+                if (referenciaStripped && exactSubstringMatch(referenciaStripped, normCode)) {
+                    matchParam = normCode;
+                    matchType = 'Referencia TRS (Normalizado)';
+                    break;
+                }
+            }
+        }
+
         if (matchParam) {
             trsEncontrados.add(t.trs);
             trsRelacionados.push({
@@ -3415,7 +3456,7 @@ function findTRSRelacionados(orden, orderData) {
             });
         }
     });
-    
+
     return trsRelacionados;
 }
 
@@ -14135,6 +14176,11 @@ function _exportAgendaInternal() {
  */
 async function exportOrdenesDeTrabajoToExcel() {
     try {
+        // Verificar que los datos TRS estén cargados
+        if (!LOAD_STATE.backgroundData.trs || STATE.trsData.length === 0) {
+            showNotification('⚠️ Los datos de TRS aún se están cargando. Espere unos segundos e intente nuevamente.', 'warning');
+            return;
+        }
         // Precarga: fetch CSV de asignaciones TRS (usa caché si < 1 hora)
         await fetchTRSAsignaciones();
         if (isProcessingCancelled()) return;
@@ -14417,6 +14463,11 @@ function executeExportAgenda(includeOrdenesTrabajo) {
 function printOrdenesDeTrabajoReport() {
     if (!STATE.vistaAgenda.datosAgrupados || STATE.vistaAgenda.datosAgrupados.length === 0) {
         showNotification('⚠️ No hay datos para imprimir', 'warning');
+        return;
+    }
+    // Verificar que los datos TRS estén cargados
+    if (!LOAD_STATE.backgroundData.trs || STATE.trsData.length === 0) {
+        showNotification('⚠️ Los datos de TRS aún se están cargando. Espere unos segundos e intente nuevamente.', 'warning');
         return;
     }
     withProcessing('📋 Preparando impresión de Órdenes de Trabajo...', async () => {
