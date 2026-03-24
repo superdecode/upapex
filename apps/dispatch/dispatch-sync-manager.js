@@ -60,13 +60,22 @@ class DispatchSyncManager {
 
         // NUEVO: Control de cuota y rate limiting
         this.lastApiCallTime = 0;
-        this.API_MIN_INTERVAL = 500;  // 500ms entre llamadas
-        this.quotaRetryAttempts = 3;
-        this.quotaRetryBaseDelay = 2000;  // 2s base para exponential backoff
+        // Rate limiting diferenciado por tipo de operación:
+        // - WRITES (append/update): 500ms (proteger cuota)
+        // - READS (get): 100ms (permitir carga rápida de datos)
+        this.API_MIN_INTERVAL_WRITE = 500;  // 500ms entre escrituras
+        this.API_MIN_INTERVAL_READ = 100;   // 100ms entre lecturas
+        // CRÍTICO: Reducido a 1 - NO reintentar en caso de cuota, guardar en cola inmediatamente
+        this.quotaRetryAttempts = 1;
+        this.quotaRetryBaseDelay = 1000;  // 1s base (reducido)
 
         // Configuración de tiempos
-        this.OPERATIONAL_POLL_INTERVAL = 30000;   // 30 segundos
+        // CRÍTICO: Aumentado a 60s para reducir presión sobre cuota
+        this.OPERATIONAL_POLL_INTERVAL = 60000;   // 60 segundos (antes 30s)
         this.REFERENCE_CACHE_DURATION = 1800000;  // 30 minutos
+
+        // Flag para pausar polling durante operaciones críticas
+        this.pausePolling = false;
 
         // Estado de conexión
         this.isOnline = navigator.onLine;
@@ -112,7 +121,7 @@ class DispatchSyncManager {
      * @param {Object} record - Registro a enviar
      * @returns {Promise<Object>} - Resultado de la operación
      */
-    async pushImmediate(record, retryCount = 0) {
+    async pushImmediate(record) {
         if (!this.isOnline) {
             // Sin conexión: agregar a cola y guardar localmente
             console.log('📴 [PUSH] Sin conexión - Guardando en cola local');
@@ -140,14 +149,14 @@ class DispatchSyncManager {
 
             console.log('📤 [PUSH] Enviando inmediatamente:', record.orden || record.folio);
 
-            await this._waitForRateLimit();
+            await this._waitForRateLimit('write');  // Escritura: 500ms
 
             // Enviar sin esperar cola - PUSH DIRECTO
             // Usar RAW para columnas de fecha/texto para evitar conversión automática
             const response = await gapi.client.sheets.spreadsheets.values.append({
                 spreadsheetId: this.config.spreadsheetId,
                 range: `${this.config.sheetName}!A:R`,
-                valueInputOption: 'RAW',  // Cambiado de USER_ENTERED a RAW para preservar formato de texto
+                valueInputOption: 'RAW',
                 insertDataOption: 'INSERT_ROWS',
                 resource: { values }
             });
@@ -166,15 +175,7 @@ class DispatchSyncManager {
         } catch (error) {
             console.error('❌ [PUSH] Error enviando:', error);
 
-            // Reintentar si es error de cuota
-            if (this._isQuotaError(error) && retryCount < this.quotaRetryAttempts) {
-                const delay = this.quotaRetryBaseDelay * Math.pow(2, retryCount);
-                console.warn(`⚠️ [PUSH] Error de cuota. Reintentando en ${delay}ms (intento ${retryCount + 1}/${this.quotaRetryAttempts})...`);
-                await new Promise(r => setTimeout(r, delay));
-                return this.pushImmediate(record, retryCount + 1);
-            }
-
-            // En caso de error, agregar a cola para reintento
+            // CRÍTICO: NO reintentar - agregar a cola inmediatamente
             this.addToPendingQueue(record);
 
             if (this.config.onSyncEnd) this.config.onSyncEnd();
@@ -259,12 +260,20 @@ class DispatchSyncManager {
     }
 
     /**
-     * NUEVO: Espera respetando rate limiting
+     * NUEVO: Espera respetando rate limiting diferenciado
+     * @param {string} type - 'read' para lecturas (SIN delay durante carga), 'write' para escrituras (500ms)
      */
-    async _waitForRateLimit() {
+    async _waitForRateLimit(type = 'write') {
+        // CRÍTICO: NO aplicar delay a lecturas - permite carga rápida de datos
+        // Solo proteger escrituras que consumen más cuota
+        if (type === 'read') {
+            return;  // Sin delay para lecturas
+        }
+
+        const minInterval = this.API_MIN_INTERVAL_WRITE;
         const timeSinceLastCall = Date.now() - this.lastApiCallTime;
-        if (timeSinceLastCall < this.API_MIN_INTERVAL) {
-            await new Promise(r => setTimeout(r, this.API_MIN_INTERVAL - timeSinceLastCall));
+        if (timeSinceLastCall < minInterval) {
+            await new Promise(r => setTimeout(r, minInterval - timeSinceLastCall));
         }
         this.lastApiCallTime = Date.now();
     }
@@ -282,7 +291,7 @@ class DispatchSyncManager {
     /**
      * NUEVO: Obtiene índice de fila usando caché para evitar lecturas completas de hoja
      */
-    async _getRowIndexWithRetry(ordenToFind, retryCount = 0) {
+    async _getRowIndexWithRetry(ordenToFind) {
         // PASO 1: Verificar caché en memoria (con timestamp por entrada)
         const cachedEntry = this.rowIndexCache.get(ordenToFind);
         const now = Date.now();
@@ -297,9 +306,9 @@ class DispatchSyncManager {
             this.rowIndexCache.delete(ordenToFind);
         }
 
-        // PASO 2: Leer hoja completa con retry en caso de cuota
+        // PASO 2: Leer hoja completa (SIN retry en caso de cuota - ir directo a cola)
         try {
-            await this._waitForRateLimit();
+            await this._waitForRateLimit('read');  // Lectura: sin delay
 
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: this.config.spreadsheetId,
@@ -329,14 +338,12 @@ class DispatchSyncManager {
 
             return rowIndex;
         } catch (error) {
-            if (this._isQuotaError(error) && retryCount < this.quotaRetryAttempts) {
-                const delay = this.quotaRetryBaseDelay * Math.pow(2, retryCount);
-                console.warn(`⚠️ [UPDATE] Error de cuota detectado. Reintentando en ${delay}ms (intento ${retryCount + 1}/${this.quotaRetryAttempts})...`);
-                await new Promise(r => setTimeout(r, delay));
-                return this._getRowIndexWithRetry(ordenToFind, retryCount + 1);
+            // CRÍTICO: Si es error de cuota, NO reintentar - dejar que el caller maneje
+            if (this._isQuotaError(error)) {
+                console.warn(`⚠️ [UPDATE] Error de cuota detectado - será manejado por updateExistingRecord`);
             }
 
-            // Otros errores: limpiar caché y lanzar excepción
+            // Limpiar caché y lanzar excepción
             this.rowIndexCache.delete(ordenToFind);
             console.error(`❌ [UPDATE] Error buscando orden ${ordenToFind}:`, error.message);
             throw error;
@@ -360,10 +367,14 @@ class DispatchSyncManager {
             return { success: false, error: 'Número de orden requerido' };
         }
 
+        // CRÍTICO: Pausar polling durante operación de edición para reducir interferencia
+        const wasPollingPaused = this.pausePolling;
+        this.pausePolling = true;
+
         try {
             console.log(`🔍 [UPDATE] Buscando registro existente para orden: ${ordenToFind}`);
 
-            // PASO 1: Obtener índice de fila (con caché + retry)
+            // PASO 1: Obtener índice de fila (con caché, SIN retry agresivo)
             const rowIndex = await this._getRowIndexWithRetry(ordenToFind);
 
             if (rowIndex === -1) {
@@ -415,15 +426,18 @@ class DispatchSyncManager {
             }
 
             return { success: false, error: errorMsg };
+        } finally {
+            // CRÍTICO: Restaurar estado de polling
+            this.pausePolling = wasPollingPaused;
         }
     }
 
     /**
-     * NUEVO: Actualiza una fila con retry exponencial para errores de cuota
+     * NUEVO: Actualiza una fila (SIN retry agresivo - dejar a cola si falla)
      */
-    async _updateWithRetry(rowIndex, values, retryCount = 0) {
+    async _updateWithRetry(rowIndex, values) {
         try {
-            await this._waitForRateLimit();
+            await this._waitForRateLimit('write');  // Escritura: 500ms
 
             return await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: this.config.spreadsheetId,
@@ -432,12 +446,8 @@ class DispatchSyncManager {
                 resource: { values }
             });
         } catch (error) {
-            if (this._isQuotaError(error) && retryCount < this.quotaRetryAttempts) {
-                const delay = this.quotaRetryBaseDelay * Math.pow(2, retryCount);
-                console.warn(`⚠️ [UPDATE] Error de cuota. Reintentando en ${delay}ms (intento ${retryCount + 1}/${this.quotaRetryAttempts})...`);
-                await new Promise(r => setTimeout(r, delay));
-                return this._updateWithRetry(rowIndex, values, retryCount + 1);
-            }
+            // CRÍTICO: NO reintentar - dejar que updateExistingRecord lo maneje
+            console.error(`❌ [UPDATE] Error actualizando fila ${rowIndex}:`, error.message);
             throw error;
         }
     }
@@ -454,9 +464,10 @@ class DispatchSyncManager {
 
         console.log('🔄 [POLLING] Iniciando polling operacional (30s)');
 
-        // Polling cada 30 segundos
+        // Polling cada 60 segundos (aumentado para reducir presión sobre cuota)
         this.operationalPollingInterval = setInterval(async () => {
-            if (this.isOnline && !this.inProgress) {
+            // CRÍTICO: No hacer polling si está pausado (durante ediciones/cargas)
+            if (this.isOnline && !this.inProgress && !this.pausePolling) {
                 await this.pollOperationalData();
             }
         }, this.OPERATIONAL_POLL_INTERVAL);
@@ -488,7 +499,7 @@ class DispatchSyncManager {
         }
 
         try {
-            await this._waitForRateLimit();
+            await this._waitForRateLimit('read');  // Lectura: 100ms
 
             // Silently poll without logging
             const response = await gapi.client.sheets.spreadsheets.values.get({
@@ -721,7 +732,7 @@ class DispatchSyncManager {
                     ? [this.config.formatRecord(record)]
                     : [this.defaultFormat(record)];
 
-                await this._waitForRateLimit();
+                await this._waitForRateLimit('write');  // Escritura: 500ms
 
                 await gapi.client.sheets.spreadsheets.values.append({
                     spreadsheetId: this.config.spreadsheetId,

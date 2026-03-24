@@ -567,17 +567,35 @@ async function lazyLoadDataByDate(startDate, endDate) {
             return;
         }
         
-        // ==================== STEP 2: Fetch Validated Records from SPREADSHEET_WRITE ====================
+        // ==================== STEP 2: Fetch Validated Records (NON-BLOCKING) ====================
+        // CRÍTICO: NO bloquear esperando esto - cargar en background si falla
         showLoadingOverlay(true, 1, TOTAL_STEPS, '📝 Paso 2/3: Cargando registros de despacho (BD Escritura)...');
-        console.log('👉 PASO 2/3: Cargando registros validados desde SPREADSHEET_WRITE...');
+        console.log('👉 PASO 2/3: Intentando cargar registros validados (con timeout de 3s)...');
 
         let validatedRecords = [];
+
+        // OPTIMIZACIÓN: Usar timeout para no bloquear si Google API está saturada
+        const fetchWithTimeout = Promise.race([
+            fetchValidatedRecordsFromWriteDB(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: 3s')), 3000))
+        ]);
+
         try {
-            validatedRecords = await fetchValidatedRecordsFromWriteDB();
+            validatedRecords = await fetchWithTimeout;
             console.log(`✅ PASO 2/3 COMPLETO: ${validatedRecords.length} registros de despacho encontrados`);
         } catch (error) {
-            console.warn('Error loading validated records:', error);
-            console.log('⚠️ Continuando sin registros validados...');
+            console.warn('⚠️ Error o timeout cargando registros validados:', error.message);
+            console.log('⚠️ Continuando sin estos registros - se cargarán en background...');
+            validatedRecords = [];  // Vacío por ahora, se cargarán después
+
+            // Cargar en background sin bloquear
+            fetchValidatedRecordsFromWriteDB()
+                .then(records => {
+                    STATE.localValidated = records;
+                    console.log(`✅ [BACKGROUND] ${records.length} registros cargados en background`);
+                    renderValidatedTable();
+                })
+                .catch(e => console.warn('[BACKGROUND] Error cargando registros:', e));
         }
 
         // ==================== PASO 3 OPTIMIZADO: Delegar carga pesada a segundo plano ====================
