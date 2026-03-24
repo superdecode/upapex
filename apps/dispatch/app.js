@@ -10193,7 +10193,17 @@ async function saveValidatedOrderChanges(orden) {
                 showNotification('✅ Cambios guardados y sincronizados con BD', 'success');
             } else {
                 console.warn(`⚠️ Error sincronizando orden ${orden}:`, syncResult.error || syncResult.message);
-                showNotification('⚠️ Cambios guardados localmente, pero falló sincronización con BD', 'warning');
+
+                // NUEVO: Manejar error de cuota específicamente
+                if (syncResult.quota_exceeded) {
+                    showNotification(
+                        '⏳ Cuota de API excedida. Los cambios se han guardado localmente y se sincronizarán automáticamente en unos momentos.',
+                        'warning',
+                        10000
+                    );
+                } else {
+                    showNotification('⚠️ Cambios guardados localmente, pero falló sincronización con BD', 'warning');
+                }
             }
         } else {
             console.warn('⚠️ updateExistingRecord no disponible - usando syncPendingData como fallback');

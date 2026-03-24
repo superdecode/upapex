@@ -31,11 +31,11 @@ class DispatchSyncManager {
         this.pendingSync = [];
         this.inProgress = false;
         this.initialized = false;
-        
+
         // Intervalos de polling
         this.operationalPollingInterval = null;  // 30s para BD operativa
         this.referencePollingInterval = null;    // 30min para BDs de referencia
-        
+
         // Caché de datos
         this.cache = {
             operational: {
@@ -50,17 +50,27 @@ class DispatchSyncManager {
                 listas: { data: null, lastUpdate: null }
             }
         };
-        
+
         // Control de concurrencia
         this.lockManager = new OptimisticLockManager();
-        
+
+        // NUEVO: Caché de índices de filas para evitar leer la hoja completa
+        this.rowIndexCache = new Map();  // orden -> { rowIndex, timestamp }
+        this.ROW_INDEX_CACHE_TTL = 30000;  // 30 segundos (más conservador)
+
+        // NUEVO: Control de cuota y rate limiting
+        this.lastApiCallTime = 0;
+        this.API_MIN_INTERVAL = 500;  // 500ms entre llamadas
+        this.quotaRetryAttempts = 3;
+        this.quotaRetryBaseDelay = 2000;  // 2s base para exponential backoff
+
         // Configuración de tiempos
         this.OPERATIONAL_POLL_INTERVAL = 30000;   // 30 segundos
         this.REFERENCE_CACHE_DURATION = 1800000;  // 30 minutos
-        
+
         // Estado de conexión
         this.isOnline = navigator.onLine;
-        
+
         // Worker para background sync (si está disponible)
         this.useBackgroundSync = typeof Worker !== 'undefined';
     }
@@ -102,7 +112,7 @@ class DispatchSyncManager {
      * @param {Object} record - Registro a enviar
      * @returns {Promise<Object>} - Resultado de la operación
      */
-    async pushImmediate(record) {
+    async pushImmediate(record, retryCount = 0) {
         if (!this.isOnline) {
             // Sin conexión: agregar a cola y guardar localmente
             console.log('📴 [PUSH] Sin conexión - Guardando en cola local');
@@ -122,13 +132,15 @@ class DispatchSyncManager {
 
         try {
             if (this.config.onSyncStart) this.config.onSyncStart();
-            
+
             // Formatear registro
-            const values = this.config.formatRecord 
+            const values = this.config.formatRecord
                 ? [this.config.formatRecord(record)]
                 : [this.defaultFormat(record)];
 
             console.log('📤 [PUSH] Enviando inmediatamente:', record.orden || record.folio);
+
+            await this._waitForRateLimit();
 
             // Enviar sin esperar cola - PUSH DIRECTO
             // Usar RAW para columnas de fecha/texto para evitar conversión automática
@@ -142,10 +154,10 @@ class DispatchSyncManager {
 
             if (response.status === 200) {
                 console.log('✅ [PUSH] Registro enviado exitosamente');
-                
+
                 // Actualizar versión local del caché
                 this.cache.operational.version++;
-                
+
                 if (this.config.onSyncEnd) this.config.onSyncEnd();
                 return { success: true, response };
             } else {
@@ -153,11 +165,29 @@ class DispatchSyncManager {
             }
         } catch (error) {
             console.error('❌ [PUSH] Error enviando:', error);
-            
+
+            // Reintentar si es error de cuota
+            if (this._isQuotaError(error) && retryCount < this.quotaRetryAttempts) {
+                const delay = this.quotaRetryBaseDelay * Math.pow(2, retryCount);
+                console.warn(`⚠️ [PUSH] Error de cuota. Reintentando en ${delay}ms (intento ${retryCount + 1}/${this.quotaRetryAttempts})...`);
+                await new Promise(r => setTimeout(r, delay));
+                return this.pushImmediate(record, retryCount + 1);
+            }
+
             // En caso de error, agregar a cola para reintento
             this.addToPendingQueue(record);
-            
+
             if (this.config.onSyncEnd) this.config.onSyncEnd();
+
+            if (this._isQuotaError(error)) {
+                return {
+                    success: false,
+                    queued: true,
+                    error: 'Cuota de API excedida. Guardado en cola para reintento.',
+                    quota_exceeded: true
+                };
+            }
+
             return { success: false, queued: true, error: error.message };
         }
     }
@@ -229,6 +259,91 @@ class DispatchSyncManager {
     }
 
     /**
+     * NUEVO: Espera respetando rate limiting
+     */
+    async _waitForRateLimit() {
+        const timeSinceLastCall = Date.now() - this.lastApiCallTime;
+        if (timeSinceLastCall < this.API_MIN_INTERVAL) {
+            await new Promise(r => setTimeout(r, this.API_MIN_INTERVAL - timeSinceLastCall));
+        }
+        this.lastApiCallTime = Date.now();
+    }
+
+    /**
+     * NUEVO: Detecta si es error de cuota
+     */
+    _isQuotaError(error) {
+        if (!error) return false;
+        const msg = error?.message?.toLowerCase() || '';
+        const code = error?.result?.error?.code;
+        return msg.includes('quota') || code === 403 || msg.includes('rate limit');
+    }
+
+    /**
+     * NUEVO: Obtiene índice de fila usando caché para evitar lecturas completas de hoja
+     */
+    async _getRowIndexWithRetry(ordenToFind, retryCount = 0) {
+        // PASO 1: Verificar caché en memoria (con timestamp por entrada)
+        const cachedEntry = this.rowIndexCache.get(ordenToFind);
+        const now = Date.now();
+
+        if (cachedEntry) {
+            const age = now - cachedEntry.timestamp;
+            if (age < this.ROW_INDEX_CACHE_TTL) {
+                console.log(`📦 [UPDATE] Usando índice en caché para ${ordenToFind}: fila ${cachedEntry.rowIndex} (edad: ${age}ms)`);
+                return cachedEntry.rowIndex;
+            }
+            // Caché expirado, limpiar entrada
+            this.rowIndexCache.delete(ordenToFind);
+        }
+
+        // PASO 2: Leer hoja completa con retry en caso de cuota
+        try {
+            await this._waitForRateLimit();
+
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: this.config.spreadsheetId,
+                range: `${this.config.sheetName}!A:R`
+            });
+
+            const rows = response.result.values || [];
+            let rowIndex = -1;
+
+            // Buscar la fila que contiene esta orden (columna E, índice 4)
+            for (let i = 0; i < rows.length; i++) {
+                // SEGURIDAD: Verificar que la fila tenga al menos 5 columnas
+                if (rows[i] && rows[i].length > 4 && rows[i][4] === ordenToFind) {
+                    rowIndex = i + 1;  // +1 porque Sheets usa índice base 1
+                    break;
+                }
+            }
+
+            // Guardar en caché con timestamp (incluso si no encontró, para evitar leer de nuevo inmediatamente)
+            if (rowIndex > 0) {
+                this.rowIndexCache.set(ordenToFind, {
+                    rowIndex: rowIndex,
+                    timestamp: now
+                });
+                console.log(`💾 [UPDATE] Orden ${ordenToFind} cacheada en fila ${rowIndex}`);
+            }
+
+            return rowIndex;
+        } catch (error) {
+            if (this._isQuotaError(error) && retryCount < this.quotaRetryAttempts) {
+                const delay = this.quotaRetryBaseDelay * Math.pow(2, retryCount);
+                console.warn(`⚠️ [UPDATE] Error de cuota detectado. Reintentando en ${delay}ms (intento ${retryCount + 1}/${this.quotaRetryAttempts})...`);
+                await new Promise(r => setTimeout(r, delay));
+                return this._getRowIndexWithRetry(ordenToFind, retryCount + 1);
+            }
+
+            // Otros errores: limpiar caché y lanzar excepción
+            this.rowIndexCache.delete(ordenToFind);
+            console.error(`❌ [UPDATE] Error buscando orden ${ordenToFind}:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
      * Busca y actualiza un registro existente por número de orden
      * @param {Object} record - Registro con los datos actualizados
      * @returns {Promise<Object>} - Resultado de la operación
@@ -248,22 +363,8 @@ class DispatchSyncManager {
         try {
             console.log(`🔍 [UPDATE] Buscando registro existente para orden: ${ordenToFind}`);
 
-            // PASO 1: Leer toda la hoja para encontrar la fila de la orden
-            const response = await gapi.client.sheets.spreadsheets.values.get({
-                spreadsheetId: this.config.spreadsheetId,
-                range: `${this.config.sheetName}!A:R`
-            });
-
-            const rows = response.result.values || [];
-
-            // Buscar la fila que contiene esta orden (columna E, índice 4)
-            let rowIndex = -1;
-            for (let i = 0; i < rows.length; i++) {
-                if (rows[i][4] === ordenToFind) {  // Columna E (índice 4) = Orden
-                    rowIndex = i + 1;  // +1 porque Sheets usa índice base 1
-                    break;
-                }
-            }
+            // PASO 1: Obtener índice de fila (con caché + retry)
+            const rowIndex = await this._getRowIndexWithRetry(ordenToFind);
 
             if (rowIndex === -1) {
                 console.warn(`⚠️ [UPDATE] No se encontró registro existente para orden ${ordenToFind}`);
@@ -280,12 +381,8 @@ class DispatchSyncManager {
 
             console.log(`📝 [UPDATE] Actualizando fila ${rowIndex} IN-PLACE...`);
 
-            const updateResponse = await gapi.client.sheets.spreadsheets.values.update({
-                spreadsheetId: this.config.spreadsheetId,
-                range: `${this.config.sheetName}!A${rowIndex}:R${rowIndex}`,
-                valueInputOption: 'RAW',
-                resource: { values }
-            });
+            // Actualizar con retry en caso de error de cuota
+            const updateResponse = await this._updateWithRetry(rowIndex, values, 0);
 
             if (updateResponse.status === 200) {
                 console.log(`✅ [UPDATE] Registro actualizado exitosamente en fila ${rowIndex}`);
@@ -296,13 +393,52 @@ class DispatchSyncManager {
                 // Actualizar versión del caché
                 this.cache.operational.version++;
 
+                // IMPORTANTE: Invalidar caché de índices para esta orden
+                // (La fila podría haber cambiado si otros usuarios editaron la hoja)
+                this.rowIndexCache.delete(ordenToFind);
+
                 return { success: true, rowIndex, updated: true };
             }
 
             throw new Error(`Status ${updateResponse.status}`);
         } catch (error) {
             console.error('❌ [UPDATE] Error actualizando registro:', error);
-            return { success: false, error: error.message };
+            const errorMsg = error?.message || 'Error desconocido';
+
+            if (this._isQuotaError(error)) {
+                return {
+                    success: false,
+                    error: 'Cuota de API excedida. Intenta nuevamente en unos momentos.',
+                    originalError: errorMsg,
+                    quota_exceeded: true
+                };
+            }
+
+            return { success: false, error: errorMsg };
+        }
+    }
+
+    /**
+     * NUEVO: Actualiza una fila con retry exponencial para errores de cuota
+     */
+    async _updateWithRetry(rowIndex, values, retryCount = 0) {
+        try {
+            await this._waitForRateLimit();
+
+            return await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: this.config.spreadsheetId,
+                range: `${this.config.sheetName}!A${rowIndex}:R${rowIndex}`,
+                valueInputOption: 'RAW',
+                resource: { values }
+            });
+        } catch (error) {
+            if (this._isQuotaError(error) && retryCount < this.quotaRetryAttempts) {
+                const delay = this.quotaRetryBaseDelay * Math.pow(2, retryCount);
+                console.warn(`⚠️ [UPDATE] Error de cuota. Reintentando en ${delay}ms (intento ${retryCount + 1}/${this.quotaRetryAttempts})...`);
+                await new Promise(r => setTimeout(r, delay));
+                return this._updateWithRetry(rowIndex, values, retryCount + 1);
+            }
+            throw error;
         }
     }
 
@@ -352,6 +488,8 @@ class DispatchSyncManager {
         }
 
         try {
+            await this._waitForRateLimit();
+
             // Silently poll without logging
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: this.config.spreadsheetId,
@@ -364,7 +502,7 @@ class DispatchSyncManager {
             // Detectar cambios
             if (newVersion !== this.cache.operational.version) {
                 console.log(`📊 [POLLING] Cambios detectados: ${this.cache.operational.version} → ${newVersion}`);
-                
+
                 // Actualizar caché
                 this.cache.operational.data = rows;
                 this.cache.operational.version = newVersion;
@@ -384,10 +522,28 @@ class DispatchSyncManager {
             }
             // Silently skip if no changes
         } catch (error) {
+            // Detectar y manejar error de cuota sin mostrarlo cada vez
+            if (this._isQuotaError(error)) {
+                console.warn('⚠️ [POLLING] Error de cuota - próximo polling será más lento');
+                // Aumentar intervalo de polling si hay error de cuota
+                if (this.operationalPollingInterval) {
+                    clearInterval(this.operationalPollingInterval);
+                    // Polling menos frecuente: cada 60s en lugar de 30s
+                    this.operationalPollingInterval = setInterval(async () => {
+                        if (this.isOnline && !this.inProgress) {
+                            await this.pollOperationalData();
+                        }
+                    }, 60000);
+                    console.log('🔄 [POLLING] Intervalo aumentado a 60s debido a límite de cuota');
+                }
+                return;
+            }
+
             // Only log errors, not routine polling
             if (error?.result?.error?.code === 401) {
                 console.warn('🔒 [AUTH] Sesión de Google expirada');
-            } else {
+            } else if (error?.result?.error?.code !== 403) {
+                // Silenciar algunos errores comunes
                 console.error('❌ [POLLING] Error consultando BD operativa:', error);
             }
 
@@ -552,17 +708,20 @@ class DispatchSyncManager {
         }
 
         console.log(`🔄 [QUEUE] Procesando ${this.pendingSync.length} registros pendientes...`);
-        
+
         this.inProgress = true;
         let processed = 0;
         let errors = 0;
+        let quotaErrors = 0;
         const toRetry = [];
 
         for (const record of this.pendingSync) {
             try {
-                const values = this.config.formatRecord 
+                const values = this.config.formatRecord
                     ? [this.config.formatRecord(record)]
                     : [this.defaultFormat(record)];
+
+                await this._waitForRateLimit();
 
                 await gapi.client.sheets.spreadsheets.values.append({
                     spreadsheetId: this.config.spreadsheetId,
@@ -575,19 +734,38 @@ class DispatchSyncManager {
                 processed++;
             } catch (error) {
                 console.error('❌ [QUEUE] Error procesando registro:', error);
+
                 toRetry.push(record);
-                errors++;
+
+                if (this._isQuotaError(error)) {
+                    quotaErrors++;
+                    // Parar de procesar si hay error de cuota (preservar cuota para otros)
+                    break;
+                } else {
+                    errors++;
+                }
             }
         }
 
         // Actualizar cola con los que fallaron
         this.pendingSync = toRetry;
         this.savePendingQueue();
-        
+
         this.inProgress = false;
 
-        console.log(`✅ [QUEUE] Procesados: ${processed}, Errores: ${errors}, Pendientes: ${toRetry.length}`);
-        return { success: errors === 0, processed, errors, pending: toRetry.length };
+        if (quotaErrors > 0) {
+            console.log(`⚠️ [QUEUE] Procesados: ${processed}, Errores de Cuota: ${quotaErrors}, Pendientes: ${toRetry.length}`);
+        } else {
+            console.log(`✅ [QUEUE] Procesados: ${processed}, Errores: ${errors}, Pendientes: ${toRetry.length}`);
+        }
+
+        return {
+            success: errors === 0,
+            processed,
+            errors,
+            quotaErrors,
+            pending: toRetry.length
+        };
     }
 
     /**
