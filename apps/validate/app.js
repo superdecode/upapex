@@ -722,11 +722,13 @@ async function addToPendingSync(log) {
 
     try {
         // Formatear el registro para el Advanced Sync Manager
-        // CRÍTICO: Generar ID único aquí para evitar deduplicación agresiva de escaneos múltiples
-        const uniqueId = `val_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // CORREGIDO: Generar _id DETERMINISTA basado en contenido del escaneo.
+        // Si el mismo evento se intenta agregar dos veces, IndexedDB.put() sobreescribe
+        // en lugar de duplicar, y el dedup por contenido también lo detecta.
+        const deterministicId = `val_${log.code}_${log.obc}_${log.timestamp}`.replace(/[^a-zA-Z0-9_]/g, '_');
         
         const record = {
-            _id: uniqueId, // ID único para bypass de deduplicación por contenido
+            _id: deterministicId,
             date: log.date,
             time: log.timestamp,
             user: log.user,
@@ -740,7 +742,7 @@ async function addToPendingSync(log) {
         };
 
         await syncManager.addToQueue(record);
-        console.log('✅ [VALIDADOR] Validación agregada a cola de sincronización:', log.code, `(ID: ${uniqueId})`);
+        console.log('✅ [VALIDADOR] Validación agregada a cola de sincronización:', log.code, `(ID: ${deterministicId})`);
     } catch (error) {
         console.error('❌ [VALIDADOR] Error al agregar a cola de sync:', error);
     }
@@ -3096,7 +3098,10 @@ async function handleValidationOK(raw, code, obc, location, note = '', isManual 
         showOrderCompleted(obc);
     }
 
-    if (syncManager) syncManager.sync(false);
+    // NOTA: NO llamar syncManager.sync() aquí.
+    // El heartbeat (10s) y autoSync (45s) se encargan de sincronizar.
+    // Llamar sync() inmediatamente causaba duplicados por race condition
+    // entre este sync y el heartbeat/autoSync que corren en paralelo.
 }
 
 async function handleRejection(reason, raw, code, obc) {

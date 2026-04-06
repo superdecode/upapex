@@ -984,10 +984,15 @@ class AdvancedSyncManager {
             heartbeatRunning = true;
 
             try {
-                const pendingFromDB = await this.persistenceManager.getPendingSync();
-                if (pendingFromDB.length !== this.pendingSync.length) {
-                    console.log(`🔄 [HEARTBEAT] Sincronizando PENDING_SYNC: ${this.pendingSync.length} → ${pendingFromDB.length}`);
-                    this.pendingSync = pendingFromDB;
+                // CRÍTICO: NO recargar de IndexedDB si hay un sync en curso.
+                // Durante _doSync, la cola se vacía (snapshot) y los registros se
+                // restauran solo si falla. Recargar aquí re-introduciría duplicados.
+                if (!this.inProgress) {
+                    const pendingFromDB = await this.persistenceManager.getPendingSync();
+                    if (pendingFromDB.length !== this.pendingSync.length) {
+                        console.log(`🔄 [HEARTBEAT] Sincronizando PENDING_SYNC: ${this.pendingSync.length} → ${pendingFromDB.length}`);
+                        this.pendingSync = pendingFromDB;
+                    }
                 }
 
                 // Verificar si hay token válido antes de intentar sync
@@ -1038,7 +1043,7 @@ class AdvancedSyncManager {
         if (this.autoSyncIntervalId) clearInterval(this.autoSyncIntervalId);
 
         this.autoSyncIntervalId = setInterval(() => {
-            if (this._canSync() && this.pendingSync.length > 0) {
+            if (this._canSync() && this.pendingSync.length > 0 && !this.inProgress) {
                 console.log('⏰ Auto-sync triggered');
                 this.sync(false);
             }
@@ -1440,13 +1445,20 @@ class AdvancedSyncManager {
             showNotification(syncMessage, 'info');
         }
 
+        // CRÍTICO: Tomar snapshot de los registros pendientes y limpiar la cola
+        // ANTES de escribir a Google Sheets. Esto previene que el heartbeat/autoSync
+        // vuelvan a enviar los mismos registros mientras se escribe.
+        const snapshotPending = [...this.pendingSync];
+        this.pendingSync = [];
+        await this.save();
+
         try {
             // ====== FILTRADO DE REGISTROS ======
-            // PASO 1: Extraer registros actuales
+            // PASO 1: Extraer registros del snapshot
             let recordsToSync = [];
             const palletLocationPairs = new Set();
 
-            for (const record of this.pendingSync) {
+            for (const record of snapshotPending) {
                 const actualRecord = record.record || record;
 
                 // HOOK: Si la app define shouldIncludeRecord, usarlo
@@ -1493,6 +1505,13 @@ class AdvancedSyncManager {
 
             if (deduplicatedRecords.length === 0) {
                 console.log('✅ [DEDUP-SYNC] Todos los registros pendientes ya fueron sincronizados o eran duplicados');
+                // Limpiar los registros duplicados de IndexedDB para que no se recarguen
+                try {
+                    const allSnapshotRecords = snapshotPending.map(r => r.record || r);
+                    await this.persistenceManager.markAsSynced(allSnapshotRecords);
+                } catch (cleanErr) {
+                    console.warn('⚠️ [DEDUP-SYNC] Error limpiando duplicados de IndexedDB:', cleanErr);
+                }
                 this.pendingSync = [];
                 await this.save();
                 this.updateUI(true);
@@ -1616,6 +1635,17 @@ class AdvancedSyncManager {
                 }
 
                 this.deduplicationManager.saveSyncedPallets();
+
+                // Restaurar registros fallidos al queue para reintento
+                if (failed.length > 0) {
+                    console.warn(`🔄 [SLOW-SYNC] Restaurando ${failed.length} registros fallidos a la cola`);
+                    try {
+                        await this.persistenceManager.moveToPending(failed);
+                    } catch (restoreErr) {
+                        console.error('❌ [SLOW-SYNC] Error restaurando fallidos en IndexedDB:', restoreErr);
+                    }
+                }
+
                 this.pendingSync = await this.persistenceManager.getPendingSync();
                 this.lastSyncTime = new Date();
                 this.retryCount = 0;
@@ -1728,6 +1758,18 @@ class AdvancedSyncManager {
 
         } catch (e) {
             console.error('❌ Error de sincronización:', e);
+
+            // CRÍTICO: Restaurar registros del snapshot a la cola ya que la escritura falló
+            console.warn('🔄 [SYNC] Restaurando registros del snapshot a la cola...');
+            this.pendingSync.push(...snapshotPending);
+            await this.save();
+            // Re-persistir en IndexedDB para que el heartbeat los encuentre
+            try {
+                await this.persistenceManager.moveToPending(snapshotPending);
+            } catch (restoreErr) {
+                console.error('❌ [SYNC] Error restaurando en IndexedDB:', restoreErr);
+            }
+            console.warn(`🔄 [SYNC] ${snapshotPending.length} registros restaurados a la cola`);
 
             // Manejo especial para errores de autenticación/permisos (PRIORIDAD MÁS ALTA)
             const errorStatus = e?.status;

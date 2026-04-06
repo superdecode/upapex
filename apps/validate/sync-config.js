@@ -64,19 +64,16 @@ async function initAdvancedSync() {
                 return true;
             },
 
-            // HOOK: Genera clave única para deduplicación INTERNA del batch
-            // Para Validador: usar _id único (evita duplicados técnicos del mismo evento)
+            // HOOK: Genera clave DETERMINISTA para deduplicación INTERNA del batch
+            // CORREGIDO: Usar contenido real (código+obc+hora) en vez de _id aleatorio.
+            // Con _id aleatorio el sistema NUNCA podía detectar duplicados reales.
+            // La clave se basa en código + obc + hora del escaneo, que identifica
+            // unívocamente cada evento de validación.
             generateRecordKey: (record) => {
-                // PRIORIDAD 1: Usar _id único generado al crear el registro
-                if (record._id) {
-                    return record._id;
-                }
-                // FALLBACK: Generar clave única basada en timestamp + código
-                // Esto permite múltiples escaneos del mismo código
-                const timestamp = record._timestamp || Date.now();
-                const code = record.codigo || record.code || '';
-                const obc = record.obc || '';
-                return `VAL_${code}_${obc}_${timestamp}_${Math.random().toString(36).substr(2, 5)}`;
+                const code = (record.codigo || record.code || '').toString().toUpperCase();
+                const obc = (record.obc || '').toString().toUpperCase();
+                const time = record.time || record.timestamp || '';
+                return `VAL|${code}|${obc}|${time}`;
             },
 
             // HOOK: Se ejecuta DESPUÉS de sincronización exitosa
@@ -223,11 +220,14 @@ async function addValidationToQueue(validationData) {
         }
     }
 
-    // CRÍTICO: Generar _id único para cada validación
+    // CORREGIDO: Generar _id DETERMINISTA basado en contenido
+    const timeStr = SyncUtils.formatTime();
+    const dateStr = SyncUtils.formatDate();
+    const deterministicId = `VAL_${validationData.obc}_${validationData.codigo}_${timeStr}`.replace(/[^a-zA-Z0-9_]/g, '_');
     const record = {
-        _id: `VAL_${validationData.obc}_${validationData.codigo}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-        date: SyncUtils.formatDate(),
-        time: SyncUtils.formatTime(),
+        _id: deterministicId,
+        date: dateStr,
+        time: timeStr,
         user: validationData.user || '',
         obc: validationData.obc || '',
         codigo: validationData.codigo || '',
@@ -265,11 +265,13 @@ async function addValidationsToQueue(validations) {
         return false;
     }
 
-    // CRÍTICO: Generar _id único para cada validación
+    // CORREGIDO: Generar _id DETERMINISTA basado en contenido
+    const batchTime = SyncUtils.formatTime();
+    const batchDate = SyncUtils.formatDate();
     const records = validations.map((v, index) => ({
-        _id: `VAL_${v.obc}_${v.codigo}_${index}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-        date: SyncUtils.formatDate(),
-        time: SyncUtils.formatTime(),
+        _id: `VAL_${v.obc}_${v.codigo}_${index}_${batchTime}`.replace(/[^a-zA-Z0-9_]/g, '_'),
+        date: batchDate,
+        time: batchTime,
         user: v.user || '',
         obc: v.obc || '',
         codigo: v.codigo || '',
